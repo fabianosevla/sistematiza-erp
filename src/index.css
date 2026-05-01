@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+
+:root {
+  --bg-primary: #F4F4F4;
+  --bg-layer-01: #FFFFFF;
+  --bg-layer-02: #F0F0F0;
+
+  --border-subtle: #D5DADD;
+  --border-strong: #B0B8BD;
+
+  --text-primary: #161616;
+  --text-secondary: #525252;
+  --text-placeholder: #8D8D8D;
+
+  --brand: #0052CC;
+  --brand-hover: #0043A4;
+  --brand-light: #E8F0FE;
+
+  /* Status */
+  --status-ok: #059669;
+  --status-ok-bg: #ECFDF5;
+  --status-warn: #D97706;
+  --status-warn-bg: #FFFBEB;
+  --status-danger: #DC2626;
+  --status-danger-bg: #FEF2F2;
+
+  /* Financeiro */
+  --receita: #059669;
+  --receita-bg: #ECFDF5;
+  --despesa: #DC2626;
+  --despesa-bg: #FEF2F2;
+  --pendente: #D97706;
+  --pendente-bg: #FFFBEB;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,0.10);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+input, textarea, select, button {
+  font-family: 'DM Sans', sans-serif;
+}
