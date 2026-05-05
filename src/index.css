@@ -1,49 +1,67 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
 
-:root {
-  --bg-primary: #F4F4F4;
-  --bg-layer-01: #FFFFFF;
-  --bg-layer-02: #F0F0F0;
+/* ─────────────────────────────────────────
+   sistematiza.erp — Design System
+   Alinhado com sistematiza.os e sistematiza.comandas
+   ───────────────────────────────────────── */
 
-  --border-subtle: #D5DADD;
+:root {
+  /* Backgrounds — igual aos outros dois apps */
+  --bg-primary:   #F4F4F4;
+  --bg-layer-01:  #FFFFFF;
+  --bg-layer-02:  #F0F0F0;
+
+  /* Borders */
+  --border-subtle: #E0E4E8;
   --border-strong: #B0B8BD;
 
-  --text-primary: #161616;
-  --text-secondary: #525252;
+  /* Text */
+  --text-primary:     #161616;
+  --text-secondary:   #525252;
   --text-placeholder: #8D8D8D;
 
-  --brand: #0052CC;
+  /* Brand — azul sistematiza */
+  --brand:       #0052CC;
   --brand-hover: #0043A4;
-  --brand-light: #E8F0FE;
+  --brand-light: #EBF2FF;
 
-  /* Status */
-  --status-ok: #059669;
-  --status-ok-bg: #ECFDF5;
-  --status-warn: #D97706;
-  --status-warn-bg: #FFFBEB;
-  --status-danger: #DC2626;
-  --status-danger-bg: #FEF2F2;
-
-  /* Financeiro */
-  --receita: #059669;
+  /* Status semântico */
+  --receita:    #059669;
   --receita-bg: #ECFDF5;
-  --despesa: #DC2626;
+  --despesa:    #DC2626;
   --despesa-bg: #FEF2F2;
-  --pendente: #D97706;
-  --pendente-bg: #FFFBEB;
+  --pendente:   #D97706;
+  --pendente-bg:#FFFBEB;
 
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  /* Estoque */
+  --status-ok:       #059669;
+  --status-ok-bg:    #ECFDF5;
+  --status-warn:     #D97706;
+  --status-warn-bg:  #FFFBEB;
+  --status-danger:   #DC2626;
+  --status-danger-bg:#FEF2F2;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.07);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 12px 32px rgba(0,0,0,0.10);
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  /* Radius — igual aos outros apps */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   14px;
+  --radius-xl:   20px;
   --radius-full: 999px;
+
+  /* Sidebar — mesma largura dos irmãos */
+  --sidebar-w: 168px;
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
 body {
   font-family: 'DM Sans', sans-serif;
@@ -56,4 +74,281 @@ body {
 
 input, textarea, select, button {
   font-family: 'DM Sans', sans-serif;
+}
+
+/* ── Scrollbar fina igual ao .os e .comandas ── */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+
+/* ── Sidebar ── */
+.sidebar {
+  width: var(--sidebar-w);
+  background: var(--bg-layer-01);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+}
+
+/* Logo area — mesmo estilo do .os */
+.sidebar-logo {
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 2px;
+}
+
+.sidebar-logo-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+  line-height: 1;
+}
+
+.sidebar-logo-name span {
+  color: #2ecc71;  /* sufixo .erp em verde — padrão família */
+}
+
+.sidebar-logo-sub {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-placeholder);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 3px;
+  padding-left: 1px;
+}
+
+/* Store badge — igual ao .os e .comandas */
+.sidebar-store {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+}
+
+.sidebar-store-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-store-type {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-top: 1px;
+}
+
+/* Nav */
+.sidebar-nav {
+  flex: 1;
+  padding: 8px 8px;
+  overflow-y: auto;
+}
+
+.sidebar-nav-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-placeholder);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 10px 8px 4px;
+}
+
+.nav-item {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 1px;
+  transition: background 0.12s;
+}
+
+.nav-item:hover       { background: var(--bg-layer-02); }
+.nav-item.active      { background: var(--brand-light); }
+.nav-item.active span { color: var(--brand) !important; font-weight: 600; }
+
+.nav-item-emoji { font-size: 14px; flex-shrink: 0; }
+
+.nav-item-label {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.nav-badge {
+  background: #DC2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Sidebar footer */
+.sidebar-footer {
+  padding: 10px 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.sidebar-footer p {
+  font-size: 10px;
+  color: var(--text-placeholder);
+  text-align: center;
+}
+
+/* ── Main content ── */
+.main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-height: 100vh;
+}
+
+/* ── Page header — igual ao .os e .comandas ── */
+.page-header {
+  padding: 28px 28px 0;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.page-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-layer-01);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.card-xl {
+  background: var(--bg-layer-01);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+}
+
+/* ── Stat cards — igual ao .comandas ── */
+.stat-card {
+  background: var(--bg-layer-01);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+.stat-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+
+.stat-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* ── Buttons ── */
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.btn-primary:hover { opacity: 0.88; }
+
+/* ── Badges de status ── */
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+}
+
+/* ── Inputs ── */
+.input-base {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  font-size: 14px;
+  color: var(--text-primary);
+  outline: none;
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg-layer-01);
+  transition: border-color 0.12s;
+}
+.input-base:focus { border-color: var(--brand); }
+
+/* ── Table rows ── */
+.table-row:hover { background: var(--bg-primary) !important; }
+
+/* ── Filter pills — igual ao .os ── */
+.filter-pill {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 5px 13px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.filter-pill.active {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+  border-color: var(--brand);
+}
+
+.filter-pill:not(.active) {
+  background: var(--bg-layer-01);
+  color: var(--text-secondary);
 }
