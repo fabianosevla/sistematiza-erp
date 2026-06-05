@@ -1,18 +1,17 @@
 'use client'
-
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, Users, Boxes, ShoppingCart,
-  FileText, DollarSign, BarChart3, LogOut,
-  ChevronDown, ChevronRight, ClipboardList,
+  LayoutDashboard, Users, Boxes, ShoppingCart, FileText,
+  DollarSign, BarChart3, ChevronDown, ChevronRight,
+  ClipboardList, Factory, Package, CreditCard,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
 interface SidebarProps {
-  tenantSlug: string
-  tenantName: string
+  tenantSlug:    string
+  tenantName:    string
   comandasAtivo: boolean
 }
 
@@ -27,19 +26,20 @@ export default function Sidebar({ tenantSlug, tenantName, comandasAtivo }: Sideb
       label: 'Cadastros',
       icon: Users,
       children: [
-        { label: 'Clientes',     href: '/cadastros/clientes' },
-        { label: 'Fornecedores', href: '/cadastros/fornecedores' },
-        { label: 'Produtos',     href: '/cadastros/produtos' },
-        { label: 'Insumos',      href: '/cadastros/insumos' },
-        { label: 'Usuários',     href: '/cadastros/usuarios' },
+        { label: 'Clientes',           href: '/cadastros/clientes' },
+        { label: 'Fornecedores',       href: '/cadastros/fornecedores' },
+        { label: 'Produtos',           href: '/cadastros/produtos' },
+        { label: 'Insumos',            href: '/cadastros/insumos' },
+        { label: 'Formas Pagamento',   href: '/cadastros/formas-pagamento' },
+        { label: 'Usuários',           href: '/cadastros/usuarios' },
       ],
     },
-    { label: 'Estoque',     href: '/estoque',     icon: Boxes },
-    ...(comandasAtivo ? [{ label: 'Comandas', href: '/comandas', icon: ClipboardList }] : []),
-    { label: 'Vendas',      href: '/vendas',      icon: ShoppingCart },
-    { label: 'Fiscal',      href: '/fiscal',      icon: FileText },
-    { label: 'Financeiro',  href: '/financeiro',  icon: DollarSign },
-    { label: 'Dashboard',   href: '/dashboard',   icon: BarChart3 },
+    { label: 'Pedidos',     href: '/pedidos',    icon: ClipboardList },
+    { label: 'Produção',    href: '/producao',   icon: Factory },
+    { label: 'Estoque',     href: '/estoque',    icon: Boxes },
+    ...(comandasAtivo ? [{ label: 'Comandas', href: '/comandas', icon: FileText }] : []),
+    { label: 'Vendas',      href: '/vendas',     icon: ShoppingCart },
+    { label: 'Financeiro',  href: '/financeiro', icon: DollarSign },
   ]
 
   function toggleGroup(label: string) {
@@ -54,11 +54,7 @@ export default function Sidebar({ tenantSlug, tenantName, comandasAtivo }: Sideb
   }
 
   return (
-    <aside
-      className="flex flex-col w-60 min-h-screen flex-shrink-0"
-      style={{ backgroundColor: 'var(--color-sidebar)' }}
-    >
-      {/* Brand */}
+    <aside className="flex flex-col w-60 min-h-screen flex-shrink-0" style={{ backgroundColor: 'var(--color-sidebar)' }}>
       <div className="px-6 py-5 border-b border-white/10">
         <div className="flex items-baseline">
           <span className="text-xl font-semibold text-white tracking-tight">sistematiza</span>
@@ -67,7 +63,6 @@ export default function Sidebar({ tenantSlug, tenantName, comandasAtivo }: Sideb
         <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>ERP</p>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map(item => {
           if ('children' in item && item.children) {
@@ -136,7 +131,6 @@ export default function Sidebar({ tenantSlug, tenantName, comandasAtivo }: Sideb
         })}
       </nav>
 
-      {/* Footer */}
       <div className="px-4 py-4 border-t border-white/10">
         <p className="text-xs text-white/30 mb-1 truncate">{tenantName}</p>
       </div>
