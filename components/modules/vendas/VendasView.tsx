@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Search, Download, Trash2, ShoppingCart } from 'lucide-react'
+import { Plus, X, Download, Trash2, Truck, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,18 +20,24 @@ function formatDate(date: string) {
   })
 }
 
+function formatDateOnly(date: string) {
+  return new Date(date).toLocaleDateString('pt-BR')
+}
+
 const FORMAS_PAGAMENTO = ['Dinheiro', 'Crédito', 'Débito', 'PIX', 'Vale Refeição']
 
 function exportCSV(vendas: any[]) {
-  const headers = ['ID', 'Data', 'Origem', 'Subtotal', 'Desconto', 'Total', 'Status']
+  const headers = ['ID', 'Data', 'Cliente', 'Origem', 'Entrega', 'Data Entrega', 'Subtotal', 'Desconto', 'Total']
   const rows = vendas.map(v => [
     v.vendaId,
     new Date(v.vendidaEm).toLocaleString('pt-BR'),
+    v.clienteId ?? '',
     v.origem === 'comanda' ? 'Comanda' : 'Direta',
+    v.tipoEntrega === 'entrega' ? 'Entrega' : 'Retirada',
+    v.dataEntrega ? new Date(v.dataEntrega).toLocaleDateString('pt-BR') : '',
     (v.subtotal / 100).toFixed(2),
     (v.desconto / 100).toFixed(2),
     (v.total / 100).toFixed(2),
-    v.status,
   ])
   const csv  = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n')
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -51,15 +57,25 @@ export default function VendasView({ tenantSlug }: Props) {
   const [dataInicio, setDataInicio]   = useState('')
   const [dataFim, setDataFim]         = useState('')
   const [origem, setOrigem]           = useState('')
+  const [tipoEntrega, setTipoEntrega] = useState('')
   const [showNova, setShowNova]       = useState(false)
   const [showDetalhe, setShowDetalhe] = useState<number | null>(null)
 
   // Estado nova venda
-  const [buscaProduto, setBuscaProduto]   = useState('')
-  const [quantidade, setQuantidade]       = useState(1)
-  const [itens, setItens]               = useState<any[]>([])
-  const [desconto, setDesconto]           = useState(0)
-  const [pagamentos, setPagamentos]       = useState<{ forma: string; valor: number }[]>([{ forma: 'Dinheiro', valor: 0 }])
+  const [buscaProduto, setBuscaProduto]         = useState('')
+  const [buscaCliente, setBuscaCliente]         = useState('')
+  const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
+  const [quantidade, setQuantidade]             = useState(1)
+  const [itens, setItens]                       = useState<any[]>([])
+  const [desconto, setDesconto]                 = useState(0)
+  const [pagamentos, setPagamentos]             = useState<{ forma: string; valor: number }[]>([{ forma: 'Dinheiro', valor: 0 }])
+  const [tipoEntregaNova, setTipoEntregaNova]   = useState<'retirada' | 'entrega'>('retirada')
+  const [dataEntregaNova, setDataEntregaNova]   = useState('')
+  const [enderecoEntrega, setEnderecoEntrega]   = useState('')
+  const [observacao, setObservacao]             = useState('')
+  const [observacaoInterna, setObservacaoInterna] = useState('')
+  const [vendedor, setVendedor]                 = useState('')
+  const [erroVenda, setErroVenda]               = useState('')
 
   // KPIs
   const { data: kpisData } = useQuery({
@@ -73,12 +89,13 @@ export default function VendasView({ tenantSlug }: Props) {
 
   // Lista
   const { data, isLoading } = useQuery({
-    queryKey: ['vendas', tenantSlug, page, dataInicio, dataFim, origem],
+    queryKey: ['vendas', tenantSlug, page, dataInicio, dataFim, origem, tipoEntrega],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' })
-      if (dataInicio) params.set('dataInicio', dataInicio)
-      if (dataFim)    params.set('dataFim', dataFim)
-      if (origem)     params.set('origem', origem)
+      if (dataInicio)   params.set('dataInicio', dataInicio)
+      if (dataFim)      params.set('dataFim', dataFim)
+      if (origem)       params.set('origem', origem)
+      if (tipoEntrega)  params.set('tipoEntrega', tipoEntrega)
       const res = await fetch(`${apiBase}?${params}`)
       return res.json()
     },
@@ -94,6 +111,18 @@ export default function VendasView({ tenantSlug }: Props) {
       return res.json()
     },
     enabled: buscaProduto.length > 0,
+  })
+
+  // Busca cliente
+  const { data: clientesData } = useQuery({
+    queryKey: ['clientes-venda', tenantSlug, buscaCliente],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '6' })
+      if (buscaCliente) params.set('search', buscaCliente)
+      const res = await fetch(`/api/${tenantSlug}/cadastros/clientes?${params}`)
+      return res.json()
+    },
+    enabled: buscaCliente.length > 1,
   })
 
   // Detalhe venda
@@ -114,8 +143,15 @@ export default function VendasView({ tenantSlug }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itens: itens.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
-          desconto: Math.round(desconto * 100),
+          clienteId:         clienteSelecionado?.clienteId,
+          desconto:          Math.round(desconto * 100),
           pagamentos,
+          tipoEntrega:       tipoEntregaNova,
+          dataEntrega:       dataEntregaNova || undefined,
+          enderecoEntrega:   enderecoEntrega || undefined,
+          observacao:        observacao || undefined,
+          observacaoInterna: observacaoInterna || undefined,
+          vendedor:          vendedor || undefined,
         }),
       })
       const data = await res.json()
@@ -128,14 +164,32 @@ export default function VendasView({ tenantSlug }: Props) {
       setShowNova(false)
       resetNovaVenda()
     },
+    onError: (err: any) => setErroVenda(err.message),
   })
 
   function resetNovaVenda() {
     setItens([])
     setBuscaProduto('')
+    setBuscaCliente('')
+    setClienteSelecionado(null)
     setQuantidade(1)
     setDesconto(0)
     setPagamentos([{ forma: 'Dinheiro', valor: 0 }])
+    setTipoEntregaNova('retirada')
+    setDataEntregaNova('')
+    setEnderecoEntrega('')
+    setObservacao('')
+    setObservacaoInterna('')
+    setVendedor('')
+    setErroVenda('')
+  }
+
+  function selecionarCliente(cliente: any) {
+    setClienteSelecionado(cliente)
+    setBuscaCliente('')
+    if (tipoEntregaNova === 'entrega' && cliente.endereco) {
+      setEnderecoEntrega(`${cliente.endereco}${cliente.numero ? ', ' + cliente.numero : ''} — ${cliente.cidade}/${cliente.uf}`)
+    }
   }
 
   function addItem(produto: any) {
@@ -161,18 +215,23 @@ export default function VendasView({ tenantSlug }: Props) {
   }
 
   function removeItem(produtoId: number) {
-    setItens(prev => prev.filter(i => i.produtoId !== produtoId))
+    const novosItens = itens.filter(i => i.produtoId !== produtoId)
+    setItens(novosItens)
+    const novoSubtotal = novosItens.reduce((a, i) => a + i.subtotal, 0)
+    const novoTotal    = Math.max(0, novoSubtotal - Math.round(desconto * 100))
+    setPagamentos([{ forma: pagamentos[0]?.forma ?? 'Dinheiro', valor: novoTotal }])
   }
 
-  const subtotal    = itens.reduce((a, i) => a + i.subtotal, 0)
-  const totalFinal  = Math.max(0, subtotal - Math.round(desconto * 100))
-  const totalPago   = pagamentos.reduce((a, p) => a + p.valor, 0)
-  const troco       = Math.max(0, totalPago - totalFinal)
+  const subtotal   = itens.reduce((a, i) => a + i.subtotal, 0)
+  const totalFinal = Math.max(0, subtotal - Math.round(desconto * 100))
+  const totalPago  = pagamentos.reduce((a, p) => a + p.valor, 0)
+  const troco      = Math.max(0, totalPago - totalFinal)
 
   const vendas   = data?.data?.data ?? []
   const meta     = data?.data?.meta
   const kpis     = kpisData?.data
   const produtos = produtosData?.data?.data ?? []
+  const clientes = clientesData?.data?.data ?? []
   const detalhe  = detalheData?.data
 
   return (
@@ -195,7 +254,7 @@ export default function VendasView({ tenantSlug }: Props) {
 
       {/* KPIs */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-xs text-gray-400">Hoje</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{formatCents(kpis.hoje.total)}</p>
@@ -209,6 +268,11 @@ export default function VendasView({ tenantSlug }: Props) {
             <p className="text-xs text-gray-400">Este mês</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{formatCents(kpis.mes.total)}</p>
             <p className="text-xs text-gray-400 mt-0.5">{kpis.mes.qtd} venda{kpis.mes.qtd !== 1 ? 's' : ''}</p>
+          </div>
+          <div className={`rounded-xl border p-4 ${kpis.entregasHoje.qtd > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-100'}`}>
+            <p className="text-xs text-gray-400">Entregas hoje</p>
+            <p className={`text-2xl font-bold mt-1 ${kpis.entregasHoje.qtd > 0 ? 'text-orange-600' : 'text-gray-900'}`}>{kpis.entregasHoje.qtd}</p>
+            <p className="text-xs text-gray-400 mt-0.5">agendada{kpis.entregasHoje.qtd !== 1 ? 's' : ''}</p>
           </div>
         </div>
       )}
@@ -232,11 +296,17 @@ export default function VendasView({ tenantSlug }: Props) {
           <option value="direta">Venda direta</option>
           <option value="comanda">Comanda</option>
         </select>
-        {(dataInicio || dataFim || origem) && (
-          <button
-            onClick={() => { setDataInicio(''); setDataFim(''); setOrigem(''); setPage(1) }}
-            className="text-xs text-gray-400 hover:text-gray-600"
-          >
+        <select
+          value={tipoEntrega}
+          onChange={e => { setTipoEntrega(e.target.value); setPage(1) }}
+          className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
+        >
+          <option value="">Retirada e entrega</option>
+          <option value="retirada">Retirada</option>
+          <option value="entrega">Entrega</option>
+        </select>
+        {(dataInicio || dataFim || origem || tipoEntrega) && (
+          <button onClick={() => { setDataInicio(''); setDataFim(''); setOrigem(''); setTipoEntrega(''); setPage(1) }} className="text-xs text-gray-400 hover:text-gray-600">
             Limpar filtros
           </button>
         )}
@@ -249,39 +319,41 @@ export default function VendasView({ tenantSlug }: Props) {
             <tr className="border-b border-gray-100">
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">#</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Data</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Entrega</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Data entrega</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Origem</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Desconto</th>
               <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Total</th>
               <th className="px-4 py-3 w-16" />
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
             ) : vendas.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma venda encontrada.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma venda encontrada.</td></tr>
             ) : vendas.map((v: any) => (
               <tr key={v.vendaId} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                 <td className="px-4 py-3 text-sm text-gray-400 font-mono">#{v.vendaId}</td>
                 <td className="px-4 py-3 text-sm text-gray-700">{formatDate(v.vendidaEm)}</td>
                 <td className="px-4 py-3 hidden md:table-cell">
-                  <Badge variant={v.origem === 'comanda' ? 'default' : 'secondary'}>
+                  <Badge variant={v.tipoEntrega === 'entrega' ? 'warning' : 'secondary'}>
+                    {v.tipoEntrega === 'entrega'
+                      ? <span className="flex items-center gap-1"><Truck size={10} /> Entrega</span>
+                      : <span className="flex items-center gap-1"><Package size={10} /> Retirada</span>
+                    }
+                  </Badge>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">
+                  {v.dataEntrega ? formatDateOnly(v.dataEntrega) : '—'}
+                </td>
+                <td className="px-4 py-3 hidden md:table-cell">
+                  <Badge variant={v.origem === 'comanda' ? 'default' : 'outline'}>
                     {v.origem === 'comanda' ? 'Comanda' : 'Direta'}
                   </Badge>
                 </td>
-                <td className="px-4 py-3 text-right text-sm text-gray-400 hidden lg:table-cell">
-                  {v.desconto > 0 ? formatCents(v.desconto) : '—'}
-                </td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
-                  {formatCents(v.total)}
-                </td>
+                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{formatCents(v.total)}</td>
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => setShowDetalhe(v.vendaId)}
-                    className="text-xs text-green-600 hover:text-green-700 font-medium"
-                  >
-                    Ver
-                  </button>
+                  <button onClick={() => setShowDetalhe(v.vendaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Ver</button>
                 </td>
               </tr>
             ))}
@@ -303,29 +375,96 @@ export default function VendasView({ tenantSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold text-gray-900">Nova venda direta</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Nova venda</h2>
               <button onClick={() => setShowNova(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+              {/* Cliente */}
+              <div>
+                <Label>Cliente (opcional)</Label>
+                {clienteSelecionado ? (
+                  <div className="mt-1 flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                    <span className="text-sm font-medium text-green-800">{clienteSelecionado.nomeCompleto}</span>
+                    <button onClick={() => setClienteSelecionado(null)} className="text-green-400 hover:text-green-600"><X size={14} /></button>
+                  </div>
+                ) : (
+                  <>
+                    <Input
+                      value={buscaCliente}
+                      onChange={e => setBuscaCliente(e.target.value)}
+                      placeholder="Buscar cliente pelo nome..."
+                      className="mt-1"
+                    />
+                    {buscaCliente.length > 1 && clientes.length > 0 && (
+                      <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                        {clientes.map((c: any) => (
+                          <button key={c.clienteId} onClick={() => selecionarCliente(c)}
+                            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                            <span className="text-sm font-medium text-gray-900">{c.nomeCompleto}</span>
+                            <span className="text-xs text-gray-400">{c.cidade}/{c.uf}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Tipo de entrega */}
+              <div>
+                <Label>Tipo de entrega *</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {(['retirada', 'entrega'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => {
+                        setTipoEntregaNova(t)
+                        if (t === 'entrega' && clienteSelecionado?.endereco) {
+                          setEnderecoEntrega(`${clienteSelecionado.endereco}${clienteSelecionado.numero ? ', ' + clienteSelecionado.numero : ''} — ${clienteSelecionado.cidade}/${clienteSelecionado.uf}`)
+                        }
+                      }}
+                      className={`py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-2 capitalize ${tipoEntregaNova === t ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
+                    >
+                      {t === 'entrega' ? <Truck size={14} /> : <Package size={14} />}
+                      {t === 'entrega' ? 'Entrega' : 'Retirada'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Campos de entrega */}
+              {tipoEntregaNova === 'entrega' && (
+                <div className="space-y-3 p-4 bg-orange-50 rounded-lg border border-orange-100">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Data de entrega *</Label>
+                      <Input type="date" value={dataEntregaNova} onChange={e => setDataEntregaNova(e.target.value)} className="mt-1" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Endereço de entrega</Label>
+                    <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1" placeholder="Rua, número, bairro, cidade" />
+                  </div>
+                </div>
+              )}
+
               {/* Busca produto */}
               <div>
-                <Label>Buscar produto</Label>
+                <Label>Adicionar produto</Label>
                 <Input
                   value={buscaProduto}
                   onChange={e => setBuscaProduto(e.target.value)}
                   placeholder="Digite o nome ou código de barras..."
                   className="mt-1"
-                  autoFocus
                 />
                 {buscaProduto && produtos.length > 0 && (
                   <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
                     {produtos.slice(0, 6).map((p: any) => (
-                      <button
-                        key={p.produtoId}
-                        onClick={() => addItem(p)}
-                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left"
-                      >
+                      <button key={p.produtoId} onClick={() => addItem(p)}
+                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
                         <div>
                           <p className="text-sm font-medium text-gray-900">{p.nome}</p>
                           {p.codigoBarras && <p className="text-xs text-gray-400 font-mono">{p.codigoBarras}</p>}
@@ -350,7 +489,7 @@ export default function VendasView({ tenantSlug }: Props) {
                 </div>
               </div>
 
-              {/* Itens adicionados */}
+              {/* Itens */}
               {itens.length > 0 && (
                 <div>
                   <Label>Itens</Label>
@@ -359,13 +498,11 @@ export default function VendasView({ tenantSlug }: Props) {
                       <div key={item.produtoId} className="flex items-center justify-between px-3 py-2.5 border-b border-gray-50 last:border-0">
                         <div>
                           <p className="text-sm font-medium text-gray-900">{item.nomeProduto}</p>
-                          <p className="text-xs text-gray-400">{item.quantidade}x {formatCents(item.precoUnitario)}</p>
+                          <p className="text-xs text-gray-400">{item.quantidade}x {formatCents(item.precoUnitario)} / {item.unidade}</p>
                         </div>
                         <div className="flex items-center gap-3">
                           <p className="text-sm font-semibold">{formatCents(item.subtotal)}</p>
-                          <button onClick={() => removeItem(item.produtoId)} className="text-gray-300 hover:text-red-500">
-                            <Trash2 size={14} />
-                          </button>
+                          <button onClick={() => removeItem(item.produtoId)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
                         </div>
                       </div>
                     ))}
@@ -401,44 +538,60 @@ export default function VendasView({ tenantSlug }: Props) {
                   <Label>Formas de pagamento</Label>
                   {pagamentos.map((pag, i) => (
                     <div key={i} className="flex gap-2 mt-2">
-                      <select
-                        value={pag.forma}
+                      <select value={pag.forma}
                         onChange={e => { const n = [...pagamentos]; n[i].forma = e.target.value; setPagamentos(n) }}
-                        className="flex-1 h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                      >
+                        className="flex-1 h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                         {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
                       </select>
-                      <Input
-                        type="number" min="0" step="0.01"
+                      <Input type="number" min="0" step="0.01"
                         value={(pag.valor / 100).toFixed(2)}
                         onChange={e => { const n = [...pagamentos]; n[i].valor = Math.round(parseFloat(e.target.value || '0') * 100); setPagamentos(n) }}
-                        className="w-32"
-                      />
+                        className="w-32" />
                       {pagamentos.length > 1 && (
-                        <button onClick={() => setPagamentos(p => p.filter((_, j) => j !== i))} className="text-gray-300 hover:text-red-500">
-                          <Trash2 size={14} />
-                        </button>
+                        <button onClick={() => setPagamentos(p => p.filter((_, j) => j !== i))} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
                       )}
                     </div>
                   ))}
-                  <button
-                    onClick={() => setPagamentos(p => [...p, { forma: 'Dinheiro', valor: 0 }])}
-                    className="mt-2 text-xs text-green-600 hover:text-green-700 font-medium"
-                  >
+                  <button onClick={() => setPagamentos(p => [...p, { forma: 'Dinheiro', valor: 0 }])} className="mt-2 text-xs text-green-600 hover:text-green-700 font-medium">
                     + Adicionar forma de pagamento
                   </button>
-
                   {troco > 0 && (
                     <div className="mt-3 flex justify-between px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
                       <span className="text-sm font-semibold text-green-700">Troco</span>
                       <span className="text-sm font-bold text-green-700">{formatCents(troco)}</span>
                     </div>
                   )}
-
                   <div className="mt-3 flex justify-between items-center">
                     <span className="text-base font-bold text-gray-900">Total</span>
                     <span className="text-xl font-bold" style={{ color: '#2ecc71' }}>{formatCents(totalFinal)}</span>
                   </div>
+                </div>
+              )}
+
+              {/* Observações */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Observação (visível para cliente)</Label>
+                  <textarea value={observacao} onChange={e => setObservacao(e.target.value)} rows={2}
+                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                    placeholder="Ex: entregar pela manhã" />
+                </div>
+                <div>
+                  <Label>Obs. interna</Label>
+                  <textarea value={observacaoInterna} onChange={e => setObservacaoInterna(e.target.value)} rows={2}
+                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
+                    placeholder="Nota interna..." />
+                </div>
+              </div>
+
+              <div>
+                <Label>Vendedor (opcional)</Label>
+                <Input value={vendedor} onChange={e => setVendedor(e.target.value)} className="mt-1" placeholder="Nome do vendedor" />
+              </div>
+
+              {erroVenda && (
+                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{erroVenda}</p>
                 </div>
               )}
             </div>
@@ -468,6 +621,38 @@ export default function VendasView({ tenantSlug }: Props) {
               <button onClick={() => setShowDetalhe(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-6 space-y-4">
+              {detalhe.cliente && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">CLIENTE</p>
+                  <p className="text-sm font-medium text-gray-900">{detalhe.cliente.nomeCompleto}</p>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">ENTREGA</p>
+                  <Badge variant={detalhe.tipoEntrega === 'entrega' ? 'warning' : 'secondary'}>
+                    {detalhe.tipoEntrega === 'entrega' ? 'Entrega' : 'Retirada'}
+                  </Badge>
+                </div>
+                {detalhe.dataEntrega && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 mb-1">DATA ENTREGA</p>
+                    <p className="text-sm text-gray-700">{formatDateOnly(detalhe.dataEntrega)}</p>
+                  </div>
+                )}
+              </div>
+              {detalhe.enderecoEntrega && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">ENDEREÇO</p>
+                  <p className="text-sm text-gray-700">{detalhe.enderecoEntrega}</p>
+                </div>
+              )}
+              {detalhe.observacao && (
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">OBSERVAÇÃO</p>
+                  <p className="text-sm text-gray-700">{detalhe.observacao}</p>
+                </div>
+              )}
               <div>
                 <p className="text-xs font-medium text-gray-400 mb-2">ITENS</p>
                 {detalhe.itens.map((item: any) => (
@@ -505,6 +690,9 @@ export default function VendasView({ tenantSlug }: Props) {
                   <span style={{ color: '#2ecc71' }}>{formatCents(detalhe.total)}</span>
                 </div>
               </div>
+              {detalhe.vendedor && (
+                <p className="text-xs text-gray-400">Vendedor: {detalhe.vendedor}</p>
+              )}
             </div>
           </div>
         </div>
