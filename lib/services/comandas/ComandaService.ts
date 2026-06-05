@@ -225,4 +225,18 @@ export class ComandaService {
 
     return { vendaId: venda.vendaId }
   }
+    async cancelar({ comandaId, userId }: { comandaId: number; userId: number }) {
+    const now = new Date()
+    const [comanda] = await this.db
+      .select()
+      .from(dbComanda)
+      .where(eq(dbComanda.comandaId, comandaId))
+    if (!comanda) throw new Error('Comanda não encontrada')
+    if (comanda.status !== 'aberta') throw new Error('Comanda já encerrada')
+    await this.db
+      .update(dbComanda)
+      .set({ status: 'cancelada', fechadaEm: now, updatedDt: now, updatedBy: userId })
+      .where(eq(dbComanda.comandaId, comandaId))
+    return { ok: true }
+  }
 }

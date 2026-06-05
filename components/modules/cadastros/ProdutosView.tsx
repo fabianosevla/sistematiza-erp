@@ -1,13 +1,14 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Pencil, X } from 'lucide-react'
+import { Plus, Search, Pencil, X, Upload } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { produtoInsertSchema, type ProdutoInsertInput } from '@/lib/validations/cadastros'
+import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 
 interface Props { tenantSlug: string }
 
@@ -17,10 +18,11 @@ function formatCents(cents: number) {
 
 export default function ProdutosView({ tenantSlug }: Props) {
   const queryClient = useQueryClient()
-  const [search, setSearch]     = useState('')
-  const [page, setPage]         = useState(1)
-  const [showForm, setShowForm] = useState(false)
-  const [editItem, setEditItem] = useState<any>(null)
+  const [search, setSearch]         = useState('')
+  const [page, setPage]             = useState(1)
+  const [showForm, setShowForm]     = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [editItem, setEditItem]     = useState<any>(null)
   const apiBase = `/api/${tenantSlug}/cadastros/produtos`
 
   const { data, isLoading } = useQuery({
@@ -108,10 +110,24 @@ export default function ProdutosView({ tenantSlug }: Props) {
           <h1 className="text-2xl font-semibold text-gray-900">Produtos</h1>
           <p className="text-sm text-gray-400 mt-0.5">{meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}</p>
         </div>
-        <Button onClick={handleNew}>
-          <Plus size={15} className="mr-1.5" /> Novo produto
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <Upload size={14} className="mr-1.5" /> Importar
+          </Button>
+          <Button onClick={handleNew}>
+            <Plus size={15} className="mr-1.5" /> Novo produto
+          </Button>
+        </div>
       </div>
+
+      {showImport && (
+        <ImportacaoModal
+          tenantSlug={tenantSlug}
+          entidade="produtos"
+          queryKey="produtos"
+          onClose={() => setShowImport(false)}
+        />
+      )}
 
       <div className="relative mb-4">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
