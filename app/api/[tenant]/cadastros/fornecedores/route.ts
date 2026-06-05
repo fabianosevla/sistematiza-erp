@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
-import { clienteInsertSchema } from '@/lib/validations/cadastros'
-import { ClienteService } from '@/lib/services/cadastros/ClienteService'
+import { fornecedorInsertSchema } from '@/lib/validations/cadastros'
+import { FornecedorService } from '@/lib/services/cadastros/FornecedorService'
 import { ok, created, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
       const limit  = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? 20)))
       const search = searchParams.get('search') ?? undefined
-      const service = new ClienteService(db)
+      const service = new FornecedorService(db)
       const result  = await service.list({ page, limit, search })
       return ok(result)
     } finally {
@@ -33,8 +33,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()
-      const payload = clienteInsertSchema.parse(body)
-      const service = new ClienteService(db)
+      const payload = fornecedorInsertSchema.parse(body)
+      const service = new FornecedorService(db)
       const result  = await service.create(payload, 1)
       return created(result)
     } finally {
