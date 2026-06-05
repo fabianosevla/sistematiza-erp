@@ -3,6 +3,7 @@ import { Pool, PoolClient } from 'pg'
 import * as publicSchema from './schemas/public'
 import * as cadastrosSchema from './schemas/cadastros'
 import * as estoqueSchema from './schemas/estoque'
+import * as vendasSchema from './schemas/vendas'
 
 const pool = new Pool({
   host:     process.env.DB_HOST!,
@@ -12,7 +13,7 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD!,
   ssl:      { rejectUnauthorized: false },
   max:      20,
-  idleTimeoutMillis:    30000,
+  idleTimeoutMillis:       30000,
   connectionTimeoutMillis: 5000,
 })
 
@@ -24,6 +25,7 @@ export const allSchemas = {
   ...publicSchema,
   ...cadastrosSchema,
   ...estoqueSchema,
+  ...vendasSchema,
 }
 
 export type AppDB = ReturnType<typeof drizzle<typeof allSchemas>>

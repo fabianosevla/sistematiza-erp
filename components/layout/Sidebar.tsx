@@ -2,45 +2,27 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useClerk } from '@clerk/nextjs'
 import {
-  LayoutDashboard,
-  Users,
-  Boxes,
-  ShoppingCart,
-  FileText,
-  DollarSign,
-  BarChart3,
-  LogOut,
-  Package,
-  Building2,
-  ChevronDown,
-  ChevronRight,
+  LayoutDashboard, Users, Boxes, ShoppingCart,
+  FileText, DollarSign, BarChart3, LogOut,
+  ChevronDown, ChevronRight, ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
-interface NavItem {
-  label: string
-  href?: string
-  icon: React.ElementType
-  children?: { label: string; href: string }[]
-}
-
 interface SidebarProps {
   tenantSlug: string
   tenantName: string
+  comandasAtivo: boolean
 }
 
-export default function Sidebar({ tenantSlug, tenantName }: SidebarProps) {
+export default function Sidebar({ tenantSlug, tenantName, comandasAtivo }: SidebarProps) {
   const pathname = usePathname()
-  const { signOut } = useClerk()
   const [openGroups, setOpenGroups] = useState<string[]>(['Cadastros'])
-
   const base = `/${tenantSlug}`
 
-  const navItems: NavItem[] = [
-    { label: 'Dashboard',   href: '',                        icon: LayoutDashboard },
+  const navItems = [
+    { label: 'Dashboard', href: '', icon: LayoutDashboard },
     {
       label: 'Cadastros',
       icon: Users,
@@ -53,9 +35,9 @@ export default function Sidebar({ tenantSlug, tenantName }: SidebarProps) {
       ],
     },
     { label: 'Estoque',     href: '/estoque',     icon: Boxes },
-    { label: 'Comandas',    href: '/comandas',    icon: FileText },
+    ...(comandasAtivo ? [{ label: 'Comandas', href: '/comandas', icon: ClipboardList }] : []),
     { label: 'Vendas',      href: '/vendas',      icon: ShoppingCart },
-    { label: 'Fiscal',      href: '/fiscal',      icon: Building2 },
+    { label: 'Fiscal',      href: '/fiscal',      icon: FileText },
     { label: 'Financeiro',  href: '/financeiro',  icon: DollarSign },
     { label: 'Dashboard',   href: '/dashboard',   icon: BarChart3 },
   ]
@@ -88,7 +70,7 @@ export default function Sidebar({ tenantSlug, tenantName }: SidebarProps) {
       {/* Nav */}
       <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map(item => {
-          if (item.children) {
+          if ('children' in item && item.children) {
             const open = openGroups.includes(item.label)
             const anyChildActive = item.children.some(c => isActive(c.href))
             return (
@@ -116,9 +98,7 @@ export default function Sidebar({ tenantSlug, tenantName }: SidebarProps) {
                           href={`${base}${child.href}`}
                           className={cn(
                             'block px-3 py-1.5 rounded-md text-sm transition-colors',
-                            active
-                              ? 'text-white font-medium'
-                              : 'text-white/40 hover:text-white/70'
+                            active ? 'text-white font-medium' : 'text-white/40 hover:text-white/70'
                           )}
                           style={active ? {
                             backgroundColor: 'var(--color-accent-muted)',
@@ -135,11 +115,11 @@ export default function Sidebar({ tenantSlug, tenantName }: SidebarProps) {
             )
           }
 
-          const active = isActive(item.href ?? '')
+          const active = isActive((item as any).href ?? '')
           return (
             <Link
               key={item.label}
-              href={`${base}${item.href ?? ''}`}
+              href={`${base}${(item as any).href ?? ''}`}
               className={cn(
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
                 active ? 'text-white font-medium' : 'text-white/50 hover:text-white/80'
@@ -158,14 +138,7 @@ export default function Sidebar({ tenantSlug, tenantName }: SidebarProps) {
 
       {/* Footer */}
       <div className="px-4 py-4 border-t border-white/10">
-        <p className="text-xs text-white/30 mb-3 truncate">{tenantName}</p>
-        <button
-          onClick={() => signOut()}
-          className="flex items-center gap-2 text-xs text-white/40 hover:text-white/70 transition-colors"
-        >
-          <LogOut size={13} />
-          Sair
-        </button>
+        <p className="text-xs text-white/30 mb-1 truncate">{tenantName}</p>
       </div>
     </aside>
   )
