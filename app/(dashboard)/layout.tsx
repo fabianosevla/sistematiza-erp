@@ -1,17 +1,57 @@
 import { auth, currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
+import Sidebar from '@/components/layout/Sidebar'
+import Header  from '@/components/layout/Header'
+import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
+import { dbTenant } from '@/lib/db/schemas/public'
+import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
+import { eq } from 'drizzle-orm'
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+interface Props { children: React.ReactNode; tenantSlug: string }
+
+export default async function TenantLayout({ children, tenantSlug }: Props) {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
   const user = await currentUser()
-  const tenantSlug = user?.publicMetadata?.tenantSlug as string | undefined
-  if (!tenantSlug) redirect('/onboarding')
+  const userTenantSlug = user?.publicMetadata?.tenantSlug as string | undefined
+  if (!userTenantSlug || userTenantSlug !== tenantSlug) redirect('/onboarding')
 
-  return <>{children}</>
+  const tenantName = (user?.publicMetadata?.tenantName as string) ?? tenantSlug
+
+  const { db: publicDb, release: releasePublic } = await getPublicDb()
+  let schemaName = ''
+  try {
+    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, tenantSlug))
+    schemaName = tenant?.schemaName ?? ''
+  } finally { releasePublic() }
+
+  let cfg = {
+    comandasAtivo: false, producaoAtivo: true,
+    vendasAtivo: true, estoqueAtivo: true, fiscalAtivo: false,
+  }
+
+  if (schemaName) {
+    const { db, release } = await getDbForTenant(schemaName)
+    try {
+      const [config] = await db.select().from(dbConfiguracoesTenant).limit(1)
+      if (config) cfg = {
+        comandasAtivo: config.comandasAtivo,
+        producaoAtivo: config.producaoAtivo ?? true,
+        vendasAtivo:   config.vendasAtivo   ?? true,
+        estoqueAtivo:  config.estoqueAtivo  ?? true,
+        fiscalAtivo:   config.fiscalAtivo   ?? false,
+      }
+    } finally { release() }
+  }
+
+  return (
+    <div className="flex min-h-screen bg-gray-50">
+      <Sidebar tenantSlug={tenantSlug} tenantName={tenantName} {...cfg} />
+      <div className="flex-1 flex flex-col">
+        <Header tenantName={tenantName} tenantSlug={tenantSlug} />
+        <main className="flex-1 p-6">{children}</main>
+      </div>
+    </div>
+  )
 }

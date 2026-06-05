@@ -1,6 +1,4 @@
-import {
-  pgTable, serial, integer, varchar, boolean, timestamp,
-} from 'drizzle-orm/pg-core'
+import { pgTable, serial, integer, varchar, boolean, timestamp } from 'drizzle-orm/pg-core'
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
 
 const auditFields = {
@@ -19,11 +17,20 @@ export const dbConfiguracoesTenant = pgTable('t_configuracoes_tenant', {
   updatedDt:       timestamp('updated_dt', { withTimezone: true }).notNull(),
   activeFlag:      boolean('active_flg').notNull().default(true),
   comandasAtivo:   boolean('comandas_ativo').notNull().default(false),
+  producaoAtivo:   boolean('producao_ativo').notNull().default(true),
+  vendasAtivo:     boolean('vendas_ativo').notNull().default(true),
+  estoqueAtivo:    boolean('estoque_ativo').notNull().default(true),
+  fiscalAtivo:     boolean('fiscal_ativo').notNull().default(false),
   nomeEmpresa:     varchar('nome_empresa', { length: 200 }),
   cnpj:            varchar('cnpj', { length: 20 }),
   telefone:        varchar('telefone', { length: 20 }),
   endereco:        varchar('endereco', { length: 300 }),
   logoUrl:         varchar('logo_url', { length: 500 }),
+  ieEstadual:      varchar('ie_estadual', { length: 30 }),
+  regimeTributario: varchar('regime_tributario', { length: 5 }),
+  uf:              varchar('uf', { length: 2 }),
+  focusNfeToken:   varchar('focus_nfe_token', { length: 200 }),
+  focusNfeAmbiente: varchar('focus_nfe_ambiente', { length: 20 }).default('homologacao'),
 })
 
 export const dbComanda = pgTable('t_comanda', {
@@ -41,15 +48,15 @@ export const dbComanda = pgTable('t_comanda', {
 })
 
 export const dbComandaItem = pgTable('t_comanda_item', {
-  itemId:         serial('item_id').primaryKey(),
+  itemId:        serial('item_id').primaryKey(),
   ...auditFields,
-  comandaId:      integer('comanda_id').notNull(),
-  produtoId:      integer('produto_id').notNull(),
-  nomeProduto:    varchar('nome_produto', { length: 200 }).notNull(),
-  quantidade:     integer('quantidade').notNull().default(1),
-  precoUnitario:  integer('preco_unitario').notNull(),
-  subtotal:       integer('subtotal').notNull(),
-  observacao:     varchar('observacao', { length: 200 }),
+  comandaId:     integer('comanda_id').notNull(),
+  produtoId:     integer('produto_id').notNull(),
+  nomeProduto:   varchar('nome_produto', { length: 200 }).notNull(),
+  quantidade:    integer('quantidade').notNull().default(1),
+  precoUnitario: integer('preco_unitario').notNull(),
+  subtotal:      integer('subtotal').notNull(),
+  observacao:    varchar('observacao', { length: 200 }),
 })
 
 export const dbVenda = pgTable('t_venda', {
@@ -72,32 +79,32 @@ export const dbVenda = pgTable('t_venda', {
 })
 
 export const dbVendaItem = pgTable('t_venda_item', {
-  itemId:         serial('item_id').primaryKey(),
+  itemId:        serial('item_id').primaryKey(),
   ...auditFields,
-  vendaId:        integer('venda_id').notNull(),
-  produtoId:      integer('produto_id').notNull(),
-  nomeProduto:    varchar('nome_produto', { length: 200 }).notNull(),
-  quantidade:     integer('quantidade').notNull().default(1),
-  precoUnitario:  integer('preco_unitario').notNull(),
-  subtotal:       integer('subtotal').notNull(),
+  vendaId:       integer('venda_id').notNull(),
+  produtoId:     integer('produto_id').notNull(),
+  nomeProduto:   varchar('nome_produto', { length: 200 }).notNull(),
+  quantidade:    integer('quantidade').notNull().default(1),
+  precoUnitario: integer('preco_unitario').notNull(),
+  subtotal:      integer('subtotal').notNull(),
 })
 
 export const dbVendaPagamento = pgTable('t_venda_pagamento', {
-  pagamentoId:    serial('pagamento_id').primaryKey(),
+  pagamentoId: serial('pagamento_id').primaryKey(),
   ...auditFields,
-  vendaId:        integer('venda_id').notNull(),
-  forma:          varchar('forma', { length: 50 }).notNull(),
-  valor:          integer('valor').notNull(),
+  vendaId:     integer('venda_id').notNull(),
+  forma:       varchar('forma', { length: 50 }).notNull(),
+  valor:       integer('valor').notNull(),
 })
 
-export type TpDbComandaRow              = InferSelectModel<typeof dbComanda>
-export type TpDbComandaInsert           = InferInsertModel<typeof dbComanda>
-export type TpDbComandaItemRow          = InferSelectModel<typeof dbComandaItem>
-export type TpDbComandaItemInsert       = InferInsertModel<typeof dbComandaItem>
-export type TpDbVendaRow                = InferSelectModel<typeof dbVenda>
-export type TpDbVendaInsert             = InferInsertModel<typeof dbVenda>
-export type TpDbVendaItemRow            = InferSelectModel<typeof dbVendaItem>
-export type TpDbVendaItemInsert         = InferInsertModel<typeof dbVendaItem>
-export type TpDbVendaPagamentoRow       = InferSelectModel<typeof dbVendaPagamento>
-export type TpDbVendaPagamentoInsert    = InferInsertModel<typeof dbVendaPagamento>
-export type TpDbConfiguracoesTenantRow  = InferSelectModel<typeof dbConfiguracoesTenant>
+export type TpDbConfiguracoesTenantRow = InferSelectModel<typeof dbConfiguracoesTenant>
+export type TpDbComandaRow             = InferSelectModel<typeof dbComanda>
+export type TpDbComandaInsert          = InferInsertModel<typeof dbComanda>
+export type TpDbComandaItemRow         = InferSelectModel<typeof dbComandaItem>
+export type TpDbComandaItemInsert      = InferInsertModel<typeof dbComandaItem>
+export type TpDbVendaRow               = InferSelectModel<typeof dbVenda>
+export type TpDbVendaInsert            = InferInsertModel<typeof dbVenda>
+export type TpDbVendaItemRow           = InferSelectModel<typeof dbVendaItem>
+export type TpDbVendaItemInsert        = InferInsertModel<typeof dbVendaItem>
+export type TpDbVendaPagamentoRow      = InferSelectModel<typeof dbVendaPagamento>
+export type TpDbVendaPagamentoInsert   = InferInsertModel<typeof dbVendaPagamento>

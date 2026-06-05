@@ -1,19 +1,20 @@
+import type { ReactNode } from 'react'
 import { auth, currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import Sidebar from '@/components/layout/Sidebar'
-import Header from '@/components/layout/Header'
-import { getDbForTenant } from '@/lib/db/connection'
-import { getPublicDb } from '@/lib/db/connection'
+import Header  from '@/components/layout/Header'
+import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
 import { eq } from 'drizzle-orm'
 
-interface Props {
-  children: React.ReactNode
+export default async function TenantLayout({
+  children,
+  tenantSlug,
+}: {
+  children: ReactNode
   tenantSlug: string
-}
-
-export default async function TenantLayout({ children, tenantSlug }: Props) {
+}) {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
@@ -23,7 +24,6 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
 
   const tenantName = (user?.publicMetadata?.tenantName as string) ?? tenantSlug
 
-  // Buscar configurações do tenant
   const { db: publicDb, release: releasePublic } = await getPublicDb()
   let schemaName = ''
   try {
@@ -33,12 +33,25 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     releasePublic()
   }
 
-  let comandasAtivo = false
+  const cfg = {
+    comandasAtivo: false,
+    producaoAtivo: true,
+    vendasAtivo:   true,
+    estoqueAtivo:  true,
+    fiscalAtivo:   false,
+  }
+
   if (schemaName) {
     const { db, release } = await getDbForTenant(schemaName)
     try {
       const [config] = await db.select().from(dbConfiguracoesTenant).limit(1)
-      comandasAtivo = config?.comandasAtivo ?? false
+      if (config) {
+        cfg.comandasAtivo = config.comandasAtivo
+        cfg.producaoAtivo = config.producaoAtivo ?? true
+        cfg.vendasAtivo   = config.vendasAtivo   ?? true
+        cfg.estoqueAtivo  = config.estoqueAtivo  ?? true
+        cfg.fiscalAtivo   = config.fiscalAtivo   ?? false
+      }
     } finally {
       release()
     }
@@ -49,13 +62,15 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
       <Sidebar
         tenantSlug={tenantSlug}
         tenantName={tenantName}
-        comandasAtivo={comandasAtivo}
+        comandasAtivo={cfg.comandasAtivo}
+        producaoAtivo={cfg.producaoAtivo}
+        vendasAtivo={cfg.vendasAtivo}
+        estoqueAtivo={cfg.estoqueAtivo}
+        fiscalAtivo={cfg.fiscalAtivo}
       />
       <div className="flex-1 flex flex-col">
         <Header tenantName={tenantName} tenantSlug={tenantSlug} />
-        <main className="flex-1 p-6">
-          {children}
-        </main>
+        <main className="flex-1 p-6">{children}</main>
       </div>
     </div>
   )
