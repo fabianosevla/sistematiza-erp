@@ -18,9 +18,10 @@ function formatCents(cents: number) {
 
 export default function InsumosView({ tenantSlug }: Props) {
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+  const [search, setSearch]     = useState('')
+  const [page, setPage]         = useState(1)
   const [showForm, setShowForm] = useState(false)
+  const [editItem, setEditItem] = useState<any>(null)
   const apiBase = `/api/${tenantSlug}/cadastros/insumos`
 
   const { data, isLoading } = useQuery({
@@ -48,15 +49,57 @@ export default function InsumosView({ tenantSlug }: Props) {
     },
   })
 
-  const form = useForm<InsumoInsertInput>({
-    resolver: zodResolver(insumoInsertSchema),
-    defaultValues: { unidade: 'kg', tipo: 'MP', estoqueAtual: 0, estoqueMinimo: 0, precoCusto: 0 },
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
+      const res = await fetch(`${apiBase}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
+      setShowForm(false)
+      setEditItem(null)
+    },
   })
 
-  function onSubmit(data: InsumoInsertInput) { createMutation.mutate(data) }
+  const form = useForm<InsumoInsertInput>({ resolver: zodResolver(insumoInsertSchema) })
+
+  function handleNew() {
+    form.reset({ unidade: 'kg', tipo: 'MP', estoqueAtual: 0, estoqueMinimo: 0, precoCusto: 0 })
+    setEditItem(null)
+    setShowForm(true)
+  }
+
+  function handleEdit(item: any) {
+    setEditItem(item)
+    form.reset({
+      nome:          item.nome,
+      descricao:     item.descricao,
+      codigoBarras:  item.codigoBarras,
+      unidade:       item.unidade,
+      tipo:          item.tipo,
+      estoqueAtual:  item.estoqueAtual,
+      estoqueMinimo: item.estoqueMinimo,
+      precoCusto:    item.precoCusto,
+      fornecedorId:  item.fornecedorId,
+    })
+    setShowForm(true)
+  }
+
+  function onSubmit(data: InsumoInsertInput) {
+    if (editItem) {
+      updateMutation.mutate({ id: editItem.insumoId, payload: { ...data, modificationNum: editItem.modificationNum } })
+    } else {
+      createMutation.mutate(data)
+    }
+  }
 
   const items = data?.data?.data ?? []
   const meta  = data?.data?.meta
+  const isPending = createMutation.isPending || updateMutation.isPending
 
   return (
     <div>
@@ -65,7 +108,7 @@ export default function InsumosView({ tenantSlug }: Props) {
           <h1 className="text-2xl font-semibold text-gray-900">Insumos</h1>
           <p className="text-sm text-gray-400 mt-0.5">{meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}</p>
         </div>
-        <Button onClick={() => { form.reset({ unidade: 'kg', tipo: 'MP' }); setShowForm(true) }}>
+        <Button onClick={handleNew}>
           <Plus size={15} className="mr-1.5" /> Novo insumo
         </Button>
       </div>
@@ -102,7 +145,11 @@ export default function InsumosView({ tenantSlug }: Props) {
                   <span className="text-xs text-gray-400 ml-1">/ mín {item.estoqueMinimo}</span>
                 </td>
                 <td className="px-4 py-3 text-sm text-gray-900 hidden lg:table-cell">{formatCents(item.precoCusto)}</td>
-                <td className="px-4 py-3"><button className="text-gray-300 hover:text-gray-600"><Pencil size={14} /></button></td>
+                <td className="px-4 py-3">
+                  <button onClick={() => handleEdit(item)} className="text-gray-300 hover:text-green-600 transition-colors">
+                    <Pencil size={14} />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -122,8 +169,8 @@ export default function InsumosView({ tenantSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">Novo insumo</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h2 className="text-lg font-semibold text-gray-900">{editItem ? 'Editar insumo' : 'Novo insumo'}</h2>
+              <button onClick={() => { setShowForm(false); setEditItem(null) }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
               <div>
@@ -152,14 +199,14 @@ export default function InsumosView({ tenantSlug }: Props) {
                 <div><Label>Estoque atual</Label><Input {...form.register('estoqueAtual', { valueAsNumber: true })} type="number" className="mt-1" /></div>
                 <div><Label>Estoque mínimo</Label><Input {...form.register('estoqueMinimo', { valueAsNumber: true })} type="number" className="mt-1" /></div>
               </div>
-              <div><Label>Custo unitário (R$)</Label><Input {...form.register('precoCusto', { valueAsNumber: true })} type="number" step="0.01" className="mt-1" placeholder="0,00" /></div>
+              <div><Label>Custo unitário (R$)</Label><Input {...form.register('precoCusto', { valueAsNumber: true })} type="number" step="0.01" className="mt-1" /></div>
               <div>
                 <Label>Descrição</Label>
                 <textarea {...form.register('descricao')} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? 'Salvando...' : 'Salvar insumo'}</Button>
+                <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditItem(null) }}>Cancelar</Button>
+                <Button type="submit" disabled={isPending}>{isPending ? 'Salvando...' : editItem ? 'Salvar alterações' : 'Salvar insumo'}</Button>
               </div>
             </form>
           </div>

@@ -14,9 +14,10 @@ interface Props { tenantSlug: string }
 
 export default function FornecedoresView({ tenantSlug }: Props) {
   const queryClient = useQueryClient()
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+  const [search, setSearch]     = useState('')
+  const [page, setPage]         = useState(1)
   const [showForm, setShowForm] = useState(false)
+  const [editItem, setEditItem] = useState<any>(null)
   const apiBase = `/api/${tenantSlug}/cadastros/fornecedores`
 
   const { data, isLoading } = useQuery({
@@ -44,15 +45,64 @@ export default function FornecedoresView({ tenantSlug }: Props) {
     },
   })
 
-  const form = useForm<FornecedorInsertInput>({
-    resolver: zodResolver(fornecedorInsertSchema),
-    defaultValues: { tipoPessoa: 'PJ' },
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
+      const res = await fetch(`${apiBase}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] })
+      setShowForm(false)
+      setEditItem(null)
+    },
   })
 
-  function onSubmit(data: FornecedorInsertInput) { createMutation.mutate(data) }
+  const form = useForm<FornecedorInsertInput>({ resolver: zodResolver(fornecedorInsertSchema) })
+
+  function handleNew() {
+    form.reset({ tipoPessoa: 'PJ' })
+    setEditItem(null)
+    setShowForm(true)
+  }
+
+  function handleEdit(item: any) {
+    setEditItem(item)
+    form.reset({
+      tipoPessoa:   item.tipoPessoa,
+      nomeCompleto: item.nomeCompleto,
+      nomeFantasia: item.nomeFantasia,
+      cnpjCpf:      item.cnpjCpf,
+      email:        item.email,
+      telefone:     item.telefone,
+      celular:      item.celular,
+      contato:      item.contato,
+      cep:          item.cep,
+      endereco:     item.endereco,
+      numero:       item.numero,
+      complemento:  item.complemento,
+      bairro:       item.bairro,
+      cidade:       item.cidade,
+      uf:           item.uf,
+      observacao:   item.observacao,
+    })
+    setShowForm(true)
+  }
+
+  function onSubmit(data: FornecedorInsertInput) {
+    if (editItem) {
+      updateMutation.mutate({ id: editItem.fornecedorId, payload: { ...data, modificationNum: editItem.modificationNum } })
+    } else {
+      createMutation.mutate(data)
+    }
+  }
 
   const items = data?.data?.data ?? []
   const meta  = data?.data?.meta
+  const isPending = createMutation.isPending || updateMutation.isPending
 
   return (
     <div>
@@ -61,7 +111,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
           <h1 className="text-2xl font-semibold text-gray-900">Fornecedores</h1>
           <p className="text-sm text-gray-400 mt-0.5">{meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}</p>
         </div>
-        <Button onClick={() => { form.reset({ tipoPessoa: 'PJ' }); setShowForm(true) }}>
+        <Button onClick={handleNew}>
           <Plus size={15} className="mr-1.5" /> Novo fornecedor
         </Button>
       </div>
@@ -93,7 +143,11 @@ export default function FornecedoresView({ tenantSlug }: Props) {
                 <td className="px-4 py-3 hidden md:table-cell"><Badge variant="secondary">{item.tipoPessoa}</Badge></td>
                 <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">{item.email ?? '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">{item.cidade ? `${item.cidade}/${item.uf ?? ''}` : '—'}</td>
-                <td className="px-4 py-3"><button className="text-gray-300 hover:text-gray-600"><Pencil size={14} /></button></td>
+                <td className="px-4 py-3">
+                  <button onClick={() => handleEdit(item)} className="text-gray-300 hover:text-green-600 transition-colors">
+                    <Pencil size={14} />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -113,8 +167,8 @@ export default function FornecedoresView({ tenantSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">Novo fornecedor</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h2 className="text-lg font-semibold text-gray-900">{editItem ? 'Editar fornecedor' : 'Novo fornecedor'}</h2>
+              <button onClick={() => { setShowForm(false); setEditItem(null) }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -125,7 +179,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
                     <option value="PF">Pessoa Física</option>
                   </select>
                 </div>
-                <div><Label>CNPJ / CPF</Label><Input {...form.register('cnpjCpf')} className="mt-1" placeholder="00.000.000/0001-00" /></div>
+                <div><Label>CNPJ / CPF</Label><Input {...form.register('cnpjCpf')} className="mt-1" /></div>
               </div>
               <div>
                 <Label>Nome / Razão Social *</Label>
@@ -150,8 +204,8 @@ export default function FornecedoresView({ tenantSlug }: Props) {
                 <textarea {...form.register('observacao')} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending}>{createMutation.isPending ? 'Salvando...' : 'Salvar fornecedor'}</Button>
+                <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditItem(null) }}>Cancelar</Button>
+                <Button type="submit" disabled={isPending}>{isPending ? 'Salvando...' : editItem ? 'Salvar alterações' : 'Salvar fornecedor'}</Button>
               </div>
             </form>
           </div>
