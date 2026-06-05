@@ -1,4 +1,4 @@
-import { and, eq, ilike, count, asc, sql } from 'drizzle-orm'
+﻿import { and, eq, ilike, count, asc, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import {
   dbCliente,
@@ -67,7 +67,7 @@ export class ClienteService {
   }
 
   async create(
-    payload: Omit<TpDbClienteInsert, 'clienteId' | 'modificationNum' | 'createdDt' | 'updatedDt' | 'activeFlag'>,
+    payload: Omit<TpDbClienteInsert, 'clienteId' | 'modificationNum' | 'createdDt' | 'updatedDt' | 'activeFlag' | 'createdBy' | 'updatedBy'>,
     userId: number
   ): Promise<{ clienteId: number }> {
     const now = new Date()
@@ -133,3 +133,4 @@ export class ClienteService {
     return !!result
   }
 }
+
