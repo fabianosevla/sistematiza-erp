@@ -1,16 +1,60 @@
-# React + Vite
+# sistematiza.erp
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ERP SaaS multi-tenant para pequenas e médias empresas.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Frontend:** Next.js 14 (App Router) + TypeScript + Tailwind CSS + shadcn/ui
+- **Backend:** Next.js API Routes
+- **Banco:** PostgreSQL — AWS RDS (Drizzle ORM)
+- **Auth:** Clerk
+- **Deploy:** Vercel
 
-## React Compiler
+## Setup de desenvolvimento
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### 1. Instalar dependências
+```bash
+npm install
+```
 
-## Expanding the ESLint configuration
+### 2. Configurar variáveis de ambiente
+```bash
+cp .env.example .env.local
+# Edite .env.local com suas credenciais
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### 3. Criar o primeiro tenant no banco
+```bash
+npm run setup
+```
+Siga as instruções no terminal para criar seu tenant.
+
+### 4. Rodar em desenvolvimento
+```bash
+npm run dev
+```
+
+Abra [http://localhost:3000](http://localhost:3000).
+
+## Estrutura do projeto
+
+```
+app/
+  (auth)/          # Páginas de login e cadastro
+  (dashboard)/     # Área autenticada
+    [tenant]/      # Dashboard por tenant
+  api/[tenant]/    # API Routes por módulo
+  onboarding/      # Criação do primeiro tenant
+lib/
+  db/              # Drizzle ORM + schemas
+  auth/            # Resolução de tenant
+  api/             # Respostas padronizadas
+  services/        # Lógica de negócio
+  validations/     # Schemas Zod
+  stores/          # Zustand
+components/
+  layout/          # Sidebar, Header
+  modules/         # Componentes por módulo
+  ui/              # Componentes base
+scripts/           # Scripts de setup
+```
