@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label'
 interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
 
 function StatusIcon({ atual, min }: { atual: number; min: number }) {
   if (atual <= min * 0.5) return <AlertTriangle size={14} className="text-red-500" />
@@ -18,12 +17,12 @@ function StatusIcon({ atual, min }: { atual: number; min: number }) {
 }
 
 export default function EstoqueView({ tenantSlug }: Props) {
-  const qc  = useQueryClient()
-  const [aba, setAba]               = useState<'produtos'|'insumos'|'ajuste'>('produtos')
-  const [showModal, setShowModal]   = useState<'produto'|'insumo'|null>(null)
-  const [selectedId, setSelectedId] = useState<number|null>(null)
-  const [qtdAdicionar, setQtdAdicionar] = useState('')
-  const [precoCusto, setPrecoCusto]     = useState('')
+  const qc = useQueryClient()
+  const [aba, setAba]               = useState<'produtos' | 'insumos' | 'ajuste'>('produtos')
+  const [showModal, setShowModal]   = useState<'produto' | 'insumo' | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [qtdAdicionar, setQtdAdicionar]     = useState('')
+  const [precoCusto, setPrecoCusto]         = useState('')
   const [editandoAjuste, setEditandoAjuste] = useState<{ id: number; valor: string } | null>(null)
 
   const invalidate = () => {
@@ -32,21 +31,26 @@ export default function EstoqueView({ tenantSlug }: Props) {
     qc.invalidateQueries({ queryKey: ['estoque-ajuste', tenantSlug] })
   }
 
-  const { data: produtosData, isLoading: prodLoad } = useQuery({
+  const { data: produtosRaw, isLoading: prodLoad } = useQuery({
     queryKey: ['estoque-produtos', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/produtos`)).json(),
   })
 
-  const { data: insumosData, isLoading: insLoad } = useQuery({
+  const { data: insumosRaw, isLoading: insLoad } = useQuery({
     queryKey: ['estoque-insumos', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/insumos`)).json(),
   })
 
-  const { data: ajusteData, isLoading: ajusteLoad } = useQuery({
+  const { data: ajusteRaw, isLoading: ajusteLoad } = useQuery({
     queryKey: ['estoque-ajuste', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/ajustar`)).json(),
     enabled: aba === 'ajuste',
   })
+
+  // FIX: extração defensiva sempre com Array.isArray
+  const produtos = Array.isArray(produtosRaw?.data) ? produtosRaw.data : Array.isArray(produtosRaw) ? produtosRaw : []
+  const insumos  = Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : Array.isArray(insumosRaw)  ? insumosRaw  : []
+  const ajuste   = Array.isArray(ajusteRaw?.data)   ? ajusteRaw.data   : Array.isArray(ajusteRaw)   ? ajusteRaw   : []
 
   const adicionarProdMut = useMutation({
     mutationFn: () => fetch(`/api/${tenantSlug}/estoque/movimentar`, {
@@ -59,7 +63,12 @@ export default function EstoqueView({ tenantSlug }: Props) {
   const adicionarInsMut = useMutation({
     mutationFn: () => fetch(`/api/${tenantSlug}/estoque/movimentar`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'insumo', entidadeId: selectedId, quantidade: Number(qtdAdicionar), precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',','.')) * 100) : undefined, tipoMovimento: 'entrada' }),
+      body: JSON.stringify({
+        tipo: 'insumo', entidadeId: selectedId,
+        quantidade: Number(qtdAdicionar),
+        precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : undefined,
+        tipoMovimento: 'entrada',
+      }),
     }).then(r => r.json()),
     onSuccess: () => { invalidate(); setShowModal(null); setQtdAdicionar(''); setPrecoCusto('') },
   })
@@ -73,27 +82,38 @@ export default function EstoqueView({ tenantSlug }: Props) {
   })
 
   function exportCSV(dados: any[], nome: string) {
-    const csv = [['ID','Nome','Estoque Atual','Estoque Mínimo'], ...dados.map((d: any) => [d.produtoId ?? d.insumoId, d.nome, d.estoqueAtual, d.estoqueMinimo])]
-      .map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = `${nome}.csv`; a.click()
+    const csv = [
+      ['ID', 'Nome', 'Estoque Atual', 'Estoque Mínimo'],
+      ...dados.map((d: any) => [d.produtoId ?? d.insumoId, d.nome, d.estoqueAtual, d.estoqueMinimo]),
+    ].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.download = `${nome}.csv`
+    a.click()
   }
 
-  const produtos = produtosData?.data ?? produtosData ?? []
-  const insumos  = insumosData?.data  ?? insumosData  ?? []
-  const ajuste   = ajusteData?.data   ?? ajusteData   ?? []
-
-  const kpisProd = { total: produtos.length, criticos: produtos.filter((p: any) => p.estoqueAtual <= p.estoqueMinimo).length }
-  const kpisIns  = { total: insumos.length,  criticos: insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length }
+  const kpisProd = {
+    total:    produtos.length,
+    criticos: produtos.filter((p: any) => p.estoqueAtual <= p.estoqueMinimo).length,
+  }
+  const kpisIns = {
+    total:    insumos.length,
+    criticos: insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length,
+  }
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div><h1 className="text-2xl font-semibold text-gray-900">Estoque</h1></div>
-        {aba === 'produtos' && (
-          <Button variant="outline" onClick={() => exportCSV(produtos, 'estoque-produtos')}><Download size={14} className="mr-1.5" /> CSV</Button>
+        {aba === 'produtos' && produtos.length > 0 && (
+          <Button variant="outline" onClick={() => exportCSV(produtos, 'estoque-produtos')}>
+            <Download size={14} className="mr-1.5" /> CSV
+          </Button>
         )}
-        {aba === 'insumos' && (
-          <Button variant="outline" onClick={() => exportCSV(insumos, 'estoque-insumos')}><Download size={14} className="mr-1.5" /> CSV</Button>
+        {aba === 'insumos' && insumos.length > 0 && (
+          <Button variant="outline" onClick={() => exportCSV(insumos, 'estoque-insumos')}>
+            <Download size={14} className="mr-1.5" /> CSV
+          </Button>
         )}
       </div>
 
@@ -130,10 +150,19 @@ export default function EstoqueView({ tenantSlug }: Props) {
       {aba === 'produtos' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
-            <thead><tr className="border-b border-gray-100">{['','Produto','Est. Atual','Est. Mínimo','Unidade',''].map((h,i) => <th key={i} className={`text-${i===0?'center':i>=4?'center':'left'} text-xs font-medium text-gray-400 px-4 py-3 ${i===0?'w-10':''} ${i===5?'w-24':''}`}>{h}</th>)}</tr></thead>
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['', 'Produto', 'Est. Atual', 'Est. Mínimo', 'Unidade', ''].map((h, i) => (
+                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'w-10' : ''} ${i === 5 ? 'w-24' : ''}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {prodLoad ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-              : produtos.map((p: any) => (
+              {prodLoad ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              ) : produtos.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
+              ) : produtos.map((p: any) => (
                 <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-3 text-center"><StatusIcon atual={p.estoqueAtual} min={p.estoqueMinimo} /></td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
@@ -157,10 +186,19 @@ export default function EstoqueView({ tenantSlug }: Props) {
       {aba === 'insumos' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
-            <thead><tr className="border-b border-gray-100">{['','Insumo','Est. Atual','Est. Mínimo','Unidade','Preço Custo',''].map((h,i) => <th key={i} className={`text-${i<=1?'left':'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>)}</tr></thead>
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['', 'Insumo', 'Est. Atual', 'Est. Mínimo', 'Unidade', 'Preço Custo', ''].map((h, i) => (
+                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {insLoad ? <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-              : insumos.map((ins: any) => (
+              {insLoad ? (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              ) : insumos.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum insumo cadastrado.</td></tr>
+              ) : insumos.map((ins: any) => (
                 <tr key={ins.insumoId} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-3 text-center"><StatusIcon atual={ins.estoqueAtual} min={ins.estoqueMinimo} /></td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{ins.nome}</td>
@@ -186,26 +224,41 @@ export default function EstoqueView({ tenantSlug }: Props) {
         <div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-start gap-3">
             <AlertTriangle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-amber-700">Esta aba permite atualizar o estoque de produtos <strong>sem dar baixa nos insumos</strong>. Use apenas para correções e inventário.</p>
+            <p className="text-sm text-amber-700">
+              Esta aba permite atualizar o estoque de produtos <strong>sem dar baixa nos insumos</strong>. Use apenas para correções e inventário.
+            </p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <table className="w-full">
-              <thead><tr className="border-b border-gray-100">{['Produto','Estoque Atual','Novo Estoque',''].map((h,i) => <th key={i} className={`text-${i===0?'left':'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>)}</tr></thead>
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {['Produto', 'Estoque Atual', 'Novo Estoque', ''].map((h, i) => (
+                    <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
-                {ajusteLoad ? <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-                : ajuste.map((p: any) => (
+                {ajusteLoad ? (
+                  <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                ) : ajuste.length === 0 ? (
+                  <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto encontrado.</td></tr>
+                ) : ajuste.map((p: any) => (
                   <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
                     <td className="px-4 py-3 text-center">
                       <span className={`text-sm font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{p.estoqueAtual}</span>
                     </td>
                     <td className="px-4 py-3 text-center">
-       {editandoAjuste?.id === p.produtoId ? (
-  <input type="number" min="0" value={editandoAjuste?.valor ?? ''}
-    onChange={e => setEditandoAjuste({ id: p.produtoId, valor: e.target.value })}
-    onBlur={() => ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' })}
-    onKeyDown={e => { if (e.key === 'Enter') ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' }); if (e.key === 'Escape') setEditandoAjuste(null) }}
-    className="w-20 h-7 text-center text-sm border border-green-400 rounded focus:outline-none" autoFocus />
+                      {editandoAjuste?.id === p.produtoId ? (
+                        <input type="number" min="0"
+                          value={editandoAjuste?.valor ?? ''}
+                          onChange={e => setEditandoAjuste({ id: p.produtoId, valor: e.target.value })}
+                          onBlur={() => ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' })}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' })
+                            if (e.key === 'Escape') setEditandoAjuste(null)
+                          }}
+                          className="w-20 h-7 text-center text-sm border border-green-400 rounded focus:outline-none" autoFocus />
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
