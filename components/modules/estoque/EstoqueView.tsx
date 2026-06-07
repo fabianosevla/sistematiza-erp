@@ -200,12 +200,12 @@ export default function EstoqueView({ tenantSlug }: Props) {
                       <span className={`text-sm font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{p.estoqueAtual}</span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {editandoAjuste?.id === p.produtoId ? (
-                        <input type="number" min="0" value={editandoAjuste.valor}
-                          onChange={e => setEditandoAjuste({ id: p.produtoId, valor: e.target.value })}
-                          onBlur={() => ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste.valor })}
-                          onKeyDown={e => { if (e.key === 'Enter') ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste.valor }); if (e.key === 'Escape') setEditandoAjuste(null) }}
-                          className="w-20 h-7 text-center text-sm border border-green-400 rounded focus:outline-none" autoFocus />
+       {editandoAjuste?.id === p.produtoId ? (
+  <input type="number" min="0" value={editandoAjuste?.valor ?? ''}
+    onChange={e => setEditandoAjuste({ id: p.produtoId, valor: e.target.value })}
+    onBlur={() => ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' })}
+    onKeyDown={e => { if (e.key === 'Enter') ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' }); if (e.key === 'Escape') setEditandoAjuste(null) }}
+    className="w-20 h-7 text-center text-sm border border-green-400 rounded focus:outline-none" autoFocus />
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}
