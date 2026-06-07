@@ -159,7 +159,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   const dre      = dreData?.data
   const gastos   = gastosData?.data
   const demo     = demoData ?? []
-  const compras  = comprasData ?? []
+  const compras  = Array.isArray(comprasData?.data) ? comprasData.data : []
 
   const ATALHOS = [
     { label: 'Este mês', inicio: mesAtual.inicio, fim: mesAtual.fim },

@@ -12,20 +12,19 @@ interface Props { tenantSlug: string }
 function fmtDate(d: string) { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') }
 
 export default function PlanoAcaoView({ tenantSlug }: Props) {
-  const qc      = useQueryClient()
-  const api     = `/api/${tenantSlug}/plano-acao`
+  const qc  = useQueryClient()
+  const api = `/api/${tenantSlug}/plano-acao`
+
   const [filtroStatus, setFiltroStatus] = useState('todos')
   const [busca, setBusca]               = useState('')
   const [showModal, setShowModal]       = useState(false)
   const [editando, setEditando]         = useState<any>(null)
-
-  // Form
-  const [dataAcao, setDataAcao]           = useState(new Date().toISOString().slice(0,10))
+  const [dataAcao, setDataAcao]         = useState(new Date().toISOString().slice(0, 10))
   const [identificacao, setIdentificacao] = useState('')
-  const [acao, setAcao]                   = useState('')
-  const [responsavel, setResponsavel]     = useState('')
+  const [acao, setAcao]                 = useState('')
+  const [responsavel, setResponsavel]   = useState('')
 
-  const { data, isLoading } = useQuery({
+  const { data: raw, isLoading } = useQuery({
     queryKey: ['plano-acao', tenantSlug, filtroStatus, busca],
     queryFn:  async () => {
       const p = new URLSearchParams()
@@ -72,7 +71,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
       setResponsavel(item.responsavel ?? '')
     } else {
       setEditando(null)
-      setDataAcao(new Date().toISOString().slice(0,10))
+      setDataAcao(new Date().toISOString().slice(0, 10))
       setIdentificacao(''); setAcao(''); setResponsavel('')
     }
     setShowModal(true)
@@ -80,7 +79,8 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
 
   function fecharModal() { setShowModal(false); setEditando(null) }
 
-  const itens = data ?? []
+  // FIX: API retorna { data: [...] }
+  const itens = Array.isArray(raw?.data) ? raw.data : []
 
   return (
     <div>
@@ -92,11 +92,10 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
         <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Nova Ação</Button>
       </div>
 
-      {/* Filtros */}
       <div className="flex gap-3 mb-4">
         <Input placeholder="Buscar identificação ou responsável..." value={busca} onChange={e => setBusca(e.target.value)} className="max-w-xs h-9 text-sm" />
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {(['todos','pendente','concluido'] as const).map(s => (
+          {(['todos', 'pendente', 'concluido'] as const).map(s => (
             <button key={s} onClick={() => setFiltroStatus(s)}
               className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${filtroStatus === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               {s === 'todos' ? 'Todos' : s === 'pendente' ? 'Pendentes' : 'Concluídos'}
@@ -105,7 +104,6 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
         </div>
       </div>
 
-      {/* Lista */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full">
           <thead>
@@ -143,11 +141,11 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
                 <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     {item.status === 'pendente' ? (
-                      <button onClick={() => concluirMut.mutate(item.acaoId)} title="Concluir" className="p-1 text-green-500 hover:text-green-700"><Check size={14} /></button>
+                      <button onClick={() => concluirMut.mutate(item.acaoId)} className="p-1 text-green-500 hover:text-green-700"><Check size={14} /></button>
                     ) : (
-                      <button onClick={() => reabrirMut.mutate(item.acaoId)} title="Reabrir" className="p-1 text-amber-500 hover:text-amber-700"><RefreshCw size={14} /></button>
+                      <button onClick={() => reabrirMut.mutate(item.acaoId)} className="p-1 text-amber-500 hover:text-amber-700"><RefreshCw size={14} /></button>
                     )}
-                    <button onClick={() => { if (confirm('Excluir esta ação?')) excluirMut.mutate(item.acaoId) }} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                    <button onClick={() => { if (confirm('Excluir?')) excluirMut.mutate(item.acaoId) }} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
@@ -156,7 +154,6 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
         </table>
       </div>
 
-      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
