@@ -10,12 +10,16 @@ import { Label } from '@/components/ui/label'
 interface Props { tenantName: string; tenantSlug: string }
 
 const MODULOS = [
-  { key: 'producaoAtivo',  label: 'Produção',  desc: 'Grade semanal de produção' },
-  { key: 'estoqueAtivo',   label: 'Estoque',   desc: 'Controle de estoque' },
-  { key: 'vendasAtivo',    label: 'Vendas',    desc: 'Registro de vendas' },
-  { key: 'fiscalAtivo',    label: 'Fiscal',    desc: 'NFC-e, NF-e, NFS-e (requer Focus NFe)' },
-  { key: 'comandasAtivo',  label: 'Comandas',  desc: 'Pedidos por mesa' },
+  { key: 'consultasAtivo',  label: 'Consultas',     desc: 'Relatórios e animação de vendas' },
+  { key: 'pedidosAtivo',    label: 'Pedidos',       desc: 'Pedidos de fábrica e loja' },
+  { key: 'planoAcaoAtivo',  label: 'Plano de Ação', desc: 'Tarefas e ações da equipe' },
+  { key: 'producaoAtivo',   label: 'Produção',      desc: 'Grade semanal de produção' },
+  { key: 'estoqueAtivo',    label: 'Estoque',       desc: 'Controle de produtos e insumos' },
+  { key: 'comandasAtivo',   label: 'Comandas',      desc: 'Pedidos por mesa' },
+  { key: 'fiscalAtivo',     label: 'Fiscal',        desc: 'NFC-e, NF-e, NFS-e (requer Focus NFe)' },
 ] as const
+
+const FIXOS = ['Dashboard', 'Cadastros', 'Vendas', 'Financeiro']
 
 export default function Header({ tenantName, tenantSlug }: Props) {
   const { signOut } = useClerk()
@@ -37,7 +41,11 @@ export default function Header({ tenantName, tenantSlug }: Props) {
         body: JSON.stringify(payload),
       })
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
+      // Reload para atualizar o Sidebar (server component)
+      window.location.reload()
+    },
   })
 
   const config = data?.data
@@ -49,10 +57,8 @@ export default function Header({ tenantName, tenantSlug }: Props) {
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-400 hidden sm:block">{tenantName}</span>
           <div className="relative">
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium hover:bg-gray-700 transition-colors"
-            >
+            <button onClick={() => setShowMenu(!showMenu)}
+              className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium hover:bg-gray-700 transition-colors">
               {user?.firstName?.[0] ?? tenantName[0]}
             </button>
             {showMenu && (
@@ -85,12 +91,31 @@ export default function Header({ tenantName, tenantSlug }: Props) {
               <h2 className="text-lg font-semibold text-gray-900">Configurações</h2>
               <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
+
             <div className="p-6 space-y-6">
-              {/* Módulos */}
+              {/* Módulos toggleáveis */}
               <div>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Módulos</p>
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Módulos do Menu</p>
+                <p className="text-xs text-gray-400 mb-3">
+                  Desativar um módulo remove-o do menu lateral. Os dados continuam sendo registrados e impactando o financeiro normalmente.
+                </p>
+
+                {/* Fixos */}
+                <div className="mb-2">
+                  {FIXOS.map(nome => (
+                    <div key={nome} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">{nome}</p>
+                        <p className="text-xs text-gray-300 mt-0.5">Sempre visível</p>
+                      </div>
+                      <ToggleRight size={32} className="text-gray-200" />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Toggleáveis */}
                 {MODULOS.map(m => (
-                  <div key={m.key} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0">
+                  <div key={m.key} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{m.label}</p>
                       <p className="text-xs text-gray-400 mt-0.5">{m.desc}</p>
@@ -98,7 +123,7 @@ export default function Header({ tenantName, tenantSlug }: Props) {
                     <button onClick={() => mut.mutate({ [m.key]: !config?.[m.key] })} disabled={mut.isPending}>
                       {config?.[m.key]
                         ? <ToggleRight size={32} className="text-green-500" />
-                        : <ToggleLeft size={32} className="text-gray-300" />
+                        : <ToggleLeft  size={32} className="text-gray-300" />
                       }
                     </button>
                   </div>
@@ -110,30 +135,34 @@ export default function Header({ tenantName, tenantSlug }: Props) {
                 <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Empresa</p>
                 <div className="space-y-3">
                   {[
-                    { label: 'Nome da empresa', key: 'nomeEmpresa' },
-                    { label: 'CNPJ',            key: 'cnpj' },
-                    { label: 'IE Estadual',      key: 'ieEstadual' },
-                    { label: 'UF',               key: 'uf' },
+                    { label: 'Nome da empresa',                    key: 'nomeEmpresa' },
+                    { label: 'CNPJ',                               key: 'cnpj' },
+                    { label: 'IE Estadual',                        key: 'ieEstadual' },
+                    { label: 'UF',                                 key: 'uf' },
                     { label: 'Regime Tributário (1=SN, 3=LR/LP)', key: 'regimeTributario' },
-                    { label: 'Telefone',         key: 'telefone' },
-                    { label: 'Endereço',         key: 'endereco' },
+                    { label: 'Telefone',                           key: 'telefone' },
+                    { label: 'Endereço',                           key: 'endereco' },
                   ].map(f => (
                     <div key={f.key}>
                       <Label className="text-xs">{f.label}</Label>
-                      <Input defaultValue={config?.[f.key] ?? ''} onBlur={e => mut.mutate({ [f.key]: e.target.value })} className="mt-1 h-8 text-sm" />
+                      <Input defaultValue={config?.[f.key] ?? ''}
+                        onBlur={e => mut.mutate({ [f.key]: e.target.value })}
+                        className="mt-1 h-8 text-sm" />
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Focus NFe */}
+              {/* Focus NFe — só aparece se Fiscal ativo */}
               {config?.fiscalAtivo && (
                 <div>
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Integração Fiscal (Focus NFe)</p>
                   <div className="space-y-3">
                     <div>
                       <Label className="text-xs">Token Focus NFe</Label>
-                      <Input defaultValue={config?.focusNfeToken ?? ''} onBlur={e => mut.mutate({ focusNfeToken: e.target.value })} className="mt-1 h-8 text-sm font-mono" placeholder="seu_token_aqui" />
+                      <Input defaultValue={config?.focusNfeToken ?? ''}
+                        onBlur={e => mut.mutate({ focusNfeToken: e.target.value })}
+                        className="mt-1 h-8 text-sm font-mono" placeholder="seu_token_aqui" />
                     </div>
                     <div>
                       <Label className="text-xs">Ambiente</Label>
@@ -145,12 +174,13 @@ export default function Header({ tenantName, tenantSlug }: Props) {
                       </select>
                     </div>
                     <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3">
-                      Acesse <strong>focusnfe.com.br</strong> para criar sua conta e obter o token de integração com a SEFAZ.
+                      Acesse <strong>focusnfe.com.br</strong> para criar sua conta e obter o token.
                     </p>
                   </div>
                 </div>
               )}
             </div>
+
             <div className="px-6 pb-6">
               <Button className="w-full" onClick={() => setShowSettings(false)}>Fechar</Button>
             </div>

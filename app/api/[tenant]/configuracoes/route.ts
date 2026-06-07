@@ -11,9 +11,11 @@ type Params = { params: { tenant: string } }
 const updateSchema = z.object({
   comandasAtivo:    z.boolean().optional(),
   producaoAtivo:    z.boolean().optional(),
-  vendasAtivo:      z.boolean().optional(),
   estoqueAtivo:     z.boolean().optional(),
   fiscalAtivo:      z.boolean().optional(),
+  consultasAtivo:   z.boolean().optional(),
+  pedidosAtivo:     z.boolean().optional(),
+  planoAcaoAtivo:   z.boolean().optional(),
   nomeEmpresa:      z.string().max(200).optional(),
   cnpj:             z.string().max(20).optional(),
   telefone:         z.string().max(20).optional(),

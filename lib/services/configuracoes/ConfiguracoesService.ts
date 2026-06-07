@@ -13,9 +13,11 @@ export class ConfiguracoesService {
   async update(data: Partial<{
     comandasAtivo:    boolean
     producaoAtivo:    boolean
-    vendasAtivo:      boolean
     estoqueAtivo:     boolean
     fiscalAtivo:      boolean
+    consultasAtivo:   boolean
+    pedidosAtivo:     boolean
+    planoAcaoAtivo:   boolean
     nomeEmpresa:      string
     cnpj:             string
     telefone:         string

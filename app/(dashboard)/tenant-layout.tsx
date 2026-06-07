@@ -8,13 +8,7 @@ import { dbTenant } from '@/lib/db/schemas/public'
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
 import { eq } from 'drizzle-orm'
 
-export default async function TenantLayout({
-  children,
-  tenantSlug,
-}: {
-  children: ReactNode
-  tenantSlug: string
-}) {
+export default async function TenantLayout({ children, tenantSlug }: { children: ReactNode; tenantSlug: string }) {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
@@ -29,16 +23,16 @@ export default async function TenantLayout({
   try {
     const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, tenantSlug))
     schemaName = tenant?.schemaName ?? ''
-  } finally {
-    releasePublic()
-  }
+  } finally { releasePublic() }
 
   const cfg = {
-    comandasAtivo: false,
-    producaoAtivo: true,
-    vendasAtivo:   true,
-    estoqueAtivo:  true,
-    fiscalAtivo:   false,
+    comandasAtivo:  false,
+    producaoAtivo:  true,
+    estoqueAtivo:   true,
+    fiscalAtivo:    false,
+    consultasAtivo: true,
+    pedidosAtivo:   true,
+    planoAcaoAtivo: true,
   }
 
   if (schemaName) {
@@ -46,28 +40,20 @@ export default async function TenantLayout({
     try {
       const [config] = await db.select().from(dbConfiguracoesTenant).limit(1)
       if (config) {
-        cfg.comandasAtivo = config.comandasAtivo
-        cfg.producaoAtivo = config.producaoAtivo ?? true
-        cfg.vendasAtivo   = config.vendasAtivo   ?? true
-        cfg.estoqueAtivo  = config.estoqueAtivo  ?? true
-        cfg.fiscalAtivo   = config.fiscalAtivo   ?? false
+        cfg.comandasAtivo  = config.comandasAtivo
+        cfg.producaoAtivo  = config.producaoAtivo  ?? true
+        cfg.estoqueAtivo   = config.estoqueAtivo   ?? true
+        cfg.fiscalAtivo    = config.fiscalAtivo    ?? false
+        cfg.consultasAtivo = (config as any).consultasAtivo ?? true
+        cfg.pedidosAtivo   = (config as any).pedidosAtivo   ?? true
+        cfg.planoAcaoAtivo = (config as any).planoAcaoAtivo ?? true
       }
-    } finally {
-      release()
-    }
+    } finally { release() }
   }
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <Sidebar
-        tenantSlug={tenantSlug}
-        tenantName={tenantName}
-        comandasAtivo={cfg.comandasAtivo}
-        producaoAtivo={cfg.producaoAtivo}
-        vendasAtivo={cfg.vendasAtivo}
-        estoqueAtivo={cfg.estoqueAtivo}
-        fiscalAtivo={cfg.fiscalAtivo}
-      />
+      <Sidebar tenantSlug={tenantSlug} tenantName={tenantName} {...cfg} />
       <div className="flex-1 flex flex-col">
         <Header tenantName={tenantName} tenantSlug={tenantSlug} />
         <main className="flex-1 p-6">{children}</main>
