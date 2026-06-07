@@ -89,9 +89,8 @@ export class ConsultasService {
         produtoId:     dbProduto.produtoId,
         nome:          dbProduto.nome,
         estoqueAtual:  dbProduto.estoqueAtual,
-        estoqueMinimo: dbProduto.estoqueMinimo,
+estoqueMinimo: dbProduto.estoqueMinimo,
         unidade:       dbProduto.unidade,
-        tipo:          dbProduto.tipo,
         activeFlag:    dbProduto.activeFlag,
       }).from(dbProduto).where(eq(dbProduto.activeFlag, true)).orderBy(dbProduto.nome),
       this.db.select().from(dbProducaoSemanal).where(and(
