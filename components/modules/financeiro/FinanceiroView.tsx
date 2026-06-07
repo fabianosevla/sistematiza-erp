@@ -48,13 +48,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   const [periodo, setPeriodo]         = useState('mensal')
 
   // Form compra
-  const [cNomeInsumo, setCNomeInsumo]           = useState('')
-  const [cNomeFornecedor, setCNomeFornecedor]   = useState('')
-  const [cDataEntrada, setCDataEntrada]         = useState(new Date().toISOString().slice(0, 10))
-  const [cValorUnit, setCValorUnit]             = useState('')
-  const [cQuantidade, setCQuantidade]           = useState('')
-  const [cCaixas, setCCaixas]                   = useState('0')
-  const [cStatus, setCStatus]                   = useState('pendente')
+  const [cNomeInsumo, setCNomeInsumo]         = useState('')
+  const [cNomeFornecedor, setCNomeFornecedor] = useState('')
+  const [cDataEntrada, setCDataEntrada]       = useState(new Date().toISOString().slice(0, 10))
+  const [cValorUnit, setCValorUnit]           = useState('')
+  const [cQuantidade, setCQuantidade]         = useState('')
+  const [cCaixas, setCCaixas]                 = useState('0')
+  const [cStatus, setCStatus]                 = useState('pendente')
 
   const invalidate = (key: string) => qc.invalidateQueries({ queryKey: [key, tenantSlug] })
 
@@ -112,7 +112,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
 
   const excluirMut = useMutation({
     mutationFn: (id: number) => fetch(`${apiBase}/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess:  () => { invalidate('despesas'); invalidate('fin-kpis') },
+    onSuccess: () => { invalidate('despesas'); invalidate('fin-kpis') },
   })
 
   const salvarCelulaMut = useMutation({
@@ -141,7 +141,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
 
   const excluirCompraMut = useMutation({
     mutationFn: (id: number) => fetch(`/api/${tenantSlug}/compras/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess:  () => invalidate('compras'),
+    onSuccess: () => invalidate('compras'),
   })
 
   function exportCSV() {
@@ -153,13 +153,14 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     a.click()
   }
 
+  // FIX: extração defensiva de todos os dados
   const kpis    = kpisData?.data
-  const despesas = despesasData?.data?.data ?? []
-  const meta     = despesasData?.data?.meta
-  const dre      = dreData?.data
-  const gastos   = gastosData?.data
-  const demo     = demoData ?? []
-  const compras  = Array.isArray(comprasData?.data) ? comprasData.data : []
+  const despesas = Array.isArray(despesasData?.data?.data) ? despesasData.data.data : []
+  const meta     = despesasData?.data?.meta ?? null
+  const dre      = dreData?.data ?? null
+  const gastos   = gastosData?.data ?? null
+  const demo     = Array.isArray(demoData?.data) ? demoData.data : []
+  const compras  = Array.isArray(comprasData?.data) ? comprasData.data : Array.isArray(comprasData) ? comprasData : []
 
   const ATALHOS = [
     { label: 'Este mês', inicio: mesAtual.inicio, fim: mesAtual.fim },
@@ -205,10 +206,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             },
           ].map((c, i) => (
             <div key={i} className={`rounded-xl border p-4 ${(c as any).bg ?? 'bg-white border-gray-100'}`}>
-              <div className="flex items-center gap-2 mb-1">
-                <c.icon size={14} className={c.color} />
-                <p className="text-xs text-gray-400">{c.label}</p>
-              </div>
+              <div className="flex items-center gap-2 mb-1"><c.icon size={14} className={c.color} /><p className="text-xs text-gray-400">{c.label}</p></div>
               <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
             </div>
           ))}
@@ -231,7 +229,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         ))}
       </div>
 
-      {/* Filtros período */}
+      {/* Filtros */}
       {(aba === 'despesas' || aba === 'dre') && (
         <div className="flex flex-wrap gap-3 mb-4">
           <div className="flex items-center gap-2"><Label className="text-xs">De:</Label><Input type="date" value={dataInicio} onChange={e => { setDataInicio(e.target.value); setPage(1) }} className="h-9 text-sm w-36" /></div>
@@ -316,7 +314,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   {dre.receita > 0 && <p className="text-xs mt-0.5" style={{ color: dre.resultado >= 0 ? '#15803d' : '#dc2626' }}>Margem: {((dre.resultado / dre.receita) * 100).toFixed(1)}%</p>}
                 </div>
               </div>
-              {Object.keys(dre.porCategoria).length > 0 && (
+              {dre.porCategoria && Object.keys(dre.porCategoria).length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700">Por categoria</h3></div>
                   <table className="w-full">
@@ -362,13 +360,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {gastos.categorias.map((cat: any) => {
-                      const totalCat = Array.from({ length: 12 }, (_, i) => gastos.grade[cat.categoriaId]?.[i + 1] ?? 0).reduce((a: number, b: number) => a + b, 0)
+                    {Array.isArray(gastos.categorias) && gastos.categorias.map((cat: any) => {
+                      const totalCat = Array.from({ length: 12 }, (_, i) => gastos.grade?.[cat.categoriaId]?.[i + 1] ?? 0).reduce((a: number, b: number) => a + b, 0)
                       return (
                         <tr key={cat.categoriaId} className="border-b border-gray-50 hover:bg-gray-50/30">
                           <td className="px-4 py-2 text-sm font-medium text-gray-900">{cat.nome}</td>
                           {Array.from({ length: 12 }, (_, i) => i + 1).map(mes => {
-                            const val = gastos.grade[cat.categoriaId]?.[mes] ?? 0
+                            const val = gastos.grade?.[cat.categoriaId]?.[mes] ?? 0
                             const isEditing = editandoCelula?.catId === cat.categoriaId && editandoCelula?.mes === mes
                             return (
                               <td key={mes} className="px-2 py-2 text-right">
@@ -394,11 +392,12 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     <tr className="border-t-2 border-gray-200 bg-gray-50">
                       <td className="px-4 py-2 text-sm font-bold text-gray-700">Total mensal</td>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map(mes => {
-                        const total = gastos.categorias.reduce((a: number, cat: any) => a + (gastos.grade[cat.categoriaId]?.[mes] ?? 0), 0)
+                        const total = Array.isArray(gastos.categorias) ? gastos.categorias.reduce((a: number, cat: any) => a + (gastos.grade?.[cat.categoriaId]?.[mes] ?? 0), 0) : 0
                         return <td key={mes} className="px-2 py-2 text-right text-xs font-semibold text-gray-700">{total > 0 ? fmt(total) : '—'}</td>
                       })}
                       <td className="px-4 py-2 text-right text-sm font-bold">
-                        {fmt(gastos.categorias.reduce((a: number, cat: any) => a + Array.from({ length: 12 }, (_, i) => gastos.grade[cat.categoriaId]?.[i + 1] ?? 0).reduce((x: number, y: number) => x + y, 0), 0))}
+                        {fmt(Array.isArray(gastos.categorias) ? gastos.categorias.reduce((a: number, cat: any) =>
+                          a + Array.from({ length: 12 }, (_, i) => gastos.grade?.[cat.categoriaId]?.[i + 1] ?? 0).reduce((x: number, y: number) => x + y, 0), 0) : 0)}
                       </td>
                     </tr>
                   </tbody>
@@ -432,7 +431,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {(demo as any[]).map((m: any) => (
+                    {demo.length === 0 ? (
+                      <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Sem dados para este período.</td></tr>
+                    ) : demo.map((m: any) => (
                       <tr key={m.mesNum} className={`border-b border-gray-50 ${m.resultado < 0 ? 'bg-red-50/20' : ''}`}>
                         <td className="px-4 py-2.5 text-sm font-semibold text-gray-700">{m.mes}</td>
                         <td className="px-4 py-2.5 text-right text-sm text-green-600 font-medium">{m.receita > 0 ? fmt(m.receita) : '—'}</td>
