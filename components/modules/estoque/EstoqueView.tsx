@@ -1,362 +1,262 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, Plus, X, Download, Package, AlertTriangle, AlertCircle, MinusCircle } from 'lucide-react'
+import { Plus, X, Download, AlertTriangle, CheckCircle, Edit3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 
 interface Props { tenantSlug: string }
 
-type Aba = 'produtos' | 'insumos'
-type Status = '' | 'normal' | 'atencao' | 'critico' | 'zerado'
+function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
 
-const STATUS_LABEL: Record<string, string> = {
-  normal:  'Normal',
-  atencao: 'Atenção',
-  critico: 'Crítico',
-  zerado:  'Zerado',
-}
-
-const STATUS_COLOR: Record<string, string> = {
-  normal:  'bg-green-500',
-  atencao: 'bg-yellow-400',
-  critico: 'bg-red-500',
-  zerado:  'bg-gray-300',
-}
-
-function StatusDot({ status }: { status: string }) {
-  return (
-    <span className={`inline-block w-2.5 h-2.5 rounded-full ${STATUS_COLOR[status] ?? 'bg-gray-300'}`} />
-  )
-}
-
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-function exportCSV(data: any[], aba: Aba) {
-  const isInsumo = aba === 'insumos'
-  const headers = isInsumo
-    ? ['Nome', 'Tipo', 'Unidade', 'Estoque Atual', 'Estoque Mínimo', 'Custo', 'Status']
-    : ['Nome', 'Código de Barras', 'Unidade', 'Categoria', 'Estoque Atual', 'Estoque Mínimo', 'Preço Varejo', 'Status']
-
-  const rows = data.map(item => isInsumo
-    ? [item.nome, item.tipo, item.unidade, item.estoqueAtual, item.estoqueMinimo, (item.precoCusto / 100).toFixed(2), STATUS_LABEL[item.status] ?? '']
-    : [item.nome, item.codigoBarras ?? '', item.unidade, item.categoria ?? '', item.estoqueAtual, item.estoqueMinimo, (item.precoVarejo / 100).toFixed(2), STATUS_LABEL[item.status] ?? '']
-  )
-
-  const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href = url
-  a.download = `estoque-${aba}-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+function StatusIcon({ atual, min }: { atual: number; min: number }) {
+  if (atual <= min * 0.5) return <AlertTriangle size={14} className="text-red-500" />
+  if (atual <= min)       return <AlertTriangle size={14} className="text-amber-500" />
+  return <CheckCircle size={14} className="text-green-500" />
 }
 
 export default function EstoqueView({ tenantSlug }: Props) {
-  const queryClient = useQueryClient()
-  const [aba, setAba]           = useState<Aba>('produtos')
-  const [search, setSearch]     = useState('')
-  const [status, setStatus]     = useState<Status>('')
-  const [page, setPage]         = useState(1)
-  const [showMov, setShowMov]   = useState(false)
-  const [movItem, setMovItem]   = useState<any>(null)
-  const [movTipo, setMovTipo]   = useState<'entrada' | 'saida' | 'ajuste'>('entrada')
-  const [movQtd, setMovQtd]     = useState('')
-  const [movCusto, setMovCusto] = useState('')
-  const [movObs, setMovObs]     = useState('')
+  const qc  = useQueryClient()
+  const [aba, setAba]               = useState<'produtos'|'insumos'|'ajuste'>('produtos')
+  const [showModal, setShowModal]   = useState<'produto'|'insumo'|null>(null)
+  const [selectedId, setSelectedId] = useState<number|null>(null)
+  const [qtdAdicionar, setQtdAdicionar] = useState('')
+  const [precoCusto, setPrecoCusto]     = useState('')
+  const [editandoAjuste, setEditandoAjuste] = useState<{ id: number; valor: string } | null>(null)
 
-  const apiBase = `/api/${tenantSlug}/estoque`
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['estoque', tenantSlug, aba, page, search, status],
-    queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '50' })
-      if (search) params.set('search', search)
-      if (status) params.set('status', status)
-      const res = await fetch(`${apiBase}/${aba}?${params}`)
-      return res.json()
-    },
-  })
-
-  const movMutation = useMutation({
-    mutationFn: async (payload: any) => {
-      const res = await fetch(`${apiBase}/movimentar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['estoque', tenantSlug] })
-      setShowMov(false)
-      setMovItem(null)
-      setMovQtd('')
-      setMovCusto('')
-      setMovObs('')
-    },
-  })
-
-  function handleMov(item: any) {
-    setMovItem(item)
-    setMovTipo('entrada')
-    setMovQtd('')
-    setMovCusto('')
-    setMovObs('')
-    setShowMov(true)
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['estoque-ajuste', tenantSlug] })
   }
 
-  function submitMov() {
-    if (!movItem || !movQtd) return
-    movMutation.mutate({
-      entidade:   aba === 'produtos' ? 'produto' : 'insumo',
-      entidadeId: aba === 'produtos' ? movItem.produtoId : movItem.insumoId,
-      tipo:       movTipo,
-      quantidade:  Number(movQtd),
-      precoCusto: movCusto ? Math.round(parseFloat(movCusto) * 100) : undefined,
-      observacao:  movObs || undefined,
-    })
+  const { data: produtosData, isLoading: prodLoad } = useQuery({
+    queryKey: ['estoque-produtos', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/produtos`)).json(),
+  })
+
+  const { data: insumosData, isLoading: insLoad } = useQuery({
+    queryKey: ['estoque-insumos', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/insumos`)).json(),
+  })
+
+  const { data: ajusteData, isLoading: ajusteLoad } = useQuery({
+    queryKey: ['estoque-ajuste', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/ajustar`)).json(),
+    enabled: aba === 'ajuste',
+  })
+
+  const adicionarProdMut = useMutation({
+    mutationFn: () => fetch(`/api/${tenantSlug}/estoque/movimentar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'produto', entidadeId: selectedId, quantidade: Number(qtdAdicionar), tipoMovimento: 'entrada' }),
+    }).then(r => r.json()),
+    onSuccess: () => { invalidate(); setShowModal(null); setQtdAdicionar('') },
+  })
+
+  const adicionarInsMut = useMutation({
+    mutationFn: () => fetch(`/api/${tenantSlug}/estoque/movimentar`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'insumo', entidadeId: selectedId, quantidade: Number(qtdAdicionar), precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',','.')) * 100) : undefined, tipoMovimento: 'entrada' }),
+    }).then(r => r.json()),
+    onSuccess: () => { invalidate(); setShowModal(null); setQtdAdicionar(''); setPrecoCusto('') },
+  })
+
+  const ajustarMut = useMutation({
+    mutationFn: ({ produtoId, novoEstoque }: any) => fetch(`/api/${tenantSlug}/estoque/ajustar`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produtoId, novoEstoque: Number(novoEstoque) }),
+    }).then(r => r.json()),
+    onSuccess: () => { invalidate(); setEditandoAjuste(null) },
+  })
+
+  function exportCSV(dados: any[], nome: string) {
+    const csv = [['ID','Nome','Estoque Atual','Estoque Mínimo'], ...dados.map((d: any) => [d.produtoId ?? d.insumoId, d.nome, d.estoqueAtual, d.estoqueMinimo])]
+      .map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = `${nome}.csv`; a.click()
   }
 
-  const items = data?.data?.data ?? []
-  const meta  = data?.data?.meta
-  const kpis  = data?.data?.kpis
+  const produtos = produtosData?.data ?? produtosData ?? []
+  const insumos  = insumosData?.data  ?? insumosData  ?? []
+  const ajuste   = ajusteData?.data   ?? ajusteData   ?? []
+
+  const kpisProd = { total: produtos.length, criticos: produtos.filter((p: any) => p.estoqueAtual <= p.estoqueMinimo).length }
+  const kpisIns  = { total: insumos.length,  criticos: insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length }
 
   return (
     <div>
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Estoque</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Controle de entradas e saídas</p>
-        </div>
-        <Button variant="outline" onClick={() => exportCSV(items, aba)}>
-          <Download size={14} className="mr-1.5" /> Exportar CSV
-        </Button>
+        <div><h1 className="text-2xl font-semibold text-gray-900">Estoque</h1></div>
+        {aba === 'produtos' && (
+          <Button variant="outline" onClick={() => exportCSV(produtos, 'estoque-produtos')}><Download size={14} className="mr-1.5" /> CSV</Button>
+        )}
+        {aba === 'insumos' && (
+          <Button variant="outline" onClick={() => exportCSV(insumos, 'estoque-insumos')}><Download size={14} className="mr-1.5" /> CSV</Button>
+        )}
       </div>
 
       {/* KPIs */}
-      {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          {[
-            { label: 'Total', value: kpis.total, color: 'text-gray-900', bg: 'bg-white' },
-            { label: 'Atenção', value: kpis.atencao, color: 'text-yellow-600', bg: 'bg-yellow-50' },
-            { label: 'Crítico', value: kpis.critico, color: 'text-red-600', bg: 'bg-red-50' },
-            { label: 'Zerado', value: kpis.zerado, color: 'text-gray-500', bg: 'bg-gray-50' },
-          ].map(k => (
-            <div key={k.label} className={`${k.bg} rounded-xl border border-gray-100 p-4`}>
-              <p className="text-xs text-gray-400">{k.label}</p>
-              <p className={`text-2xl font-semibold mt-1 ${k.color}`}>{k.value}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {[
+          { label: 'Produtos',          value: String(kpisProd.total),    color: '' },
+          { label: 'Produtos críticos', value: String(kpisProd.criticos), color: kpisProd.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisProd.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
+          { label: 'Insumos',           value: String(kpisIns.total),     color: '' },
+          { label: 'Insumos críticos',  value: String(kpisIns.criticos),  color: kpisIns.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisIns.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
+        ].map((kpi, i) => (
+          <div key={i} className={`rounded-xl border p-4 ${kpi.bg ?? 'bg-white border-gray-100'}`}>
+            <p className="text-xs text-gray-400">{kpi.label}</p>
+            <p className={`text-2xl font-bold mt-1 ${kpi.color || 'text-gray-900'}`}>{kpi.value}</p>
+          </div>
+        ))}
+      </div>
 
       {/* Abas */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
-        {(['produtos', 'insumos'] as Aba[]).map(a => (
-          <button
-            key={a}
-            onClick={() => { setAba(a); setPage(1); setSearch(''); setStatus('') }}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors capitalize ${aba === a ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            {a}
+        {([
+          { value: 'produtos', label: 'Produto Acabado' },
+          { value: 'insumos',  label: 'Insumos' },
+          { value: 'ajuste',   label: 'Ajuste Sem Baixa' },
+        ] as const).map(a => (
+          <button key={a.value} onClick={() => setAba(a.value)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            {a.label}
           </button>
         ))}
       </div>
 
-      {/* Filtros */}
-      <div className="flex gap-3 mb-4">
-        <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder={`Buscar ${aba}...`}
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1) }}
-            className="pl-9"
-          />
-        </div>
-        <select
-          value={status}
-          onChange={e => { setStatus(e.target.value as Status); setPage(1) }}
-          className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
-        >
-          <option value="">Todos os status</option>
-          <option value="normal">Normal</option>
-          <option value="atencao">Atenção</option>
-          <option value="critico">Crítico</option>
-          <option value="zerado">Zerado</option>
-        </select>
-      </div>
-
-      {/* Tabela */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-8" />
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Nome</th>
-              {aba === 'insumos' && <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Tipo</th>}
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Unidade</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Atual</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Mínimo</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">
-                {aba === 'produtos' ? 'Preço Varejo' : 'Custo'}
-              </th>
-              <th className="px-4 py-3 w-20 text-center text-xs font-medium text-gray-400">Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum item encontrado.</td></tr>
-            ) : items.map((item: any) => {
-              const id = aba === 'produtos' ? item.produtoId : item.insumoId
-              return (
-                <tr key={id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <StatusDot status={item.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-gray-900">{item.nome}</p>
-                    {item.codigoBarras && <p className="text-xs text-gray-400 font-mono">{item.codigoBarras}</p>}
-                  </td>
-                  {aba === 'insumos' && (
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <Badge variant="secondary">{item.tipo}</Badge>
-                    </td>
-                  )}
-                  <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{item.unidade}</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className={`text-sm font-semibold ${item.status === 'critico' || item.status === 'zerado' ? 'text-red-600' : item.status === 'atencao' ? 'text-yellow-600' : 'text-gray-900'}`}>
-                      {item.estoqueAtual}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-400 hidden lg:table-cell">{item.estoqueMinimo}</td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-900 hidden lg:table-cell">
-                    {aba === 'produtos' ? formatCents(item.precoVarejo) : formatCents(item.precoCusto)}
-                  </td>
+      {/* Produtos */}
+      {aba === 'produtos' && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead><tr className="border-b border-gray-100">{['','Produto','Est. Atual','Est. Mínimo','Unidade',''].map((h,i) => <th key={i} className={`text-${i===0?'center':i>=4?'center':'left'} text-xs font-medium text-gray-400 px-4 py-3 ${i===0?'w-10':''} ${i===5?'w-24':''}`}>{h}</th>)}</tr></thead>
+            <tbody>
+              {prodLoad ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              : produtos.map((p: any) => (
+                <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <td className="px-4 py-3 text-center"><StatusIcon atual={p.estoqueAtual} min={p.estoqueMinimo} /></td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-center">{p.estoqueAtual}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{p.estoqueMinimo}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{p.unidade ?? '—'}</td>
                   <td className="px-4 py-3 text-center">
-                    <button
-                      onClick={() => handleMov(item)}
-                      className="inline-flex items-center gap-1 text-xs text-green-600 hover:text-green-700 font-medium border border-green-200 hover:border-green-400 rounded-md px-2 py-1 transition-colors"
-                    >
-                      <Plus size={12} /> Mov.
+                    <button onClick={() => { setSelectedId(p.produtoId); setShowModal('produto') }}
+                      className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 mx-auto">
+                      <Plus size={12} /> Adicionar
                     </button>
                   </td>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-        {/* Paginação */}
-        {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages} — {meta.total} itens</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(p => p + 1)}>Próximo</Button>
+      {/* Insumos */}
+      {aba === 'insumos' && (
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead><tr className="border-b border-gray-100">{['','Insumo','Est. Atual','Est. Mínimo','Unidade','Preço Custo',''].map((h,i) => <th key={i} className={`text-${i<=1?'left':'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>)}</tr></thead>
+            <tbody>
+              {insLoad ? <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              : insumos.map((ins: any) => (
+                <tr key={ins.insumoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <td className="px-4 py-3 text-center"><StatusIcon atual={ins.estoqueAtual} min={ins.estoqueMinimo} /></td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{ins.nome}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-center">{ins.estoqueAtual}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{ins.estoqueMinimo}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{ins.unidade ?? '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => { setSelectedId(ins.insumoId); setShowModal('insumo') }}
+                      className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 mx-auto">
+                      <Plus size={12} /> Adicionar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Ajuste Sem Baixa */}
+      {aba === 'ajuste' && (
+        <div>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-start gap-3">
+            <AlertTriangle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-amber-700">Esta aba permite atualizar o estoque de produtos <strong>sem dar baixa nos insumos</strong>. Use apenas para correções e inventário.</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <table className="w-full">
+              <thead><tr className="border-b border-gray-100">{['Produto','Estoque Atual','Novo Estoque',''].map((h,i) => <th key={i} className={`text-${i===0?'left':'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>)}</tr></thead>
+              <tbody>
+                {ajusteLoad ? <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                : ajuste.map((p: any) => (
+                  <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-sm font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{p.estoqueAtual}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {editandoAjuste?.id === p.produtoId ? (
+                        <input type="number" min="0" value={editandoAjuste.valor}
+                          onChange={e => setEditandoAjuste({ id: p.produtoId, valor: e.target.value })}
+                          onBlur={() => ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste.valor })}
+                          onKeyDown={e => { if (e.key === 'Enter') ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste.valor }); if (e.key === 'Escape') setEditandoAjuste(null) }}
+                          className="w-20 h-7 text-center text-sm border border-green-400 rounded focus:outline-none" autoFocus />
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => setEditandoAjuste({ id: p.produtoId, valor: String(p.estoqueAtual) })}
+                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 mx-auto">
+                        <Edit3 size={12} /> Ajustar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Adicionar Produto */}
+      {showModal === 'produto' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Adicionar Estoque</h2>
+              <button onClick={() => setShowModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div><Label>Quantidade a adicionar *</Label><Input type="number" min="1" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
+                <Button onClick={() => adicionarProdMut.mutate()} disabled={!qtdAdicionar || adicionarProdMut.isPending}>Confirmar</Button>
+              </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Modal de Movimentação */}
-      {showMov && movItem && (
+      {/* Modal Adicionar Insumo */}
+      {showModal === 'insumo' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Movimentação de Estoque</h2>
-                <p className="text-sm text-gray-400 mt-0.5">{movItem.nome}</p>
-              </div>
-              <button onClick={() => setShowMov(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h2 className="text-lg font-semibold">Adicionar Insumo</h2>
+              <button onClick={() => setShowModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
-
             <div className="p-6 space-y-4">
-              {/* Estoque atual */}
-              <div className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
-                <span className="text-sm text-gray-500">Estoque atual</span>
-                <span className="text-lg font-semibold text-gray-900">{movItem.estoqueAtual} {movItem.unidade}</span>
-              </div>
-
-              {/* Tipo */}
-              <div>
-                <Label>Tipo de movimentação *</Label>
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  {(['entrada', 'saida', 'ajuste'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setMovTipo(t)}
-                      className={`py-2 rounded-lg text-sm font-medium border transition-colors capitalize ${movTipo === t ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
-                    >
-                      {t === 'entrada' ? '+ Entrada' : t === 'saida' ? '- Saída' : '= Ajuste'}
-                    </button>
-                  ))}
-                </div>
-                {movTipo === 'ajuste' && (
-                  <p className="text-xs text-gray-400 mt-1">Ajuste define o estoque exato, sem registrar entrada ou saída.</p>
-                )}
-              </div>
-
-              {/* Quantidade */}
-              <div>
-                <Label>Quantidade ({movItem.unidade}) *</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={movQtd}
-                  onChange={e => setMovQtd(e.target.value)}
-                  className="mt-1"
-                  placeholder="0"
-                />
-              </div>
-
-              {/* Custo (só para entrada) */}
-              {movTipo === 'entrada' && (
-                <div>
-                  <Label>Custo unitário (R$)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={movCusto}
-                    onChange={e => setMovCusto(e.target.value)}
-                    className="mt-1"
-                    placeholder="0,00"
-                  />
-                </div>
-              )}
-
-              {/* Observação */}
-              <div>
-                <Label>Observação</Label>
-                <textarea
-                  value={movObs}
-                  onChange={e => setMovObs(e.target.value)}
-                  rows={2}
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
-                  placeholder="Motivo da movimentação (opcional)"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowMov(false)}>Cancelar</Button>
-                <Button
-                  onClick={submitMov}
-                  disabled={!movQtd || movMutation.isPending}
-                >
-                  {movMutation.isPending ? 'Salvando...' : 'Confirmar movimentação'}
-                </Button>
+              <div><Label>Quantidade *</Label><Input type="number" min="0" step="0.001" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
+              <div><Label>Preço de Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" placeholder="0,00" /></div>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
+                <Button onClick={() => adicionarInsMut.mutate()} disabled={!qtdAdicionar || adicionarInsMut.isPending}>Confirmar</Button>
               </div>
             </div>
           </div>

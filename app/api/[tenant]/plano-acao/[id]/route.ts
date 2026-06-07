@@ -1,0 +1,32 @@
+// @ts-nocheck
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { PlanoAcaoService } from '@/lib/services/plano_acao/PlanoAcaoService'
+import { ok, serverError } from '@/lib/api/responses'
+
+type Params = { params: { tenant: string; id: string } }
+
+export async function PUT(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body    = await req.json()
+      const service = new PlanoAcaoService(db)
+      if (body.action === 'concluir') return ok(await service.concluir(Number(params.id), 1))
+      if (body.action === 'reabrir')  return ok(await service.reabrir(Number(params.id), 1))
+      return ok(await service.atualizar(Number(params.id), { ...body, userId: 1 }))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      return ok(await new PlanoAcaoService(db).excluir(Number(params.id), 1))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}

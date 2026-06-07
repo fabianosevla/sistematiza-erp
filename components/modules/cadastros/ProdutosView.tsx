@@ -1,228 +1,281 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Pencil, X, Upload } from 'lucide-react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
+import { Plus, X, Trash2, Download, Upload, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { produtoInsertSchema, type ProdutoInsertInput } from '@/lib/validations/cadastros'
-import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
+import { Badge } from '@/components/ui/badge'
 
 interface Props { tenantSlug: string }
 
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
+const TIPOS = ['Massa','Molho','Acompanhamento','Bebida','Outro']
 
 export default function ProdutosView({ tenantSlug }: Props) {
-  const queryClient = useQueryClient()
-  const [search, setSearch]         = useState('')
-  const [page, setPage]             = useState(1)
-  const [showForm, setShowForm]     = useState(false)
-  const [showImport, setShowImport] = useState(false)
-  const [editItem, setEditItem]     = useState<any>(null)
-  const apiBase = `/api/${tenantSlug}/cadastros/produtos`
+  const qc  = useQueryClient()
+  const api = `/api/${tenantSlug}/cadastros/produtos`
+  const [busca, setBusca]           = useState('')
+  const [showModal, setShowModal]   = useState(false)
+  const [showFicha, setShowFicha]   = useState<any>(null)
+  const [editando, setEditando]     = useState<any>(null)
+
+  // Form produto
+  const [nome, setNome]                 = useState('')
+  const [tipo, setTipo]                 = useState(TIPOS[0])
+  const [unidade, setUnidade]           = useState('kg')
+  const [precoVarejo, setPrecoVarejo]   = useState('')
+  const [precoAtacado, setPrecoAtacado] = useState('')
+  const [estoqueMin, setEstoqueMin]     = useState('0')
+  const [estoqueAtual, setEstoqueAtual] = useState('0')
+  const [ativo, setAtivo]               = useState(true)
+
+  // Ficha técnica
+  const [fichaInsumoId, setFichaInsumoId]     = useState('')
+  const [fichaQuantidade, setFichaQuantidade] = useState('')
+  const [fichaUnidade, setFichaUnidade]       = useState('kg')
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
 
   const { data, isLoading } = useQuery({
-    queryKey: ['produtos', tenantSlug, page, search],
-    queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '20' })
-      if (search) params.set('search', search)
-      const res = await fetch(`${apiBase}?${params}`)
-      return res.json()
-    },
+    queryKey: ['produtos', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
   })
 
-  const createMutation = useMutation({
-    mutationFn: async (payload: ProdutoInsertInput) => {
-      const res = await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
-      setShowForm(false)
-    },
+  const { data: insumosData } = useQuery({
+    queryKey: ['insumos-select', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos`)).json(),
   })
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
-      const res = await fetch(`${apiBase}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
-      setShowForm(false)
-      setEditItem(null)
-    },
+  const { data: fichaData, refetch: refetchFicha } = useQuery({
+    queryKey: ['ficha', tenantSlug, showFicha?.produtoId],
+    queryFn:  async () => (await fetch(`${api}/${showFicha.produtoId}/ficha`)).json(),
+    enabled:  !!showFicha,
   })
 
-  const form = useForm<ProdutoInsertInput>({ resolver: zodResolver(produtoInsertSchema) })
+  const salvarMut = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        nome, tipo, unidade,
+        precoVarejo:  precoVarejo  ? Math.round(parseFloat(precoVarejo.replace(',','.'))  * 100) : 0,
+        precoAtacado: precoAtacado ? Math.round(parseFloat(precoAtacado.replace(',','.')) * 100) : 0,
+        estoqueMinimo: Number(estoqueMin),
+        estoqueAtual:  Number(estoqueAtual),
+        activeFlag: ativo,
+      }
+      if (editando) {
+        return fetch(`${api}/${editando.produtoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+      }
+      return fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+    },
+    onSuccess: () => { invalidate(); fecharModal() },
+  })
 
-  function handleNew() {
-    form.reset({ unidade: 'un', estoqueAtual: 0, estoqueMinimo: 0, precoCusto: 0, precoVarejo: 0, precoAtacado: 0 })
-    setEditItem(null)
-    setShowForm(true)
-  }
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: invalidate,
+  })
 
-  function handleEdit(item: any) {
-    setEditItem(item)
-    form.reset({
-      nome:          item.nome,
-      descricao:     item.descricao,
-      codigoBarras:  item.codigoBarras,
-      unidade:       item.unidade,
-      categoria:     item.categoria,
-      estoqueAtual:  item.estoqueAtual,
-      estoqueMinimo: item.estoqueMinimo,
-      precoCusto:    item.precoCusto,
-      precoVarejo:   item.precoVarejo,
-      precoAtacado:  item.precoAtacado,
-    })
-    setShowForm(true)
-  }
+  const addFichaMut = useMutation({
+    mutationFn: () => fetch(`${api}/${showFicha.produtoId}/ficha`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ insumoId: Number(fichaInsumoId), quantidade: parseFloat(fichaQuantidade), unidade: fichaUnidade }),
+    }).then(r => r.json()),
+    onSuccess: () => { refetchFicha(); setFichaInsumoId(''); setFichaQuantidade('') },
+  })
 
-  function onSubmit(data: ProdutoInsertInput) {
-    if (editItem) {
-      updateMutation.mutate({ id: editItem.produtoId, payload: { ...data, modificationNum: editItem.modificationNum } })
+  const removeFichaMut = useMutation({
+    mutationFn: (itemId: number) => fetch(`${api}/${showFicha.produtoId}/ficha/${itemId}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => refetchFicha(),
+  })
+
+  function abrirModal(item?: any) {
+    if (item) {
+      setEditando(item)
+      setNome(item.nome); setTipo(item.tipo ?? TIPOS[0]); setUnidade(item.unidade ?? 'kg')
+      setPrecoVarejo(item.precoVarejo ? (item.precoVarejo/100).toFixed(2) : '')
+      setPrecoAtacado(item.precoAtacado ? (item.precoAtacado/100).toFixed(2) : '')
+      setEstoqueMin(String(item.estoqueMinimo ?? 0))
+      setEstoqueAtual(String(item.estoqueAtual ?? 0))
+      setAtivo(item.activeFlag ?? true)
     } else {
-      createMutation.mutate(data)
+      setEditando(null); setNome(''); setTipo(TIPOS[0]); setUnidade('kg')
+      setPrecoVarejo(''); setPrecoAtacado(''); setEstoqueMin('0'); setEstoqueAtual('0'); setAtivo(true)
     }
+    setShowModal(true)
   }
 
-  const items = data?.data?.data ?? []
-  const meta  = data?.data?.meta
-  const isPending = createMutation.isPending || updateMutation.isPending
+  function fecharModal() { setShowModal(false); setEditando(null) }
+
+  function exportCSV() {
+    const rows = produtos.map((p: any) => [p.produtoId, p.nome, p.tipo, p.unidade, p.precoVarejo/100, p.estoqueAtual, p.estoqueMinimo])
+    const csv  = [['ID','Nome','Tipo','Unidade','Preço','Est.Atual','Est.Mín'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'produtos.csv'; a.click()
+  }
+
+  const produtos  = (data?.data ?? data ?? []).filter((p: any) => p.nome?.toLowerCase().includes(busca.toLowerCase()))
+  const insumos   = insumosData?.data ?? insumosData ?? []
+  const fichaItens = fichaData?.data ?? fichaData ?? []
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Produtos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}</p>
-        </div>
+        <div><h1 className="text-2xl font-semibold text-gray-900">Produtos</h1><p className="text-sm text-gray-400 mt-0.5">{produtos.length} cadastrados</p></div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <Upload size={14} className="mr-1.5" /> Importar
-          </Button>
-          <Button onClick={handleNew}>
-            <Plus size={15} className="mr-1.5" /> Novo produto
-          </Button>
+          <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
+          <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Produto</Button>
         </div>
       </div>
 
-      {showImport && (
-        <ImportacaoModal
-          tenantSlug={tenantSlug}
-          entidade="produtos"
-          queryKey="produtos"
-          onClose={() => setShowImport(false)}
-        />
-      )}
-
-      <div className="relative mb-4">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <Input placeholder="Buscar produtos..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} className="pl-9" />
+      <div className="flex gap-3 mb-4">
+        <Input placeholder="Buscar produto..." value={busca} onChange={e => setBusca(e.target.value)} className="max-w-xs h-9 text-sm" />
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Nome</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Unidade</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Estoque</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Preço Varejo</th>
-              <th className="px-4 py-3 w-16" />
+              {['Nome','Tipo','Unidade','Preço Varejo','Estoque','Status',''].map((h,i) => (
+                <th key={i} className={`text-${i===0?'left':'center'} text-xs font-medium text-gray-400 px-4 py-3 ${i===6?'w-32':''}`}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto encontrado.</td></tr>
-            ) : items.map((item: any) => (
-              <tr key={item.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3">
-                  <p className="text-sm font-medium text-gray-900">{item.nome}</p>
-                  {item.codigoBarras && <p className="text-xs text-gray-400 font-mono">{item.codigoBarras}</p>}
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+            ) : produtos.length === 0 ? (
+              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
+            ) : produtos.map((p: any) => (
+              <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 cursor-pointer" onClick={() => abrirModal(p)}>{p.nome}</td>
+                <td className="px-4 py-3 text-center"><Badge variant="secondary">{p.tipo ?? '—'}</Badge></td>
+                <td className="px-4 py-3 text-center text-sm text-gray-500">{p.unidade ?? '—'}</td>
+                <td className="px-4 py-3 text-center text-sm font-medium">{p.precoVarejo ? fmt(p.precoVarejo) : '—'}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`text-sm font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{p.estoqueAtual}</span>
+                  <span className="text-xs text-gray-300">/{p.estoqueMinimo}</span>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{item.unidade}</td>
-                <td className="px-4 py-3 hidden lg:table-cell">
-                  <span className={`text-sm font-medium ${item.estoqueAtual <= item.estoqueMinimo ? 'text-red-500' : 'text-gray-900'}`}>{item.estoqueAtual}</span>
-                  <span className="text-xs text-gray-400 ml-1">/ mín {item.estoqueMinimo}</span>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-900 hidden lg:table-cell">{formatCents(item.precoVarejo)}</td>
+                <td className="px-4 py-3 text-center"><Badge variant={p.activeFlag ? 'default' : 'secondary'}>{p.activeFlag ? 'Ativo' : 'Inativo'}</Badge></td>
                 <td className="px-4 py-3">
-                  <button onClick={() => handleEdit(item)} className="text-gray-300 hover:text-green-600 transition-colors">
-                    <Pencil size={14} />
-                  </button>
+                  <div className="flex items-center justify-center gap-1">
+                    <button onClick={() => setShowFicha(p)} title="Ficha técnica" className="p-1 text-blue-400 hover:text-blue-600"><BookOpen size={14} /></button>
+                    <button onClick={() => { if (confirm(`Excluir "${p.nome}"?`)) excluirMut.mutate(p.produtoId) }} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages}</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(p => p + 1)}>Próximo</Button>
-            </div>
-          </div>
-        )}
       </div>
 
-      {showForm && (
+      {/* Modal Produto */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">{editando ? 'Editar Produto' : 'Novo Produto'}</h2>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div><Label>Nome *</Label><Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Tipo</Label>
+                  <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div><Label>Unidade</Label><Input value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1" placeholder="kg, un, cx..." /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Preço Varejo (R$)</Label><Input type="number" min="0" step="0.01" value={precoVarejo} onChange={e => setPrecoVarejo(e.target.value)} className="mt-1" /></div>
+                <div><Label>Preço Atacado (R$)</Label><Input type="number" min="0" step="0.01" value={precoAtacado} onChange={e => setPrecoAtacado(e.target.value)} className="mt-1" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Estoque Atual</Label><Input type="number" min="0" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
+                <div><Label>Estoque Mínimo</Label><Input type="number" min="0" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-700">Produto ativo</span>
+              </label>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+                <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>{salvarMut.isPending ? 'Salvando...' : 'Salvar'}</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ficha Técnica */}
+      {showFicha && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">{editItem ? 'Editar produto' : 'Novo produto'}</h2>
-              <button onClick={() => { setShowForm(false); setEditItem(null) }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <div>
+                <h2 className="text-lg font-semibold">Ficha Técnica</h2>
+                <p className="text-sm text-gray-400 mt-0.5">{showFicha.nome}</p>
+              </div>
+              <button onClick={() => setShowFicha(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
-              <div>
-                <Label>Nome *</Label>
-                <Input {...form.register('nome')} className="mt-1" />
-                {form.formState.errors.nome && <p className="text-xs text-red-500 mt-1">{form.formState.errors.nome.message}</p>}
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-2"><Label>Código de barras</Label><Input {...form.register('codigoBarras')} className="mt-1 font-mono" placeholder="EAN-13" /></div>
-                <div>
-                  <Label>Unidade</Label>
-                  <select {...form.register('unidade')} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                    {['un', 'kg', 'g', 'L', 'ml', 'cx', 'pc', 'par', 'm'].map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
+            <div className="p-6">
+              {/* Adicionar insumo */}
+              <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                <p className="text-sm font-medium text-gray-700 mb-3">Adicionar Insumo</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-1">
+                    <Label className="text-xs">Insumo *</Label>
+                    <select value={fichaInsumoId} onChange={e => setFichaInsumoId(e.target.value)}
+                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      <option value="">Selecionar...</option>
+                      {insumos.map((ins: any) => <option key={ins.insumoId} value={ins.insumoId}>{ins.nome}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Quantidade *</Label>
+                    <Input type="number" min="0" step="0.001" value={fichaQuantidade} onChange={e => setFichaQuantidade(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0.000" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Unidade</Label>
+                    <Input value={fichaUnidade} onChange={e => setFichaUnidade(e.target.value)} className="mt-1 h-9 text-sm" placeholder="kg" />
+                  </div>
                 </div>
+                <Button size="sm" className="mt-3" onClick={() => addFichaMut.mutate()}
+                  disabled={!fichaInsumoId || !fichaQuantidade || addFichaMut.isPending}>
+                  <Plus size={13} className="mr-1" /> Adicionar
+                </Button>
               </div>
-              <div><Label>Categoria</Label><Input {...form.register('categoria')} className="mt-1" /></div>
-              <div className="grid grid-cols-2 gap-4">
-                <div><Label>Estoque atual</Label><Input {...form.register('estoqueAtual', { valueAsNumber: true })} type="number" className="mt-1" /></div>
-                <div><Label>Estoque mínimo</Label><Input {...form.register('estoqueMinimo', { valueAsNumber: true })} type="number" className="mt-1" /></div>
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div><Label>Custo (R$)</Label><Input {...form.register('precoCusto', { valueAsNumber: true })} type="number" step="0.01" className="mt-1" /></div>
-                <div><Label>Varejo (R$)</Label><Input {...form.register('precoVarejo', { valueAsNumber: true })} type="number" step="0.01" className="mt-1" /></div>
-                <div><Label>Atacado (R$)</Label><Input {...form.register('precoAtacado', { valueAsNumber: true })} type="number" step="0.01" className="mt-1" /></div>
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <textarea {...form.register('descricao')} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditItem(null) }}>Cancelar</Button>
-                <Button type="submit" disabled={isPending}>{isPending ? 'Salvando...' : editItem ? 'Salvar alterações' : 'Salvar produto'}</Button>
-              </div>
-            </form>
+
+              {/* Lista de insumos */}
+              {fichaItens.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-8">Nenhum insumo na ficha técnica.</p>
+              ) : (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      {['Insumo','Quantidade','Unidade','Custo Est.',''].map((h,i) => (
+                        <th key={i} className={`text-${i===0?'left':'center'} text-xs font-medium text-gray-400 px-3 py-2`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fichaItens.map((item: any) => (
+                      <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50">
+                        <td className="px-3 py-2.5 text-sm font-medium text-gray-900">{item.nomeInsumo ?? item.insumo?.nome ?? `Insumo #${item.insumoId}`}</td>
+                        <td className="px-3 py-2.5 text-center text-sm text-gray-600">{parseFloat(String(item.quantidade)).toFixed(3)}</td>
+                        <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
+                        <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.custoParcial ? (item.custoParcial/100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <button onClick={() => removeFichaMut.mutate(item.produtoInsumoId ?? item.itemId)} className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       )}

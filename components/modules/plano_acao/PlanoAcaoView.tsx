@@ -1,0 +1,191 @@
+'use client'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Check, RefreshCw, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+
+interface Props { tenantSlug: string }
+
+function fmtDate(d: string) { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') }
+
+export default function PlanoAcaoView({ tenantSlug }: Props) {
+  const qc      = useQueryClient()
+  const api     = `/api/${tenantSlug}/plano-acao`
+  const [filtroStatus, setFiltroStatus] = useState('todos')
+  const [busca, setBusca]               = useState('')
+  const [showModal, setShowModal]       = useState(false)
+  const [editando, setEditando]         = useState<any>(null)
+
+  // Form
+  const [dataAcao, setDataAcao]           = useState(new Date().toISOString().slice(0,10))
+  const [identificacao, setIdentificacao] = useState('')
+  const [acao, setAcao]                   = useState('')
+  const [responsavel, setResponsavel]     = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['plano-acao', tenantSlug, filtroStatus, busca],
+    queryFn:  async () => {
+      const p = new URLSearchParams()
+      if (filtroStatus !== 'todos') p.set('status', filtroStatus)
+      if (busca) p.set('busca', busca)
+      return (await fetch(`${api}?${p}`)).json()
+    },
+  })
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['plano-acao', tenantSlug] })
+
+  const salvarMut = useMutation({
+    mutationFn: async () => {
+      const payload = { dataAcao, identificacao, acao, responsavel }
+      if (editando) {
+        return fetch(`${api}/${editando.acaoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+      }
+      return fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+    },
+    onSuccess: () => { invalidate(); fecharModal() },
+  })
+
+  const concluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'concluir' }) }).then(r => r.json()),
+    onSuccess: invalidate,
+  })
+
+  const reabrirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reabrir' }) }).then(r => r.json()),
+    onSuccess: invalidate,
+  })
+
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: invalidate,
+  })
+
+  function abrirModal(item?: any) {
+    if (item) {
+      setEditando(item)
+      setDataAcao(item.dataAcao)
+      setIdentificacao(item.identificacao)
+      setAcao(item.acao)
+      setResponsavel(item.responsavel ?? '')
+    } else {
+      setEditando(null)
+      setDataAcao(new Date().toISOString().slice(0,10))
+      setIdentificacao(''); setAcao(''); setResponsavel('')
+    }
+    setShowModal(true)
+  }
+
+  function fecharModal() { setShowModal(false); setEditando(null) }
+
+  const itens = data ?? []
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Plano de Ação</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{itens.filter((i: any) => i.status === 'pendente').length} pendentes</p>
+        </div>
+        <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Nova Ação</Button>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex gap-3 mb-4">
+        <Input placeholder="Buscar identificação ou responsável..." value={busca} onChange={e => setBusca(e.target.value)} className="max-w-xs h-9 text-sm" />
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          {(['todos','pendente','concluido'] as const).map(s => (
+            <button key={s} onClick={() => setFiltroStatus(s)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${filtroStatus === s ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {s === 'todos' ? 'Todos' : s === 'pendente' ? 'Pendentes' : 'Concluídos'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Lista */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-28">Data</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-40">Identificação</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Ação</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-32 hidden md:table-cell">Responsável</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-24">Status</th>
+              <th className="px-4 py-3 w-28" />
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+            ) : itens.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma ação encontrada.</td></tr>
+            ) : itens.map((item: any) => (
+              <tr key={item.acaoId}
+                className={`border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer ${item.status === 'concluido' ? 'opacity-60' : ''}`}
+                onClick={() => abrirModal(item)}>
+                <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(item.dataAcao)}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-sm font-medium px-2 py-1 rounded ${item.status === 'pendente' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}>
+                    {item.identificacao}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-700 max-w-xs truncate">{item.acao}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{item.responsavel ?? '—'}</td>
+                <td className="px-4 py-3">
+                  <Badge variant={item.status === 'pendente' ? 'secondary' : 'default'}>
+                    {item.status === 'pendente' ? 'Pendente' : 'Concluído'}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-1">
+                    {item.status === 'pendente' ? (
+                      <button onClick={() => concluirMut.mutate(item.acaoId)} title="Concluir" className="p-1 text-green-500 hover:text-green-700"><Check size={14} /></button>
+                    ) : (
+                      <button onClick={() => reabrirMut.mutate(item.acaoId)} title="Reabrir" className="p-1 text-amber-500 hover:text-amber-700"><RefreshCw size={14} /></button>
+                    )}
+                    <button onClick={() => { if (confirm('Excluir esta ação?')) excluirMut.mutate(item.acaoId) }} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">{editando ? 'Editar Ação' : 'Nova Ação'}</h2>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Data *</Label><Input type="date" value={dataAcao} onChange={e => setDataAcao(e.target.value)} className="mt-1" /></div>
+                <div><Label>Identificação *</Label><Input value={identificacao} onChange={e => setIdentificacao(e.target.value)} className="mt-1" placeholder="Ex: MANUTENÇÃO" /></div>
+              </div>
+              <div>
+                <Label>Ação *</Label>
+                <textarea value={acao} onChange={e => setAcao(e.target.value)} rows={4}
+                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none resize-none"
+                  placeholder="Descreva a ação..." />
+              </div>
+              <div><Label>Responsável</Label><Input value={responsavel} onChange={e => setResponsavel(e.target.value)} className="mt-1" placeholder="Nome do responsável" /></div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+                <Button onClick={() => salvarMut.mutate()} disabled={!dataAcao || !identificacao || !acao || salvarMut.isPending}>
+                  {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
