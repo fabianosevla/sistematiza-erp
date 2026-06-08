@@ -1,7 +1,8 @@
-import type { ComponentType } from 'react'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type IconComponent = React.ComponentType<any>
 
 interface Props {
-  icon?: ComponentType<{ size?: number; className?: string }>
+  icon?: IconComponent
   title: string
   description?: string
   action?: string
