@@ -1,41 +1,51 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Download, Trash2, TrendingUp, TrendingDown, DollarSign, CheckCircle, ChevronLeft, ChevronRight, Copy } from 'lucide-react'
+import { Plus, X, Download, Trash2, TrendingUp, TrendingDown, DollarSign, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useToast } from '@/components/ui/Toast'
+import { useDominio } from '@/hooks/useDominio'
 
 interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
 
-const MESES_NOME = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+const MESES_NOME  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const MESES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-const CATEGORIAS = ['Matéria Prima','Embalagem','Entrega / Frete','Funcionários','Aluguel','Energia / Água','Marketing','Impostos','Outros']
 
 export default function FinanceiroView({ tenantSlug }: Props) {
   const qc      = useQueryClient()
+  const { toast } = useToast()
   const apiBase = `/api/${tenantSlug}/financeiro`
   const now     = new Date()
 
-  // Navegador de mês — estado central
+  // Domínio configurável — categorias de despesa gerenciadas em Cadastros → Domínios
+  const categorias = useDominio(tenantSlug, 'categoria_despesa', [
+    'Matéria Prima', 'Embalagem', 'Entrega / Frete', 'Funcionários',
+    'Aluguel', 'Energia / Água', 'Marketing', 'Impostos', 'Outros',
+  ])
+
+  // Navegador de mês
   const [mes, setMes] = useState(now.getMonth() + 1)
   const [ano, setAno] = useState(now.getFullYear())
   const [aba, setAba] = useState<'despesas'|'dre'|'gastos-fixos'|'demonstrativo'|'compras'>('despesas')
-  const [anoDemo, setAnoDemo]       = useState(now.getFullYear())
-  const [anoGastos, setAnoGastos]   = useState(now.getFullYear())
-  const [categoria, setCategoria]   = useState('')
-  const [showNova, setShowNova]     = useState(false)
+  const [anoDemo, setAnoDemo]     = useState(now.getFullYear())
+  const [anoGastos, setAnoGastos] = useState(now.getFullYear())
+  const [categoria, setCategoria] = useState('')
+  const [showNova, setShowNova]   = useState(false)
   const [showNovaCompra, setShowNovaCompra] = useState(false)
+  const [confirmDelete, setConfirmDelete]   = useState<{ id: number; nome: string } | null>(null)
   const [editandoCelula, setEditandoCelula] = useState<{ catId: number; mes: number } | null>(null)
   const [valorCelula, setValorCelula]       = useState('')
 
   // Form despesa
   const [nome, setNome]               = useState('')
-  const [catNova, setCatNova]         = useState(CATEGORIAS[0])
+  const [catNova, setCatNova]         = useState('')
   const [valor, setValor]             = useState('')
   const [dataDespesa, setDataDespesa] = useState(new Date().toISOString().slice(0, 10))
   const [recorrente, setRecorrente]   = useState(false)
@@ -51,16 +61,15 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   const [cStatus, setCStatus]                 = useState('pendente')
 
   function navMes(delta: number) {
-    let novoMes = mes + delta
-    let novoAno = ano
+    let novoMes = mes + delta; let novoAno = ano
     if (novoMes > 12) { novoMes = 1;  novoAno++ }
     if (novoMes < 1)  { novoMes = 12; novoAno-- }
     setMes(novoMes); setAno(novoAno)
   }
 
   const invalidate = (key: string) => qc.invalidateQueries({ queryKey: [key, tenantSlug] })
+  const eMesAtual  = mes === now.getMonth() + 1 && ano === now.getFullYear()
 
-  // ── Queries ──────────────────────────────────────────────────────────────
   const { data: kpisData } = useQuery({
     queryKey: ['fin-kpis', tenantSlug, mes, ano],
     queryFn:  async () => (await fetch(`${apiBase}?tipo=kpis&mes=${mes}&ano=${ano}`)).json(),
@@ -100,21 +109,30 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     enabled:  aba === 'compras',
   })
 
-  // ── Mutations ─────────────────────────────────────────────────────────────
   const criarMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(apiBase, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, categoria: catNova, valor: Math.round(parseFloat(valor.replace(',', '.')) * 100), dataDespesa, recorrente, periodoRecorrencia: recorrente ? periodo : undefined, mes, ano }),
+        body: JSON.stringify({
+          nome, categoria: catNova || categorias[0],
+          valor: Math.round(parseFloat(valor.replace(',', '.')) * 100),
+          dataDespesa, recorrente, periodoRecorrencia: recorrente ? periodo : undefined, mes, ano,
+        }),
       })
       const d = await res.json(); if (!res.ok) throw new Error(d.message); return d
     },
-    onSuccess: () => { invalidate('despesas'); invalidate('fin-kpis'); setShowNova(false); setNome(''); setValor('') },
+    onSuccess: () => {
+      invalidate('despesas'); invalidate('fin-kpis')
+      setShowNova(false); setNome(''); setValor('')
+      toast('Despesa lançada!')
+    },
+    onError: () => toast('Erro ao lançar despesa.', 'error'),
   })
 
   const excluirMut = useMutation({
     mutationFn: (id: number) => fetch(`${apiBase}/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { invalidate('despesas'); invalidate('fin-kpis') },
+    onSuccess: () => { invalidate('despesas'); invalidate('fin-kpis'); toast('Despesa excluída.') },
+    onError:   () => toast('Erro ao excluir.', 'error'),
   })
 
   const salvarCelulaMut = useMutation({
@@ -125,38 +143,43 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     onSuccess: () => { invalidate('gastos-fixos'); setEditandoCelula(null) },
   })
 
-  const copiarMesAnteriorMut = useMutation({
-    mutationFn: () => fetch(`${apiBase}/gastos-fixos`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acao: 'copiarMesAnterior', mes: anoGastos, ano: anoGastos }),
-    }).then(r => r.json()),
-    onSuccess: () => invalidate('gastos-fixos'),
-  })
-
   const propagarAnualMut = useMutation({
     mutationFn: ({ categoriaId, valor }: any) => fetch(`${apiBase}/gastos-fixos`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ acao: 'propagarAnual', categoriaId, ano: anoGastos, valor }),
     }).then(r => r.json()),
-    onSuccess: () => invalidate('gastos-fixos'),
+    onSuccess: () => { invalidate('gastos-fixos'); toast('Valor propagado para o ano todo!') },
   })
 
   const criarCompraMut = useMutation({
     mutationFn: async () => fetch(`/api/${tenantSlug}/compras`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ nomeInsumo: cNomeInsumo, nomeFornecedor: cNomeFornecedor, dataEntrada: cDataEntrada, valorUnitario: Math.round(parseFloat(cValorUnit.replace(',', '.')) * 100), quantidade: parseFloat(cQuantidade), caixas: Number(cCaixas), qtdTotal: parseFloat(cQuantidade), status: cStatus }),
+      body: JSON.stringify({
+        nomeInsumo: cNomeInsumo, nomeFornecedor: cNomeFornecedor, dataEntrada: cDataEntrada,
+        valorUnitario: Math.round(parseFloat(cValorUnit.replace(',', '.')) * 100),
+        quantidade: parseFloat(cQuantidade), caixas: Number(cCaixas),
+        qtdTotal: parseFloat(cQuantidade), status: cStatus,
+      }),
     }).then(r => r.json()),
-    onSuccess: () => { invalidate('compras'); setShowNovaCompra(false); setCNomeInsumo(''); setCNomeFornecedor(''); setCValorUnit(''); setCQuantidade('') },
+    onSuccess: () => {
+      invalidate('compras'); setShowNovaCompra(false)
+      setCNomeInsumo(''); setCNomeFornecedor(''); setCValorUnit(''); setCQuantidade('')
+      toast('Compra registrada!')
+    },
+    onError: () => toast('Erro ao registrar compra.', 'error'),
   })
 
   const pagarCompraMut = useMutation({
-    mutationFn: (id: number) => fetch(`/api/${tenantSlug}/compras/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataPagamento: new Date().toISOString().slice(0, 10) }) }).then(r => r.json()),
-    onSuccess: () => invalidate('compras'),
+    mutationFn: (id: number) => fetch(`/api/${tenantSlug}/compras/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataPagamento: new Date().toISOString().slice(0, 10) }),
+    }).then(r => r.json()),
+    onSuccess: () => { invalidate('compras'); toast('Compra marcada como paga!') },
   })
 
   const excluirCompraMut = useMutation({
     mutationFn: (id: number) => fetch(`/api/${tenantSlug}/compras/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => invalidate('compras'),
+    onSuccess: () => { invalidate('compras'); toast('Compra excluída.') },
   })
 
   function exportCSV() {
@@ -168,15 +191,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     a.click()
   }
 
-  // ── Extração defensiva ───────────────────────────────────────────────────
+  // Extração defensiva
   const kpis    = kpisData?.data
   const despesas = Array.isArray(despesasData?.data) ? despesasData.data : []
   const dre      = dreData?.data ?? null
   const gastos   = gastosData?.data ?? null
   const demo     = Array.isArray(demoData?.data) ? demoData.data : []
   const compras  = Array.isArray(comprasData?.data) ? comprasData.data : Array.isArray(comprasData) ? comprasData : []
-
-  const eMesAtual = mes === now.getMonth() + 1 && ano === now.getFullYear()
 
   return (
     <div>
@@ -191,18 +212,26 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               {eMesAtual && <span className="ml-2 text-xs font-normal text-green-600 bg-green-50 px-1.5 py-0.5 rounded">mês atual</span>}
             </span>
             <button onClick={() => navMes(1)} className="p-0.5 text-gray-400 hover:text-gray-700"><ChevronRight size={16} /></button>
-            {!eMesAtual && <button onClick={() => { setMes(now.getMonth() + 1); setAno(now.getFullYear()) }} className="text-xs text-blue-600 hover:underline">Hoje</button>}
+            {!eMesAtual && (
+              <button onClick={() => { setMes(now.getMonth() + 1); setAno(now.getFullYear()) }} className="text-xs text-blue-600 hover:underline">
+                Hoje
+              </button>
+            )}
           </div>
         </div>
         <div className="flex gap-2">
           {aba === 'despesas' && (
             <>
               <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
-              <Button onClick={() => { setNome(''); setValor(''); setShowNova(true) }}><Plus size={15} className="mr-1.5" /> Nova despesa</Button>
+              <Button onClick={() => { setNome(''); setValor(''); setCatNova(categorias[0] ?? ''); setShowNova(true) }}>
+                <Plus size={15} className="mr-1.5" /> Nova despesa
+              </Button>
             </>
           )}
           {aba === 'compras' && (
-            <Button onClick={() => { setCNomeInsumo(''); setCValorUnit(''); setCQuantidade(''); setShowNovaCompra(true) }}><Plus size={15} className="mr-1.5" /> Nova compra</Button>
+            <Button onClick={() => { setCNomeInsumo(''); setCValorUnit(''); setCQuantidade(''); setShowNovaCompra(true) }}>
+              <Plus size={15} className="mr-1.5" /> Nova compra
+            </Button>
           )}
         </div>
       </div>
@@ -211,9 +240,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           {[
-            { label: 'Receita hoje',                value: fmt(kpis.receitaHoje), icon: TrendingUp,   color: 'text-green-500' },
-            { label: `Receita ${MESES_ABREV[mes-1]}/${ano}`, value: fmt(kpis.receitaMes),  icon: TrendingUp,   color: 'text-green-500' },
-            { label: `Despesas ${MESES_ABREV[mes-1]}/${ano}`,value: fmt(kpis.despesasMes), icon: TrendingDown, color: 'text-red-500' },
+            { label: 'Receita hoje',                               value: fmt(kpis.receitaHoje),  icon: TrendingUp,   color: 'text-green-500' },
+            { label: `Receita ${MESES_ABREV[mes - 1]}/${ano}`,    value: fmt(kpis.receitaMes),   icon: TrendingUp,   color: 'text-green-500' },
+            { label: `Despesas ${MESES_ABREV[mes - 1]}/${ano}`,   value: fmt(kpis.despesasMes),  icon: TrendingDown, color: 'text-red-500' },
             {
               label: kpis.resultado >= 0 ? 'Resultado' : 'Prejuízo',
               value: fmt(Math.abs(kpis.resultado)),
@@ -246,21 +275,19 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         ))}
       </div>
 
-      {/* Filtro de categoria (só em Despesas) */}
+      {/* Filtro de categoria — só em Despesas */}
       {aba === 'despesas' && (
-        <div className="flex gap-3 mb-4">
+        <div className="flex flex-wrap gap-3 mb-4 items-center">
           <select value={categoria} onChange={e => setCategoria(e.target.value)}
             className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white focus:outline-none">
             <option value="">Todas as categorias</option>
-            {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+            {categorias.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <p className="text-xs text-gray-400 self-center">
-            Recorrentes são geradas automaticamente a cada mês.
-          </p>
+          <p className="text-xs text-gray-400">Recorrentes são geradas automaticamente a cada mês.</p>
         </div>
       )}
 
-      {/* ── Despesas ────────────────────────────────────────────────────── */}
+      {/* ── Despesas ───────────────────────────────────────────── */}
       {aba === 'despesas' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
@@ -277,7 +304,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               ) : despesas.length === 0 ? (
                 <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma despesa em {MESES_NOME[mes - 1]} {ano}.</td></tr>
               ) : despesas.map((d: any) => (
-                <tr key={d.despesaId} className={`border-b border-gray-50 hover:bg-gray-50/50 ${d.geradaAutomaticamente ? 'bg-blue-50/20' : ''}`}>
+                <tr key={d.despesaId} className={`border-b border-gray-50 hover:bg-gray-50/50 group ${d.geradaAutomaticamente ? 'bg-blue-50/20' : ''}`}>
                   <td className="px-4 py-3">
                     <p className="text-sm font-medium text-gray-900">{d.nome}</p>
                     {d.geradaAutomaticamente && <p className="text-xs text-blue-500">gerada automaticamente</p>}
@@ -285,11 +312,18 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   <td className="px-4 py-3"><Badge variant="secondary">{d.categoria}</Badge></td>
                   <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(d.dataDespesa)}</td>
                   <td className="px-4 py-3">
-                    {d.recorrente ? <Badge variant="outline">Recorrente</Badge> : <span className="text-xs text-gray-400">Avulsa</span>}
+                    {d.recorrente
+                      ? <Badge variant="outline">{d.periodoRecorrencia ?? 'Recorrente'}</Badge>
+                      : <span className="text-xs text-gray-400">Avulsa</span>
+                    }
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(d.valor)}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => { if (confirm(`Excluir "${d.nome}"?`)) excluirMut.mutate(d.despesaId) }} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                    <button
+                      onClick={() => setConfirmDelete({ id: d.despesaId, nome: d.nome })}
+                      className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                      <X size={14} />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -298,12 +332,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* ── DRE ─────────────────────────────────────────────────────────── */}
+      {/* ── DRE ──────────────────────────────────────────────── */}
       {aba === 'dre' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 mb-2">
-            <p className="text-sm font-medium text-gray-700">{MESES_NOME[mes - 1]} {ano}</p>
-          </div>
           {dreLoading ? <div className="text-center py-12 text-sm text-gray-400">Calculando...</div> : dre ? (
             <>
               <div className="grid grid-cols-3 gap-3">
@@ -317,16 +348,28 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   <p className="text-2xl font-bold text-red-700 mt-1">{fmt(dre.totalDespesas)}</p>
                 </div>
                 <div className={`rounded-xl border p-4 text-center ${dre.resultado >= 0 ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
-                  <p className={`text-xs font-medium ${dre.resultado >= 0 ? 'text-green-600' : 'text-red-600'}`}>{dre.resultado >= 0 ? 'Lucro' : 'Prejuízo'}</p>
+                  <p className={`text-xs font-medium ${dre.resultado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {dre.resultado >= 0 ? 'Lucro' : 'Prejuízo'}
+                  </p>
                   <p className={`text-2xl font-bold mt-1 ${dre.resultado >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(Math.abs(dre.resultado))}</p>
-                  {dre.receita > 0 && <p className="text-xs mt-0.5" style={{ color: dre.resultado >= 0 ? '#15803d' : '#dc2626' }}>Margem: {((dre.resultado / dre.receita) * 100).toFixed(1)}%</p>}
+                  {dre.receita > 0 && (
+                    <p className="text-xs mt-0.5" style={{ color: dre.resultado >= 0 ? '#15803d' : '#dc2626' }}>
+                      Margem: {((dre.resultado / dre.receita) * 100).toFixed(1)}%
+                    </p>
+                  )}
                 </div>
               </div>
               {dre.porCategoria && Object.keys(dre.porCategoria).length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700">Por categoria</h3></div>
                   <table className="w-full">
-                    <thead><tr className="border-b border-gray-100">{['Categoria', 'Valor', '% Desp', '% Rec'].map((h, i) => <th key={i} className={`text-${i === 0 ? 'left' : 'right'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>)}</tr></thead>
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        {['Categoria', 'Valor', '% Desp', '% Rec'].map((h, i) => (
+                          <th key={i} className={`text-${i === 0 ? 'left' : 'right'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
                     <tbody>
                       {Object.entries(dre.porCategoria).sort(([, a], [, b]) => (b as number) - (a as number)).map(([cat, val]) => (
                         <tr key={cat} className="border-b border-gray-50 last:border-0">
@@ -345,7 +388,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* ── Gastos Fixos ────────────────────────────────────────────────── */}
+      {/* ── Gastos Fixos ─────────────────────────────────────── */}
       {aba === 'gastos-fixos' && (
         <div>
           <div className="flex items-center justify-between mb-4">
@@ -354,7 +397,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               <span className="text-lg font-semibold w-16 text-center">{anoGastos}</span>
               <button onClick={() => setAnoGastos(a => a + 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">›</button>
             </div>
-            <p className="text-xs text-gray-400">Clique em uma célula para editar · Clique no nome da categoria para propagar o valor de Jan para o ano todo</p>
+            <p className="text-xs text-gray-400">Clique em uma célula para editar · Clique no nome para propagar o valor de Jan para o ano todo</p>
           </div>
           {gastos ? (
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -374,14 +417,18 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                       return (
                         <tr key={cat.categoriaId} className="border-b border-gray-50 hover:bg-gray-50/30">
                           <td className="px-4 py-2 text-sm font-medium text-gray-900">
-                            <span title={valJan > 0 ? `Propagar ${fmt(valJan)} para todos os meses` : ''}
+                            <span
+                              title={valJan > 0 ? `Propagar ${fmt(valJan)} para todos os meses` : ''}
                               className={valJan > 0 ? 'cursor-pointer hover:text-blue-600 underline decoration-dotted' : ''}
-                              onClick={() => { if (valJan > 0 && confirm(`Propagar ${fmt(valJan)} para todos os meses de ${anoGastos}?`)) propagarAnualMut.mutate({ categoriaId: cat.categoriaId, valor: valJan }) }}>
+                              onClick={() => {
+                                if (valJan > 0 && confirm(`Propagar ${fmt(valJan)} para todos os meses de ${anoGastos}?`))
+                                  propagarAnualMut.mutate({ categoriaId: cat.categoriaId, valor: valJan })
+                              }}>
                               {cat.nome}
                             </span>
                           </td>
                           {Array.from({ length: 12 }, (_, i) => i + 1).map(mesC => {
-                            const val      = gastos.grade?.[cat.categoriaId]?.[mesC] ?? 0
+                            const val       = gastos.grade?.[cat.categoriaId]?.[mesC] ?? 0
                             const isEditing = editandoCelula?.catId === cat.categoriaId && editandoCelula?.mes === mesC
                             const isMesAtual = mesC === mes && anoGastos === ano
                             return (
@@ -390,10 +437,14 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                                   <input type="number" min="0" step="0.01" value={valorCelula}
                                     onChange={e => setValorCelula(e.target.value)}
                                     onBlur={() => salvarCelulaMut.mutate({ categoriaId: cat.categoriaId, mesC, valor: valorCelula })}
-                                    onKeyDown={e => { if (e.key === 'Enter') salvarCelulaMut.mutate({ categoriaId: cat.categoriaId, mesC, valor: valorCelula }); if (e.key === 'Escape') setEditandoCelula(null) }}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') salvarCelulaMut.mutate({ categoriaId: cat.categoriaId, mesC, valor: valorCelula })
+                                      if (e.key === 'Escape') setEditandoCelula(null)
+                                    }}
                                     className="w-20 h-6 text-right text-xs border border-green-400 rounded px-1 focus:outline-none" autoFocus />
                                 ) : (
-                                  <button onClick={() => { setEditandoCelula({ catId: cat.categoriaId, mes: mesC }); setValorCelula(val > 0 ? (val / 100).toFixed(2) : '') }}
+                                  <button
+                                    onClick={() => { setEditandoCelula({ catId: cat.categoriaId, mes: mesC }); setValorCelula(val > 0 ? (val / 100).toFixed(2) : '') }}
                                     className={`w-20 h-6 text-right text-xs px-1 rounded hover:bg-green-50 ${val > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>
                                     {val > 0 ? fmt(val) : '—'}
                                   </button>
@@ -408,13 +459,17 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     <tr className="border-t-2 border-gray-200 bg-gray-50">
                       <td className="px-4 py-2 text-sm font-bold text-gray-700">Total mensal</td>
                       {Array.from({ length: 12 }, (_, i) => i + 1).map(mesC => {
-                        const total = Array.isArray(gastos.categorias) ? gastos.categorias.reduce((a: number, cat: any) => a + (gastos.grade?.[cat.categoriaId]?.[mesC] ?? 0), 0) : 0
+                        const total = Array.isArray(gastos.categorias)
+                          ? gastos.categorias.reduce((a: number, cat: any) => a + (gastos.grade?.[cat.categoriaId]?.[mesC] ?? 0), 0)
+                          : 0
                         const isMesAtual = mesC === mes && anoGastos === ano
                         return <td key={mesC} className={`px-2 py-2 text-right text-xs font-semibold text-gray-700 ${isMesAtual ? 'bg-green-50/40' : ''}`}>{total > 0 ? fmt(total) : '—'}</td>
                       })}
                       <td className="px-4 py-2 text-right text-sm font-bold">
-                        {fmt(Array.isArray(gastos.categorias) ? gastos.categorias.reduce((a: number, cat: any) =>
-                          a + Array.from({ length: 12 }, (_, i) => gastos.grade?.[cat.categoriaId]?.[i + 1] ?? 0).reduce((x: number, y: number) => x + y, 0), 0) : 0)}
+                        {fmt(Array.isArray(gastos.categorias)
+                          ? gastos.categorias.reduce((a: number, cat: any) =>
+                            a + Array.from({ length: 12 }, (_, i) => gastos.grade?.[cat.categoriaId]?.[i + 1] ?? 0).reduce((x: number, y: number) => x + y, 0), 0)
+                          : 0)}
                       </td>
                     </tr>
                   </tbody>
@@ -425,15 +480,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* ── Demonstrativo ───────────────────────────────────────────────── */}
+      {/* ── Demonstrativo ────────────────────────────────────── */}
       {aba === 'demonstrativo' && (
         <div>
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setAnoDemo(a => a - 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">‹</button>
-              <span className="text-lg font-semibold w-16 text-center">{anoDemo}</span>
-              <button onClick={() => setAnoDemo(a => a + 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">›</button>
-            </div>
+            <button onClick={() => setAnoDemo(a => a - 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">‹</button>
+            <span className="text-lg font-semibold w-16 text-center">{anoDemo}</span>
+            <button onClick={() => setAnoDemo(a => a + 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">›</button>
           </div>
           {demoLoading ? <div className="text-center py-12 text-sm text-gray-400">Calculando...</div> : (
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -453,9 +506,12 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     ) : demo.map((m: any) => {
                       const isMesAtual = m.mesNum === now.getMonth() + 1 && anoDemo === now.getFullYear()
                       return (
-                        <tr key={m.mesNum} className={`border-b border-gray-50 cursor-pointer hover:bg-gray-50/50 ${m.resultado < 0 ? 'bg-red-50/20' : ''} ${isMesAtual ? 'ring-1 ring-inset ring-green-300' : ''}`}
+                        <tr key={m.mesNum}
+                          className={`border-b border-gray-50 cursor-pointer hover:bg-gray-50/50 ${m.resultado < 0 ? 'bg-red-50/20' : ''} ${isMesAtual ? 'ring-1 ring-inset ring-green-300' : ''}`}
                           onClick={() => { setMes(m.mesNum); setAno(anoDemo); setAba('despesas') }}>
-                          <td className="px-4 py-2.5 text-sm font-semibold text-gray-700">{m.mes}{isMesAtual && <span className="ml-1 text-xs text-green-500">●</span>}</td>
+                          <td className="px-4 py-2.5 text-sm font-semibold text-gray-700">
+                            {m.mes}{isMesAtual && <span className="ml-1 text-green-500">●</span>}
+                          </td>
                           <td className="px-4 py-2.5 text-right text-sm text-green-600 font-medium">{m.receita > 0 ? fmt(m.receita) : '—'}</td>
                           <td className="px-4 py-2.5 text-right text-sm text-red-500">{m.despesas > 0 ? fmt(m.despesas) : '—'}</td>
                           <td className="px-4 py-2.5 text-right text-sm text-orange-500">{m.fixos > 0 ? fmt(m.fixos) : '—'}</td>
@@ -476,7 +532,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* ── Rel. Compras ─────────────────────────────────────────────────── */}
+      {/* ── Rel. Compras ─────────────────────────────────────── */}
       {aba === 'compras' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
@@ -505,9 +561,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
                       {c.status !== 'pago' && (
-                        <button onClick={() => pagarCompraMut.mutate(c.compraId)} className="text-green-500 hover:text-green-700"><CheckCircle size={14} /></button>
+                        <button onClick={() => pagarCompraMut.mutate(c.compraId)} title="Marcar como pago" className="text-green-500 hover:text-green-700">
+                          <CheckCircle size={14} />
+                        </button>
                       )}
-                      <button onClick={() => { if (confirm('Excluir?')) excluirCompraMut.mutate(c.compraId) }} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                      <button onClick={() => excluirCompraMut.mutate(c.compraId)} className="text-gray-300 hover:text-red-500">
+                        <X size={14} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -517,7 +577,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* ── Modal Nova Despesa ───────────────────────────────────────────── */}
+      {/* ── Modal Nova Despesa ─────────────────────────────── */}
       {showNova && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
@@ -534,8 +594,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 <div>
                   <Label>Categoria *</Label>
                   <select value={catNova} onChange={e => setCatNova(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {CATEGORIAS.map(c => <option key={c} value={c}>{c}</option>)}
+                    {categorias.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
                 </div>
                 <div><Label>Data *</Label><Input type="date" value={dataDespesa} onChange={e => setDataDespesa(e.target.value)} className="mt-1" /></div>
               </div>
@@ -561,7 +622,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* ── Modal Nova Compra ────────────────────────────────────────────── */}
+      {/* ── Modal Nova Compra ──────────────────────────────── */}
       {showNovaCompra && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
@@ -596,6 +657,16 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Excluir despesa"
+          message={`Excluir "${confirmDelete.nome}"? Esta ação não pode ser desfeita.`}
+          confirmLabel="Excluir" danger
+          onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
     </div>
   )

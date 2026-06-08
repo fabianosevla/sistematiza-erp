@@ -11,12 +11,11 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import CsvImportModal from '@/components/ui/CsvImportModal'
+import { useDominio } from '@/hooks/useDominio'
 
 interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-
-const TIPOS = ['Massa', 'Molho', 'Acompanhamento', 'Bebida', 'Outro']
 
 type SortKey = 'nome' | 'tipo' | 'precoVarejo' | 'estoqueAtual'
 type SortDir = 'asc' | 'desc'
@@ -25,6 +24,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
   const api       = `/api/${tenantSlug}/cadastros/produtos`
+
+  // Domínios configuráveis — fallback garante funcionamento se API demorar
+  const tipos    = useDominio(tenantSlug, 'tipo_produto',   ['Massa', 'Molho', 'Acompanhamento', 'Bebida', 'Outro'])
+  const unidades = useDominio(tenantSlug, 'unidade_medida', ['kg', 'g', 'l', 'ml', 'un', 'cx'])
 
   const [busca, setBusca]             = useState('')
   const [showModal, setShowModal]     = useState(false)
@@ -36,8 +39,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [sortDir, setSortDir]         = useState<SortDir>('asc')
 
   const [nome, setNome]                 = useState('')
-  const [tipo, setTipo]                 = useState(TIPOS[0])
-  const [unidade, setUnidade]           = useState('kg')
+  const [tipo, setTipo]                 = useState('')
+  const [unidade, setUnidade]           = useState('')
   const [precoVarejo, setPrecoVarejo]   = useState('')
   const [precoAtacado, setPrecoAtacado] = useState('')
   const [estoqueMin, setEstoqueMin]     = useState('0')
@@ -45,7 +48,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [ativo, setAtivo]               = useState(true)
   const [fichaInsumoId, setFichaInsumoId]     = useState('')
   const [fichaQuantidade, setFichaQuantidade] = useState('')
-  const [fichaUnidade, setFichaUnidade]       = useState('kg')
+  const [fichaUnidade, setFichaUnidade]       = useState('')
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
 
@@ -102,12 +105,12 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
   function abrirModal(item?: any) {
     if (item) {
-      setEditando(item); setNome(item.nome); setTipo(item.tipo ?? TIPOS[0]); setUnidade(item.unidade ?? 'kg')
+      setEditando(item); setNome(item.nome); setTipo(item.tipo ?? tipos[0] ?? ''); setUnidade(item.unidade ?? unidades[0] ?? '')
       setPrecoVarejo(item.precoVarejo ? (item.precoVarejo / 100).toFixed(2) : '')
       setPrecoAtacado(item.precoAtacado ? (item.precoAtacado / 100).toFixed(2) : '')
       setEstoqueMin(String(item.estoqueMinimo ?? 0)); setEstoqueAtual(String(item.estoqueAtual ?? 0)); setAtivo(item.activeFlag ?? true)
     } else {
-      setEditando(null); setNome(''); setTipo(TIPOS[0]); setUnidade('kg')
+      setEditando(null); setNome(''); setTipo(tipos[0] ?? ''); setUnidade(unidades[0] ?? '')
       setPrecoVarejo(''); setPrecoAtacado(''); setEstoqueMin('0'); setEstoqueAtual('0'); setAtivo(true)
     }
     setShowModal(true)
@@ -126,7 +129,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
   }
 
   function exportCSV() {
-    const rows = todosProdutos.map((p: any) => [p.produtoId, p.nome, p.tipo ?? '', p.unidade ?? '', p.precoVarejo ? (p.precoVarejo/100).toFixed(2) : '0', p.estoqueAtual, p.estoqueMinimo])
+    const rows = todosProdutos.map((p: any) => [p.produtoId, p.nome, p.tipo ?? '', p.unidade ?? '', p.precoVarejo ? (p.precoVarejo / 100).toFixed(2) : '0', p.estoqueAtual, p.estoqueMinimo])
     const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Preço Varejo', 'Estoque Atual', 'Estoque Mínimo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = 'produtos.csv'; a.click()
   }
@@ -240,10 +243,17 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 <div>
                   <Label>Tipo</Label>
                   <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                    {tipos.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
                 </div>
-                <div><Label>Unidade</Label><Input value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1" placeholder="kg, un, cx..." /></div>
+                <div>
+                  <Label>Unidade</Label>
+                  <select value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    {unidades.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Preço Varejo (R$)</Label><Input type="number" min="0" step="0.01" value={precoVarejo} onChange={e => setPrecoVarejo(e.target.value)} className="mt-1" /></div>
@@ -292,7 +302,14 @@ export default function ProdutosView({ tenantSlug }: Props) {
                     </select>
                   </div>
                   <div><Label className="text-xs">Quantidade *</Label><Input type="number" min="0" step="0.001" value={fichaQuantidade} onChange={e => setFichaQuantidade(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0.000" /></div>
-                  <div><Label className="text-xs">Unidade</Label><Input value={fichaUnidade} onChange={e => setFichaUnidade(e.target.value)} className="mt-1 h-9 text-sm" placeholder="kg" /></div>
+                  <div>
+                    <Label className="text-xs">Unidade</Label>
+                    <select value={fichaUnidade} onChange={e => setFichaUnidade(e.target.value)}
+                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      <option value="">Selecionar...</option>
+                      {unidades.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
                 </div>
                 <Button size="sm" className="mt-3" onClick={() => addFichaMut.mutate()} disabled={!fichaInsumoId || !fichaQuantidade || addFichaMut.isPending}>
                   <Plus size={13} className="mr-1" /> Adicionar
@@ -331,13 +348,11 @@ export default function ProdutosView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Import */}
       {showImport && (
         <CsvImportModal tenantSlug={tenantSlug} entidade="produtos" nomeEntidade="Produtos"
           onClose={() => setShowImport(false)} onSuccess={() => { invalidate(); setShowImport(false) }} />
       )}
 
-      {/* Confirm Delete */}
       {confirmDelete && (
         <ConfirmModal
           title="Excluir produto"

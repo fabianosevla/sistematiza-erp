@@ -11,13 +11,11 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import CsvImportModal from '@/components/ui/CsvImportModal'
+import { useDominio } from '@/hooks/useDominio'
 
 interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-
-const TIPOS    = ['Matéria Prima', 'Embalagem', 'Limpeza', 'Outros']
-const UNIDADES = ['kg', 'g', 'l', 'ml', 'un', 'cx', 'sc', 'fd']
 
 type SortKey = 'nome' | 'tipo' | 'estoqueAtual' | 'precoCusto'
 type SortDir = 'asc' | 'desc'
@@ -26,6 +24,10 @@ export default function InsumosView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
   const api       = `/api/${tenantSlug}/cadastros/insumos`
+
+  // Domínios configuráveis
+  const tipos    = useDominio(tenantSlug, 'tipo_insumo',    ['Matéria Prima', 'Embalagem', 'Limpeza', 'Outros'])
+  const unidades = useDominio(tenantSlug, 'unidade_medida', ['kg', 'g', 'l', 'ml', 'un', 'cx', 'sc', 'fd'])
 
   const [busca, setBusca]             = useState('')
   const [showModal, setShowModal]     = useState(false)
@@ -36,8 +38,8 @@ export default function InsumosView({ tenantSlug }: Props) {
   const [sortDir, setSortDir]         = useState<SortDir>('asc')
 
   const [nome, setNome]               = useState('')
-  const [tipo, setTipo]               = useState(TIPOS[0])
-  const [unidade, setUnidade]         = useState(UNIDADES[0])
+  const [tipo, setTipo]               = useState('')
+  const [unidade, setUnidade]         = useState('')
   const [estoqueMin, setEstoqueMin]   = useState('0')
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [precoCusto, setPrecoCusto]   = useState('')
@@ -72,11 +74,11 @@ export default function InsumosView({ tenantSlug }: Props) {
 
   function abrirModal(item?: any) {
     if (item) {
-      setEditando(item); setNome(item.nome); setTipo(item.tipo ?? TIPOS[0]); setUnidade(item.unidade ?? UNIDADES[0])
+      setEditando(item); setNome(item.nome); setTipo(item.tipo ?? tipos[0] ?? ''); setUnidade(item.unidade ?? unidades[0] ?? '')
       setEstoqueMin(String(item.estoqueMinimo ?? 0)); setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setPrecoCusto(item.precoCusto ? (item.precoCusto / 100).toFixed(2) : '')
     } else {
-      setEditando(null); setNome(''); setTipo(TIPOS[0]); setUnidade(UNIDADES[0])
+      setEditando(null); setNome(''); setTipo(tipos[0] ?? ''); setUnidade(unidades[0] ?? '')
       setEstoqueMin('0'); setEstoqueAtual('0'); setPrecoCusto('')
     }
     setShowModal(true)
@@ -95,7 +97,7 @@ export default function InsumosView({ tenantSlug }: Props) {
   }
 
   function exportCSV() {
-    const rows = insumos.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
+    const rows = todosInsumos.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto / 100).toFixed(2) : '0'])
     const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Estoque Atual', 'Estoque Mínimo', 'Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
   }
@@ -182,8 +184,7 @@ export default function InsumosView({ tenantSlug }: Props) {
                 <td className="px-4 py-3 text-center text-sm text-gray-500">{ins.estoqueMinimo}</td>
                 <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
                 <td className="px-4 py-3 text-center">
-                  <button
-                    onClick={() => setConfirmDelete({ id: ins.insumoId, nome: ins.nome })}
+                  <button onClick={() => setConfirmDelete({ id: ins.insumoId, nome: ins.nome })}
                     className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
                     <Trash2 size={14} />
                   </button>
@@ -208,14 +209,16 @@ export default function InsumosView({ tenantSlug }: Props) {
                 <div>
                   <Label>Tipo</Label>
                   <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {TIPOS.map(t => <option key={t} value={t}>{t}</option>)}
+                    {tipos.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
                 </div>
                 <div>
                   <Label>Unidade</Label>
                   <select value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    {unidades.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -234,13 +237,11 @@ export default function InsumosView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Import */}
       {showImport && (
         <CsvImportModal tenantSlug={tenantSlug} entidade="insumos" nomeEntidade="Insumos"
           onClose={() => setShowImport(false)} onSuccess={() => { invalidate(); setShowImport(false) }} />
       )}
 
-      {/* Confirm Delete */}
       {confirmDelete && (
         <ConfirmModal
           title="Excluir insumo"

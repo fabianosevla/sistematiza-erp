@@ -33,6 +33,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
         { label: 'Insumos',          href: '/cadastros/insumos' },
         { label: 'Formas Pagamento', href: '/cadastros/formas-pagamento' },
         { label: 'Usuários',         href: '/cadastros/usuarios' },
+        { label: 'Domínios',         href: '/cadastros/dominios' },
       ],
     },
   ]
