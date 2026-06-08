@@ -1,11 +1,15 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload } from 'lucide-react'
+import { Plus, X, Trash2, Download, Upload, Package2, ArrowUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { TableSkeleton } from '@/components/ui/Skeleton'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useToast } from '@/components/ui/Toast'
 import CsvImportModal from '@/components/ui/CsvImportModal'
 
 interface Props { tenantSlug: string }
@@ -15,20 +19,28 @@ function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'cur
 const TIPOS    = ['Matéria Prima', 'Embalagem', 'Limpeza', 'Outros']
 const UNIDADES = ['kg', 'g', 'l', 'ml', 'un', 'cx', 'sc', 'fd']
 
-export default function InsumosView({ tenantSlug }: Props) {
-  const qc  = useQueryClient()
-  const api = `/api/${tenantSlug}/cadastros/insumos`
-  const [busca, setBusca]           = useState('')
-  const [showModal, setShowModal]   = useState(false)
-  const [showImport, setShowImport] = useState(false)
-  const [editando, setEditando]     = useState<any>(null)
+type SortKey = 'nome' | 'tipo' | 'estoqueAtual' | 'precoCusto'
+type SortDir = 'asc' | 'desc'
 
-  const [nome, setNome]                   = useState('')
-  const [tipo, setTipo]                   = useState(TIPOS[0])
-  const [unidade, setUnidade]             = useState(UNIDADES[0])
-  const [estoqueMin, setEstoqueMin]       = useState('0')
-  const [estoqueAtual, setEstoqueAtual]   = useState('0')
-  const [precoCusto, setPrecoCusto]       = useState('')
+export default function InsumosView({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/cadastros/insumos`
+
+  const [busca, setBusca]             = useState('')
+  const [showModal, setShowModal]     = useState(false)
+  const [showImport, setShowImport]   = useState(false)
+  const [editando, setEditando]       = useState<any>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
+  const [sortKey, setSortKey]         = useState<SortKey>('nome')
+  const [sortDir, setSortDir]         = useState<SortDir>('asc')
+
+  const [nome, setNome]               = useState('')
+  const [tipo, setTipo]               = useState(TIPOS[0])
+  const [unidade, setUnidade]         = useState(UNIDADES[0])
+  const [estoqueMin, setEstoqueMin]   = useState('0')
+  const [estoqueAtual, setEstoqueAtual] = useState('0')
+  const [precoCusto, setPrecoCusto]   = useState('')
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
 
@@ -41,27 +53,27 @@ export default function InsumosView({ tenantSlug }: Props) {
     mutationFn: async () => {
       const payload = {
         nome, tipo, unidade,
-        estoqueMinimo: Number(estoqueMin),
-        estoqueAtual:  Number(estoqueAtual),
+        estoqueMinimo: Number(estoqueMin), estoqueAtual: Number(estoqueAtual),
         precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : 0,
       }
-      if (editando) return fetch(`${api}/${editando.insumoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
-      return fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+      const url    = editando ? `${api}/${editando.insumoId}` : api
+      const method = editando ? 'PUT' : 'POST'
+      return fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
     },
-    onSuccess: () => { invalidate(); fecharModal() },
+    onSuccess: () => { invalidate(); fecharModal(); toast(editando ? 'Insumo atualizado!' : 'Insumo criado!') },
+    onError:   () => toast('Erro ao salvar insumo.', 'error'),
   })
 
   const excluirMut = useMutation({
     mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: invalidate,
+    onSuccess: () => { invalidate(); toast('Insumo excluído.') },
+    onError:   () => toast('Erro ao excluir.', 'error'),
   })
 
   function abrirModal(item?: any) {
     if (item) {
-      setEditando(item)
-      setNome(item.nome); setTipo(item.tipo ?? TIPOS[0]); setUnidade(item.unidade ?? UNIDADES[0])
-      setEstoqueMin(String(item.estoqueMinimo ?? 0))
-      setEstoqueAtual(String(item.estoqueAtual ?? 0))
+      setEditando(item); setNome(item.nome); setTipo(item.tipo ?? TIPOS[0]); setUnidade(item.unidade ?? UNIDADES[0])
+      setEstoqueMin(String(item.estoqueMinimo ?? 0)); setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setPrecoCusto(item.precoCusto ? (item.precoCusto / 100).toFixed(2) : '')
     } else {
       setEditando(null); setNome(''); setTipo(TIPOS[0]); setUnidade(UNIDADES[0])
@@ -72,22 +84,43 @@ export default function InsumosView({ tenantSlug }: Props) {
 
   function fecharModal() { setShowModal(false); setEditando(null) }
 
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  function SortIcon({ col }: { col: SortKey }) {
+    if (col !== sortKey) return <ArrowUpDown size={11} className="ml-1 text-gray-300 inline" />
+    return <span className="ml-1 text-green-500 text-[11px] inline">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
+
   function exportCSV() {
-    const rows = insumos.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto / 100).toFixed(2) : '0'])
-    const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Estoque Atual', 'Estoque Minimo', 'Preco Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const rows = insumos.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
+    const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Estoque Atual', 'Estoque Mínimo', 'Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
   }
 
-  const insumos   = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
-  const filtrados = insumos.filter((i: any) => i.nome?.toLowerCase().includes(busca.toLowerCase()))
-  const criticos  = insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length
+  const todosInsumos = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+
+  const insumos = [...todosInsumos]
+    .filter((i: any) => i.nome?.toLowerCase().includes(busca.toLowerCase()))
+    .sort((a: any, b: any) => {
+      const av = a[sortKey] ?? ''; const bv = b[sortKey] ?? ''
+      const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+
+  const criticos = todosInsumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Insumos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{insumos.length} cadastrados{criticos > 0 ? ` · ${criticos} críticos` : ''}</p>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {todosInsumos.length} cadastrados
+            {criticos > 0 && <span className="ml-2 text-red-500 font-medium">· {criticos} críticos</span>}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
@@ -104,28 +137,56 @@ export default function InsumosView({ tenantSlug }: Props) {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
-              {['Nome', 'Tipo', 'Unidade', 'Est. Atual', 'Est. Mínimo', 'Preço Custo', ''].map((h, i) => (
-                <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
-              ))}
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('nome')}>
+                Nome <SortIcon col="nome" />
+              </th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('tipo')}>
+                Tipo <SortIcon col="tipo" />
+              </th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Unidade</th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('estoqueAtual')}>
+                Est. Atual <SortIcon col="estoqueAtual" />
+              </th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Est. Mínimo</th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('precoCusto')}>
+                Preço Custo <SortIcon col="precoCusto" />
+              </th>
+              <th className="w-16" />
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-            ) : filtrados.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum insumo cadastrado.</td></tr>
-            ) : filtrados.map((ins: any) => (
-              <tr key={ins.insumoId} className={`border-b border-gray-50 hover:bg-gray-50/50 ${ins.estoqueAtual <= ins.estoqueMinimo ? 'bg-red-50/20' : ''}`}>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900 cursor-pointer" onClick={() => abrirModal(ins)}>{ins.nome}</td>
+              <TableSkeleton rows={6} cols={7} />
+            ) : insumos.length === 0 ? (
+              <tr>
+                <td colSpan={7}>
+                  <EmptyState icon={Package2} title="Nenhum insumo cadastrado"
+                    description="Cadastre os insumos utilizados na produção para controlar o estoque e a ficha técnica dos produtos."
+                    action="Cadastrar primeiro insumo" onAction={() => abrirModal()} />
+                </td>
+              </tr>
+            ) : insumos.map((ins: any) => (
+              <tr key={ins.insumoId} className={`group border-b border-gray-50 hover:bg-gray-50/80 transition-colors ${ins.estoqueAtual <= ins.estoqueMinimo ? 'bg-red-50/20' : ''}`}>
+                <td className="pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150">
+                  <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700" onClick={() => abrirModal(ins)}>
+                    {ins.nome}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-center"><Badge variant="secondary">{ins.tipo ?? '—'}</Badge></td>
                 <td className="px-4 py-3 text-center text-sm text-gray-500">{ins.unidade ?? '—'}</td>
                 <td className="px-4 py-3 text-center">
-                  <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{ins.estoqueAtual}</span>
+                  <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>
+                    {ins.estoqueAtual}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-center text-sm text-gray-500">{ins.estoqueMinimo}</td>
-                <td className="px-4 py-3 text-center text-sm text-gray-600">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
+                <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
                 <td className="px-4 py-3 text-center">
-                  <button onClick={() => { if (confirm(`Excluir "${ins.nome}"?`)) excluirMut.mutate(ins.insumoId) }} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                  <button
+                    onClick={() => setConfirmDelete({ id: ins.insumoId, nome: ins.nome })}
+                    className="p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                    <Trash2 size={14} />
+                  </button>
                 </td>
               </tr>
             ))}
@@ -164,7 +225,9 @@ export default function InsumosView({ tenantSlug }: Props) {
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
-                <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>{salvarMut.isPending ? 'Salvando...' : 'Salvar'}</Button>
+                <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
+                  {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
+                </Button>
               </div>
             </div>
           </div>
@@ -173,12 +236,18 @@ export default function InsumosView({ tenantSlug }: Props) {
 
       {/* Modal Import */}
       {showImport && (
-        <CsvImportModal
-          tenantSlug={tenantSlug}
-          entidade="insumos"
-          nomeEntidade="Insumos"
-          onClose={() => setShowImport(false)}
-          onSuccess={() => { invalidate(); setShowImport(false) }}
+        <CsvImportModal tenantSlug={tenantSlug} entidade="insumos" nomeEntidade="Insumos"
+          onClose={() => setShowImport(false)} onSuccess={() => { invalidate(); setShowImport(false) }} />
+      )}
+
+      {/* Confirm Delete */}
+      {confirmDelete && (
+        <ConfirmModal
+          title="Excluir insumo"
+          message={`Tem certeza que deseja excluir "${confirmDelete.nome}"? Isso pode afetar fichas técnicas vinculadas.`}
+          confirmLabel="Excluir" danger
+          onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>

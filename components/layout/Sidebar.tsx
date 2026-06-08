@@ -1,36 +1,27 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  BarChart3, Users, Boxes, ShoppingCart, FileText,
-  DollarSign, ChevronDown, ChevronRight, ClipboardList,
-  Factory, CreditCard, Search, ClipboardCheck,
-} from 'lucide-react'
+import { BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign, ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard, Search, ClipboardCheck, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
-interface Props {
-  tenantSlug:    string
-  tenantName:    string
-  comandasAtivo:  boolean
-  producaoAtivo:  boolean
-  estoqueAtivo:   boolean
-  fiscalAtivo:    boolean
-  consultasAtivo: boolean
-  pedidosAtivo:   boolean
+interface Config {
+  comandasAtivo:  boolean; producaoAtivo: boolean; estoqueAtivo:   boolean
+  fiscalAtivo:    boolean; consultasAtivo: boolean; pedidosAtivo:  boolean
   planoAcaoAtivo: boolean
 }
 
-export default function Sidebar({
-  tenantSlug, tenantName,
-  comandasAtivo, producaoAtivo, estoqueAtivo, fiscalAtivo,
-  consultasAtivo, pedidosAtivo, planoAcaoAtivo,
-}: Props) {
-  const pathname = usePathname()
-  const [open, setOpen] = useState<string[]>(['Cadastros'])
-  const base = `/${tenantSlug}`
+interface Props {
+  tenantSlug: string; tenantName: string; config: Config
+  open: boolean; onClose: () => void
+}
 
-  // Fixos sempre visíveis
+export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
+  const pathname = usePathname()
+  const [groupsOpen, setGroupsOpen] = useState<string[]>(['Cadastros'])
+  const base     = `/${tenantSlug}`
+  const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+
   const fixos = [
     { label: 'Dashboard', href: '', icon: BarChart3 },
     {
@@ -46,70 +37,78 @@ export default function Sidebar({
     },
   ]
 
-  // Modulares — ordenados logicamente
   const modulares = [
-    ...(consultasAtivo  ? [{ label: 'Consultas',     href: '/consultas',   icon: Search }]        : []),
-    ...(pedidosAtivo    ? [{ label: 'Pedidos',       href: '/pedidos',     icon: ClipboardList }] : []),
-    ...(planoAcaoAtivo  ? [{ label: 'Plano de Ação', href: '/plano-acao',  icon: ClipboardCheck }]: []),
-    ...(producaoAtivo   ? [{ label: 'Produção',      href: '/producao',    icon: Factory }]       : []),
-    ...(estoqueAtivo    ? [{ label: 'Estoque',       href: '/estoque',     icon: Boxes }]         : []),
-    ...(comandasAtivo   ? [{ label: 'Comandas',      href: '/comandas',    icon: FileText }]      : []),
-    ...(fiscalAtivo     ? [{ label: 'Fiscal',        href: '/fiscal',      icon: CreditCard }]    : []),
+    ...(config.consultasAtivo ? [{ label: 'Consultas',     href: '/consultas',   icon: Search }]         : []),
+    ...(config.pedidosAtivo   ? [{ label: 'Pedidos',       href: '/pedidos',     icon: ClipboardList }]  : []),
+    ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação', href: '/plano-acao',  icon: ClipboardCheck }] : []),
+    ...(config.producaoAtivo  ? [{ label: 'Produção',      href: '/producao',    icon: Factory }]        : []),
+    ...(config.estoqueAtivo   ? [{ label: 'Estoque',       href: '/estoque',     icon: Boxes }]          : []),
+    ...(config.comandasAtivo  ? [{ label: 'Comandas',      href: '/comandas',    icon: FileText }]       : []),
+    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',        href: '/fiscal',      icon: CreditCard }]     : []),
   ]
 
-  // Fixos sempre visíveis no final
   const finais = [
     { label: 'Vendas',     href: '/vendas',     icon: ShoppingCart },
     { label: 'Financeiro', href: '/financeiro', icon: DollarSign },
   ]
 
-  const items = [...fixos, ...modulares, ...finais]
-
-  function toggleGroup(label: string) {
-    setOpen(prev => prev.includes(label) ? prev.filter(g => g !== label) : [...prev, label])
-  }
+  const allItems = [...fixos, ...modulares, ...finais]
 
   function isActive(href: string) {
     const full = `${base}${href}`
     return href === '' ? pathname === base : pathname.startsWith(full)
   }
 
-  const linkStyle = (active: boolean) => active
-    ? { backgroundColor: 'rgba(46,204,113,0.12)', borderLeft: '2px solid #2ecc71' }
-    : {}
+  function toggleGroup(label: string) {
+    setGroupsOpen(prev => prev.includes(label) ? prev.filter(g => g !== label) : [...prev, label])
+  }
 
   return (
-    <aside className="flex flex-col w-60 min-h-screen flex-shrink-0" style={{ backgroundColor: 'var(--color-sidebar)' }}>
-      <div className="px-6 py-5 border-b border-white/10">
+    <aside
+      className={cn(
+        'fixed lg:static inset-y-0 left-0 z-40',
+        'w-60 h-screen flex flex-col flex-shrink-0',
+        'transition-transform duration-300 ease-in-out',
+        open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      )}
+      style={{ backgroundColor: '#0F1117' }}>
+
+      {/* Logo */}
+      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5">
         <div className="flex items-baseline">
-          <span className="text-xl font-semibold text-white tracking-tight">sistematiza</span>
-          <span className="text-xl font-semibold tracking-tight" style={{ color: 'var(--color-accent)' }}>.ia</span>
+          <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
+          <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
         </div>
-        <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>ERP</p>
+        <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">
+          <X size={16} />
+        </button>
       </div>
 
-      <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto">
-        {items.map(item => {
+      {/* Nav */}
+      <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
+        {allItems.map(item => {
           if ('children' in item && item.children) {
-            const isOpen    = open.includes(item.label)
+            const isOpen    = groupsOpen.includes(item.label)
             const anyActive = item.children.some(c => isActive(c.href))
             return (
               <div key={item.label}>
-                <button onClick={() => toggleGroup(item.label)}
-                  className={cn('w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                <button
+                  onClick={() => toggleGroup(item.label)}
+                  className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',
                     anyActive ? 'text-white' : 'text-white/50 hover:text-white/80')}>
                   <span className="flex items-center gap-3"><item.icon size={15} />{item.label}</span>
                   {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 </button>
                 {isOpen && (
-                  <div className="ml-6 mt-0.5 space-y-0.5">
+                  <div className="ml-7 mt-0.5 space-y-0.5">
                     {item.children.map(child => {
                       const active = isActive(child.href)
                       return (
-                        <Link key={child.href} href={`${base}${child.href}`}
-                          style={linkStyle(active)}
-                          className={cn('block px-3 py-1.5 rounded-md text-sm transition-colors',
-                            active ? 'text-white font-medium' : 'text-white/40 hover:text-white/70')}>
+                        <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
+                          className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
+                            active
+                              ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                              : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
                           {child.label}
                         </Link>
                       )
@@ -119,20 +118,33 @@ export default function Sidebar({
               </div>
             )
           }
+
           const active = isActive((item as any).href ?? '')
           return (
-            <Link key={item.label} href={`${base}${(item as any).href ?? ''}`}
-              style={linkStyle(active)}
-              className={cn('flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                active ? 'text-white font-medium' : 'text-white/50 hover:text-white/80')}>
-              <item.icon size={15} />{item.label}
+            <Link key={item.label} href={`${base}${(item as any).href ?? ''}`} onClick={onClose}
+              className={cn('flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
+                active
+                  ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/5')}>
+              <item.icon size={15} />
+              {item.label}
             </Link>
           )
         })}
       </nav>
 
-      <div className="px-4 py-4 border-t border-white/10">
-        <p className="text-xs text-white/30 truncate">{tenantName}</p>
+      {/* Tenant info */}
+      <div className="border-t border-white/5 p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+            style={{ backgroundColor: 'rgba(46,204,113,0.15)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.25)' }}>
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-white/60 truncate">{tenantName}</p>
+            <p className="text-[10px] text-white/25">cliente ativo</p>
+          </div>
+        </div>
       </div>
     </aside>
   )

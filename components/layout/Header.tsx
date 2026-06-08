@@ -1,13 +1,24 @@
 'use client'
 import { useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useClerk, useUser } from '@clerk/nextjs'
-import { Settings, LogOut, X, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Settings, LogOut, X, ToggleLeft, ToggleRight, Menu } from 'lucide-react'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-interface Props { tenantName: string; tenantSlug: string }
+interface Props { tenantName: string; tenantSlug: string; onMenuToggle: () => void }
+
+const LABELS: Record<string, string> = {
+  'cadastros': 'Cadastros', 'clientes': 'Clientes', 'fornecedores': 'Fornecedores',
+  'produtos': 'Produtos', 'insumos': 'Insumos', 'usuarios': 'Usuários',
+  'formas-pagamento': 'Formas de Pagamento', 'vendas': 'Vendas', 'financeiro': 'Financeiro',
+  'estoque': 'Estoque', 'producao': 'Produção', 'pedidos': 'Pedidos',
+  'comandas': 'Comandas', 'fiscal': 'Fiscal', 'consultas': 'Consultas',
+  'plano-acao': 'Plano de Ação', 'configuracoes': 'Configurações',
+}
 
 const MODULOS = [
   { key: 'consultasAtivo',  label: 'Consultas',     desc: 'Relatórios e animação de vendas' },
@@ -15,18 +26,28 @@ const MODULOS = [
   { key: 'planoAcaoAtivo',  label: 'Plano de Ação', desc: 'Tarefas e ações da equipe' },
   { key: 'producaoAtivo',   label: 'Produção',      desc: 'Grade semanal de produção' },
   { key: 'estoqueAtivo',    label: 'Estoque',       desc: 'Controle de produtos e insumos' },
-  { key: 'comandasAtivo',   label: 'Comandas',      desc: 'Pedidos por mesa' },
+  { key: 'comandasAtivo',   label: 'Comandas',      desc: 'Pedidos por mesa / comanda' },
   { key: 'fiscalAtivo',     label: 'Fiscal',        desc: 'NFC-e, NF-e, NFS-e (requer Focus NFe)' },
 ] as const
 
 const FIXOS = ['Dashboard', 'Cadastros', 'Vendas', 'Financeiro']
 
-export default function Header({ tenantName, tenantSlug }: Props) {
-  const { signOut } = useClerk()
-  const { user }    = useUser()
-  const qc          = useQueryClient()
+export default function Header({ tenantName, tenantSlug, onMenuToggle }: Props) {
+  const { signOut }   = useClerk()
+  const { user }      = useUser()
+  const qc            = useQueryClient()
+  const pathname      = usePathname()
   const [showMenu, setShowMenu]         = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+
+  // Breadcrumb
+  const segments   = pathname.split('/').filter(Boolean)
+  const afterTenant = segments.slice(1)
+  const crumbs = afterTenant.map((seg, i) => ({
+    label:  LABELS[seg] ?? (isNaN(Number(seg)) ? seg.charAt(0).toUpperCase() + seg.slice(1) : `#${seg}`),
+    href:   `/${tenantSlug}/${afterTenant.slice(0, i + 1).join('/')}`,
+    isLast: i === afterTenant.length - 1,
+  }))
 
   const { data } = useQuery({
     queryKey: ['configuracoes', tenantSlug],
@@ -34,28 +55,43 @@ export default function Header({ tenantName, tenantSlug }: Props) {
   })
 
   const mut = useMutation({
-    mutationFn: async (payload: any) => {
-      await fetch(`/api/${tenantSlug}/configuracoes`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
-      // Reload para atualizar o Sidebar (server component)
-      window.location.reload()
-    },
+    mutationFn: async (payload: any) => fetch(`/api/${tenantSlug}/configuracoes`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] }); window.location.reload() },
   })
 
   const config = data?.data
 
   return (
     <>
-      <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 flex-shrink-0">
-        <div />
+      <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-400 hidden sm:block">{tenantName}</span>
+          {/* Hamburger — mobile */}
+          <button onClick={onMenuToggle}
+            className="lg:hidden p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
+            <Menu size={20} />
+          </button>
+
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-1.5 text-sm">
+            <Link href={`/${tenantSlug}`} className="text-gray-400 hover:text-gray-700 font-medium transition-colors">
+              Início
+            </Link>
+            {crumbs.map((crumb, i) => (
+              <span key={i} className="flex items-center gap-1.5">
+                <span className="text-gray-300 text-xs">/</span>
+                {crumb.isLast
+                  ? <span className="text-gray-900 font-semibold">{crumb.label}</span>
+                  : <Link href={crumb.href} className="text-gray-400 hover:text-gray-700 font-medium transition-colors">{crumb.label}</Link>
+                }
+              </span>
+            ))}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400 hidden sm:block truncate max-w-40">{tenantName}</span>
           <div className="relative">
             <button onClick={() => setShowMenu(!showMenu)}
               className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium hover:bg-gray-700 transition-colors">
@@ -88,43 +124,25 @@ export default function Header({ tenantName, tenantSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">Configurações</h2>
+              <h2 className="text-lg font-semibold">Configurações</h2>
               <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
-
             <div className="p-6 space-y-6">
-              {/* Módulos toggleáveis */}
+              {/* Módulos */}
               <div>
                 <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Módulos do Menu</p>
-                <p className="text-xs text-gray-400 mb-3">
-                  Desativar um módulo remove-o do menu lateral. Os dados continuam sendo registrados e impactando o financeiro normalmente.
-                </p>
-
-                {/* Fixos */}
-                <div className="mb-2">
-                  {FIXOS.map(nome => (
-                    <div key={nome} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">{nome}</p>
-                        <p className="text-xs text-gray-300 mt-0.5">Sempre visível</p>
-                      </div>
-                      <ToggleRight size={32} className="text-gray-200" />
-                    </div>
-                  ))}
-                </div>
-
-                {/* Toggleáveis */}
+                <p className="text-xs text-gray-400 mb-3">Desativar remove do menu, mas dados continuam sendo registrados normalmente.</p>
+                {FIXOS.map(nome => (
+                  <div key={nome} className="flex items-center justify-between py-2.5 border-b border-gray-50">
+                    <div><p className="text-sm font-medium text-gray-400">{nome}</p><p className="text-xs text-gray-300">Sempre visível</p></div>
+                    <ToggleRight size={32} className="text-gray-200" />
+                  </div>
+                ))}
                 {MODULOS.map(m => (
                   <div key={m.key} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{m.label}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{m.desc}</p>
-                    </div>
+                    <div><p className="text-sm font-medium text-gray-900">{m.label}</p><p className="text-xs text-gray-400 mt-0.5">{m.desc}</p></div>
                     <button onClick={() => mut.mutate({ [m.key]: !config?.[m.key] })} disabled={mut.isPending}>
-                      {config?.[m.key]
-                        ? <ToggleRight size={32} className="text-green-500" />
-                        : <ToggleLeft  size={32} className="text-gray-300" />
-                      }
+                      {config?.[m.key] ? <ToggleRight size={32} className="text-green-500" /> : <ToggleLeft size={32} className="text-gray-300" />}
                     </button>
                   </div>
                 ))}
@@ -145,45 +163,35 @@ export default function Header({ tenantName, tenantSlug }: Props) {
                   ].map(f => (
                     <div key={f.key}>
                       <Label className="text-xs">{f.label}</Label>
-                      <Input defaultValue={config?.[f.key] ?? ''}
-                        onBlur={e => mut.mutate({ [f.key]: e.target.value })}
-                        className="mt-1 h-8 text-sm" />
+                      <Input defaultValue={config?.[f.key] ?? ''} onBlur={e => mut.mutate({ [f.key]: e.target.value })} className="mt-1 h-8 text-sm" />
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Focus NFe — só aparece se Fiscal ativo */}
+              {/* Focus NFe */}
               {config?.fiscalAtivo && (
                 <div>
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Integração Fiscal (Focus NFe)</p>
                   <div className="space-y-3">
                     <div>
                       <Label className="text-xs">Token Focus NFe</Label>
-                      <Input defaultValue={config?.focusNfeToken ?? ''}
-                        onBlur={e => mut.mutate({ focusNfeToken: e.target.value })}
-                        className="mt-1 h-8 text-sm font-mono" placeholder="seu_token_aqui" />
+                      <Input defaultValue={config?.focusNfeToken ?? ''} onBlur={e => mut.mutate({ focusNfeToken: e.target.value })} className="mt-1 h-8 text-sm font-mono" placeholder="seu_token_aqui" />
                     </div>
                     <div>
                       <Label className="text-xs">Ambiente</Label>
-                      <select defaultValue={config?.focusNfeAmbiente ?? 'homologacao'}
-                        onChange={e => mut.mutate({ focusNfeAmbiente: e.target.value })}
+                      <select defaultValue={config?.focusNfeAmbiente ?? 'homologacao'} onChange={e => mut.mutate({ focusNfeAmbiente: e.target.value })}
                         className="mt-1 w-full h-8 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                         <option value="homologacao">Homologação (testes)</option>
                         <option value="producao">Produção</option>
                       </select>
                     </div>
-                    <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3">
-                      Acesse <strong>focusnfe.com.br</strong> para criar sua conta e obter o token.
-                    </p>
+                    <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-3">Acesse <strong>focusnfe.com.br</strong> para criar sua conta e obter o token.</p>
                   </div>
                 </div>
               )}
             </div>
-
-            <div className="px-6 pb-6">
-              <Button className="w-full" onClick={() => setShowSettings(false)}>Fechar</Button>
-            </div>
+            <div className="px-6 pb-6"><Button className="w-full" onClick={() => setShowSettings(false)}>Fechar</Button></div>
           </div>
         </div>
       )}
