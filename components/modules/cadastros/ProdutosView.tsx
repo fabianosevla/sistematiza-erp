@@ -1,11 +1,12 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, BookOpen } from 'lucide-react'
+import { Plus, X, Trash2, Download, Upload, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import CsvImportModal from '@/components/ui/CsvImportModal'
 
 interface Props { tenantSlug: string }
 
@@ -16,10 +17,11 @@ const TIPOS = ['Massa', 'Molho', 'Acompanhamento', 'Bebida', 'Outro']
 export default function ProdutosView({ tenantSlug }: Props) {
   const qc  = useQueryClient()
   const api = `/api/${tenantSlug}/cadastros/produtos`
-  const [busca, setBusca]         = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [showFicha, setShowFicha] = useState<any>(null)
-  const [editando, setEditando]   = useState<any>(null)
+  const [busca, setBusca]           = useState('')
+  const [showModal, setShowModal]   = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [showFicha, setShowFicha]   = useState<any>(null)
+  const [editando, setEditando]     = useState<any>(null)
 
   const [nome, setNome]                 = useState('')
   const [tipo, setTipo]                 = useState(TIPOS[0])
@@ -105,23 +107,15 @@ export default function ProdutosView({ tenantSlug }: Props) {
   function fecharModal() { setShowModal(false); setEditando(null) }
 
   function exportCSV() {
-    const rows = todosProdutos.map((p: any) => [p.produtoId, p.nome, p.tipo, p.unidade, p.precoVarejo ? p.precoVarejo / 100 : 0, p.estoqueAtual, p.estoqueMinimo])
-    const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Preço', 'Est.Atual', 'Est.Mín'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const rows = todosProdutos.map((p: any) => [p.produtoId, p.nome, p.tipo ?? '', p.unidade ?? '', p.precoVarejo ? (p.precoVarejo / 100).toFixed(2) : '0', p.estoqueAtual, p.estoqueMinimo])
+    const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Preco Varejo', 'Estoque Atual', 'Estoque Minimo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = 'produtos.csv'; a.click()
   }
 
-  // FIX: API retorna { data: { data: [...], meta: {...} } } com paginação
-  const todosProdutos = Array.isArray(raw?.data?.data) ? raw.data.data
-    : Array.isArray(raw?.data)    ? raw.data
-    : Array.isArray(raw)          ? raw
-    : []
-  const produtos   = todosProdutos.filter((p: any) => p.nome?.toLowerCase().includes(busca.toLowerCase()))
-  const insumos    = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
-    : Array.isArray(insumosRaw?.data) ? insumosRaw.data
-    : []
-  const fichaItens = Array.isArray(fichaRaw?.data) ? fichaRaw.data
-    : Array.isArray(fichaRaw)    ? fichaRaw
-    : []
+  const todosProdutos = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+  const produtos      = todosProdutos.filter((p: any) => p.nome?.toLowerCase().includes(busca.toLowerCase()))
+  const insumos       = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
+  const fichaItens    = Array.isArray(fichaRaw?.data) ? fichaRaw.data : Array.isArray(fichaRaw) ? fichaRaw : []
 
   return (
     <div>
@@ -129,6 +123,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
         <div><h1 className="text-2xl font-semibold text-gray-900">Produtos</h1><p className="text-sm text-gray-400 mt-0.5">{todosProdutos.length} cadastrados</p></div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
+          <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
           <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Produto</Button>
         </div>
       </div>
@@ -221,7 +216,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <div>
                 <h2 className="text-lg font-semibold">Ficha Técnica</h2>
-                <p className="text-sm text-gray-400 mt-0.5">{showFicha.nome}</p>
+                <p className="text-sm text-gray-400 mt-0.5">{showFicha.nome} — insumos por unidade produzida</p>
               </div>
               <button onClick={() => setShowFicha(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
@@ -229,7 +224,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
                 <p className="text-sm font-medium text-gray-700 mb-3">Adicionar Insumo</p>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-1">
+                  <div>
                     <Label className="text-xs">Insumo *</Label>
                     <select value={fichaInsumoId} onChange={e => setFichaInsumoId(e.target.value)}
                       className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
@@ -246,19 +241,17 @@ export default function ProdutosView({ tenantSlug }: Props) {
                     <Input value={fichaUnidade} onChange={e => setFichaUnidade(e.target.value)} className="mt-1 h-9 text-sm" placeholder="kg" />
                   </div>
                 </div>
-                <Button size="sm" className="mt-3" onClick={() => addFichaMut.mutate()}
-                  disabled={!fichaInsumoId || !fichaQuantidade || addFichaMut.isPending}>
+                <Button size="sm" className="mt-3" onClick={() => addFichaMut.mutate()} disabled={!fichaInsumoId || !fichaQuantidade || addFichaMut.isPending}>
                   <Plus size={13} className="mr-1" /> Adicionar
                 </Button>
               </div>
-
               {fichaItens.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">Nenhum insumo na ficha técnica.</p>
+                <p className="text-sm text-gray-400 text-center py-8">Nenhum insumo na ficha técnica. Adicione acima para que o sistema consuma automaticamente ao produzir.</p>
               ) : (
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {['Insumo', 'Quantidade', 'Unidade', ''].map((h, i) => (
+                      {['Insumo', 'Qtd por unidade', 'Unidade', ''].map((h, i) => (
                         <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-3 py-2`}>{h}</th>
                       ))}
                     </tr>
@@ -266,7 +259,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                   <tbody>
                     {fichaItens.map((item: any) => (
                       <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50">
-                        <td className="px-3 py-2.5 text-sm font-medium text-gray-900">{item.nomeInsumo ?? item.insumo?.nome ?? `Insumo #${item.insumoId}`}</td>
+                        <td className="px-3 py-2.5 text-sm font-medium text-gray-900">{item.nomeInsumo ?? `Insumo #${item.insumoId}`}</td>
                         <td className="px-3 py-2.5 text-center text-sm text-gray-600">{parseFloat(String(item.quantidade)).toFixed(3)}</td>
                         <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
                         <td className="px-3 py-2.5 text-center">
@@ -280,6 +273,17 @@ export default function ProdutosView({ tenantSlug }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Import */}
+      {showImport && (
+        <CsvImportModal
+          tenantSlug={tenantSlug}
+          entidade="produtos"
+          nomeEntidade="Produtos"
+          onClose={() => setShowImport(false)}
+          onSuccess={() => { invalidate(); setShowImport(false) }}
+        />
       )}
     </div>
   )

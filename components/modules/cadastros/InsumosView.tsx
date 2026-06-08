@@ -6,28 +6,29 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import CsvImportModal from '@/components/ui/CsvImportModal'
 
 interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
-const TIPOS = ['Matéria Prima', 'Embalagem', 'Limpeza', 'Outros']
+const TIPOS    = ['Matéria Prima', 'Embalagem', 'Limpeza', 'Outros']
 const UNIDADES = ['kg', 'g', 'l', 'ml', 'un', 'cx', 'sc', 'fd']
 
 export default function InsumosView({ tenantSlug }: Props) {
   const qc  = useQueryClient()
   const api = `/api/${tenantSlug}/cadastros/insumos`
-  const [busca, setBusca]         = useState('')
-  const [showModal, setShowModal] = useState(false)
+  const [busca, setBusca]           = useState('')
+  const [showModal, setShowModal]   = useState(false)
   const [showImport, setShowImport] = useState(false)
-  const [editando, setEditando]   = useState<any>(null)
+  const [editando, setEditando]     = useState<any>(null)
 
-  const [nome, setNome]               = useState('')
-  const [tipo, setTipo]               = useState(TIPOS[0])
-  const [unidade, setUnidade]         = useState(UNIDADES[0])
-  const [estoqueMin, setEstoqueMin]   = useState('0')
-  const [estoqueAtual, setEstoqueAtual] = useState('0')
-  const [precoCusto, setPrecoCusto]   = useState('')
+  const [nome, setNome]                   = useState('')
+  const [tipo, setTipo]                   = useState(TIPOS[0])
+  const [unidade, setUnidade]             = useState(UNIDADES[0])
+  const [estoqueMin, setEstoqueMin]       = useState('0')
+  const [estoqueAtual, setEstoqueAtual]   = useState('0')
+  const [precoCusto, setPrecoCusto]       = useState('')
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
 
@@ -72,17 +73,12 @@ export default function InsumosView({ tenantSlug }: Props) {
   function fecharModal() { setShowModal(false); setEditando(null) }
 
   function exportCSV() {
-    const rows = insumos.map((i: any) => [i.insumoId, i.nome, i.tipo, i.unidade, i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? i.precoCusto / 100 : 0])
-    const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Est.Atual', 'Est.Mín', 'Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const rows = insumos.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto / 100).toFixed(2) : '0'])
+    const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Estoque Atual', 'Estoque Minimo', 'Preco Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
   }
 
-  // FIX: API retorna { data: { data: [...], meta: {...} } } com paginação
-  const insumos = Array.isArray(raw?.data?.data) ? raw.data.data
-    : Array.isArray(raw?.data) ? raw.data
-    : Array.isArray(raw)       ? raw
-    : []
-
+  const insumos   = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
   const filtrados = insumos.filter((i: any) => i.nome?.toLowerCase().includes(busca.toLowerCase()))
   const criticos  = insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length
 
@@ -173,6 +169,17 @@ export default function InsumosView({ tenantSlug }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Import */}
+      {showImport && (
+        <CsvImportModal
+          tenantSlug={tenantSlug}
+          entidade="insumos"
+          nomeEntidade="Insumos"
+          onClose={() => setShowImport(false)}
+          onSuccess={() => { invalidate(); setShowImport(false) }}
+        />
       )}
     </div>
   )
