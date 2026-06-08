@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload, BookOpen } from 'lucide-react'
+import { Plus, X, Trash2, Download, BookOpen } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,17 +11,16 @@ interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
-const TIPOS = ['Massa','Molho','Acompanhamento','Bebida','Outro']
+const TIPOS = ['Massa', 'Molho', 'Acompanhamento', 'Bebida', 'Outro']
 
 export default function ProdutosView({ tenantSlug }: Props) {
   const qc  = useQueryClient()
   const api = `/api/${tenantSlug}/cadastros/produtos`
-  const [busca, setBusca]           = useState('')
-  const [showModal, setShowModal]   = useState(false)
-  const [showFicha, setShowFicha]   = useState<any>(null)
-  const [editando, setEditando]     = useState<any>(null)
+  const [busca, setBusca]         = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [showFicha, setShowFicha] = useState<any>(null)
+  const [editando, setEditando]   = useState<any>(null)
 
-  // Form produto
   const [nome, setNome]                 = useState('')
   const [tipo, setTipo]                 = useState(TIPOS[0])
   const [unidade, setUnidade]           = useState('kg')
@@ -31,24 +30,23 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [ativo, setAtivo]               = useState(true)
 
-  // Ficha técnica
   const [fichaInsumoId, setFichaInsumoId]     = useState('')
   const [fichaQuantidade, setFichaQuantidade] = useState('')
   const [fichaUnidade, setFichaUnidade]       = useState('kg')
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
 
-  const { data, isLoading } = useQuery({
+  const { data: raw, isLoading } = useQuery({
     queryKey: ['produtos', tenantSlug],
     queryFn:  async () => (await fetch(api)).json(),
   })
 
-  const { data: insumosData } = useQuery({
+  const { data: insumosRaw } = useQuery({
     queryKey: ['insumos-select', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos`)).json(),
   })
 
-  const { data: fichaData, refetch: refetchFicha } = useQuery({
+  const { data: fichaRaw, refetch: refetchFicha } = useQuery({
     queryKey: ['ficha', tenantSlug, showFicha?.produtoId],
     queryFn:  async () => (await fetch(`${api}/${showFicha.produtoId}/ficha`)).json(),
     enabled:  !!showFicha,
@@ -58,15 +56,13 @@ export default function ProdutosView({ tenantSlug }: Props) {
     mutationFn: async () => {
       const payload = {
         nome, tipo, unidade,
-        precoVarejo:  precoVarejo  ? Math.round(parseFloat(precoVarejo.replace(',','.'))  * 100) : 0,
-        precoAtacado: precoAtacado ? Math.round(parseFloat(precoAtacado.replace(',','.')) * 100) : 0,
+        precoVarejo:  precoVarejo  ? Math.round(parseFloat(precoVarejo.replace(',', '.'))  * 100) : 0,
+        precoAtacado: precoAtacado ? Math.round(parseFloat(precoAtacado.replace(',', '.')) * 100) : 0,
         estoqueMinimo: Number(estoqueMin),
         estoqueAtual:  Number(estoqueAtual),
         activeFlag: ativo,
       }
-      if (editando) {
-        return fetch(`${api}/${editando.produtoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
-      }
+      if (editando) return fetch(`${api}/${editando.produtoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
       return fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
     },
     onSuccess: () => { invalidate(); fecharModal() },
@@ -94,8 +90,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
     if (item) {
       setEditando(item)
       setNome(item.nome); setTipo(item.tipo ?? TIPOS[0]); setUnidade(item.unidade ?? 'kg')
-      setPrecoVarejo(item.precoVarejo ? (item.precoVarejo/100).toFixed(2) : '')
-      setPrecoAtacado(item.precoAtacado ? (item.precoAtacado/100).toFixed(2) : '')
+      setPrecoVarejo(item.precoVarejo ? (item.precoVarejo / 100).toFixed(2) : '')
+      setPrecoAtacado(item.precoAtacado ? (item.precoAtacado / 100).toFixed(2) : '')
       setEstoqueMin(String(item.estoqueMinimo ?? 0))
       setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setAtivo(item.activeFlag ?? true)
@@ -109,19 +105,28 @@ export default function ProdutosView({ tenantSlug }: Props) {
   function fecharModal() { setShowModal(false); setEditando(null) }
 
   function exportCSV() {
-    const rows = produtos.map((p: any) => [p.produtoId, p.nome, p.tipo, p.unidade, p.precoVarejo/100, p.estoqueAtual, p.estoqueMinimo])
-    const csv  = [['ID','Nome','Tipo','Unidade','Preço','Est.Atual','Est.Mín'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'produtos.csv'; a.click()
+    const rows = todosProdutos.map((p: any) => [p.produtoId, p.nome, p.tipo, p.unidade, p.precoVarejo ? p.precoVarejo / 100 : 0, p.estoqueAtual, p.estoqueMinimo])
+    const csv  = [['ID', 'Nome', 'Tipo', 'Unidade', 'Preço', 'Est.Atual', 'Est.Mín'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' })); a.download = 'produtos.csv'; a.click()
   }
 
-  const produtos  = (data?.data ?? data ?? []).filter((p: any) => p.nome?.toLowerCase().includes(busca.toLowerCase()))
-  const insumos   = insumosData?.data ?? insumosData ?? []
-  const fichaItens = fichaData?.data ?? fichaData ?? []
+  // FIX: API retorna { data: { data: [...], meta: {...} } } com paginação
+  const todosProdutos = Array.isArray(raw?.data?.data) ? raw.data.data
+    : Array.isArray(raw?.data)    ? raw.data
+    : Array.isArray(raw)          ? raw
+    : []
+  const produtos   = todosProdutos.filter((p: any) => p.nome?.toLowerCase().includes(busca.toLowerCase()))
+  const insumos    = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
+    : Array.isArray(insumosRaw?.data) ? insumosRaw.data
+    : []
+  const fichaItens = Array.isArray(fichaRaw?.data) ? fichaRaw.data
+    : Array.isArray(fichaRaw)    ? fichaRaw
+    : []
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div><h1 className="text-2xl font-semibold text-gray-900">Produtos</h1><p className="text-sm text-gray-400 mt-0.5">{produtos.length} cadastrados</p></div>
+        <div><h1 className="text-2xl font-semibold text-gray-900">Produtos</h1><p className="text-sm text-gray-400 mt-0.5">{todosProdutos.length} cadastrados</p></div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
           <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Produto</Button>
@@ -136,8 +141,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
-              {['Nome','Tipo','Unidade','Preço Varejo','Estoque','Status',''].map((h,i) => (
-                <th key={i} className={`text-${i===0?'left':'center'} text-xs font-medium text-gray-400 px-4 py-3 ${i===6?'w-32':''}`}>{h}</th>
+              {['Nome', 'Tipo', 'Unidade', 'Preço Varejo', 'Estoque', 'Status', ''].map((h, i) => (
+                <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -221,7 +226,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
               <button onClick={() => setShowFicha(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-6">
-              {/* Adicionar insumo */}
               <div className="bg-gray-50 rounded-lg p-4 mb-4">
                 <p className="text-sm font-medium text-gray-700 mb-3">Adicionar Insumo</p>
                 <div className="grid grid-cols-3 gap-3">
@@ -248,15 +252,14 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </Button>
               </div>
 
-              {/* Lista de insumos */}
               {fichaItens.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">Nenhum insumo na ficha técnica.</p>
               ) : (
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {['Insumo','Quantidade','Unidade','Custo Est.',''].map((h,i) => (
-                        <th key={i} className={`text-${i===0?'left':'center'} text-xs font-medium text-gray-400 px-3 py-2`}>{h}</th>
+                      {['Insumo', 'Quantidade', 'Unidade', ''].map((h, i) => (
+                        <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-3 py-2`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -266,7 +269,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
                         <td className="px-3 py-2.5 text-sm font-medium text-gray-900">{item.nomeInsumo ?? item.insumo?.nome ?? `Insumo #${item.insumoId}`}</td>
                         <td className="px-3 py-2.5 text-center text-sm text-gray-600">{parseFloat(String(item.quantidade)).toFixed(3)}</td>
                         <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
-                        <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.custoParcial ? (item.custoParcial/100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'}</td>
                         <td className="px-3 py-2.5 text-center">
                           <button onClick={() => removeFichaMut.mutate(item.produtoInsumoId ?? item.itemId)} className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
                         </td>
