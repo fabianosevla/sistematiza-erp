@@ -16,6 +16,8 @@ const despesaSchema = z.object({
   recorrente:         z.boolean().default(false),
   periodoRecorrencia: z.string().optional(),
   observacao:         z.string().max(500).optional(),
+  mes:                z.number().int().min(1).max(12).optional(),
+  ano:                z.number().int().min(2020).optional(),
 })
 
 export async function GET(req: NextRequest, { params }: Params) {
@@ -25,16 +27,18 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       const { searchParams } = new URL(req.url)
       const tipo      = searchParams.get('tipo')
-      const page      = Math.max(1, Number(searchParams.get('page')  ?? 1))
-      const limit     = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? 20)))
-      const dataInicio = searchParams.get('dataInicio') ?? undefined
-      const dataFim    = searchParams.get('dataFim')    ?? undefined
-      const categoria  = searchParams.get('categoria')  ?? undefined
-      const service    = new FinanceiroService(db)
-      if (tipo === 'kpis')           return ok(await service.kpis())
-      if (tipo === 'dre')            return ok(await service.dre(dataInicio ?? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(), dataFim ?? new Date().toISOString()))
-      if (tipo === 'demonstrativo')  return ok(await service.demonstrativo(Number(searchParams.get('ano') ?? new Date().getFullYear())))
-      return ok(await service.listDespesas({ page, limit, dataInicio, dataFim, categoria }))
+      const now       = new Date()
+      const mes       = Number(searchParams.get('mes')  ?? now.getMonth() + 1)
+      const ano       = Number(searchParams.get('ano')  ?? now.getFullYear())
+      const categoria = searchParams.get('categoria') ?? undefined
+      const service   = new FinanceiroService(db)
+
+      if (tipo === 'kpis')           return ok(await service.kpisMes(mes, ano))
+      if (tipo === 'dre')            return ok(await service.dreMes(mes, ano))
+      if (tipo === 'demonstrativo')  return ok(await service.demonstrativo(ano))
+
+      // Default: lista despesas do mês (auto-gera recorrentes)
+      return ok(await service.listDespesasMes({ mes, ano, categoria }))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }
