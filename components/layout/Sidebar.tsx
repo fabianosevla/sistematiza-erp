@@ -6,18 +6,13 @@ import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
 interface Config {
-  comandasAtivo:  boolean; producaoAtivo: boolean; estoqueAtivo:   boolean
-  fiscalAtivo:    boolean; consultasAtivo: boolean; pedidosAtivo:  boolean
-  planoAcaoAtivo: boolean
+  comandasAtivo: boolean; producaoAtivo: boolean; estoqueAtivo: boolean
+  fiscalAtivo: boolean; consultasAtivo: boolean; pedidosAtivo: boolean; planoAcaoAtivo: boolean
 }
-
-interface Props {
-  tenantSlug: string; tenantName: string; config: Config
-  open: boolean; onClose: () => void
-}
+interface Props { tenantSlug: string; tenantName: string; config: Config; open: boolean; onClose: () => void }
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
-  const pathname = usePathname()
+  const pathname    = usePathname()
   const [groupsOpen, setGroupsOpen] = useState<string[]>(['Cadastros'])
   const base     = `/${tenantSlug}`
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
@@ -27,13 +22,14 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     {
       label: 'Cadastros', icon: Users,
       children: [
-        { label: 'Clientes',         href: '/cadastros/clientes' },
-        { label: 'Fornecedores',     href: '/cadastros/fornecedores' },
-        { label: 'Produtos',         href: '/cadastros/produtos' },
-        { label: 'Insumos',          href: '/cadastros/insumos' },
-        { label: 'Formas Pagamento', href: '/cadastros/formas-pagamento' },
-        { label: 'Usuários',         href: '/cadastros/usuarios' },
-        { label: 'Domínios',         href: '/cadastros/dominios' },
+        { label: 'Clientes',          href: '/cadastros/clientes' },
+        { label: 'Fornecedores',      href: '/cadastros/fornecedores' },
+        { label: 'Produtos',          href: '/cadastros/produtos' },
+        { label: 'Insumos',           href: '/cadastros/insumos' },
+        { label: 'Fichas Técnicas',   href: '/cadastros/ficha-tecnica' },
+        { label: 'Formas Pagamento',  href: '/cadastros/formas-pagamento' },
+        { label: 'Usuários',          href: '/cadastros/usuarios' },
+        { label: 'Domínios',          href: '/cadastros/dominios' },
       ],
     },
   ]
@@ -65,27 +61,20 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   }
 
   return (
-    <aside
-      className={cn(
-        'fixed lg:static inset-y-0 left-0 z-40',
-        'w-60 h-screen flex flex-col flex-shrink-0',
-        'transition-transform duration-300 ease-in-out',
-        open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      )}
-      style={{ backgroundColor: '#0F1117' }}>
+    <aside className={cn(
+      'fixed lg:static inset-y-0 left-0 z-40 w-60 h-screen flex flex-col flex-shrink-0',
+      'transition-transform duration-300 ease-in-out',
+      open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+    )} style={{ backgroundColor: '#0F1117' }}>
 
-      {/* Logo */}
       <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5">
         <div className="flex items-baseline">
           <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
           <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
         </div>
-        <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">
-          <X size={16} />
-        </button>
+        <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded"><X size={16} /></button>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
         {allItems.map(item => {
           if ('children' in item && item.children) {
@@ -93,8 +82,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
             const anyActive = item.children.some(c => isActive(c.href))
             return (
               <div key={item.label}>
-                <button
-                  onClick={() => toggleGroup(item.label)}
+                <button onClick={() => toggleGroup(item.label)}
                   className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',
                     anyActive ? 'text-white' : 'text-white/50 hover:text-white/80')}>
                   <span className="flex items-center gap-3"><item.icon size={15} />{item.label}</span>
@@ -107,9 +95,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
                       return (
                         <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
                           className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
-                            active
-                              ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
-                              : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
+                            active ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                                   : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
                           {child.label}
                         </Link>
                       )
@@ -119,14 +106,12 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
               </div>
             )
           }
-
           const active = isActive((item as any).href ?? '')
           return (
             <Link key={item.label} href={`${base}${(item as any).href ?? ''}`} onClick={onClose}
               className={cn('flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                active
-                  ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/5')}>
+                active ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                       : 'text-white/50 hover:text-white/80 hover:bg-white/5')}>
               <item.icon size={15} />
               {item.label}
             </Link>
@@ -134,7 +119,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
         })}
       </nav>
 
-      {/* Tenant info */}
       <div className="border-t border-white/5 p-4">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"

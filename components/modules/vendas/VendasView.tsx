@@ -1,315 +1,250 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Download, Trash2, Truck, Package } from 'lucide-react'
+import { Plus, X, Trash2, Download, TrendingUp, ShoppingCart, Eye } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { TableSkeleton } from '@/components/ui/Skeleton'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useToast } from '@/components/ui/Toast'
+import { useDominio } from '@/hooks/useDominio'
 
 interface Props { tenantSlug: string }
 
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
+
+interface ItemVenda {
+  _key:          string
+  produtoId:     number
+  nomeProduto:   string
+  quantidade:    number
+  tipoPrecao:    string
+  precoUnitario: number
+  subtotal:      number
+  _produto?:     any
 }
 
-function formatDate(date: string) {
-  return new Date(date).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
+interface FormaPgto { forma: string; valor: string }
+
+function getPrecoByTipo(p: any, tipo: string): number {
+  switch (tipo) {
+    case 'varejo':    return p.precoVarejo ?? 0
+    case 'atacado_a': return p.precoAtacadoA ?? p.precoAtacado ?? 0
+    case 'atacado_b': return p.precoAtacadoB ?? 0
+    case 'atacado_c': return p.precoAtacadoC ?? 0
+    case 'atacado_d': return p.precoAtacadoD ?? 0
+    case 'atacado_e': return p.precoAtacadoE ?? 0
+    default: return 0
+  }
 }
 
-function formatDateOnly(date: string) {
-  return new Date(date).toLocaleDateString('pt-BR')
+function precosDisponiveis(p: any) {
+  const opts: { label: string; key: string; valor: number }[] = []
+  if (p.precoVarejo > 0) opts.push({ label: 'Varejo', key: 'varejo', valor: p.precoVarejo })
+  const a = p.precoAtacadoA ?? p.precoAtacado ?? 0
+  if (a > 0) opts.push({ label: 'Atacado A', key: 'atacado_a', valor: a })
+  if (p.precoAtacadoB > 0) opts.push({ label: 'Atacado B', key: 'atacado_b', valor: p.precoAtacadoB })
+  if (p.precoAtacadoC > 0) opts.push({ label: 'Atacado C', key: 'atacado_c', valor: p.precoAtacadoC })
+  if (p.precoAtacadoD > 0) opts.push({ label: 'Atacado D', key: 'atacado_d', valor: p.precoAtacadoD })
+  if (p.precoAtacadoE > 0) opts.push({ label: 'Atacado E', key: 'atacado_e', valor: p.precoAtacadoE })
+  return opts
 }
 
-const FORMAS_PAGAMENTO = ['Dinheiro', 'Crédito', 'Débito', 'PIX', 'Vale Refeição']
-
-function exportCSV(vendas: any[]) {
-  const headers = ['ID', 'Data', 'Cliente', 'Origem', 'Entrega', 'Data Entrega', 'Subtotal', 'Desconto', 'Total']
-  const rows = vendas.map(v => [
-    v.vendaId,
-    new Date(v.vendidaEm).toLocaleString('pt-BR'),
-    v.clienteId ?? '',
-    v.origem === 'comanda' ? 'Comanda' : 'Direta',
-    v.tipoEntrega === 'entrega' ? 'Entrega' : 'Retirada',
-    v.dataEntrega ? new Date(v.dataEntrega).toLocaleDateString('pt-BR') : '',
-    (v.subtotal / 100).toFixed(2),
-    (v.desconto / 100).toFixed(2),
-    (v.total / 100).toFixed(2),
-  ])
-  const csv  = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `vendas-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+function novoItem(): ItemVenda {
+  return { _key: Math.random().toString(36).slice(2), produtoId: 0, nomeProduto: '', quantidade: 1, tipoPrecao: 'varejo', precoUnitario: 0, subtotal: 0 }
 }
 
 export default function VendasView({ tenantSlug }: Props) {
-  const queryClient = useQueryClient()
-  const apiBase = `/api/${tenantSlug}/vendas`
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const router    = useRouter()
+  const api       = `/api/${tenantSlug}/vendas`
 
-  const [page, setPage]               = useState(1)
-  const [dataInicio, setDataInicio]   = useState('')
-  const [dataFim, setDataFim]         = useState('')
-  const [origem, setOrigem]           = useState('')
-  const [tipoEntrega, setTipoEntrega] = useState('')
-  const [showNova, setShowNova]       = useState(false)
-  const [showDetalhe, setShowDetalhe] = useState<number | null>(null)
+  const tiposEntrega = useDominio(tenantSlug, 'tipo_entrega', ['Retirada','Entrega','Transportadora'])
 
-  // Estado nova venda
-  const [buscaProduto, setBuscaProduto]         = useState('')
-  const [buscaCliente, setBuscaCliente]         = useState('')
-  const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
-  const [quantidade, setQuantidade]             = useState(1)
-  const [itens, setItens]                       = useState<any[]>([])
-  const [desconto, setDesconto]                 = useState(0)
-  const [pagamentos, setPagamentos]             = useState<{ forma: string; valor: number }[]>([{ forma: 'Dinheiro', valor: 0 }])
-  const [tipoEntregaNova, setTipoEntregaNova]   = useState<'retirada' | 'entrega'>('retirada')
-  const [dataEntregaNova, setDataEntregaNova]   = useState('')
-  const [enderecoEntrega, setEnderecoEntrega]   = useState('')
-  const [observacao, setObservacao]             = useState('')
-  const [observacaoInterna, setObservacaoInterna] = useState('')
-  const [vendedor, setVendedor]                 = useState('')
-  const [erroVenda, setErroVenda]               = useState('')
+  const [showModal, setShowModal]         = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number } | null>(null)
+  const [busca, setBusca]                 = useState('')
+  const [pageNum, setPageNum]             = useState(1)
 
-  // KPIs
+  // Form
+  const [clienteId, setClienteId]           = useState('')
+  const [tipoEntrega, setTipoEntrega]       = useState('')
+  const [vendidaEm, setVendidaEm]           = useState(new Date().toISOString().slice(0, 16))
+  const [dataEntrega, setDataEntrega]       = useState('')
+  const [enderecoEntrega, setEnderecoEntrega] = useState('')
+  const [vendedor, setVendedor]             = useState('')
+  const [observacao, setObservacao]         = useState('')
+  const [desconto, setDesconto]             = useState('0')
+  const [itens, setItens]                   = useState<ItemVenda[]>([novoItem()])
+  const [pagamentos, setPagamentos]         = useState<FormaPgto[]>([{ forma: 'PIX', valor: '' }])
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['vendas', tenantSlug] })
+
+  const { data: vendasData, isLoading } = useQuery({
+    queryKey: ['vendas', tenantSlug, pageNum, busca],
+    queryFn:  async () => {
+      const p = new URLSearchParams({ page: String(pageNum), limit: '20' })
+      if (busca) p.set('busca', busca)
+      return (await fetch(`${api}?${p}`)).json()
+    },
+  })
+
   const { data: kpisData } = useQuery({
     queryKey: ['vendas-kpis', tenantSlug],
-    queryFn: async () => {
-      const res = await fetch(`${apiBase}?kpis=true`)
-      return res.json()
-    },
+    queryFn:  async () => (await fetch(`${api}?tipo=kpis`)).json(),
     refetchInterval: 30000,
   })
 
-  // Lista
-  const { data, isLoading } = useQuery({
-    queryKey: ['vendas', tenantSlug, page, dataInicio, dataFim, origem, tipoEntrega],
-    queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '20' })
-      if (dataInicio)   params.set('dataInicio', dataInicio)
-      if (dataFim)      params.set('dataFim', dataFim)
-      if (origem)       params.set('origem', origem)
-      if (tipoEntrega)  params.set('tipoEntrega', tipoEntrega)
-      const res = await fetch(`${apiBase}?${params}`)
-      return res.json()
-    },
+  const { data: produtosRaw } = useQuery({
+    queryKey: ['produtos-venda', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=500`)).json(),
   })
 
-  // Busca produto
-  const { data: produtosData } = useQuery({
-    queryKey: ['produtos-venda', tenantSlug, buscaProduto],
-    queryFn: async () => {
-      const params = new URLSearchParams({ limit: '8' })
-      if (buscaProduto) params.set('search', buscaProduto)
-      const res = await fetch(`/api/${tenantSlug}/cadastros/produtos?${params}`)
-      return res.json()
-    },
-    enabled: buscaProduto.length > 0,
+  const { data: clientesRaw } = useQuery({
+    queryKey: ['clientes-select', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=500`)).json(),
   })
 
-  // Busca cliente
-  const { data: clientesData } = useQuery({
-    queryKey: ['clientes-venda', tenantSlug, buscaCliente],
-    queryFn: async () => {
-      const params = new URLSearchParams({ limit: '6' })
-      if (buscaCliente) params.set('search', buscaCliente)
-      const res = await fetch(`/api/${tenantSlug}/cadastros/clientes?${params}`)
-      return res.json()
-    },
-    enabled: buscaCliente.length > 1,
+  const { data: formasRaw } = useQuery({
+    queryKey: ['formas', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/formas-pagamento`)).json(),
   })
 
-  // Detalhe venda
-  const { data: detalheData } = useQuery({
-    queryKey: ['venda-detalhe', tenantSlug, showDetalhe],
-    queryFn: async () => {
-      const res = await fetch(`${apiBase}/${showDetalhe}`)
-      return res.json()
-    },
-    enabled: !!showDetalhe,
-  })
-
-  // Criar venda
-  const criarMutation = useMutation({
+  const criarMut = useMutation({
     mutationFn: async () => {
-      const res = await fetch(apiBase, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          itens: itens.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
-          clienteId:         clienteSelecionado?.clienteId,
-          desconto:          Math.round(desconto * 100),
-          pagamentos,
-          tipoEntrega:       tipoEntregaNova,
-          dataEntrega:       dataEntregaNova || undefined,
-          enderecoEntrega:   enderecoEntrega || undefined,
-          observacao:        observacao || undefined,
-          observacaoInterna: observacaoInterna || undefined,
-          vendedor:          vendedor || undefined,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message ?? 'Erro ao criar venda')
-      return data
+      const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
+      const descontoVal   = Math.round(parseFloat(desconto.replace(',','.') || '0') * 100)
+      const total         = subtotalTotal - descontoVal
+      const pgtos         = pagamentos.filter(p => p.valor && parseFloat(p.valor) > 0)
+        .map(p => ({ forma: p.forma, valor: Math.round(parseFloat(p.valor.replace(',','.')) * 100) }))
+
+      const payload = {
+        clienteId:      clienteId ? Number(clienteId) : null,
+        tipoEntrega:    tipoEntrega || tiposEntrega[0],
+        vendidaEm:      new Date(vendidaEm).toISOString(),
+        dataEntrega:    dataEntrega ? new Date(dataEntrega).toISOString() : null,
+        enderecoEntrega: enderecoEntrega || null,
+        vendedor:       vendedor || null,
+        observacao:     observacao || null,
+        itens: itens.filter(i => i.produtoId > 0).map(i => ({
+          produtoId:    i.produtoId,
+          nomeProduto:  i.nomeProduto,
+          quantidade:   i.quantidade,
+          precoUnitario: i.precoUnitario,
+          subtotal:     i.subtotal,
+        })),
+        subtotal: subtotalTotal,
+        desconto: descontoVal,
+        total,
+        pagamentos: pgtos,
+      }
+
+      const res = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['vendas', tenantSlug] })
-      queryClient.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
-      setShowNova(false)
-      resetNovaVenda()
-    },
-    onError: (err: any) => setErroVenda(err.message),
+    onSuccess: () => { invalidate(); qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] }); fecharModal(); toast('Venda registrada!') },
+    onError:   (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
   })
 
-  function resetNovaVenda() {
-    setItens([])
-    setBuscaProduto('')
-    setBuscaCliente('')
-    setClienteSelecionado(null)
-    setQuantidade(1)
-    setDesconto(0)
-    setPagamentos([{ forma: 'Dinheiro', valor: 0 }])
-    setTipoEntregaNova('retirada')
-    setDataEntregaNova('')
-    setEnderecoEntrega('')
-    setObservacao('')
-    setObservacaoInterna('')
-    setVendedor('')
-    setErroVenda('')
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { invalidate(); toast('Venda excluída.') },
+  })
+
+  function fecharModal() {
+    setShowModal(false)
+    setItens([novoItem()]); setPagamentos([{ forma: 'PIX', valor: '' }])
+    setClienteId(''); setTipoEntrega(''); setVendidaEm(new Date().toISOString().slice(0, 16))
+    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0')
   }
 
-  function selecionarCliente(cliente: any) {
-    setClienteSelecionado(cliente)
-    setBuscaCliente('')
-    if (tipoEntregaNova === 'entrega' && cliente.endereco) {
-      setEnderecoEntrega(`${cliente.endereco}${cliente.numero ? ', ' + cliente.numero : ''} — ${cliente.cidade}/${cliente.uf}`)
-    }
+  // ── Cart ────────────────────────────────────────────────────────────
+  function updateItem(key: string, field: Partial<ItemVenda>) {
+    setItens(prev => prev.map(item => {
+      if (item._key !== key) return item
+      const updated = { ...item, ...field }
+      updated.subtotal = Math.round(updated.quantidade * updated.precoUnitario)
+      return updated
+    }))
   }
 
-  function addItem(produto: any) {
-    const existente = itens.find(i => i.produtoId === produto.produtoId)
-    if (existente) {
-      setItens(prev => prev.map(i =>
-        i.produtoId === produto.produtoId
-          ? { ...i, quantidade: i.quantidade + quantidade, subtotal: (i.quantidade + quantidade) * i.precoUnitario }
-          : i
-      ))
-    } else {
-      setItens(prev => [...prev, {
-        produtoId:     produto.produtoId,
-        nomeProduto:   produto.nome,
-        quantidade,
-        precoUnitario: produto.precoVarejo,
-        subtotal:      produto.precoVarejo * quantidade,
-        unidade:       produto.unidade,
-      }])
-    }
-    setBuscaProduto('')
-    setQuantidade(1)
+  function selecionarProduto(key: string, produto: any) {
+    const preco = produto.precoVarejo ?? 0
+    updateItem(key, { produtoId: produto.produtoId, nomeProduto: produto.nome, tipoPrecao: 'varejo', precoUnitario: preco, _produto: produto })
   }
 
-  function removeItem(produtoId: number) {
-    const novosItens = itens.filter(i => i.produtoId !== produtoId)
-    setItens(novosItens)
-    const novoSubtotal = novosItens.reduce((a, i) => a + i.subtotal, 0)
-    const novoTotal    = Math.max(0, novoSubtotal - Math.round(desconto * 100))
-    setPagamentos([{ forma: pagamentos[0]?.forma ?? 'Dinheiro', valor: novoTotal }])
+  function selecionarTipoPrecao(key: string, tipo: string, produto: any) {
+    const preco = getPrecoByTipo(produto, tipo)
+    updateItem(key, { tipoPrecao: tipo, precoUnitario: preco })
   }
 
-  const subtotal   = itens.reduce((a, i) => a + i.subtotal, 0)
-  const totalFinal = Math.max(0, subtotal - Math.round(desconto * 100))
-  const totalPago  = pagamentos.reduce((a, p) => a + p.valor, 0)
-  const troco      = Math.max(0, totalPago - totalFinal)
+  function addItem() { setItens(prev => [...prev, novoItem()]) }
+  function removeItem(key: string) { setItens(prev => prev.filter(i => i._key !== key)) }
 
-  const vendas   = data?.data?.data ?? []
-  const meta     = data?.data?.meta
-  const kpis     = kpisData?.data
-  const produtos = produtosData?.data?.data ?? []
-  const clientes = clientesData?.data?.data ?? []
-  const detalhe  = detalheData?.data
+  // ── Pagamentos ──────────────────────────────────────────────────────
+  function updatePgto(i: number, field: Partial<FormaPgto>) {
+    setPagamentos(prev => prev.map((p, idx) => idx === i ? { ...p, ...field } : p))
+  }
+
+  const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
+  const descontoVal   = Math.round(parseFloat(desconto.replace(',','.') || '0') * 100)
+  const totalVenda    = subtotalTotal - descontoVal
+  const totalPago     = pagamentos.reduce((a, p) => a + (parseFloat(p.valor.replace(',','.') || '0') * 100), 0)
+  const troco         = totalPago > totalVenda ? totalPago - totalVenda : 0
+
+  const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
+    : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
+  const clientes = Array.isArray(clientesRaw?.data?.data) ? clientesRaw.data.data
+    : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
+  const formas   = Array.isArray(formasRaw?.data) ? formasRaw.data : []
+  const formasNomes = formas.map((f: any) => f.nome).filter(Boolean)
+
+  const vendas    = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
+    : Array.isArray(vendasData?.data) ? vendasData.data : []
+  const meta      = vendasData?.data?.meta
+  const kpis      = kpisData?.data
+
+  function exportCSV() {
+    const rows = vendas.map((v: any) => [v.vendaId, fmtDate(v.vendidaEm), v.clienteNome ?? 'Cons. Final', v.tipoEntrega, (v.total/100).toFixed(2)])
+    const csv  = [['ID','Data','Cliente','Entrega','Total'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'vendas.csv'; a.click()
+  }
 
   return (
     <div>
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Vendas</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Vendas diretas e via comanda</p>
-        </div>
+        <div><h1 className="text-2xl font-semibold text-gray-900">Vendas</h1></div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => exportCSV(vendas)}>
-            <Download size={14} className="mr-1.5" /> Exportar CSV
-          </Button>
-          <Button onClick={() => { resetNovaVenda(); setShowNova(true) }}>
-            <Plus size={15} className="mr-1.5" /> Nova venda
-          </Button>
+          <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
+          <Button onClick={() => setShowModal(true)}><Plus size={15} className="mr-1.5" /> Nova Venda</Button>
         </div>
       </div>
 
       {/* KPIs */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <p className="text-xs text-gray-400">Hoje</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatCents(kpis.hoje.total)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{kpis.hoje.qtd} venda{kpis.hoje.qtd !== 1 ? 's' : ''}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <p className="text-xs text-gray-400">Esta semana</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatCents(kpis.semana.total)}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 p-4">
-            <p className="text-xs text-gray-400">Este mês</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{formatCents(kpis.mes.total)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{kpis.mes.qtd} venda{kpis.mes.qtd !== 1 ? 's' : ''}</p>
-          </div>
-          <div className={`rounded-xl border p-4 ${kpis.entregasHoje.qtd > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-100'}`}>
-            <p className="text-xs text-gray-400">Entregas hoje</p>
-            <p className={`text-2xl font-bold mt-1 ${kpis.entregasHoje.qtd > 0 ? 'text-orange-600' : 'text-gray-900'}`}>{kpis.entregasHoje.qtd}</p>
-            <p className="text-xs text-gray-400 mt-0.5">agendada{kpis.entregasHoje.qtd !== 1 ? 's' : ''}</p>
-          </div>
+          {[
+            { label: 'Receita hoje',    value: fmt(kpis.receitaHoje   ?? 0), color: 'text-green-600' },
+            { label: 'Receita do mês',  value: fmt(kpis.receitaMes    ?? 0), color: 'text-green-600' },
+            { label: 'Vendas do mês',   value: String(kpis.qtdMes     ?? 0), color: 'text-gray-900' },
+            { label: 'Ticket médio',    value: fmt(kpis.ticketMedio   ?? 0), color: 'text-blue-600' },
+          ].map((k, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-400 mb-1">{k.label}</p>
+              <p className={`text-xl font-bold ${k.color}`}>{k.value}</p>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Filtros */}
-      <div className="flex flex-wrap gap-3 mb-4">
-        <div className="flex items-center gap-2">
-          <Label className="text-xs whitespace-nowrap">De:</Label>
-          <Input type="date" value={dataInicio} onChange={e => { setDataInicio(e.target.value); setPage(1) }} className="h-9 text-sm w-36" />
-        </div>
-        <div className="flex items-center gap-2">
-          <Label className="text-xs whitespace-nowrap">Até:</Label>
-          <Input type="date" value={dataFim} onChange={e => { setDataFim(e.target.value); setPage(1) }} className="h-9 text-sm w-36" />
-        </div>
-        <select
-          value={origem}
-          onChange={e => { setOrigem(e.target.value); setPage(1) }}
-          className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
-        >
-          <option value="">Todas as origens</option>
-          <option value="direta">Venda direta</option>
-          <option value="comanda">Comanda</option>
-        </select>
-        <select
-          value={tipoEntrega}
-          onChange={e => { setTipoEntrega(e.target.value); setPage(1) }}
-          className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
-        >
-          <option value="">Retirada e entrega</option>
-          <option value="retirada">Retirada</option>
-          <option value="entrega">Entrega</option>
-        </select>
-        {(dataInicio || dataFim || origem || tipoEntrega) && (
-          <button onClick={() => { setDataInicio(''); setDataFim(''); setOrigem(''); setTipoEntrega(''); setPage(1) }} className="text-xs text-gray-400 hover:text-gray-600">
-            Limpar filtros
-          </button>
-        )}
+      <div className="flex gap-3 mb-4">
+        <Input placeholder="Buscar por cliente ou vendedor..." value={busca} onChange={e => { setBusca(e.target.value); setPageNum(1) }} className="max-w-xs h-9 text-sm" />
       </div>
 
       {/* Tabela */}
@@ -317,43 +252,27 @@ export default function VendasView({ tenantSlug }: Props) {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">#</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Data</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Entrega</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Data entrega</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Origem</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Total</th>
-              <th className="px-4 py-3 w-16" />
+              {['Data','Cliente','Entrega','Total',''].map((h, i) => (
+                <th key={i} className={`text-${i === 3 ? 'right' : 'left'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              <TableSkeleton rows={6} cols={5} />
             ) : vendas.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma venda encontrada.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma venda encontrada.</td></tr>
             ) : vendas.map((v: any) => (
-              <tr key={v.vendaId} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3 text-sm text-gray-400 font-mono">#{v.vendaId}</td>
-                <td className="px-4 py-3 text-sm text-gray-700">{formatDate(v.vendidaEm)}</td>
-                <td className="px-4 py-3 hidden md:table-cell">
-                  <Badge variant={v.tipoEntrega === 'entrega' ? 'warning' : 'secondary'}>
-                    {v.tipoEntrega === 'entrega'
-                      ? <span className="flex items-center gap-1"><Truck size={10} /> Entrega</span>
-                      : <span className="flex items-center gap-1"><Package size={10} /> Retirada</span>
-                    }
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">
-                  {v.dataEntrega ? formatDateOnly(v.dataEntrega) : '—'}
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell">
-                  <Badge variant={v.origem === 'comanda' ? 'default' : 'outline'}>
-                    {v.origem === 'comanda' ? 'Comanda' : 'Direta'}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">{formatCents(v.total)}</td>
+              <tr key={v.vendaId} className="group border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
+                <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(v.vendidaEm)}</td>
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">{v.clienteNome ?? 'Consumidor Final'}</td>
+                <td className="px-4 py-3"><Badge variant="secondary">{v.tipoEntrega ?? '—'}</Badge></td>
+                <td className="px-4 py-3 text-right text-sm font-semibold text-green-600">{fmt(v.total)}</td>
                 <td className="px-4 py-3">
-                  <button onClick={() => setShowDetalhe(v.vendaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Ver</button>
+                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => router.push(`/${tenantSlug}/vendas/${v.vendaId}`)} className="p-1 text-blue-400 hover:text-blue-600"><Eye size={14} /></button>
+                    <button onClick={() => setConfirmDelete({ id: v.vendaId })} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -361,341 +280,166 @@ export default function VendasView({ tenantSlug }: Props) {
         </table>
         {meta && meta.totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages} — {meta.total} vendas</p>
+            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages} ({meta.total} vendas)</p>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
-              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(p => p + 1)}>Próximo</Button>
+              <Button variant="outline" size="sm" disabled={pageNum <= 1} onClick={() => setPageNum(p => p - 1)}>Anterior</Button>
+              <Button variant="outline" size="sm" disabled={pageNum >= meta.totalPages} onClick={() => setPageNum(p => p + 1)}>Próximo</Button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Modal Nova Venda */}
-      {showNova && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold text-gray-900">Nova venda</h2>
-              <button onClick={() => setShowNova(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+      {/* ── Modal Nova Venda ─────────────────────────────────────────── */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 sticky top-0 bg-white z-10">
+              <h2 className="text-lg font-semibold">Nova Venda</h2>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
+            <div className="p-6 space-y-5">
+              {/* Info */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div>
+                  <Label>Cliente</Label>
+                  <select value={clienteId} onChange={e => setClienteId(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="">Consumidor Final</option>
+                    {clientes.map((c: any) => <option key={c.clienteId} value={c.clienteId}>{c.nomeCompleto}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Tipo de Entrega</Label>
+                  <select value={tipoEntrega} onChange={e => setTipoEntrega(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    {tiposEntrega.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div><Label>Data da Venda</Label><Input type="datetime-local" value={vendidaEm} onChange={e => setVendidaEm(e.target.value)} className="mt-1 h-9 text-sm" /></div>
+                <div><Label>Data de Entrega</Label><Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" /></div>
+                <div><Label>Vendedor</Label><Input value={vendedor} onChange={e => setVendedor(e.target.value)} className="mt-1 h-9 text-sm" /></div>
+                <div><Label>Endereço Entrega</Label><Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" /></div>
+              </div>
+              <div><Label>Observação</Label><Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" /></div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-
-              {/* Cliente */}
+              {/* ── Itens / Cart ──────────────────────────────────── */}
               <div>
-                <Label>Cliente (opcional)</Label>
-                {clienteSelecionado ? (
-                  <div className="mt-1 flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                    <span className="text-sm font-medium text-green-800">{clienteSelecionado.nomeCompleto}</span>
-                    <button onClick={() => setClienteSelecionado(null)} className="text-green-400 hover:text-green-600"><X size={14} /></button>
-                  </div>
-                ) : (
-                  <>
-                    <Input
-                      value={buscaCliente}
-                      onChange={e => setBuscaCliente(e.target.value)}
-                      placeholder="Buscar cliente pelo nome..."
-                      className="mt-1"
-                    />
-                    {buscaCliente.length > 1 && clientes.length > 0 && (
-                      <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
-                        {clientes.map((c: any) => (
-                          <button key={c.clienteId} onClick={() => selecionarCliente(c)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                            <span className="text-sm font-medium text-gray-900">{c.nomeCompleto}</span>
-                            <span className="text-xs text-gray-400">{c.cidade}/{c.uf}</span>
-                          </button>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-700">Itens da Venda</p>
+                  <Button size="sm" variant="outline" onClick={addItem}><Plus size={13} className="mr-1" /> Adicionar produto</Button>
+                </div>
+                <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50">
+                        {['Produto','Tipo de Preço','Qtd','Preço Unit.','Subtotal',''].map((h, i) => (
+                          <th key={i} className={`text-${i >= 2 ? 'right' : 'left'} text-xs font-medium text-gray-400 px-3 py-2.5 ${i === 0 ? 'w-48' : ''} ${i === 5 ? 'w-8' : ''}`}>{h}</th>
                         ))}
-                      </div>
-                    )}
-                  </>
-                )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itens.map(item => {
+                        const opts = item._produto ? precosDisponiveis(item._produto) : []
+                        return (
+                          <tr key={item._key} className="border-b border-gray-50 last:border-0">
+                            <td className="px-3 py-2">
+                              <select value={item.produtoId || ''} onChange={e => { const p = produtos.find((p: any) => p.produtoId === Number(e.target.value)); if (p) selecionarProduto(item._key, p) }}
+                                className="w-full h-8 rounded-lg border border-gray-200 px-2 text-sm focus:outline-none">
+                                <option value="">Selecionar produto...</option>
+                                {produtos.map((p: any) => <option key={p.produtoId} value={p.produtoId}>{p.nome}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              {opts.length > 0 ? (
+                                <select value={item.tipoPrecao} onChange={e => selecionarTipoPrecao(item._key, e.target.value, item._produto)}
+                                  className="w-full h-8 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none">
+                                  {opts.map(o => <option key={o.key} value={o.key}>{o.label} — {fmt(o.valor)}</option>)}
+                                </select>
+                              ) : <span className="text-xs text-gray-400">—</span>}
+                            </td>
+                            <td className="px-3 py-2">
+                              <Input type="number" min="1" step="0.001" value={item.quantidade}
+                                onChange={e => updateItem(item._key, { quantidade: parseFloat(e.target.value) || 1 })}
+                                className="h-8 text-sm text-right w-20 ml-auto" />
+                            </td>
+                            <td className="px-3 py-2">
+                              <Input type="number" min="0" step="0.01" value={item.precoUnitario > 0 ? (item.precoUnitario / 100).toFixed(2) : ''}
+                                onChange={e => updateItem(item._key, { precoUnitario: Math.round(parseFloat(e.target.value || '0') * 100) })}
+                                className="h-8 text-sm text-right w-24 ml-auto" />
+                            </td>
+                            <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
+                              {item.subtotal > 0 ? fmt(item.subtotal) : '—'}
+                            </td>
+                            <td className="px-3 py-2">
+                              {itens.length > 1 && (
+                                <button onClick={() => removeItem(item._key)} className="text-gray-300 hover:text-red-500"><X size={14} /></button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
-              {/* Tipo de entrega */}
-              <div>
-                <Label>Tipo de entrega *</Label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  {(['retirada', 'entrega'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => {
-                        setTipoEntregaNova(t)
-                        if (t === 'entrega' && clienteSelecionado?.endereco) {
-                          setEnderecoEntrega(`${clienteSelecionado.endereco}${clienteSelecionado.numero ? ', ' + clienteSelecionado.numero : ''} — ${clienteSelecionado.cidade}/${clienteSelecionado.uf}`)
+              {/* Totais */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-700">Pagamento</p>
+                  {pagamentos.map((p, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <select value={p.forma} onChange={e => updatePgto(i, { forma: e.target.value })}
+                        className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none flex-1">
+                        {formasNomes.length > 0
+                          ? formasNomes.map((f: string) => <option key={f} value={f}>{f}</option>)
+                          : ['Dinheiro','PIX','Cartão Débito','Cartão Crédito','Boleto'].map(f => <option key={f} value={f}>{f}</option>)
                         }
-                      }}
-                      className={`py-2 rounded-lg text-sm font-medium border transition-colors flex items-center justify-center gap-2 capitalize ${tipoEntregaNova === t ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
-                    >
-                      {t === 'entrega' ? <Truck size={14} /> : <Package size={14} />}
-                      {t === 'entrega' ? 'Entrega' : 'Retirada'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Campos de entrega */}
-              {tipoEntregaNova === 'entrega' && (
-                <div className="space-y-3 p-4 bg-orange-50 rounded-lg border border-orange-100">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Data de entrega *</Label>
-                      <Input type="date" value={dataEntregaNova} onChange={e => setDataEntregaNova(e.target.value)} className="mt-1" />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Endereço de entrega</Label>
-                    <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1" placeholder="Rua, número, bairro, cidade" />
-                  </div>
-                </div>
-              )}
-
-              {/* Busca produto */}
-              <div>
-                <Label>Adicionar produto</Label>
-                <Input
-                  value={buscaProduto}
-                  onChange={e => setBuscaProduto(e.target.value)}
-                  placeholder="Digite o nome ou código de barras..."
-                  className="mt-1"
-                />
-                {buscaProduto && produtos.length > 0 && (
-                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
-                    {produtos.slice(0, 6).map((p: any) => (
-                      <button key={p.produtoId} onClick={() => addItem(p)}
-                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{p.nome}</p>
-                          {p.codigoBarras && <p className="text-xs text-gray-400 font-mono">{p.codigoBarras}</p>}
-                        </div>
-                        <div className="text-right ml-4">
-                          <p className="text-sm font-semibold">{formatCents(p.precoVarejo)}</p>
-                          <p className="text-xs text-gray-400">{p.unidade}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Quantidade */}
-              <div>
-                <Label>Quantidade</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <button onClick={() => setQuantidade(q => Math.max(1, q - 1))} className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center font-bold hover:bg-gray-50">−</button>
-                  <Input type="number" min="1" value={quantidade} onChange={e => setQuantidade(Math.max(1, Number(e.target.value)))} className="text-center w-20" />
-                  <button onClick={() => setQuantidade(q => q + 1)} className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center font-bold hover:bg-gray-50">+</button>
-                </div>
-              </div>
-
-              {/* Itens */}
-              {itens.length > 0 && (
-                <div>
-                  <Label>Itens</Label>
-                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
-                    {itens.map(item => (
-                      <div key={item.produtoId} className="flex items-center justify-between px-3 py-2.5 border-b border-gray-50 last:border-0">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{item.nomeProduto}</p>
-                          <p className="text-xs text-gray-400">{item.quantidade}x {formatCents(item.precoUnitario)} / {item.unidade}</p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <p className="text-sm font-semibold">{formatCents(item.subtotal)}</p>
-                          <button onClick={() => removeItem(item.produtoId)} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex justify-between px-3 py-2.5 bg-gray-50">
-                      <span className="text-sm font-semibold text-gray-700">Subtotal</span>
-                      <span className="text-sm font-bold text-gray-900">{formatCents(subtotal)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Desconto */}
-              {itens.length > 0 && (
-                <div>
-                  <Label>Desconto (R$)</Label>
-                  <Input
-                    type="number" min="0" step="0.01"
-                    value={desconto || ''}
-                    onChange={e => {
-                      const d = parseFloat(e.target.value) || 0
-                      setDesconto(d)
-                      const newTotal = Math.max(0, subtotal - Math.round(d * 100))
-                      setPagamentos([{ forma: pagamentos[0]?.forma ?? 'Dinheiro', valor: newTotal }])
-                    }}
-                    className="mt-1" placeholder="0,00"
-                  />
-                </div>
-              )}
-
-              {/* Pagamento */}
-              {itens.length > 0 && (
-                <div>
-                  <Label>Formas de pagamento</Label>
-                  {pagamentos.map((pag, i) => (
-                    <div key={i} className="flex gap-2 mt-2">
-                      <select value={pag.forma}
-                        onChange={e => { const n = [...pagamentos]; n[i].forma = e.target.value; setPagamentos(n) }}
-                        className="flex-1 h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                        {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
                       </select>
-                      <Input type="number" min="0" step="0.01"
-                        value={(pag.valor / 100).toFixed(2)}
-                        onChange={e => { const n = [...pagamentos]; n[i].valor = Math.round(parseFloat(e.target.value || '0') * 100); setPagamentos(n) }}
-                        className="w-32" />
+                      <Input type="number" min="0" step="0.01" value={p.valor} onChange={e => updatePgto(i, { valor: e.target.value })}
+                        className="h-9 text-sm w-32" placeholder="0,00" />
                       {pagamentos.length > 1 && (
-                        <button onClick={() => setPagamentos(p => p.filter((_, j) => j !== i))} className="text-gray-300 hover:text-red-500"><Trash2 size={14} /></button>
+                        <button onClick={() => setPagamentos(prev => prev.filter((_, idx) => idx !== i))} className="text-gray-300 hover:text-red-500"><X size={14} /></button>
                       )}
                     </div>
                   ))}
-                  <button onClick={() => setPagamentos(p => [...p, { forma: 'Dinheiro', valor: 0 }])} className="mt-2 text-xs text-green-600 hover:text-green-700 font-medium">
-                    + Adicionar forma de pagamento
-                  </button>
+                  <Button size="sm" variant="outline" onClick={() => setPagamentos(prev => [...prev, { forma: formasNomes[0] ?? 'PIX', valor: '' }])}>
+                    <Plus size={12} className="mr-1" /> Outra forma
+                  </Button>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span className="font-medium">{fmt(subtotalTotal)}</span></div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Desconto (R$)</span>
+                    <Input type="number" min="0" step="0.01" value={desconto} onChange={e => setDesconto(e.target.value)} className="h-7 text-sm w-24 text-right" />
+                  </div>
+                  <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-base">
+                    <span>Total</span><span className="text-green-600">{fmt(totalVenda)}</span>
+                  </div>
                   {troco > 0 && (
-                    <div className="mt-3 flex justify-between px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
-                      <span className="text-sm font-semibold text-green-700">Troco</span>
-                      <span className="text-sm font-bold text-green-700">{formatCents(troco)}</span>
+                    <div className="flex justify-between text-amber-600 font-semibold">
+                      <span>Troco</span><span>{fmt(troco)}</span>
                     </div>
                   )}
-                  <div className="mt-3 flex justify-between items-center">
-                    <span className="text-base font-bold text-gray-900">Total</span>
-                    <span className="text-xl font-bold" style={{ color: '#2ecc71' }}>{formatCents(totalFinal)}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Observações */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Observação (visível para cliente)</Label>
-                  <textarea value={observacao} onChange={e => setObservacao(e.target.value)} rows={2}
-                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
-                    placeholder="Ex: entregar pela manhã" />
-                </div>
-                <div>
-                  <Label>Obs. interna</Label>
-                  <textarea value={observacaoInterna} onChange={e => setObservacaoInterna(e.target.value)} rows={2}
-                    className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none"
-                    placeholder="Nota interna..." />
                 </div>
               </div>
 
-              <div>
-                <Label>Vendedor (opcional)</Label>
-                <Input value={vendedor} onChange={e => setVendedor(e.target.value)} className="mt-1" placeholder="Nome do vendedor" />
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+                <Button onClick={() => criarMut.mutate()}
+                  disabled={itens.every(i => !i.produtoId) || criarMut.isPending}>
+                  {criarMut.isPending ? 'Registrando...' : 'Registrar Venda'}
+                </Button>
               </div>
-
-              {erroVenda && (
-                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600">{erroVenda}</p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
-              <Button type="button" variant="outline" onClick={() => setShowNova(false)}>Cancelar</Button>
-              <Button
-                onClick={() => criarMutation.mutate()}
-                disabled={itens.length === 0 || totalPago < totalFinal || criarMutation.isPending}
-              >
-                {criarMutation.isPending ? 'Finalizando...' : `Confirmar venda ${formatCents(totalFinal)}`}
-              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Detalhe */}
-      {showDetalhe && detalhe && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Venda #{detalhe.vendaId}</h2>
-                <p className="text-sm text-gray-400">{formatDate(detalhe.vendidaEm)}</p>
-              </div>
-              <button onClick={() => setShowDetalhe(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              {detalhe.cliente && (
-                <div>
-                  <p className="text-xs font-medium text-gray-400 mb-1">CLIENTE</p>
-                  <p className="text-sm font-medium text-gray-900">{detalhe.cliente.nomeCompleto}</p>
-                </div>
-              )}
-              <div className="flex gap-3">
-                <div>
-                  <p className="text-xs font-medium text-gray-400 mb-1">ENTREGA</p>
-                  <Badge variant={detalhe.tipoEntrega === 'entrega' ? 'warning' : 'secondary'}>
-                    {detalhe.tipoEntrega === 'entrega' ? 'Entrega' : 'Retirada'}
-                  </Badge>
-                </div>
-                {detalhe.dataEntrega && (
-                  <div>
-                    <p className="text-xs font-medium text-gray-400 mb-1">DATA ENTREGA</p>
-                    <p className="text-sm text-gray-700">{formatDateOnly(detalhe.dataEntrega)}</p>
-                  </div>
-                )}
-              </div>
-              {detalhe.enderecoEntrega && (
-                <div>
-                  <p className="text-xs font-medium text-gray-400 mb-1">ENDEREÇO</p>
-                  <p className="text-sm text-gray-700">{detalhe.enderecoEntrega}</p>
-                </div>
-              )}
-              {detalhe.observacao && (
-                <div>
-                  <p className="text-xs font-medium text-gray-400 mb-1">OBSERVAÇÃO</p>
-                  <p className="text-sm text-gray-700">{detalhe.observacao}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-xs font-medium text-gray-400 mb-2">ITENS</p>
-                {detalhe.itens.map((item: any) => (
-                  <div key={item.itemId} className="flex justify-between py-2 border-b border-gray-50 last:border-0">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{item.nomeProduto}</p>
-                      <p className="text-xs text-gray-400">{item.quantidade}x {formatCents(item.precoUnitario)}</p>
-                    </div>
-                    <p className="text-sm font-semibold">{formatCents(item.subtotal)}</p>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <p className="text-xs font-medium text-gray-400 mb-2">PAGAMENTOS</p>
-                {detalhe.pagamentos.map((pag: any) => (
-                  <div key={pag.pagamentoId} className="flex justify-between py-1.5">
-                    <span className="text-sm text-gray-600">{pag.forma}</span>
-                    <span className="text-sm font-medium">{formatCents(pag.valor)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Subtotal</span>
-                  <span>{formatCents(detalhe.subtotal)}</span>
-                </div>
-                {detalhe.desconto > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Desconto</span>
-                    <span className="text-red-500">- {formatCents(detalhe.desconto)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between font-bold border-t border-gray-200 pt-2">
-                  <span>Total</span>
-                  <span style={{ color: '#2ecc71' }}>{formatCents(detalhe.total)}</span>
-                </div>
-              </div>
-              {detalhe.vendedor && (
-                <p className="text-xs text-gray-400">Vendedor: {detalhe.vendedor}</p>
-              )}
-            </div>
-          </div>
-        </div>
+      {confirmDelete && (
+        <ConfirmModal title="Excluir venda" message="Esta ação não pode ser desfeita."
+          confirmLabel="Excluir" danger
+          onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)} />
       )}
     </div>
   )
