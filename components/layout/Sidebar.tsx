@@ -1,16 +1,23 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign, ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard, Search, ClipboardCheck, X, Target } from 'lucide-react'
+import {
+  BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign,
+  ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard,
+  Search, ClipboardCheck, X, Target,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
 interface Config {
   comandasAtivo: boolean; producaoAtivo: boolean; estoqueAtivo:   boolean
   fiscalAtivo:   boolean; consultasAtivo: boolean; pedidosAtivo:  boolean
-  planoAcaoAtivo: boolean
+  planoAcaoAtivo: boolean; metasAtivo:   boolean
 }
-interface Props { tenantSlug: string; tenantName: string; config: Config; open: boolean; onClose: () => void }
+interface Props {
+  tenantSlug: string; tenantName: string; config: Config
+  open: boolean; onClose: () => void
+}
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
   const pathname    = usePathname()
@@ -19,8 +26,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
   const fixos = [
-    { label: 'Dashboard',        href: '',      icon: BarChart3 },
-    { label: 'Metas & Simulador', href: '/metas', icon: Target },
+    { label: 'Dashboard', href: '', icon: BarChart3 },
     {
       label: 'Cadastros', icon: Users,
       children: [
@@ -37,13 +43,14 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   ]
 
   const modulares = [
-    ...(config.consultasAtivo ? [{ label: 'Consultas',     href: '/consultas',   icon: Search }]         : []),
-    ...(config.pedidosAtivo   ? [{ label: 'Pedidos',       href: '/pedidos',     icon: ClipboardList }]  : []),
-    ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação', href: '/plano-acao',  icon: ClipboardCheck }] : []),
-    ...(config.producaoAtivo  ? [{ label: 'Produção',      href: '/producao',    icon: Factory }]        : []),
-    ...(config.estoqueAtivo   ? [{ label: 'Estoque',       href: '/estoque',     icon: Boxes }]          : []),
-    ...(config.comandasAtivo  ? [{ label: 'Comandas',      href: '/comandas',    icon: FileText }]       : []),
-    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',        href: '/fiscal',      icon: CreditCard }]     : []),
+    ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',       icon: Target }]        : []),
+    ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',   icon: Search }]         : []),
+    ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',     icon: ClipboardList }]  : []),
+    ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao',  icon: ClipboardCheck }] : []),
+    ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',    icon: Factory }]        : []),
+    ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',     icon: Boxes }]          : []),
+    ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',    icon: FileText }]       : []),
+    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',      icon: CreditCard }]     : []),
   ]
 
   const finais = [
@@ -74,7 +81,9 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
           <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
           <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
         </div>
-        <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded"><X size={16} /></button>
+        <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">
+          <X size={16} />
+        </button>
       </div>
 
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
@@ -97,8 +106,9 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
                       return (
                         <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
                           className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
-                            active ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
-                                   : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
+                            active
+                              ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                              : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
                           {child.label}
                         </Link>
                       )
@@ -112,8 +122,9 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
           return (
             <Link key={item.label} href={`${base}${(item as any).href ?? ''}`} onClick={onClose}
               className={cn('flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
-                active ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
-                       : 'text-white/50 hover:text-white/80 hover:bg-white/5')}>
+                active
+                  ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/5')}>
               <item.icon size={15} />
               {item.label}
             </Link>

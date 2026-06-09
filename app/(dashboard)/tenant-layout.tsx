@@ -7,7 +7,13 @@ import { dbTenant } from '@/lib/db/schemas/public'
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
 import { eq } from 'drizzle-orm'
 
-export default async function TenantLayout({ children, tenantSlug }: { children: ReactNode; tenantSlug: string }) {
+export default async function TenantLayout({
+  children,
+  tenantSlug,
+}: {
+  children: ReactNode
+  tenantSlug: string
+}) {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
@@ -15,8 +21,12 @@ export default async function TenantLayout({ children, tenantSlug }: { children:
   const userTenantSlug = user?.publicMetadata?.tenantSlug as string | undefined
   if (!userTenantSlug || userTenantSlug !== tenantSlug) redirect('/onboarding')
 
-  const tenantName = (user?.publicMetadata?.tenantName as string) ??
-    tenantSlug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  const tenantName =
+    (user?.publicMetadata?.tenantName as string) ??
+    tenantSlug
+      .split('-')
+      .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ')
 
   const { db: publicDb, release: releasePublic } = await getPublicDb()
   let schemaName = ''
@@ -26,8 +36,14 @@ export default async function TenantLayout({ children, tenantSlug }: { children:
   } finally { releasePublic() }
 
   const config = {
-    comandasAtivo: false, producaoAtivo: true, estoqueAtivo: true,
-    fiscalAtivo: false, consultasAtivo: true, pedidosAtivo: true, planoAcaoAtivo: true,
+    comandasAtivo:  false,
+    producaoAtivo:  true,
+    estoqueAtivo:   true,
+    fiscalAtivo:    false,
+    consultasAtivo: true,
+    pedidosAtivo:   true,
+    planoAcaoAtivo: true,
+    metasAtivo:     true,
   }
 
   if (schemaName) {
@@ -42,12 +58,17 @@ export default async function TenantLayout({ children, tenantSlug }: { children:
         config.consultasAtivo = (cfg as any).consultasAtivo ?? true
         config.pedidosAtivo   = (cfg as any).pedidosAtivo   ?? true
         config.planoAcaoAtivo = (cfg as any).planoAcaoAtivo ?? true
+        config.metasAtivo     = (cfg as any).metasAtivo     ?? true
       }
     } finally { release() }
   }
 
   return (
-    <ClientShell tenantSlug={tenantSlug} tenantName={tenantName} config={config}>
+    <ClientShell
+      tenantSlug={tenantSlug}
+      tenantName={tenantName}
+      config={config}
+    >
       {children}
     </ClientShell>
   )
