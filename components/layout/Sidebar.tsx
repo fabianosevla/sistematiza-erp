@@ -1,13 +1,14 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign, ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard, Search, ClipboardCheck, X } from 'lucide-react'
+import { BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign, ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard, Search, ClipboardCheck, X, Target } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
 interface Config {
-  comandasAtivo: boolean; producaoAtivo: boolean; estoqueAtivo: boolean
-  fiscalAtivo: boolean; consultasAtivo: boolean; pedidosAtivo: boolean; planoAcaoAtivo: boolean
+  comandasAtivo: boolean; producaoAtivo: boolean; estoqueAtivo:   boolean
+  fiscalAtivo:   boolean; consultasAtivo: boolean; pedidosAtivo:  boolean
+  planoAcaoAtivo: boolean
 }
 interface Props { tenantSlug: string; tenantName: string; config: Config; open: boolean; onClose: () => void }
 
@@ -18,18 +19,19 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
   const fixos = [
-    { label: 'Dashboard', href: '', icon: BarChart3 },
+    { label: 'Dashboard',        href: '',      icon: BarChart3 },
+    { label: 'Metas & Simulador', href: '/metas', icon: Target },
     {
       label: 'Cadastros', icon: Users,
       children: [
-        { label: 'Clientes',          href: '/cadastros/clientes' },
-        { label: 'Fornecedores',      href: '/cadastros/fornecedores' },
-        { label: 'Produtos',          href: '/cadastros/produtos' },
-        { label: 'Insumos',           href: '/cadastros/insumos' },
-        { label: 'Fichas Técnicas',   href: '/cadastros/ficha-tecnica' },
-        { label: 'Formas Pagamento',  href: '/cadastros/formas-pagamento' },
-        { label: 'Usuários',          href: '/cadastros/usuarios' },
-        { label: 'Domínios',          href: '/cadastros/dominios' },
+        { label: 'Clientes',         href: '/cadastros/clientes' },
+        { label: 'Fornecedores',     href: '/cadastros/fornecedores' },
+        { label: 'Produtos',         href: '/cadastros/produtos' },
+        { label: 'Insumos',          href: '/cadastros/insumos' },
+        { label: 'Fichas Técnicas',  href: '/cadastros/ficha-tecnica' },
+        { label: 'Formas Pagamento', href: '/cadastros/formas-pagamento' },
+        { label: 'Usuários',         href: '/cadastros/usuarios' },
+        { label: 'Domínios',         href: '/cadastros/dominios' },
       ],
     },
   ]
