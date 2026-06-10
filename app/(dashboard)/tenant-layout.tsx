@@ -55,7 +55,7 @@ export default async function TenantLayout({
       if (cfg) {
         config.comandasAtivo  = cfg.comandas_ativo   ?? false
         config.producaoAtivo  = cfg.producao_ativo   ?? true
-        config.estoqueAtual   = cfg.estoque_ativo    ?? true
+        config.estoqueAtivo   = cfg.estoque_ativo    ?? true
         config.fiscalAtivo    = cfg.fiscal_ativo     ?? false
         config.consultasAtivo = cfg.consultas_ativo  ?? true
         config.pedidosAtivo   = cfg.pedidos_ativo    ?? true
