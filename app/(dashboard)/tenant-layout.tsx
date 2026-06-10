@@ -1,11 +1,10 @@
 import type { ReactNode } from 'react'
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
+import { sql, eq } from 'drizzle-orm'
 import ClientShell from '@/components/layout/ClientShell'
 import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
-import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
-import { eq } from 'drizzle-orm'
 
 export default async function TenantLayout({
   children,
@@ -17,23 +16,23 @@ export default async function TenantLayout({
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
-  const user = await currentUser()
-  const userTenantSlug = user?.publicMetadata?.tenantSlug as string | undefined
-  if (!userTenantSlug || userTenantSlug !== tenantSlug) redirect('/onboarding')
-
-  const tenantName =
-    (user?.publicMetadata?.tenantName as string) ??
-    tenantSlug
-      .split('-')
-      .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ')
+  // Formata nome a partir do slug — sem depender de publicMetadata
+  const tenantName = tenantSlug
+    .split('-')
+    .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 
   const { db: publicDb, release: releasePublic } = await getPublicDb()
   let schemaName = ''
   try {
-    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, tenantSlug))
+    const [tenant] = await publicDb
+      .select()
+      .from(dbTenant)
+      .where(eq(dbTenant.slug, tenantSlug))
     schemaName = tenant?.schemaName ?? ''
-  } finally { releasePublic() }
+  } finally {
+    releasePublic()
+  }
 
   const config = {
     comandasAtivo:  false,
@@ -49,18 +48,25 @@ export default async function TenantLayout({
   if (schemaName) {
     const { db, release } = await getDbForTenant(schemaName)
     try {
-      const [cfg] = await db.select().from(dbConfiguracoesTenant).limit(1)
+      const result = await db.execute(sql`
+        SELECT * FROM t_configuracoes_tenant WHERE active_flg = true LIMIT 1
+      `)
+      const cfg = result.rows[0] as any
       if (cfg) {
-        config.comandasAtivo  = cfg.comandasAtivo
-        config.producaoAtivo  = cfg.producaoAtivo  ?? true
-        config.estoqueAtivo   = cfg.estoqueAtivo   ?? true
-        config.fiscalAtivo    = cfg.fiscalAtivo    ?? false
-        config.consultasAtivo = (cfg as any).consultasAtivo ?? true
-        config.pedidosAtivo   = (cfg as any).pedidosAtivo   ?? true
-        config.planoAcaoAtivo = (cfg as any).planoAcaoAtivo ?? true
-        config.metasAtivo     = (cfg as any).metasAtivo     ?? true
+        config.comandasAtivo  = cfg.comandas_ativo   ?? false
+        config.producaoAtivo  = cfg.producao_ativo   ?? true
+        config.estoqueAtual   = cfg.estoque_ativo    ?? true
+        config.fiscalAtivo    = cfg.fiscal_ativo     ?? false
+        config.consultasAtivo = cfg.consultas_ativo  ?? true
+        config.pedidosAtivo   = cfg.pedidos_ativo    ?? true
+        config.planoAcaoAtivo = cfg.plano_acao_ativo ?? true
+        config.metasAtivo     = cfg.metas_ativo      ?? true
       }
-    } finally { release() }
+    } catch (_) {
+      // ignora erro de config — usa defaults
+    } finally {
+      release()
+    }
   }
 
   return (
