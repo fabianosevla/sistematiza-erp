@@ -1,12 +1,12 @@
 import TenantLayout  from '@/app/(dashboard)/tenant-layout'
-import DashboardView from '@/components/modules/dashboard/DashboardView'
+import DashboardHome from '@/components/modules/dashboard/DashboardHome'
 
 interface Props { params: { tenant: string } }
 
 export default async function TenantDashboardPage({ params }: Props) {
   return (
     <TenantLayout tenantSlug={params.tenant}>
-      <DashboardView tenantSlug={params.tenant} />
+      <DashboardHome tenantSlug={params.tenant} />
     </TenantLayout>
   )
 }
