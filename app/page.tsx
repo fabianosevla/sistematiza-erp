@@ -1,13 +1,12 @@
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 
-export default async function Home() {
-  const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
-
+export default async function RootPage() {
   const user = await currentUser()
-  const tenantSlug = user?.publicMetadata?.tenantSlug as string | undefined
+  if (!user) redirect('/sign-in')
 
-  if (!tenantSlug) redirect('/onboarding')
-  redirect(`/${tenantSlug}`)
+  const tenantSlug = user.publicMetadata?.tenantSlug as string | undefined
+  if (tenantSlug) redirect(`/${tenantSlug}`)
+
+  redirect('/onboarding')
 }

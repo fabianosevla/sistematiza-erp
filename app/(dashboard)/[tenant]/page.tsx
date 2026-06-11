@@ -1,14 +1,12 @@
-import { currentUser } from '@clerk/nextjs/server'
-import { redirect } from 'next/navigation'
+import TenantLayout  from '@/app/(dashboard)/tenant-layout'
+import DashboardView from '@/components/modules/dashboard/DashboardView'
 
-export default async function RootPage() {
-  const user = await currentUser()
+interface Props { params: { tenant: string } }
 
-  if (!user) redirect('/sign-in')
-
-  const tenantSlug = user.publicMetadata?.tenantSlug as string | undefined
-
-  if (tenantSlug) redirect(`/${tenantSlug}`)
-
-  redirect('/onboarding')
+export default async function TenantDashboardPage({ params }: Props) {
+  return (
+    <TenantLayout tenantSlug={params.tenant}>
+      <DashboardView tenantSlug={params.tenant} />
+    </TenantLayout>
+  )
 }
