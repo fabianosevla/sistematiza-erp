@@ -1,14 +1,22 @@
-﻿'use client'
+'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useUser } from '@clerk/nextjs'
 
-export default function OnboardingForm() {
+export default function OnboardingPage() {
   const { user } = useUser()
+  const router = useRouter()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Se já tem tenant, redireciona
+  if (user?.publicMetadata?.tenantSlug) {
+    router.push(`/${user.publicMetadata.tenantSlug}`)
+    return null
+  }
 
   function handleNameChange(val: string) {
     setName(val)
@@ -38,9 +46,9 @@ export default function OnboardingForm() {
         return
       }
       await user?.reload()
-      window.location.href = `/${slug}`
+      router.push(`/${slug}`)
     } catch {
-      setError('Erro de conexao. Tente novamente.')
+      setError('Erro de conexão. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -52,29 +60,48 @@ export default function OnboardingForm() {
         <div className="text-center mb-8">
           <span className="text-3xl font-semibold text-white">sistematiza</span>
           <span className="text-3xl font-semibold" style={{ color: '#2ecc71' }}>.ia</span>
-          <p className="text-white/50 text-sm mt-2">Configure sua empresa para comecar</p>
+          <p className="text-white/50 text-sm mt-2">Configure sua empresa para começar</p>
         </div>
+
         <div className="bg-white rounded-xl p-8">
           <h1 className="text-xl font-semibold text-gray-900 mb-6">Criar minha empresa</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome da empresa *</label>
-              <input type="text" value={name} onChange={e => handleNameChange(e.target.value)}
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Nome da empresa *
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => handleNameChange(e.target.value)}
                 placeholder="Ex: Zaghi Massas Caseiras"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400" required />
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                required
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Identificador (slug) *</label>
-              <input type="text" value={slug}
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Identificador (slug) *
+              </label>
+              <input
+                type="text"
+                value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 placeholder="zaghi-massas"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-400" required />
-              <p className="text-xs text-gray-400 mt-1">Apenas letras minusculas, numeros e hifens</p>
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-400"
+                required
+              />
+              <p className="text-xs text-gray-400 mt-1">Apenas letras minúsculas, números e hífens</p>
             </div>
-            {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
-            <button type="submit" disabled={loading || !name || !slug}
-              className="w-full py-2.5 px-4 rounded-lg text-sm font-medium transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: '#2ecc71', color: '#0F1117' }}>
+            {error && (
+              <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+            )}
+            <button
+              type="submit"
+              disabled={loading || !name || !slug}
+              className="w-full py-2.5 px-4 rounded-lg text-sm font-medium text-white transition-opacity disabled:opacity-50"
+              style={{ backgroundColor: '#2ecc71', color: '#0F1117' }}
+            >
               {loading ? 'Criando...' : 'Criar empresa e continuar'}
             </button>
           </form>
