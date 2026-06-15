@@ -32,6 +32,9 @@ const LABELS: Record<string, string> = {
   'configuracoes': 'Configurações', 'dominios': 'Domínios', 'metas': 'Metas & Simulador',
 }
 
+// Segmentos sem página própria — apenas agrupadores de menu
+const SEM_PAGINA = new Set(['cadastros'])
+
 const MODULOS = [
   { key: 'metasAtivo',     label: 'Metas & Simulador', desc: 'Metas mensais e simulador de receita' },
   { key: 'consultasAtivo', label: 'Consultas',          desc: 'Relatórios e animação de vendas' },
@@ -57,9 +60,10 @@ export default function Header({ tenantName, tenantSlug, onMenuToggle, onPalette
   const segments    = pathname.split('/').filter(Boolean)
   const afterTenant = segments.slice(1)
   const crumbs      = afterTenant.map((seg, i) => ({
-    label:  LABELS[seg] ?? (isNaN(Number(seg)) ? seg.charAt(0).toUpperCase() + seg.slice(1) : `#${seg}`),
-    href:   `/${tenantSlug}/${afterTenant.slice(0, i + 1).join('/')}`,
-    isLast: i === afterTenant.length - 1,
+    label:     LABELS[seg] ?? (isNaN(Number(seg)) ? seg.charAt(0).toUpperCase() + seg.slice(1) : `#${seg}`),
+    href:      `/${tenantSlug}/${afterTenant.slice(0, i + 1).join('/')}`,
+    isLast:    i === afterTenant.length - 1,
+    semPagina: SEM_PAGINA.has(seg),
   }))
 
   const { data: configData } = useQuery({
@@ -102,10 +106,15 @@ export default function Header({ tenantName, tenantSlug, onMenuToggle, onPalette
             {crumbs.map((crumb, i) => (
               <span key={i} className="flex items-center gap-1.5">
                 <span className="text-gray-300 text-xs">/</span>
-                {crumb.isLast
-                  ? <span className="text-gray-900 font-semibold">{crumb.label}</span>
-                  : <Link href={crumb.href} className="text-gray-400 hover:text-gray-700 font-medium transition-colors">{crumb.label}</Link>
-                }
+                {crumb.isLast || crumb.semPagina ? (
+                  <span className={crumb.isLast ? 'text-gray-900 font-semibold' : 'text-gray-400 font-medium'}>
+                    {crumb.label}
+                  </span>
+                ) : (
+                  <Link href={crumb.href} className="text-gray-400 hover:text-gray-700 font-medium transition-colors">
+                    {crumb.label}
+                  </Link>
+                )}
               </span>
             ))}
           </nav>
@@ -219,7 +228,10 @@ export default function Header({ tenantName, tenantSlug, onMenuToggle, onPalette
                 <p className="text-xs text-gray-400 mb-3">Desativar remove do menu. Os dados são preservados.</p>
                 {FIXOS.map(nome => (
                   <div key={nome} className="flex items-center justify-between py-2.5 border-b border-gray-50">
-                    <div><p className="text-sm font-medium text-gray-400">{nome}</p><p className="text-xs text-gray-300">Sempre visível</p></div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-400">{nome}</p>
+                      <p className="text-xs text-gray-300">Sempre visível</p>
+                    </div>
                     <ToggleRight size={32} className="text-gray-200" />
                   </div>
                 ))}
