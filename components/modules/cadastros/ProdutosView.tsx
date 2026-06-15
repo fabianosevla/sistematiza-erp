@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, EyeOff } from 'lucide-react'
+import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, Clock, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,6 +12,8 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import CsvImportModal from '@/components/ui/CsvImportModal'
 import { useDominio } from '@/hooks/useDominio'
+import { HistoricoModal } from '@/components/ui/HistoricoModal'
+import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
 
 interface Props { tenantSlug: string }
 
@@ -20,14 +22,6 @@ function fmtInput(c: number) { return c > 0 ? (c / 100).toFixed(2) : '' }
 
 type SortKey = 'nome' | 'tipo' | 'precoVarejo' | 'estoqueAtual'
 type SortDir  = 'asc' | 'desc'
-
-const LABELS_ATACADO = [
-  { key: 'precoAtacadoA', label: 'Atacado A', col: 'preco_atacado_a' },
-  { key: 'precoAtacadoB', label: 'Atacado B', col: 'preco_atacado_b' },
-  { key: 'precoAtacadoC', label: 'Atacado C', col: 'preco_atacado_c' },
-  { key: 'precoAtacadoD', label: 'Atacado D', col: 'preco_atacado_d' },
-  { key: 'precoAtacadoE', label: 'Atacado E', col: 'preco_atacado_e' },
-]
 
 export default function ProdutosView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
@@ -42,12 +36,12 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [showModal, setShowModal]         = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [showFicha, setShowFicha]         = useState<any>(null)
+  const [showHistorico, setShowHistorico] = useState<any>(null)
   const [editando, setEditando]           = useState<any>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
   const [sortKey, setSortKey]             = useState<SortKey>('nome')
   const [sortDir, setSortDir]             = useState<SortDir>('asc')
 
-  // Form
   const [nome, setNome]               = useState('')
   const [tipo, setTipo]               = useState('')
   const [unidade, setUnidade]         = useState('')
@@ -56,11 +50,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [estoqueMin, setEstoqueMin]   = useState('0')
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [ativo, setAtivo]             = useState(true)
-
-  // Ficha
-  const [fichaInsumoId, setFichaInsumoId]     = useState('')
-  const [fichaQtd, setFichaQtd]               = useState('')
-  const [fichaUnidade, setFichaUnidade]       = useState('')
+  const [fichaInsumoId, setFichaInsumoId] = useState('')
+  const [fichaQtd, setFichaQtd]           = useState('')
+  const [fichaUnidade, setFichaUnidade]   = useState('')
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
 
@@ -123,13 +115,17 @@ export default function ProdutosView({ tenantSlug }: Props) {
   })
 
   const reativarMut = useMutation({
-    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activeFlag: true }) }).then(r => r.json()),
+    mutationFn: (id: number) => fetch(`${api}/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activeFlag: true }),
+    }).then(r => r.json()),
     onSuccess: () => { invalidate(); toast('Produto reativado!') },
   })
 
   function abrirModal(item?: any) {
     if (item) {
-      setEditando(item); setNome(item.nome); setTipo(item.tipo ?? tipos[0] ?? ''); setUnidade(item.unidade ?? unidades[0] ?? '')
+      setEditando(item); setNome(item.nome)
+      setTipo(item.tipo ?? tipos[0] ?? ''); setUnidade(item.unidade ?? unidades[0] ?? '')
       setPrecoVarejo(fmtInput(item.precoVarejo))
       setAtacados({
         A: fmtInput(item.precoAtacadoA ?? item.precoAtacado ?? 0),
@@ -138,10 +134,12 @@ export default function ProdutosView({ tenantSlug }: Props) {
         D: fmtInput(item.precoAtacadoD ?? 0),
         E: fmtInput(item.precoAtacadoE ?? 0),
       })
-      setEstoqueMin(String(item.estoqueMinimo ?? 0)); setEstoqueAtual(String(item.estoqueAtual ?? 0)); setAtivo(item.activeFlag ?? true)
+      setEstoqueMin(String(item.estoqueMinimo ?? 0))
+      setEstoqueAtual(String(item.estoqueAtual ?? 0))
+      setAtivo(item.activeFlag ?? true)
     } else {
       setEditando(null); setNome(''); setTipo(tipos[0] ?? ''); setUnidade(unidades[0] ?? '')
-      setPrecoVarejo(''); setAtacados({ A: '', B: '', C: '', D: '', E: '' })
+      setPrecoVarejo(''); setAtacados({ A:'', B:'', C:'', D:'', E:'' })
       setEstoqueMin('0'); setEstoqueAtual('0'); setAtivo(true)
     }
     setShowModal(true)
@@ -165,8 +163,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'produtos.csv'; a.click()
   }
 
-  const todos    = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
-  const insumos  = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
+  const todos   = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+  const insumos = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
   const fichaItens = Array.isArray(fichaRaw?.data) ? fichaRaw.data : Array.isArray(fichaRaw) ? fichaRaw : []
 
   const produtos = [...todos]
@@ -215,21 +213,26 @@ export default function ProdutosView({ tenantSlug }: Props) {
               <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Atacado A</th>
               <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('estoqueAtual')}>Estoque <SortIcon col="estoqueAtual" /></th>
               <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Status</th>
-              <th className="w-20" />
+              <th className="w-24" />
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <TableSkeleton rows={6} cols={8} />
             ) : produtos.length === 0 ? (
-              <tr><td colSpan={8}><EmptyState icon={Package} title="Nenhum produto cadastrado" action="Cadastrar primeiro produto" onAction={() => abrirModal()} /></td></tr>
+              <tr><td colSpan={8}>
+                <EmptyState icon={Package} title="Nenhum produto cadastrado" action="Cadastrar primeiro produto" onAction={() => abrirModal()} />
+              </td></tr>
             ) : produtos.map((p: any) => {
               const inativo = p.activeFlag === false
               return (
                 <tr key={p.produtoId} className={`group border-b border-gray-50 transition-colors ${inativo ? 'opacity-50 bg-gray-50/50' : 'hover:bg-gray-50/80'}`}>
                   <td className="pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150">
-                    <span className={`text-sm font-medium ${inativo ? 'text-gray-400 line-through' : 'text-gray-900 cursor-pointer hover:text-green-700'}`}
-                      onClick={() => !inativo && abrirModal(p)}>{p.nome}</span>
+                    <span
+                      className={`text-sm font-medium ${inativo ? 'text-gray-400 line-through' : 'text-gray-900 cursor-pointer hover:text-green-700'}`}
+                      onClick={() => !inativo && abrirModal(p)}>
+                      {p.nome}
+                    </span>
                     {inativo && <p className="text-xs text-gray-400 mt-0.5">desativado — preservado no histórico</p>}
                   </td>
                   <td className="px-4 py-3 text-center"><Badge variant="secondary">{p.tipo ?? '—'}</Badge></td>
@@ -248,6 +251,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                       {!inativo && (
                         <button onClick={() => setShowFicha(p)} title="Ficha técnica" className="p-1 text-blue-400 hover:text-blue-600"><BookOpen size={14} /></button>
                       )}
+                      <button onClick={() => setShowHistorico(p)} title="Histórico" className="p-1 text-purple-400 hover:text-purple-600"><Clock size={14} /></button>
                       {inativo ? (
                         <button onClick={() => reativarMut.mutate(p.produtoId)} title="Reativar" className="p-1 text-green-400 hover:text-green-600 text-xs font-medium">↺</button>
                       ) : (
@@ -287,7 +291,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </div>
               </div>
 
-              {/* Preços */}
               <div>
                 <p className="text-sm font-semibold text-gray-700 mb-3">Preços</p>
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
@@ -315,10 +318,22 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 <div><Label>Estoque Atual</Label><Input type="number" min="0" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
                 <div><Label>Estoque Mínimo</Label><Input type="number" min="0" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
               </div>
+
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-4 h-4 rounded" />
                 <span className="text-sm text-gray-700">Produto ativo</span>
               </label>
+
+              {editando && (
+                <AuditoriaInfo
+                  criadoPor={editando.createdBy}
+                  criadoEm={editando.createdDt}
+                  atualizadoPor={editando.updatedBy}
+                  atualizadoEm={editando.updatedDt}
+                  className="pt-3 border-t border-gray-100"
+                />
+              )}
+
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
                 <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
@@ -347,7 +362,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs">Insumo *</Label>
-                    <select value={fichaInsumoId} onChange={e => { setFichaInsumoId(e.target.value); const ins = insumos.find((i: any) => i.insumoId === Number(e.target.value)); if (ins) setFichaUnidade(ins.unidade ?? 'kg') }}
+                    <select value={fichaInsumoId}
+                      onChange={e => { setFichaInsumoId(e.target.value); const ins = insumos.find((i: any) => i.insumoId === Number(e.target.value)); if (ins) setFichaUnidade(ins.unidade ?? 'kg') }}
                       className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                       <option value="">Selecionar...</option>
                       {insumos.map((ins: any) => <option key={ins.insumoId} value={ins.insumoId}>{ins.nome}</option>)}
@@ -396,10 +412,20 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
       {confirmDelete && (
         <ConfirmModal title="Desativar produto"
-          message={`Desativar "${confirmDelete.nome}"? O produto some dos formulários mas todo o histórico de vendas é preservado. Você pode reativar a qualquer momento.`}
+          message={`Desativar "${confirmDelete.nome}"? O produto some dos formulários mas o histórico de vendas é preservado. Você pode reativar a qualquer momento.`}
           confirmLabel="Desativar" danger
           onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
           onCancel={() => setConfirmDelete(null)} />
+      )}
+
+      {showHistorico && (
+        <HistoricoModal
+          tenantSlug={tenantSlug}
+          entidade="produto"
+          entidadeId={showHistorico.produtoId}
+          titulo={showHistorico.nome}
+          onClose={() => setShowHistorico(null)}
+        />
       )}
     </div>
   )

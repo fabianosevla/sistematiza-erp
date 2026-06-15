@@ -1,16 +1,19 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign, ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard, Search, ClipboardCheck, X, Target } from 'lucide-react'
+import {
+  BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign,
+  ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard,
+  Search, ClipboardCheck, X, Target,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
+import type { Config } from '@/components/layout/ClientShell'
 
-interface Config {
-  comandasAtivo: boolean; producaoAtivo: boolean; estoqueAtivo:   boolean
-  fiscalAtivo:   boolean; consultasAtivo: boolean; pedidosAtivo:  boolean
-  planoAcaoAtivo: boolean
+interface Props {
+  tenantSlug: string; tenantName: string; config: Config
+  open: boolean; onClose: () => void
 }
-interface Props { tenantSlug: string; tenantName: string; config: Config; open: boolean; onClose: () => void }
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
   const pathname    = usePathname()
@@ -20,7 +23,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
 
   const fixos = [
     { label: 'Dashboard', href: '', icon: BarChart3 },
-    { label: 'Metas & Simulador', href: '/metas', icon: Target },
     {
       label: 'Cadastros', icon: Users,
       children: [
@@ -37,13 +39,14 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   ]
 
   const modulares = [
-    ...(config.consultasAtivo ? [{ label: 'Consultas',     href: '/consultas',   icon: Search }]         : []),
-    ...(config.pedidosAtivo   ? [{ label: 'Pedidos',       href: '/pedidos',     icon: ClipboardList }]  : []),
-    ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação', href: '/plano-acao',  icon: ClipboardCheck }] : []),
-    ...(config.producaoAtivo  ? [{ label: 'Produção',      href: '/producao',    icon: Factory }]        : []),
-    ...(config.estoqueAtivo   ? [{ label: 'Estoque',       href: '/estoque',     icon: Boxes }]          : []),
-    ...(config.comandasAtivo  ? [{ label: 'Comandas',      href: '/comandas',    icon: FileText }]       : []),
-    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',        href: '/fiscal',      icon: CreditCard }]     : []),
+    ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
+    ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
+    ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
+    ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
+    ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
+    ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
+    ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: FileText }]       : []),
+    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
   ]
 
   const finais = [
@@ -63,13 +66,22 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   }
 
   return (
-    <aside className={cn('fixed lg:static inset-y-0 left-0 z-40 w-60 h-screen flex flex-col flex-shrink-0 transition-transform duration-300 ease-in-out', open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0')} style={{ backgroundColor: '#0F1117' }}>
+    <aside
+      className={cn(
+        'fixed lg:static inset-y-0 left-0 z-40 w-60 h-screen flex flex-col flex-shrink-0',
+        'transition-transform duration-300 ease-in-out',
+        open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      )}
+      style={{ backgroundColor: '#0F1117' }}>
+
       <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5">
         <div className="flex items-baseline">
           <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
           <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
         </div>
-        <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded"><X size={16} /></button>
+        <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">
+          <X size={16} />
+        </button>
       </div>
 
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
@@ -79,7 +91,9 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
             const anyActive = item.children.some(c => isActive(c.href))
             return (
               <div key={item.label}>
-                <button onClick={() => toggleGroup(item.label)} className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors', anyActive ? 'text-white' : 'text-white/50 hover:text-white/80')}>
+                <button onClick={() => toggleGroup(item.label)}
+                  className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',
+                    anyActive ? 'text-white' : 'text-white/50 hover:text-white/80')}>
                   <span className="flex items-center gap-3"><item.icon size={15} />{item.label}</span>
                   {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 </button>
@@ -89,7 +103,10 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
                       const active = isActive(child.href)
                       return (
                         <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
-                          className={cn('block px-3 py-1.5 rounded-md text-sm transition-all', active ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]' : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
+                          className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
+                            active
+                              ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                              : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
                           {child.label}
                         </Link>
                       )
@@ -102,7 +119,10 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
           const active = isActive((item as any).href ?? '')
           return (
             <Link key={item.label} href={`${base}${(item as any).href ?? ''}`} onClick={onClose}
-              className={cn('flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all', active ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]' : 'text-white/50 hover:text-white/80 hover:bg-white/5')}>
+              className={cn('flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all',
+                active
+                  ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/5')}>
               <item.icon size={15} />
               {item.label}
             </Link>
@@ -112,7 +132,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
 
       <div className="border-t border-white/5 p-4">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold" style={{ backgroundColor: 'rgba(46,204,113,0.15)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.25)' }}>
+          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+            style={{ backgroundColor: 'rgba(46,204,113,0.15)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.25)' }}>
             {initials}
           </div>
           <div className="min-w-0">

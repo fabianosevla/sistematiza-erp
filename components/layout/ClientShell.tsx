@@ -5,10 +5,15 @@ import Sidebar            from '@/components/layout/Sidebar'
 import Header             from '@/components/layout/Header'
 import CommandPalette     from '@/components/ui/CommandPalette'
 
-interface Config {
-  comandasAtivo: boolean; producaoAtivo: boolean; estoqueAtivo:  boolean
-  fiscalAtivo:   boolean; consultasAtivo: boolean; pedidosAtivo: boolean
+export interface Config {
+  comandasAtivo:  boolean
+  producaoAtivo:  boolean
+  estoqueAtivo:   boolean
+  fiscalAtivo:    boolean
+  consultasAtivo: boolean
+  pedidosAtivo:   boolean
   planoAcaoAtivo: boolean
+  metasAtivo:     boolean
 }
 
 interface Props { children: ReactNode; tenantSlug: string; tenantName: string; config: Config }
@@ -40,7 +45,9 @@ const STYLE_ID = 'sistematiza-dark-mode'
 function applyDark(on: boolean) {
   const el = document.getElementById(STYLE_ID)
   if (on && !el) {
-    const s = document.createElement('style'); s.id = STYLE_ID; s.textContent = DARK_CSS; document.head.appendChild(s)
+    const s = document.createElement('style')
+    s.id = STYLE_ID; s.textContent = DARK_CSS
+    document.head.appendChild(s)
   } else if (!on && el) { el.remove() }
   localStorage.setItem('sistematiza_theme', on ? 'dark' : 'light')
 }
@@ -51,12 +58,16 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
   const [darkMode, setDarkMode]       = useState(false)
 
   useEffect(() => {
-    if (localStorage.getItem('sistematiza_theme') === 'dark') { setDarkMode(true); applyDark(true) }
+    if (localStorage.getItem('sistematiza_theme') === 'dark') {
+      setDarkMode(true); applyDark(true)
+    }
   }, [])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') { e.preventDefault(); setPaletteOpen(o => !o) }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault(); setPaletteOpen(o => !o)
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
@@ -67,11 +78,23 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
   return (
     <ToastProvider>
       <div className="flex h-screen overflow-hidden bg-gray-50">
-        {sidebarOpen && <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
-        <Sidebar tenantSlug={tenantSlug} tenantName={tenantName} config={config} open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        {sidebarOpen && (
+          <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        )}
+        <Sidebar
+          tenantSlug={tenantSlug} tenantName={tenantName} config={config}
+          open={sidebarOpen} onClose={() => setSidebarOpen(false)}
+        />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Header tenantSlug={tenantSlug} tenantName={tenantName} onMenuToggle={() => setSidebarOpen(o => !o)} onPaletteOpen={() => setPaletteOpen(true)} darkMode={darkMode} onToggleDark={toggleDark} />
-          <main className="flex-1 overflow-y-auto"><div className="p-6 max-w-[1600px]">{children}</div></main>
+          <Header
+            tenantSlug={tenantSlug} tenantName={tenantName}
+            onMenuToggle={() => setSidebarOpen(o => !o)}
+            onPaletteOpen={() => setPaletteOpen(true)}
+            darkMode={darkMode} onToggleDark={toggleDark}
+          />
+          <main className="flex-1 overflow-y-auto">
+            <div className="p-6 max-w-[1600px]">{children}</div>
+          </main>
         </div>
       </div>
       <CommandPalette tenantSlug={tenantSlug} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
