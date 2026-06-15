@@ -1,71 +1,25 @@
-import type { ReactNode } from 'react'
-import { auth, currentUser } from '@clerk/nextjs/server'
-import { redirect } from 'next/navigation'
-import { sql, eq } from 'drizzle-orm'
-import ClientShell from '@/components/layout/ClientShell'
-import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
-import { dbTenant } from '@/lib/db/schemas/public'
+import type { Metadata } from 'next'
+import { ClerkProvider } from '@clerk/nextjs'
+import Providers from '@/components/providers'
+import './globals.css'
 
-export default async function TenantLayout({
+export const metadata: Metadata = {
+  title: 'sistematiza.erp',
+  description: 'ERP SaaS para pequenas e médias empresas',
+}
+
+export default function RootLayout({
   children,
-  tenantSlug,
 }: {
-  children: ReactNode
-  tenantSlug: string
+  children: React.ReactNode
 }) {
-  const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
-
-  const user = await currentUser()
-  const userTenantSlug = user?.publicMetadata?.tenantSlug as string | undefined
-  if (!userTenantSlug || userTenantSlug !== tenantSlug) redirect('/onboarding')
-
-  const tenantName =
-    (user?.publicMetadata?.tenantName as string) ??
-    tenantSlug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-
-  const { db: publicDb, release: releasePublic } = await getPublicDb()
-  let schemaName = ''
-  try {
-    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, tenantSlug))
-    schemaName = tenant?.schemaName ?? ''
-  } finally { releasePublic() }
-
-  const config = {
-    comandasAtivo:  false,
-    producaoAtivo:  true,
-    estoqueAtivo:   true,
-    fiscalAtivo:    false,
-    consultasAtivo: true,
-    pedidosAtivo:   true,
-    planoAcaoAtivo: true,
-    metasAtivo:     true,
-  }
-
-  if (schemaName) {
-    const { db, release } = await getDbForTenant(schemaName)
-    try {
-      // Raw SQL — pega TODOS os campos incluindo os que não estão no schema Drizzle
-      const result = await db.execute(sql`
-        SELECT * FROM t_configuracoes_tenant WHERE active_flg = true LIMIT 1
-      `)
-      const cfg = result.rows[0] as any
-      if (cfg) {
-        config.comandasAtivo  = cfg.comandas_ativo   ?? false
-        config.producaoAtivo  = cfg.producao_ativo   ?? true
-        config.estoqueAtivo   = cfg.estoque_ativo    ?? true
-        config.fiscalAtivo    = cfg.fiscal_ativo     ?? false
-        config.consultasAtivo = cfg.consultas_ativo  ?? true
-        config.pedidosAtivo   = cfg.pedidos_ativo    ?? true
-        config.planoAcaoAtivo = cfg.plano_acao_ativo ?? true
-        config.metasAtivo     = cfg.metas_ativo      ?? true
-      }
-    } finally { release() }
-  }
-
   return (
-    <ClientShell tenantSlug={tenantSlug} tenantName={tenantName} config={config}>
-      {children}
-    </ClientShell>
+    <ClerkProvider>
+      <html lang="pt-BR">
+        <body>
+          <Providers>{children}</Providers>
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }
