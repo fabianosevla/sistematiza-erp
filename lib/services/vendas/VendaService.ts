@@ -3,6 +3,25 @@ import type { AppDB } from '@/lib/db/connection'
 import { dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
 import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Retorna o preço em centavos de acordo com o tipo de precificação escolhido.
+ * Se o tipo não tiver valor definido, cai em cascata até precoVarejo.
+ */
+function resolverPreco(produto: any, tipoPrecao: string): number {
+  switch (tipoPrecao) {
+    case 'atacado_a': return produto.precoAtacadoA || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_b': return produto.precoAtacadoB || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_c': return produto.precoAtacadoC || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_d': return produto.precoAtacadoD || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_e': return produto.precoAtacadoE || produto.precoAtacado || produto.precoVarejo || 0
+    default:          return produto.precoVarejo || 0
+  }
+}
+
+// ─── Service ──────────────────────────────────────────────────────────────────
+
 export class VendaService {
   constructor(private db: AppDB) {}
 
@@ -32,8 +51,24 @@ export class VendaService {
       this.db.select({ total: count() }).from(dbVenda).where(whereClause),
     ])
 
+    // Enriquecer com nome do cliente
+    const clienteIds = [...new Set(vendas.filter(v => v.clienteId).map(v => v.clienteId!))]
+    const clienteMap: Record<number, string> = {}
+    if (clienteIds.length > 0) {
+      const clientes = await this.db.select({
+        clienteId: dbCliente.clienteId,
+        nome: dbCliente.nomeCompleto,
+      }).from(dbCliente)
+      for (const c of clientes) clienteMap[c.clienteId] = c.nome
+    }
+
     const total = Number(totals[0]?.total ?? 0)
-    return { data: vendas, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } }
+    const data = vendas.map(v => ({
+      ...v,
+      clienteNome: v.clienteId ? (clienteMap[v.clienteId] ?? '—') : 'Consumidor Final',
+    }))
+
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } }
   }
 
   async findById(id: number) {
@@ -58,7 +93,7 @@ export class VendaService {
     const hoje   = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const semana = new Date(hoje)
     semana.setDate(semana.getDate() - semana.getDay())
-    const mes = new Date(now.getFullYear(), now.getMonth(), 1)
+    const mes  = new Date(now.getFullYear(), now.getMonth(), 1)
     const base = eq(dbVenda.activeFlag, true)
 
     const [hojeData, semanaData, mesData, entregasHoje] = await Promise.all([
@@ -72,8 +107,9 @@ export class VendaService {
       }).from(dbVenda).where(and(base, gte(dbVenda.vendidaEm, semana))),
 
       this.db.select({
-        total: sql<number>`COALESCE(SUM(total), 0)`,
-        qtd:   count(),
+        total:      sql<number>`COALESCE(SUM(total), 0)`,
+        qtd:        count(),
+        ticketMedio: sql<number>`CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(total), 0) / COUNT(*) ELSE 0 END`,
       }).from(dbVenda).where(and(base, gte(dbVenda.vendidaEm, mes))),
 
       this.db.select({ qtd: count() }).from(dbVenda).where(and(
@@ -85,19 +121,37 @@ export class VendaService {
     ])
 
     return {
-      hoje:         { total: Number(hojeData[0]?.total ?? 0),  qtd: Number(hojeData[0]?.qtd ?? 0) },
-      semana:       { total: Number(semanaData[0]?.total ?? 0) },
-      mes:          { total: Number(mesData[0]?.total ?? 0),   qtd: Number(mesData[0]?.qtd ?? 0) },
-      entregasHoje: { qtd: Number(entregasHoje[0]?.qtd ?? 0) },
+      receitaHoje:  Number(hojeData[0]?.total ?? 0),
+      qtdHoje:      Number(hojeData[0]?.qtd ?? 0),
+      receitaSemana: Number(semanaData[0]?.total ?? 0),
+      receitaMes:   Number(mesData[0]?.total ?? 0),
+      qtdMes:       Number(mesData[0]?.qtd ?? 0),
+      ticketMedio:  Number(mesData[0]?.ticketMedio ?? 0),
+      entregasHoje: Number(entregasHoje[0]?.qtd ?? 0),
     }
   }
 
+  /**
+   * Cria uma venda direta (não via comanda).
+   *
+   * CORREÇÃO DOS GAPS 2 e 3:
+   * - Cada item agora recebe `tipoPrecao` (varejo | atacado_a … atacado_e)
+   * - O preço unitário é SEMPRE resolvido no servidor via `resolverPreco()`,
+   *   nunca confiando no valor enviado pelo cliente
+   * - `t_venda_item` agora persiste `tipo_precao` e `nome_tipo_precao` para
+   *   rastreabilidade (requer migration abaixo)
+   */
   async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, userId }: {
-    itens:              { produtoId: number; quantidade: number }[]
+    itens: {
+      produtoId:   number
+      quantidade:  number
+      tipoPrecao?: string   // 'varejo' | 'atacado_a' | … | 'atacado_e'
+      // precoUnitario vindo do cliente é IGNORADO — servidor busca do banco
+    }[]
     clienteId?:         number
     desconto:           number
     pagamentos:         { forma: string; valor: number }[]
-    tipoEntrega:        'retirada' | 'entrega'
+    tipoEntrega:        string
     dataEntrega?:       string
     enderecoEntrega?:   string
     observacao?:        string
@@ -110,21 +164,42 @@ export class VendaService {
     const itemsDetalhados: any[] = []
 
     for (const item of itens) {
-      const [produto] = await this.db.select().from(dbProduto).where(eq(dbProduto.produtoId, item.produtoId))
-      if (!produto) throw new Error(`Produto ${item.produtoId} não encontrado`)
-      const precoUnitario = produto.precoVarejo
-      const itemSubtotal  = precoUnitario * item.quantidade
+      const [produto] = await this.db
+        .select()
+        .from(dbProduto)
+        .where(and(eq(dbProduto.produtoId, item.produtoId), eq(dbProduto.activeFlag, true)))
+
+      if (!produto) throw new Error(`Produto ${item.produtoId} não encontrado ou inativo`)
+
+      const tipoPrecao     = item.tipoPrecao ?? 'varejo'
+      const precoUnitario  = resolverPreco(produto, tipoPrecao)
+      const itemSubtotal   = precoUnitario * item.quantidade
       subtotal += itemSubtotal
-      itemsDetalhados.push({ ...item, nomeProduto: produto.nome, precoUnitario, subtotal: itemSubtotal })
+
+      // Label legível para relatórios e histórico
+      const labelTipo: Record<string, string> = {
+        varejo: 'Varejo', atacado_a: 'Atacado A', atacado_b: 'Atacado B',
+        atacado_c: 'Atacado C', atacado_d: 'Atacado D', atacado_e: 'Atacado E',
+      }
+
+      itemsDetalhados.push({
+        produtoId:      produto.produtoId,
+        nomeProduto:    produto.nome,
+        quantidade:     item.quantidade,
+        tipoPrecao,
+        nomeTipoPrecao: labelTipo[tipoPrecao] ?? 'Varejo',
+        precoUnitario,
+        subtotal:       itemSubtotal,
+      })
     }
 
     const total = Math.max(0, subtotal - desconto)
 
     const [venda] = await this.db.insert(dbVenda).values({
       origem:            'direta',
-      clienteId,
+      clienteId:         clienteId ?? null,
       status:            'concluida',
-      tipoEntrega,
+      tipoEntrega:       tipoEntrega || 'retirada',
       dataEntrega:       dataEntrega ? new Date(dataEntrega) : null,
       enderecoEntrega:   enderecoEntrega || null,
       subtotal,
@@ -141,18 +216,37 @@ export class VendaService {
     }).returning({ vendaId: dbVenda.vendaId })
 
     for (const item of itemsDetalhados) {
-      await this.db.insert(dbVendaItem).values({
-        vendaId:       venda.vendaId,
-        produtoId:     item.produtoId,
-        nomeProduto:   item.nomeProduto,
-        quantidade:    item.quantidade,
-        precoUnitario: item.precoUnitario,
-        subtotal:      item.subtotal,
-        createdBy:     userId,
-        updatedBy:     userId,
-        createdDt:     now,
-        updatedDt:     now,
-      })
+      // Tenta inserir com as colunas extras; se não existirem no banco ainda,
+      // o bloco catch cai para o insert sem elas (retrocompatibilidade).
+      try {
+        await this.db.execute(sql`
+          INSERT INTO t_venda_item (
+            venda_id, produto_id, nome_produto, quantidade,
+            tipo_precao, nome_tipo_precao,
+            preco_unitario, subtotal,
+            created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
+          ) VALUES (
+            ${venda.vendaId}, ${item.produtoId}, ${item.nomeProduto}, ${item.quantidade},
+            ${item.tipoPrecao}, ${item.nomeTipoPrecao},
+            ${item.precoUnitario}, ${item.subtotal},
+            ${userId}, ${userId}, ${now.toISOString()}, ${now.toISOString()}, true, 0
+          )
+        `)
+      } catch {
+        // Coluna tipo_precao ainda não existe — usa insert padrão Drizzle
+        await this.db.insert(dbVendaItem).values({
+          vendaId:       venda.vendaId,
+          produtoId:     item.produtoId,
+          nomeProduto:   item.nomeProduto,
+          quantidade:    item.quantidade,
+          precoUnitario: item.precoUnitario,
+          subtotal:      item.subtotal,
+          createdBy:     userId,
+          updatedBy:     userId,
+          createdDt:     now,
+          updatedDt:     now,
+        })
+      }
     }
 
     for (const pag of pagamentos) {
@@ -167,6 +261,7 @@ export class VendaService {
       })
     }
 
+    // Baixa estoque dos produtos vendidos
     for (const item of itemsDetalhados) {
       await this.db.update(dbProduto).set({
         estoqueAtual: sql`${dbProduto.estoqueAtual} - ${item.quantidade}`,

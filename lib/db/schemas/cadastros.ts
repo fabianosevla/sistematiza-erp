@@ -63,18 +63,26 @@ export type TpDbFornecedorUpdate = Partial<Omit<TpDbFornecedorInsert, 'fornecedo
 
 // ─── Produtos ─────────────────────────────────────────────────────────────────
 export const dbProduto = pgTable('t_produto', {
-  produtoId:     serial('produto_id').primaryKey(),
+  produtoId:      serial('produto_id').primaryKey(),
   ...auditFields,
-  nome:          varchar('nome', { length: 200 }).notNull(),
-  descricao:     varchar('descricao', { length: 500 }),
-  codigoBarras:  varchar('codigo_barras', { length: 50 }),
-  unidade:       varchar('unidade', { length: 20 }).notNull().default('un'),
-  categoria:     varchar('categoria', { length: 100 }),
-  estoqueAtual:  integer('estoque_atual').notNull().default(0),
-  estoqueMinimo: integer('estoque_minimo').notNull().default(0),
-  precoCusto:    integer('preco_custo').notNull().default(0),
-  precoVarejo:   integer('preco_varejo').notNull().default(0),
-  precoAtacado:  integer('preco_atacado').notNull().default(0),
+  nome:           varchar('nome', { length: 200 }).notNull(),
+  descricao:      varchar('descricao', { length: 500 }),
+  codigoBarras:   varchar('codigo_barras', { length: 50 }),
+  unidade:        varchar('unidade', { length: 20 }).notNull().default('un'),
+  categoria:      varchar('categoria', { length: 100 }),
+  tipo:           varchar('tipo', { length: 100 }),
+  estoqueAtual:   integer('estoque_atual').notNull().default(0),
+  estoqueMinimo:  integer('estoque_minimo').notNull().default(0),
+  precoCusto:     integer('preco_custo').notNull().default(0),
+  precoVarejo:    integer('preco_varejo').notNull().default(0),
+  // Atacado legado (mantido para retrocompatibilidade)
+  precoAtacado:   integer('preco_atacado').notNull().default(0),
+  // Tabelas de preço atacado por canal B2B (A=mercados pequenos … E=grandes redes)
+  precoAtacadoA:  integer('preco_atacado_a').notNull().default(0),
+  precoAtacadoB:  integer('preco_atacado_b').notNull().default(0),
+  precoAtacadoC:  integer('preco_atacado_c').notNull().default(0),
+  precoAtacadoD:  integer('preco_atacado_d').notNull().default(0),
+  precoAtacadoE:  integer('preco_atacado_e').notNull().default(0),
 })
 export type TpDbProdutoRow    = InferSelectModel<typeof dbProduto>
 export type TpDbProdutoInsert = InferInsertModel<typeof dbProduto>
