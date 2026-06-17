@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  BarChart3, Users, Boxes, ShoppingCart, FileText, DollarSign,
+  BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard,
   Search, ClipboardCheck, X, Target,
 } from 'lucide-react'
@@ -26,14 +26,15 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     {
       label: 'Cadastros', icon: Users,
       children: [
-        { label: 'Clientes',         href: '/cadastros/clientes' },
-        { label: 'Fornecedores',     href: '/cadastros/fornecedores' },
-        { label: 'Produtos',         href: '/cadastros/produtos' },
-        { label: 'Insumos',          href: '/cadastros/insumos' },
-        { label: 'Fichas Técnicas',  href: '/cadastros/ficha-tecnica' },
-        { label: 'Formas Pagamento', href: '/cadastros/formas-pagamento' },
-        { label: 'Usuários',         href: '/cadastros/usuarios' },
-        { label: 'Domínios',         href: '/cadastros/dominios' },
+        { label: 'Clientes',          href: '/cadastros/clientes' },
+        { label: 'Fornecedores',      href: '/cadastros/fornecedores' },
+        { label: 'Produtos',          href: '/cadastros/produtos' },
+        { label: 'Insumos',           href: '/cadastros/insumos' },
+        { label: 'Fichas Técnicas',   href: '/cadastros/ficha-tecnica' },
+        { label: 'Formas Pagamento',  href: '/cadastros/formas-pagamento' },
+        { label: 'Usuários',          href: '/cadastros/usuarios' },
+        { label: 'Perfis de Acesso',  href: '/perfis' },
+        { label: 'Domínios',          href: '/cadastros/dominios' },
       ],
     },
   ]
@@ -45,7 +46,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
     ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
     ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
-    ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: FileText }]       : []),
+    ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
     ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
   ]
 
