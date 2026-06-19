@@ -59,11 +59,17 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
+  // ✅ CORRIGIDO: usa "acao" (não "tipo") para discriminar a operação POST,
+  //    evitando conflito com novaConta.tipo (corrente/poupança/investimento)
   const criarContaMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(api, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'criar-conta', ...novaConta, saldoInicial: Math.round(parseFloat(novaConta.saldoInicial || '0') * 100) }),
+        body: JSON.stringify({
+          acao: 'criar-conta',
+          ...novaConta,
+          saldoInicial: Math.round(parseFloat(novaConta.saldoInicial || '0') * 100),
+        }),
       })
       return res.json()
     },
@@ -89,6 +95,7 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
   })
 
   // ── Import OFX ────────────────────────────────────────────────────────────
+  // ✅ CORRIGIDO: usa "acao" em vez de "tipo" também aqui, por consistência
   async function handleOFX(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !contaSelecionada) return
@@ -97,7 +104,7 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
       const conteudo = await file.text()
       const res = await fetch(api, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tipo: 'importar-ofx', contaBancariaId: contaSelecionada, conteudoOFX: conteudo }),
+        body: JSON.stringify({ acao: 'importar-ofx', contaBancariaId: contaSelecionada, conteudoOFX: conteudo }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message)

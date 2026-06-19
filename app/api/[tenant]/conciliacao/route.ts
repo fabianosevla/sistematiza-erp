@@ -5,8 +5,7 @@ import { getDbForTenant } from '@/lib/db/connection'
 import { ConciliacaoService } from '@/lib/services/financeiro/ConciliacaoService'
 import { ok, created, serverError } from '@/lib/api/responses'
 
-type P  = { params: { tenant: string } }
-type PI = { params: { tenant: string; id: string } }
+type P = { params: { tenant: string } }
 
 // GET /api/[tenant]/conciliacao?tipo=contas&contaId=1
 // GET /api/[tenant]/conciliacao?tipo=extrato&contaId=1&status=pendente
@@ -35,6 +34,8 @@ export async function GET(req: NextRequest, { params }: P) {
 }
 
 // POST /api/[tenant]/conciliacao — criar conta bancária ou importar OFX
+// Usa "acao" (não "tipo") para discriminar a operação, pois "tipo" já é
+// usado como campo de negócio (tipo de conta: corrente/poupança/investimento)
 export async function POST(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
@@ -43,13 +44,14 @@ export async function POST(req: NextRequest, { params }: P) {
       const body = await req.json()
       const svc  = new ConciliacaoService(db)
 
-      if (body.tipo === 'importar-ofx') {
+      if (body.acao === 'importar-ofx') {
         return ok(await svc.importarOFX(body.contaBancariaId, body.conteudoOFX, 1))
       }
-      if (body.tipo === 'criar-conta') {
-        return created(await svc.criarConta(body, 1))
+      if (body.acao === 'criar-conta') {
+        const { acao, ...payload } = body
+        return created(await svc.criarConta(payload, 1))
       }
-      return serverError(new Error('tipo inválido'))
+      return serverError(new Error('ação inválida'))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }
