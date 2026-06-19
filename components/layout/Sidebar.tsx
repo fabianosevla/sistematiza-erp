@@ -3,11 +3,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
-  ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target,
+  ChevronRight, ClipboardList, Factory, CreditCard,
+  Search, ClipboardCheck, X, Target, Code2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
 import type { Config } from '@/components/layout/ClientShell'
 
 interface Props {
@@ -16,8 +15,7 @@ interface Props {
 }
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
-  const pathname    = usePathname()
-  const [groupsOpen, setGroupsOpen] = useState<string[]>(['Cadastros'])
+  const pathname = usePathname()
   const base     = `/${tenantSlug}`
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
@@ -62,10 +60,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     return href === '' ? pathname === base : pathname.startsWith(full)
   }
 
-  function toggleGroup(label: string) {
-    setGroupsOpen(prev => prev.includes(label) ? prev.filter(g => g !== label) : [...prev, label])
-  }
-
   return (
     <aside
       className={cn(
@@ -76,9 +70,12 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
       style={{ backgroundColor: '#0F1117' }}>
 
       <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5">
-        <div className="flex items-baseline">
-          <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
-          <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
+        <div className="flex items-center gap-2">
+          <Code2 size={18} style={{ color: '#2ecc71' }} />
+          <div className="flex items-baseline">
+            <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
+            <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
+          </div>
         </div>
         <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">
           <X size={16} />
@@ -88,32 +85,31 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
         {allItems.map(item => {
           if ('children' in item && item.children) {
-            const isOpen    = groupsOpen.includes(item.label)
             const anyActive = item.children.some(c => isActive(c.href))
             return (
-              <div key={item.label}>
-                <button onClick={() => toggleGroup(item.label)}
+              // Grupo com submenu expansível NO HOVER (CSS puro via named group,
+              // sem estado em JS) — abre ao passar o mouse, fecha ao sair.
+              <div key={item.label} className="group/menu relative">
+                <button
                   className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',
-                    anyActive ? 'text-white' : 'text-white/50 hover:text-white/80')}>
+                    anyActive ? 'text-white' : 'text-white/50 group-hover/menu:text-white/80')}>
                   <span className="flex items-center gap-3"><item.icon size={15} />{item.label}</span>
-                  {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  <ChevronRight size={12} className="transition-transform duration-200 group-hover/menu:rotate-90" />
                 </button>
-                {isOpen && (
-                  <div className="ml-7 mt-0.5 space-y-0.5">
-                    {item.children.map(child => {
-                      const active = isActive(child.href)
-                      return (
-                        <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
-                          className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
-                            active
-                              ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
-                              : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
-                          {child.label}
-                        </Link>
-                      )
-                    })}
-                  </div>
-                )}
+                <div className="ml-7 mt-0.5 space-y-0.5 max-h-0 overflow-hidden group-hover/menu:max-h-96 transition-[max-height] duration-200 ease-in-out">
+                  {item.children.map(child => {
+                    const active = isActive(child.href)
+                    return (
+                      <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
+                        className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
+                          active
+                            ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                            : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
+                        {child.label}
+                      </Link>
+                    )
+                  })}
+                </div>
               </div>
             )
           }

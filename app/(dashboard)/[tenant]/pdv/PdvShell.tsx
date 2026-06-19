@@ -2,7 +2,7 @@
 // app/(dashboard)/[tenant]/pdv/PdvShell.tsx
 
 import { useState } from 'react'
-import { ShoppingCart, LayoutGrid, ClipboardList, LogOut } from 'lucide-react'
+import { ShoppingCart, LayoutGrid, ClipboardList, LogOut, Code2 } from 'lucide-react'
 import ComandasView from '@/components/modules/comandas/ComandasView'
 import PdvBalcao from './PdvBalcao'
 import PdvMesas from './PdvMesas'
@@ -25,9 +25,12 @@ export default function PdvShell({ tenantSlug }: Props) {
 
       <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="flex items-baseline">
-            <span className="text-lg font-bold text-gray-900">sistematiza</span>
-            <span className="text-lg font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+          <div className="flex items-center gap-1.5">
+            <Code2 size={18} style={{ color: '#2ecc71' }} />
+            <div className="flex items-baseline">
+              <span className="text-lg font-bold text-gray-900">sistematiza</span>
+              <span className="text-lg font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+            </div>
           </div>
           <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500 uppercase tracking-wide">
             PDV

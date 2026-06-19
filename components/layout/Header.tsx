@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, ShoppingCart } from 'lucide-react'
+import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, ShoppingCart, Code2 } from 'lucide-react'
 import { useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
@@ -108,9 +108,12 @@ export default function Header({
           {logoPreview ? (
             <img src={logoPreview} alt="Logo" className="h-7 w-auto object-contain" />
           ) : (
-            <div className="flex items-baseline">
-              <span className="text-sm font-bold text-gray-900">sistematiza</span>
-              <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+            <div className="flex items-center gap-1.5">
+              <Code2 size={16} style={{ color: '#2ecc71' }} />
+              <div className="flex items-baseline">
+                <span className="text-sm font-bold text-gray-900">sistematiza</span>
+                <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+              </div>
             </div>
           )}
         </div>
