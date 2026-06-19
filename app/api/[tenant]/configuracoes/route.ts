@@ -1,8 +1,8 @@
-// @ts-nocheck
+// app/api/[tenant]/configuracoes/route.ts
+// CRÍTICO: usa raw SQL UPDATE individual por campo — não alterar para Drizzle
 import type { NextRequest } from 'next/server'
-import { sql } from 'drizzle-orm'
-import { resolveTenant }  from '@/lib/auth/tenant'
-import { getDbForTenant } from '@/lib/db/connection'
+import { pool } from '@/lib/db/connection'
+import { resolveTenant } from '@/lib/auth/tenant'
 import { ok, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
@@ -10,65 +10,91 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
-    const { db, release } = await getDbForTenant(tenant.schemaName)
+    const client = await pool.connect()
     try {
-      const result = await db.execute(sql`
-        SELECT * FROM t_configuracoes_tenant WHERE active_flg = true LIMIT 1
-      `)
-      const r = result.rows[0] as any
-      if (!r) return ok({})
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+      const result = await client.query(`SELECT * FROM t_configuracoes_tenant LIMIT 1`)
+      const r = result.rows[0] ?? {}
       return ok({
-        comandasAtivo:    r.comandas_ativo    ?? false,
-        producaoAtivo:    r.producao_ativo    ?? true,
-        estoqueAtivo:     r.estoque_ativo     ?? true,
-        fiscalAtivo:      r.fiscal_ativo      ?? false,
-        consultasAtivo:   r.consultas_ativo   ?? true,
-        pedidosAtivo:     r.pedidos_ativo     ?? true,
-        planoAcaoAtivo:   r.plano_acao_ativo  ?? true,
-        metasAtivo:       r.metas_ativo       ?? true,
-        nomeEmpresa:      r.nome_empresa      ?? '',
-        cnpj:             r.cnpj              ?? '',
-        ieEstadual:       r.ie_estadual       ?? '',
-        uf:               r.uf                ?? '',
-        regimeTributario: r.regime_tributario ?? '',
-        telefone:         r.telefone          ?? '',
-        endereco:         r.endereco          ?? '',
-        focusNfeToken:    r.focus_nfe_token   ?? '',
-        focusNfeAmbiente: r.focus_nfe_ambiente ?? 'homologacao',
+        // Módulos existentes
+        comandasAtivo:   r.comandas_ativo   ?? false,
+        producaoAtivo:   r.producao_ativo   ?? true,
+        estoqueAtivo:    r.estoque_ativo    ?? true,
+        fiscalAtivo:     r.fiscal_ativo     ?? false,
+        consultasAtivo:  r.consultas_ativo  ?? true,
+        pedidosAtivo:    r.pedidos_ativo    ?? true,
+        planoAcaoAtivo:  r.plano_acao_ativo ?? false,
+        metasAtivo:      r.metas_ativo      ?? false,
+        // Financeiro Completo
+        contasPagarAtivo:         r.contas_pagar_ativo         ?? false,
+        contasReceberAtivo:       r.contas_receber_ativo       ?? false,
+        conciliacaoBancariaAtivo: r.conciliacao_bancaria_ativo ?? false,
+        // Aparência
+        logoBase64: r.logo_base64 ?? null,
+        darkMode:   r.dark_mode   ?? false,
+        // Dados do tenant
+        nomeEmpresa:  r.nome_empresa  ?? '',
+        nomeFantasia: r.nome_fantasia ?? '',
+        cnpj:         r.cnpj          ?? '',
+        telefone:     r.telefone      ?? '',
+        email:        r.email         ?? '',
+        endereco:     r.endereco      ?? '',
+        cidade:       r.cidade        ?? '',
+        uf:           r.uf            ?? '',
+        cep:          r.cep           ?? '',
       })
-    } finally { release() }
+    } finally { client.release() }
   } catch (err) { return serverError(err) }
 }
 
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
-    const { db, release } = await getDbForTenant(tenant.schemaName)
+    const body   = await req.json()
+    const client = await pool.connect()
+
     try {
-      const body = await req.json()
-      const now  = new Date().toISOString()
-      const ops: Promise<any>[] = []
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
-      if ('comandasAtivo'    in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET comandas_ativo    = ${body.comandasAtivo}    WHERE active_flg = true`))
-      if ('producaoAtivo'    in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET producao_ativo    = ${body.producaoAtivo}    WHERE active_flg = true`))
-      if ('estoqueAtivo'     in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET estoque_ativo     = ${body.estoqueAtivo}     WHERE active_flg = true`))
-      if ('fiscalAtivo'      in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET fiscal_ativo      = ${body.fiscalAtivo}      WHERE active_flg = true`))
-      if ('consultasAtivo'   in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET consultas_ativo   = ${body.consultasAtivo}   WHERE active_flg = true`))
-      if ('pedidosAtivo'     in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET pedidos_ativo     = ${body.pedidosAtivo}     WHERE active_flg = true`))
-      if ('planoAcaoAtivo'   in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET plano_acao_ativo  = ${body.planoAcaoAtivo}   WHERE active_flg = true`))
-      if ('metasAtivo'       in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET metas_ativo       = ${body.metasAtivo}       WHERE active_flg = true`))
-      if ('nomeEmpresa'      in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET nome_empresa      = ${body.nomeEmpresa}      WHERE active_flg = true`))
-      if ('cnpj'             in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET cnpj              = ${body.cnpj}             WHERE active_flg = true`))
-      if ('ieEstadual'       in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET ie_estadual       = ${body.ieEstadual}       WHERE active_flg = true`))
-      if ('uf'               in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET uf                = ${body.uf}               WHERE active_flg = true`))
-      if ('regimeTributario' in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET regime_tributario = ${body.regimeTributario} WHERE active_flg = true`))
-      if ('telefone'         in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET telefone          = ${body.telefone}         WHERE active_flg = true`))
-      if ('endereco'         in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET endereco          = ${body.endereco}         WHERE active_flg = true`))
-      if ('focusNfeToken'    in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET focus_nfe_token   = ${body.focusNfeToken}    WHERE active_flg = true`))
-      if ('focusNfeAmbiente' in body) ops.push(db.execute(sql`UPDATE t_configuracoes_tenant SET focus_nfe_ambiente = ${body.focusNfeAmbiente} WHERE active_flg = true`))
+      // PADRÃO CRÍTICO: raw SQL UPDATE individual por campo
+      const updates: [string, any][] = [
+        ['comandas_ativo',           body.comandasAtivo],
+        ['producao_ativo',           body.producaoAtivo],
+        ['estoque_ativo',            body.estoqueAtivo],
+        ['fiscal_ativo',             body.fiscalAtivo],
+        ['consultas_ativo',          body.consultasAtivo],
+        ['pedidos_ativo',            body.pedidosAtivo],
+        ['plano_acao_ativo',         body.planoAcaoAtivo],
+        ['metas_ativo',              body.metasAtivo],
+        // Financeiro Completo
+        ['contas_pagar_ativo',         body.contasPagarAtivo],
+        ['contas_receber_ativo',       body.contasReceberAtivo],
+        ['conciliacao_bancaria_ativo', body.conciliacaoBancariaAtivo],
+        // Aparência
+        ['logo_base64', body.logoBase64],
+        ['dark_mode',   body.darkMode],
+        // Dados do tenant
+        ['nome_empresa',  body.nomeEmpresa],
+        ['nome_fantasia', body.nomeFantasia],
+        ['cnpj',          body.cnpj],
+        ['telefone',      body.telefone],
+        ['email',         body.email],
+        ['endereco',      body.endereco],
+        ['cidade',        body.cidade],
+        ['uf',            body.uf],
+        ['cep',           body.cep],
+      ]
 
-      await Promise.all(ops)
-      return ok({ ok: true })
-    } finally { release() }
+      for (const [col, val] of updates) {
+        if (val !== undefined) {
+          await client.query(
+            `UPDATE t_configuracoes_tenant SET ${col} = $1`,
+            [val]
+          )
+        }
+      }
+
+      return ok({ updated: true })
+    } finally { client.release() }
   } catch (err) { return serverError(err) }
 }

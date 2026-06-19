@@ -1,613 +1,605 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Download, Trash2, TrendingUp, TrendingDown, DollarSign, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
+import { ChevronLeft, ChevronRight, Download, Plus, X, Trash2 } from 'lucide-react'
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell,
+} from 'recharts'
+import { Button }      from '@/components/ui/button'
+import { Input }       from '@/components/ui/input'
+import { Label }       from '@/components/ui/label'
+import { useToast }    from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
-import { useToast } from '@/components/ui/Toast'
-import { useDominio } from '@/hooks/useDominio'
+import ContasPagarView   from './ContasPagarView'
+import ContasReceberView from './ContasReceberView'
+import ConciliacaoView   from './ConciliacaoView'
 
 interface Props { tenantSlug: string }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
+type Aba = 'despesas' | 'dre' | 'gastos-fixos' | 'demonstrativo' | 'compras'
+         | 'a-pagar'  | 'a-receber' | 'conciliacao'
 
-const MESES_NOME  = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
-const MESES_ABREV = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+const CORES  = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c']
+const fmt    = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtPct = (n: number) => `${n.toFixed(1)}%`
 
 export default function FinanceiroView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
-  const apiBase   = `/api/${tenantSlug}/financeiro`
-  const now       = new Date()
+  const api       = `/api/${tenantSlug}/financeiro`
 
-  // ── Domínios configuráveis ──────────────────────────────────────────────
-  const categorias  = useDominio(tenantSlug, 'categoria_despesa', [
-    'Matéria Prima','Embalagem','Entrega / Frete','Funcionários',
-    'Aluguel','Energia / Água','Marketing','Impostos','Outros',
-  ])
-  const periodos = useDominio(tenantSlug, 'periodo_recorrencia', ['Mensal','Semanal','Anual'])
+  const now = new Date()
+  const [mes,  setMes]  = useState(now.getMonth() + 1)
+  const [ano,  setAno]  = useState(now.getFullYear())
+  const [aba,  setAba]  = useState<Aba>('despesas')
 
-  const [mes, setMes] = useState(now.getMonth() + 1)
-  const [ano, setAno] = useState(now.getFullYear())
-  const [aba, setAba] = useState<'despesas'|'dre'|'gastos-fixos'|'demonstrativo'|'compras'>('despesas')
-  const [anoDemo, setAnoDemo]     = useState(now.getFullYear())
-  const [anoGastos, setAnoGastos] = useState(now.getFullYear())
-  const [categoria, setCategoria] = useState('')
-  const [showNova, setShowNova]   = useState(false)
-  const [showNovaCompra, setShowNovaCompra] = useState(false)
-  const [confirmDelete, setConfirmDelete]   = useState<{ id: number; nome: string } | null>(null)
-  const [editandoCelula, setEditandoCelula] = useState<{ catId: number; mes: number } | null>(null)
-  const [valorCelula, setValorCelula]       = useState('')
+  // ── Modais de Despesas ──────────────────────────────────────────────────
+  const [showDespesa, setShowDespesa]     = useState(false)
+  const [editDespesa, setEditDespesa]     = useState<any>(null)
+  const [confirmDel,  setConfirmDel]      = useState<any>(null)
+  const [despForm, setDespForm] = useState({
+    descricao: '', valor: '', categoria: '', dataLancamento: new Date().toISOString().slice(0, 10),
+    mesCompetencia: String(now.getMonth() + 1), anoCompetencia: String(now.getFullYear()),
+  })
+  const setDF = (k: string, v: string) => setDespForm(p => ({ ...p, [k]: v }))
 
-  const [nome, setNome]               = useState('')
-  const [catNova, setCatNova]         = useState('')
-  const [valor, setValor]             = useState('')
-  const [dataDespesa, setDataDespesa] = useState(new Date().toISOString().slice(0, 10))
-  const [recorrente, setRecorrente]   = useState(false)
-  const [periodo, setPeriodo]         = useState('')
+  // ── Modais de Compras ───────────────────────────────────────────────────
+  const [showCompra, setShowCompra]   = useState(false)
+  const [compraForm, setCompraForm]   = useState({
+    descricao: '', fornecedor: '', valor: '', dataCompra: new Date().toISOString().slice(0, 10),
+    categoria: '', notaFiscal: '',
+  })
+  const setCF = (k: string, v: string) => setCompraForm(p => ({ ...p, [k]: v }))
 
-  const [cNomeInsumo, setCNomeInsumo]         = useState('')
-  const [cNomeFornecedor, setCNomeFornecedor] = useState('')
-  const [cDataEntrada, setCDataEntrada]       = useState(new Date().toISOString().slice(0, 10))
-  const [cValorUnit, setCValorUnit]           = useState('')
-  const [cQuantidade, setCQuantidade]         = useState('')
-  const [cCaixas, setCCaixas]                 = useState('0')
-  const [cStatus, setCStatus]                 = useState('pendente')
+  // ── Config (para saber quais abas mostrar) ───────────────────────────────
+  const { data: configRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 60000,
+  })
+  const config = configRaw?.data
 
-  function navMes(delta: number) {
-    let novoMes = mes + delta; let novoAno = ano
-    if (novoMes > 12) { novoMes = 1;  novoAno++ }
-    if (novoMes < 1)  { novoMes = 12; novoAno-- }
-    setMes(novoMes); setAno(novoAno)
-  }
-
-  const invalidate = (key: string) => qc.invalidateQueries({ queryKey: [key, tenantSlug] })
-  const eMesAtual  = mes === now.getMonth() + 1 && ano === now.getFullYear()
-
-  const { data: kpisData } = useQuery({
+  // ── Queries ──────────────────────────────────────────────────────────────
+  const { data: kpisRaw } = useQuery({
     queryKey: ['fin-kpis', tenantSlug, mes, ano],
-    queryFn:  async () => (await fetch(`${apiBase}?tipo=kpis&mes=${mes}&ano=${ano}`)).json(),
+    queryFn:  async () => (await fetch(`${api}?tipo=kpis&mes=${mes}&ano=${ano}`)).json(),
+    refetchInterval: 60000,
   })
 
-  const { data: despesasData, isLoading } = useQuery({
-    queryKey: ['despesas', tenantSlug, mes, ano, categoria],
-    queryFn:  async () => {
-      const p = new URLSearchParams({ mes: String(mes), ano: String(ano) })
-      if (categoria) p.set('categoria', categoria)
-      return (await fetch(`${apiBase}?${p}`)).json()
-    },
-    enabled: aba === 'despesas',
+  const { data: despesasRaw, isLoading: loadDespesas } = useQuery({
+    queryKey: ['fin-despesas', tenantSlug, mes, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=despesas&mes=${mes}&ano=${ano}`)).json(),
+    enabled:  aba === 'despesas',
   })
 
-  const { data: dreData, isLoading: dreLoading } = useQuery({
-    queryKey: ['dre', tenantSlug, mes, ano],
-    queryFn:  async () => (await fetch(`${apiBase}?tipo=dre&mes=${mes}&ano=${ano}`)).json(),
+  const { data: dreRaw } = useQuery({
+    queryKey: ['fin-dre', tenantSlug, mes, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=dre&mes=${mes}&ano=${ano}`)).json(),
     enabled:  aba === 'dre',
   })
 
-  const { data: gastosData } = useQuery({
-    queryKey: ['gastos-fixos', tenantSlug, anoGastos],
-    queryFn:  async () => (await fetch(`${apiBase}/gastos-fixos?ano=${anoGastos}`)).json(),
+  const { data: gastosRaw } = useQuery({
+    queryKey: ['fin-gastos', tenantSlug, mes, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=gastos-fixos&mes=${mes}&ano=${ano}`)).json(),
     enabled:  aba === 'gastos-fixos',
   })
 
-  const { data: demoData, isLoading: demoLoading } = useQuery({
-    queryKey: ['demonstrativo', tenantSlug, anoDemo],
-    queryFn:  async () => (await fetch(`${apiBase}?tipo=demonstrativo&ano=${anoDemo}`)).json(),
+  const { data: demoRaw } = useQuery({
+    queryKey: ['fin-demo', tenantSlug, mes, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=demonstrativo&mes=${mes}&ano=${ano}`)).json(),
     enabled:  aba === 'demonstrativo',
   })
 
-  const { data: comprasData, isLoading: comprasLoading } = useQuery({
-    queryKey: ['compras', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/compras`)).json(),
+  const { data: comprasRaw, isLoading: loadCompras } = useQuery({
+    queryKey: ['fin-compras', tenantSlug, mes, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=compras&mes=${mes}&ano=${ano}`)).json(),
     enabled:  aba === 'compras',
   })
 
-  const criarMut = useMutation({
+  // ── Mutations Despesas ────────────────────────────────────────────────────
+  const inv = () => {
+    qc.invalidateQueries({ queryKey: ['fin-kpis',     tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['fin-despesas', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['fin-dre',      tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['fin-demo',     tenantSlug] })
+  }
+
+  const salvarDespMut = useMutation({
     mutationFn: async () => {
-      const res = await fetch(apiBase, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+      const url    = editDespesa ? `${api}/${editDespesa.despesaId}` : api
+      const method = editDespesa ? 'PUT' : 'POST'
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          nome,
-          categoria: catNova || categorias[0],
-          valor: Math.round(parseFloat(valor.replace(',', '.')) * 100),
-          dataDespesa, recorrente,
-          periodoRecorrencia: recorrente ? (periodo || periodos[0]).toLowerCase() : undefined,
-          mes, ano,
+          ...despForm,
+          tipo: 'despesa',
+          valor: Math.round(parseFloat(despForm.valor.replace(',', '.') || '0') * 100),
+          mesCompetencia:  parseInt(despForm.mesCompetencia),
+          anoCompetencia:  parseInt(despForm.anoCompetencia),
         }),
       })
-      const d = await res.json(); if (!res.ok) throw new Error(d.message); return d
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
     },
     onSuccess: () => {
-      invalidate('despesas'); invalidate('fin-kpis')
-      setShowNova(false); setNome(''); setValor(''); toast('Despesa lançada!')
+      inv()
+      setShowDespesa(false)
+      setEditDespesa(null)
+      setDespForm({ descricao: '', valor: '', categoria: '', dataLancamento: new Date().toISOString().slice(0, 10), mesCompetencia: String(now.getMonth() + 1), anoCompetencia: String(now.getFullYear()) })
+      toast(editDespesa ? 'Despesa atualizada!' : 'Despesa lançada!')
     },
-    onError: () => toast('Erro ao lançar despesa.', 'error'),
+    onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
 
-  const excluirMut = useMutation({
-    mutationFn: (id: number) => fetch(`${apiBase}/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { invalidate('despesas'); invalidate('fin-kpis'); toast('Despesa excluída.') },
-    onError:   () => toast('Erro ao excluir.', 'error'),
+  const excluirDespMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { inv(); toast('Despesa excluída.') },
   })
 
-  const salvarCelulaMut = useMutation({
-    mutationFn: ({ categoriaId, mesC, valor }: any) => fetch(`${apiBase}/gastos-fixos`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ categoriaId, ano: anoGastos, mes: mesC, valor: Math.round(parseFloat(valor.replace(',', '.') || '0') * 100) }),
-    }).then(r => r.json()),
-    onSuccess: () => { invalidate('gastos-fixos'); setEditandoCelula(null) },
-  })
-
-  const propagarAnualMut = useMutation({
-    mutationFn: ({ categoriaId, valor }: any) => fetch(`${apiBase}/gastos-fixos`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acao: 'propagarAnual', categoriaId, ano: anoGastos, valor }),
-    }).then(r => r.json()),
-    onSuccess: () => { invalidate('gastos-fixos'); toast('Valor propagado para o ano todo!') },
-  })
-
-  const criarCompraMut = useMutation({
-    mutationFn: async () => fetch(`/api/${tenantSlug}/compras`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nomeInsumo: cNomeInsumo, nomeFornecedor: cNomeFornecedor, dataEntrada: cDataEntrada,
-        valorUnitario: Math.round(parseFloat(cValorUnit.replace(',', '.')) * 100),
-        quantidade: parseFloat(cQuantidade), caixas: Number(cCaixas),
-        qtdTotal: parseFloat(cQuantidade), status: cStatus,
-      }),
-    }).then(r => r.json()),
+  // ── Mutation Compra ───────────────────────────────────────────────────────
+  const salvarCompraMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...compraForm,
+          tipo: 'compra',
+          valor: Math.round(parseFloat(compraForm.valor.replace(',', '.') || '0') * 100),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
     onSuccess: () => {
-      invalidate('compras'); setShowNovaCompra(false)
-      setCNomeInsumo(''); setCNomeFornecedor(''); setCValorUnit(''); setCQuantidade('')
+      qc.invalidateQueries({ queryKey: ['fin-compras', tenantSlug] })
+      setShowCompra(false)
+      setCompraForm({ descricao: '', fornecedor: '', valor: '', dataCompra: new Date().toISOString().slice(0, 10), categoria: '', notaFiscal: '' })
       toast('Compra registrada!')
     },
-    onError: () => toast('Erro ao registrar compra.', 'error'),
+    onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
 
-  const pagarCompraMut = useMutation({
-    mutationFn: (id: number) => fetch(`/api/${tenantSlug}/compras/${id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dataPagamento: new Date().toISOString().slice(0, 10) }),
-    }).then(r => r.json()),
-    onSuccess: () => { invalidate('compras'); toast('Compra marcada como paga!') },
-  })
+  // ── Dados derivados ───────────────────────────────────────────────────────
+  const kpis     = kpisRaw?.data
+  const despesas = Array.isArray(despesasRaw?.data) ? despesasRaw.data : []
+  const dre      = dreRaw?.data
+  const gastos   = gastosRaw?.data
+  const demo     = demoRaw?.data
+  const compras  = Array.isArray(comprasRaw?.data) ? comprasRaw.data : []
 
-  const excluirCompraMut = useMutation({
-    mutationFn: (id: number) => fetch(`/api/${tenantSlug}/compras/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { invalidate('compras'); toast('Compra excluída.') },
-  })
+  function navMes(delta: number) {
+    setMes(prev => {
+      const novoMes = prev + delta
+      if (novoMes > 12) { setAno(a => a + 1); return 1 }
+      if (novoMes < 1)  { setAno(a => a - 1); return 12 }
+      return novoMes
+    })
+  }
 
-  function exportCSV() {
-    const rows = despesas.map((d: any) => [d.despesaId, d.nome, d.categoria, (d.valor / 100).toFixed(2), fmtDate(d.dataDespesa)])
-    const csv  = [['ID', 'Nome', 'Categoria', 'Valor', 'Data'], ...rows].map(r => r.map((c: unknown) => `"${c}"`).join(',')).join('\n')
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
-    a.download = `despesas-${String(mes).padStart(2, '0')}-${ano}.csv`
+  function exportCSV(data: any[], prefix: string) {
+    if (!data.length) return
+    const keys = Object.keys(data[0])
+    const csv  = [keys.join(','), ...data.map(r => keys.map(k => `"${r[k] ?? ''}"`).join(','))].join('\n')
+    const a    = document.createElement('a')
+    a.href     = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.download = `${prefix}-${ano}-${String(mes).padStart(2, '0')}.csv`
     a.click()
   }
 
-  const kpis    = kpisData?.data
-  const despesas = Array.isArray(despesasData?.data) ? despesasData.data : []
-  const dre      = dreData?.data ?? null
-  const gastos   = gastosData?.data ?? null
-  const demo     = Array.isArray(demoData?.data) ? demoData.data : []
-  const compras  = Array.isArray(comprasData?.data) ? comprasData.data : Array.isArray(comprasData) ? comprasData : []
+  // ── Abas visíveis ─────────────────────────────────────────────────────────
+  const ABAS_BASE: { key: Aba; label: string }[] = [
+    { key: 'despesas',     label: 'Despesas'      },
+    { key: 'dre',          label: 'DRE'           },
+    { key: 'gastos-fixos', label: 'Gastos Fixos'  },
+    { key: 'demonstrativo',label: 'Demonstrativo' },
+    { key: 'compras',      label: 'Rel. Compras'  },
+  ]
+  const ABAS_FIN: { key: Aba; label: string; check: boolean }[] = [
+    { key: 'a-pagar',    label: 'A Pagar',    check: !!config?.contasPagarAtivo },
+    { key: 'a-receber',  label: 'A Receber',  check: !!config?.contasReceberAtivo },
+    { key: 'conciliacao',label: 'Conciliação',check: !!config?.conciliacaoBancariaAtivo },
+  ]
 
   return (
     <div>
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Financeiro</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <button onClick={() => navMes(-1)} className="p-0.5 text-gray-400 hover:text-gray-700"><ChevronLeft size={16} /></button>
-            <span className="text-sm font-semibold text-gray-700 min-w-36 text-center">
-              {MESES_NOME[mes - 1]} {ano}
-              {eMesAtual && <span className="ml-2 text-xs font-normal text-green-600 bg-green-50 px-1.5 py-0.5 rounded">mês atual</span>}
-            </span>
-            <button onClick={() => navMes(1)} className="p-0.5 text-gray-400 hover:text-gray-700"><ChevronRight size={16} /></button>
-            {!eMesAtual && <button onClick={() => { setMes(now.getMonth() + 1); setAno(now.getFullYear()) }} className="text-xs text-blue-600 hover:underline">Hoje</button>}
-          </div>
+          <p className="text-sm text-gray-400 mt-0.5">Controle financeiro completo</p>
         </div>
-        <div className="flex gap-2">
-          {aba === 'despesas' && (
-            <>
-              <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
-              <Button onClick={() => { setNome(''); setValor(''); setCatNova(categorias[0] ?? ''); setPeriodo(periodos[0] ?? ''); setShowNova(true) }}>
-                <Plus size={15} className="mr-1.5" /> Nova despesa
-              </Button>
-            </>
-          )}
-          {aba === 'compras' && (
-            <Button onClick={() => { setCNomeInsumo(''); setCValorUnit(''); setCQuantidade(''); setShowNovaCompra(true) }}>
-              <Plus size={15} className="mr-1.5" /> Nova compra
-            </Button>
-          )}
+        <div className="flex items-center gap-2">
+          <button onClick={() => navMes(-1)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-sm font-semibold text-gray-900 min-w-[110px] text-center">
+            {MESES[mes - 1]} {ano}
+          </span>
+          <button onClick={() => navMes(1)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">
+            <ChevronRight size={16} />
+          </button>
         </div>
       </div>
 
+      {/* ── KPIs ──────────────────────────────────────────────────────────── */}
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
           {[
-            { label: 'Receita hoje',                             value: fmt(kpis.receitaHoje),  icon: TrendingUp,   color: 'text-green-500' },
-            { label: `Receita ${MESES_ABREV[mes - 1]}/${ano}`,  value: fmt(kpis.receitaMes),   icon: TrendingUp,   color: 'text-green-500' },
-            { label: `Despesas ${MESES_ABREV[mes - 1]}/${ano}`, value: fmt(kpis.despesasMes),  icon: TrendingDown, color: 'text-red-500' },
-            { label: kpis.resultado >= 0 ? 'Resultado' : 'Prejuízo', value: fmt(Math.abs(kpis.resultado)), icon: DollarSign,
-              color: kpis.resultado >= 0 ? 'text-green-600' : 'text-red-600',
-              bg:    kpis.resultado >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200' },
-          ].map((c, i) => (
-            <div key={i} className={`rounded-xl border p-4 ${(c as any).bg ?? 'bg-white border-gray-100'}`}>
-              <div className="flex items-center gap-2 mb-1"><c.icon size={14} className={c.color} /><p className="text-xs text-gray-400">{c.label}</p></div>
-              <p className={`text-xl font-bold ${c.color}`}>{c.value}</p>
+            { label: 'Receita',    value: fmt(kpis.receita   ?? 0), color: 'text-green-600' },
+            { label: 'Despesas',   value: fmt(kpis.despesas  ?? 0), color: 'text-red-600'   },
+            { label: 'Resultado',  value: fmt(kpis.resultado ?? 0), color: (kpis.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600' },
+            { label: 'Margem',     value: fmtPct(kpis.margem ?? 0), color: 'text-blue-600'  },
+          ].map((k, i) => (
+            <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
+              <p className="text-xs text-gray-400">{k.label}</p>
+              <p className={`text-xl font-bold mt-0.5 ${k.color}`}>{k.value}</p>
             </div>
           ))}
         </div>
       )}
 
-      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit overflow-x-auto">
-        {([
-          { value: 'despesas',      label: 'Despesas' },
-          { value: 'dre',           label: 'DRE' },
-          { value: 'gastos-fixos',  label: 'Gastos Fixos' },
-          { value: 'demonstrativo', label: 'Demonstrativo' },
-          { value: 'compras',       label: 'Rel. Compras' },
-        ] as const).map(a => (
-          <button key={a.value} onClick={() => setAba(a.value)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {a.label}
-          </button>
-        ))}
+      {/* ── Tabs ──────────────────────────────────────────────────────────── */}
+      <div className="border-b border-gray-100 mb-6 overflow-x-auto">
+        <div className="flex gap-0 min-w-max">
+          {ABAS_BASE.map(a => (
+            <button key={a.key} onClick={() => setAba(a.key)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              {a.label}
+            </button>
+          ))}
+          {ABAS_FIN.filter(a => a.check).map(a => (
+            <button key={a.key} onClick={() => setAba(a.key)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              {a.label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* ── ABA: DESPESAS ────────────────────────────────────────────────── */}
       {aba === 'despesas' && (
-        <div className="flex flex-wrap gap-3 mb-4 items-center">
-          <select value={categoria} onChange={e => setCategoria(e.target.value)}
-            className="h-9 rounded-lg border border-gray-200 px-3 text-sm bg-white focus:outline-none">
-            <option value="">Todas as categorias</option>
-            {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <p className="text-xs text-gray-400">Gerencie categorias em Cadastros → Domínios</p>
-        </div>
-      )}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">{despesas.length} lançamento(s)</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => exportCSV(despesas, 'despesas')}>
+                <Download size={13} className="mr-1" /> CSV
+              </Button>
+              <Button size="sm" onClick={() => { setEditDespesa(null); setShowDespesa(true) }}>
+                <Plus size={13} className="mr-1" /> Nova despesa
+              </Button>
+            </div>
+          </div>
 
-      {aba === 'despesas' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                {['Nome','Categoria','Data','Tipo','Valor',''].map((h, i) => (
-                  <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 4 ? 'text-right' : ''} ${i === 5 ? 'w-16' : ''}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando {MESES_NOME[mes - 1]} {ano}...</td></tr>
-              ) : despesas.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma despesa em {MESES_NOME[mes - 1]} {ano}.</td></tr>
-              ) : despesas.map((d: any) => (
-                <tr key={d.despesaId} className="group border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-gray-900">{d.nome}</p>
-                    {d.geradaAutomaticamente && <p className="text-xs text-blue-500">gerada automaticamente</p>}
-                  </td>
-                  <td className="px-4 py-3"><Badge variant="secondary">{d.categoria}</Badge></td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(d.dataDespesa)}</td>
-                  <td className="px-4 py-3">
-                    {d.recorrente ? <Badge variant="outline">{d.periodoRecorrencia ?? 'Recorrente'}</Badge> : <span className="text-xs text-gray-400">Avulsa</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(d.valor)}</td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => setConfirmDelete({ id: d.despesaId, nome: d.nome })}
-                      className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <X size={14} />
-                    </button>
-                  </td>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {['Descrição', 'Categoria', 'Data', 'Valor', ''].map((h, i) => (
+                    <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 3 ? 'text-right' : ''}`}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {loadDespesas ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
+                ) : despesas.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">Nenhuma despesa neste período.</td></tr>
+                ) : despesas.map((d: any) => (
+                  <tr key={d.despesaId} className="group border-b border-gray-50 hover:bg-gray-50/80">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.descricao}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{d.categoria || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {d.dataLancamento ? new Date(d.dataLancamento + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(d.valor)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 justify-end">
+                        <button onClick={() => { setEditDespesa(d); setDespForm({ descricao: d.descricao, valor: (d.valor / 100).toFixed(2), categoria: d.categoria ?? '', dataLancamento: d.dataLancamento?.slice(0, 10) ?? '', mesCompetencia: String(d.mesCompetencia ?? mes), anoCompetencia: String(d.anoCompetencia ?? ano) }); setShowDespesa(true) }}
+                          className="p-1 text-blue-400 hover:text-blue-600">✏️</button>
+                        <button onClick={() => setConfirmDel(d)} className="p-1 text-gray-300 hover:text-red-500">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {despesas.length > 0 && (
+                <tfoot>
+                  <tr className="border-t border-gray-100 bg-gray-50">
+                    <td colSpan={3} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
+                    <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">
+                      {fmt(despesas.reduce((a: number, d: any) => a + (d.valor ?? 0), 0))}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
         </div>
       )}
 
+      {/* ── ABA: DRE ──────────────────────────────────────────────────────── */}
       {aba === 'dre' && (
         <div className="space-y-4">
-          {dreLoading ? <div className="text-center py-12 text-sm text-gray-400">Calculando...</div> : dre ? (
-            <>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                  <p className="text-xs text-green-600 font-medium">Receita</p>
-                  <p className="text-2xl font-bold text-green-700 mt-1">{fmt(dre.receita)}</p>
-                  <p className="text-xs text-green-500 mt-0.5">{dre.qtdVendas} vendas</p>
-                </div>
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-                  <p className="text-xs text-red-600 font-medium">Despesas</p>
-                  <p className="text-2xl font-bold text-red-700 mt-1">{fmt(dre.totalDespesas)}</p>
-                </div>
-                <div className={`rounded-xl border p-4 text-center ${dre.resultado >= 0 ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
-                  <p className={`text-xs font-medium ${dre.resultado >= 0 ? 'text-green-600' : 'text-red-600'}`}>{dre.resultado >= 0 ? 'Lucro' : 'Prejuízo'}</p>
-                  <p className={`text-2xl font-bold mt-1 ${dre.resultado >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(Math.abs(dre.resultado))}</p>
-                  {dre.receita > 0 && <p className="text-xs mt-0.5" style={{ color: dre.resultado >= 0 ? '#15803d' : '#dc2626' }}>Margem: {((dre.resultado / dre.receita) * 100).toFixed(1)}%</p>}
+          {!dre ? (
+            <p className="text-sm text-gray-400 text-center py-12">Carregando DRE...</p>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Resumo DRE */}
+              <div className="bg-white rounded-xl border border-gray-100 p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">DRE — {MESES[mes - 1]}/{ano}</h3>
+                <div className="space-y-3">
+                  {[
+                    { label: '(+) Receita Bruta',  value: dre.receitaBruta    ?? 0, color: 'text-green-600' },
+                    { label: '(-) Devoluções',      value: -(dre.devolucoes   ?? 0), color: 'text-red-400' },
+                    { label: '(=) Receita Líquida', value: dre.receitaLiquida ?? 0, color: 'text-green-700', bold: true },
+                    { label: '(-) CMV',             value: -(dre.cmv          ?? 0), color: 'text-red-400' },
+                    { label: '(=) Lucro Bruto',     value: dre.lucroBruto     ?? 0, color: 'text-green-700', bold: true },
+                    { label: '(-) Despesas Op.',    value: -(dre.despesasOp   ?? 0), color: 'text-red-400' },
+                    { label: '(=) Resultado',       value: dre.resultado      ?? 0, color: (dre.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
+                  ].map((item, i) => (
+                    <div key={i} className={`flex justify-between items-center ${item.border ? 'border-t border-gray-100 pt-3' : ''}`}>
+                      <span className={`text-sm ${item.bold ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>{item.label}</span>
+                      <span className={`text-sm ${item.bold ? 'font-bold text-base' : ''} ${item.color}`}>{fmt(item.value)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-              {dre.porCategoria && Object.keys(dre.porCategoria).length > 0 && (
-                <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100"><h3 className="text-sm font-semibold text-gray-700">Por categoria</h3></div>
-                  <table className="w-full">
-                    <thead><tr className="border-b border-gray-100">{['Categoria','Valor','% Desp','% Rec'].map((h,i) => <th key={i} className={`text-${i===0?'left':'right'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>)}</tr></thead>
-                    <tbody>
-                      {Object.entries(dre.porCategoria).sort(([,a],[,b]) => (b as number)-(a as number)).map(([cat, val]) => (
-                        <tr key={cat} className="border-b border-gray-50 last:border-0">
-                          <td className="px-4 py-3 text-sm text-gray-700">{cat}</td>
-                          <td className="px-4 py-3 text-right text-sm font-medium text-red-600">{fmt(val as number)}</td>
-                          <td className="px-4 py-3 text-right text-xs text-gray-400">{dre.totalDespesas > 0 ? (((val as number)/dre.totalDespesas)*100).toFixed(1) : 0}%</td>
-                          <td className="px-4 py-3 text-right text-xs text-gray-400">{dre.receita > 0 ? (((val as number)/dre.receita)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
-          ) : null}
-        </div>
-      )}
 
-      {aba === 'gastos-fixos' && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setAnoGastos(a => a - 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">‹</button>
-              <span className="text-lg font-semibold w-16 text-center">{anoGastos}</span>
-              <button onClick={() => setAnoGastos(a => a + 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">›</button>
-            </div>
-            <p className="text-xs text-gray-400">Clique em uma célula para editar · Clique no nome para propagar para o ano todo</p>
-          </div>
-          {gastos ? (
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-max text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-48">Categoria</th>
-                      {MESES_ABREV.map(m => <th key={m} className="text-right text-xs font-medium text-gray-400 px-2 py-3 w-20">{m}</th>)}
-                      <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 w-24">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.isArray(gastos.categorias) && gastos.categorias.map((cat: any) => {
-                      const totalCat = Array.from({ length: 12 }, (_, i) => gastos.grade?.[cat.categoriaId]?.[i + 1] ?? 0).reduce((a: number, b: number) => a + b, 0)
-                      const valJan   = gastos.grade?.[cat.categoriaId]?.[1] ?? 0
-                      return (
-                        <tr key={cat.categoriaId} className="border-b border-gray-50 hover:bg-gray-50/30">
-                          <td className="px-4 py-2 text-sm font-medium text-gray-900">
-                            <span className={valJan > 0 ? 'cursor-pointer hover:text-blue-600 underline decoration-dotted' : ''}
-                              onClick={() => { if (valJan > 0 && confirm(`Propagar ${fmt(valJan)} para todos os meses de ${anoGastos}?`)) propagarAnualMut.mutate({ categoriaId: cat.categoriaId, valor: valJan }) }}>
-                              {cat.nome}
-                            </span>
-                          </td>
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map(mesC => {
-                            const val       = gastos.grade?.[cat.categoriaId]?.[mesC] ?? 0
-                            const isEditing = editandoCelula?.catId === cat.categoriaId && editandoCelula?.mes === mesC
-                            const isMesAtual = mesC === mes && anoGastos === ano
-                            return (
-                              <td key={mesC} className={`px-2 py-2 text-right ${isMesAtual ? 'bg-green-50/40' : ''}`}>
-                                {isEditing ? (
-                                  <input type="number" min="0" step="0.01" value={valorCelula}
-                                    onChange={e => setValorCelula(e.target.value)}
-                                    onBlur={() => salvarCelulaMut.mutate({ categoriaId: cat.categoriaId, mesC, valor: valorCelula })}
-                                    onKeyDown={e => { if (e.key === 'Enter') salvarCelulaMut.mutate({ categoriaId: cat.categoriaId, mesC, valor: valorCelula }); if (e.key === 'Escape') setEditandoCelula(null) }}
-                                    className="w-20 h-6 text-right text-xs border border-green-400 rounded px-1 focus:outline-none" autoFocus />
-                                ) : (
-                                  <button onClick={() => { setEditandoCelula({ catId: cat.categoriaId, mes: mesC }); setValorCelula(val > 0 ? (val / 100).toFixed(2) : '') }}
-                                    className={`w-20 h-6 text-right text-xs px-1 rounded hover:bg-green-50 ${val > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}`}>
-                                    {val > 0 ? fmt(val) : '—'}
-                                  </button>
-                                )}
-                              </td>
-                            )
-                          })}
-                          <td className="px-4 py-2 text-right text-sm font-semibold">{totalCat > 0 ? fmt(totalCat) : '—'}</td>
-                        </tr>
-                      )
-                    })}
-                    <tr className="border-t-2 border-gray-200 bg-gray-50">
-                      <td className="px-4 py-2 text-sm font-bold text-gray-700">Total mensal</td>
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map(mesC => {
-                        const total = Array.isArray(gastos.categorias) ? gastos.categorias.reduce((a: number, cat: any) => a + (gastos.grade?.[cat.categoriaId]?.[mesC] ?? 0), 0) : 0
-                        const isMesAtual = mesC === mes && anoGastos === ano
-                        return <td key={mesC} className={`px-2 py-2 text-right text-xs font-semibold text-gray-700 ${isMesAtual ? 'bg-green-50/40' : ''}`}>{total > 0 ? fmt(total) : '—'}</td>
-                      })}
-                      <td className="px-4 py-2 text-right text-sm font-bold">
-                        {fmt(Array.isArray(gastos.categorias) ? gastos.categorias.reduce((a: number, cat: any) => a + Array.from({ length: 12 }, (_, i) => gastos.grade?.[cat.categoriaId]?.[i + 1] ?? 0).reduce((x: number, y: number) => x + y, 0), 0) : 0)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : <div className="text-center py-12 text-sm text-gray-400">Carregando...</div>}
-        </div>
-      )}
-
-      {aba === 'demonstrativo' && (
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setAnoDemo(a => a - 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">‹</button>
-            <span className="text-lg font-semibold w-16 text-center">{anoDemo}</span>
-            <button onClick={() => setAnoDemo(a => a + 1)} className="px-2 py-1 border rounded hover:bg-gray-50 text-sm">›</button>
-          </div>
-          {demoLoading ? <div className="text-center py-12 text-sm text-gray-400">Calculando...</div> : (
-            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-max text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-24">Mês</th>
-                      {['Receita','Despesas','Gastos Fixos','Resultado','Margem'].map(h => <th key={h} className="text-right text-xs font-medium text-gray-400 px-4 py-3">{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {demo.length === 0 ? (
-                      <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Sem dados.</td></tr>
-                    ) : demo.map((m: any) => {
-                      const isMesAtual = m.mesNum === now.getMonth() + 1 && anoDemo === now.getFullYear()
-                      return (
-                        <tr key={m.mesNum}
-                          className={`border-b border-gray-50 cursor-pointer hover:bg-gray-50/50 ${m.resultado < 0 ? 'bg-red-50/20' : ''} ${isMesAtual ? 'ring-1 ring-inset ring-green-300' : ''}`}
-                          onClick={() => { setMes(m.mesNum); setAno(anoDemo); setAba('despesas') }}>
-                          <td className="px-4 py-2.5 text-sm font-semibold text-gray-700">{m.mes}{isMesAtual && <span className="ml-1 text-green-500">●</span>}</td>
-                          <td className="px-4 py-2.5 text-right text-sm text-green-600 font-medium">{m.receita > 0 ? fmt(m.receita) : '—'}</td>
-                          <td className="px-4 py-2.5 text-right text-sm text-red-500">{m.despesas > 0 ? fmt(m.despesas) : '—'}</td>
-                          <td className="px-4 py-2.5 text-right text-sm text-orange-500">{m.fixos > 0 ? fmt(m.fixos) : '—'}</td>
-                          <td className="px-4 py-2.5 text-right text-sm font-semibold">
-                            <span className={m.resultado >= 0 ? 'text-green-600' : 'text-red-600'}>
-                              {m.receita > 0 || m.despesas > 0 || m.fixos > 0 ? fmt(m.resultado) : '—'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2.5 text-right text-sm text-gray-400">{m.receita > 0 ? `${m.margem}%` : '—'}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
+              {/* Gráfico */}
+              <div className="bg-white rounded-xl border border-gray-100 p-5">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Evolução mensal</h3>
+                {Array.isArray(dre.historico) && dre.historico.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={dre.historico} margin={{ left: -20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `R$${(Number(v)/1000).toFixed(0)}k`} />
+                      <Tooltip formatter={(v: unknown) => fmt(Number(v ?? 0))} />
+                      <Bar dataKey="receita"   fill="#2ecc71" radius={[4,4,0,0]} name="Receita" />
+                      <Bar dataKey="despesas"  fill="#e74c3c" radius={[4,4,0,0]} name="Despesas" />
+                      <Bar dataKey="resultado" fill="#3498db" radius={[4,4,0,0]} name="Resultado" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-12">Sem dados históricos</p>
+                )}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {aba === 'compras' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                {['Insumo','Fornecedor','Entrada','Valor Unit.','Qtd','Status',''].map((h, i) => (
-                  <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {comprasLoading ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-              ) : compras.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma compra registrada.</td></tr>
-              ) : compras.map((c: any) => (
-                <tr key={c.compraId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.nomeInsumo}</td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-500">{c.nomeFornecedor ?? '—'}</td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-500">{fmtDate(c.dataEntrada)}</td>
-                  <td className="px-4 py-3 text-center text-sm font-medium">{fmt(c.valorUnitario)}</td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-600">{parseFloat(String(c.quantidade)).toFixed(3)}</td>
-                  <td className="px-4 py-3 text-center"><Badge variant={c.status === 'pago' ? 'default' : 'secondary'}>{c.status === 'pago' ? 'Pago' : 'Pendente'}</Badge></td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
-                      {c.status !== 'pago' && <button onClick={() => pagarCompraMut.mutate(c.compraId)} className="text-green-500 hover:text-green-700"><CheckCircle size={14} /></button>}
-                      <button onClick={() => excluirCompraMut.mutate(c.compraId)} className="text-gray-300 hover:text-red-500"><X size={14} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Modal Nova Despesa */}
-      {showNova && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold">Nova despesa</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Competência: {MESES_NOME[mes - 1]} {ano}</p>
-              </div>
-              <button onClick={() => setShowNova(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div><Label>Nome *</Label><Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Categoria *</Label>
-                  <select value={catNova} onChange={e => setCatNova(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {categorias.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+      {/* ── ABA: GASTOS FIXOS ──────────────────────────────────────────────── */}
+      {aba === 'gastos-fixos' && (
+        <div className="space-y-4">
+          {!gastos ? (
+            <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <p className="text-sm font-semibold text-gray-700">Categorias de gasto fixo</p>
                 </div>
-                <div><Label>Data *</Label><Input type="date" value={dataDespesa} onChange={e => setDataDespesa(e.target.value)} className="mt-1" /></div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-50">
+                      {['Categoria', 'Orçado', 'Real', 'Diff'].map((h, i) => (
+                        <th key={i} className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(gastos.categorias ?? []).map((g: any, i: number) => {
+                      const diff = (g.real ?? 0) - (g.orcado ?? 0)
+                      return (
+                        <tr key={i} className="border-b border-gray-50">
+                          <td className="px-4 py-2.5 text-sm text-gray-900">{g.categoria}</td>
+                          <td className="px-4 py-2.5 text-sm text-gray-600">{fmt(g.orcado ?? 0)}</td>
+                          <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{fmt(g.real ?? 0)}</td>
+                          <td className={`px-4 py-2.5 text-sm font-medium ${diff > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {diff > 0 ? '+' : ''}{fmt(diff)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {(gastos.categorias ?? []).length === 0 && (
+                      <tr><td colSpan={4} className="text-center py-8 text-sm text-gray-400">Nenhum gasto fixo cadastrado.</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-              <div><Label>Valor (R$) *</Label><Input type="number" min="0" step="0.01" value={valor} onChange={e => setValor(e.target.value)} className="mt-1" /></div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={recorrente} onChange={e => setRecorrente(e.target.checked)} className="w-4 h-4 rounded" />
-                <span className="text-sm text-gray-700">Recorrente — aparece automaticamente todo mês</span>
-              </label>
-              {recorrente && (
-                <div>
-                  <Label>Período</Label>
-                  <select value={periodo} onChange={e => setPeriodo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {periodos.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+
+              {(gastos.categorias ?? []).length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 p-5">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4">Distribuição</h3>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie data={gastos.categorias} dataKey="real" nameKey="categoria" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                        {(gastos.categorias ?? []).map((_: any, i: number) => (
+                          <Cell key={i} fill={CORES[i % CORES.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: unknown) => fmt(Number(v ?? 0))} />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
               )}
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setShowNova(false)}>Cancelar</Button>
-                <Button onClick={() => criarMut.mutate()} disabled={!nome || !valor || criarMut.isPending}>
-                  {criarMut.isPending ? 'Salvando...' : 'Salvar'}
-                </Button>
-              </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ABA: DEMONSTRATIVO ────────────────────────────────────────────── */}
+      {aba === 'demonstrativo' && (
+        <div className="space-y-4">
+          {!demo ? (
+            <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4">Demonstrativo — {MESES[mes - 1]}/{ano}</h3>
+              {Array.isArray(demo.linhas) && demo.linhas.length > 0 ? (
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      {['Conta', 'Categoria', 'Valor'].map((h, i) => (
+                        <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 2 ? 'text-right' : ''}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {demo.linhas.map((l: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-50">
+                        <td className="px-4 py-2.5 text-sm text-gray-900">{l.descricao}</td>
+                        <td className="px-4 py-2.5 text-sm text-gray-500">{l.categoria}</td>
+                        <td className={`px-4 py-2.5 text-right text-sm font-medium ${(l.valor ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(l.valor ?? 0)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-sm text-gray-400 text-center py-8">Sem dados neste período.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── ABA: REL. COMPRAS ──────────────────────────────────────────────── */}
+      {aba === 'compras' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">{compras.length} compra(s)</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => exportCSV(compras, 'compras')}>
+                <Download size={13} className="mr-1" /> CSV
+              </Button>
+              <Button size="sm" onClick={() => setShowCompra(true)}>
+                <Plus size={13} className="mr-1" /> Registrar compra
+              </Button>
+            </div>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {['Descrição', 'Fornecedor', 'Categoria', 'Data', 'Valor'].map((h, i) => (
+                    <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 4 ? 'text-right' : ''}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loadCompras ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
+                ) : compras.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">Nenhuma compra neste período.</td></tr>
+                ) : compras.map((c: any, i: number) => (
+                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/80">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.descricao}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{c.fornecedor || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{c.categoria || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {c.dataCompra ? new Date(c.dataCompra + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(c.valor)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              {compras.length > 0 && (
+                <tfoot>
+                  <tr className="border-t border-gray-100 bg-gray-50">
+                    <td colSpan={4} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
+                    <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">
+                      {fmt(compras.reduce((a: number, c: any) => a + (c.valor ?? 0), 0))}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
           </div>
         </div>
       )}
 
-      {/* Modal Nova Compra */}
-      {showNovaCompra && (
+      {/* ── NOVAS ABAS ──────────────────────────────────────────────────── */}
+      {aba === 'a-pagar'    && <ContasPagarView   tenantSlug={tenantSlug} />}
+      {aba === 'a-receber'  && <ContasReceberView tenantSlug={tenantSlug} />}
+      {aba === 'conciliacao'&& <ConciliacaoView   tenantSlug={tenantSlug} />}
+
+      {/* ── Modal despesa ──────────────────────────────────────────────────── */}
+      {showDespesa && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Registrar Compra</h2>
-              <button onClick={() => setShowNovaCompra(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h2 className="text-lg font-semibold">{editDespesa ? 'Editar despesa' : 'Nova despesa'}</h2>
+              <button onClick={() => { setShowDespesa(false); setEditDespesa(null) }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-6 space-y-4">
-              <div><Label>Insumo *</Label><Input value={cNomeInsumo} onChange={e => setCNomeInsumo(e.target.value)} className="mt-1" autoFocus placeholder="Nome do insumo" /></div>
-              <div><Label>Fornecedor</Label><Input value={cNomeFornecedor} onChange={e => setCNomeFornecedor(e.target.value)} className="mt-1" /></div>
+              <div><Label>Descrição *</Label><Input value={despForm.descricao} onChange={e => setDF('descricao', e.target.value)} className="mt-1" autoFocus /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label>Data Entrada *</Label><Input type="date" value={cDataEntrada} onChange={e => setCDataEntrada(e.target.value)} className="mt-1" /></div>
-                <div>
-                  <Label>Status</Label>
-                  <select value={cStatus} onChange={e => setCStatus(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="pendente">Pendente</option>
-                    <option value="pago">Pago</option>
-                  </select>
+                <div><Label>Valor (R$) *</Label><Input type="number" value={despForm.valor} onChange={e => setDF('valor', e.target.value)} className="mt-1" /></div>
+                <div><Label>Categoria</Label><Input value={despForm.categoria} onChange={e => setDF('categoria', e.target.value)} className="mt-1" /></div>
+                <div><Label>Data</Label><Input type="date" value={despForm.dataLancamento} onChange={e => setDF('dataLancamento', e.target.value)} className="mt-1" /></div>
+                <div><Label>Competência</Label>
+                  <div className="flex gap-1 mt-1">
+                    <Input type="number" min="1" max="12" value={despForm.mesCompetencia} onChange={e => setDF('mesCompetencia', e.target.value)} className="w-16" />
+                    <Input type="number" min="2020" value={despForm.anoCompetencia} onChange={e => setDF('anoCompetencia', e.target.value)} />
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div><Label>Valor Unit. (R$)</Label><Input type="number" min="0" step="0.01" value={cValorUnit} onChange={e => setCValorUnit(e.target.value)} className="mt-1" /></div>
-                <div><Label>Quantidade</Label><Input type="number" min="0" step="0.001" value={cQuantidade} onChange={e => setCQuantidade(e.target.value)} className="mt-1" /></div>
-                <div><Label>Caixas</Label><Input type="number" min="0" value={cCaixas} onChange={e => setCCaixas(e.target.value)} className="mt-1" /></div>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setShowNovaCompra(false)}>Cancelar</Button>
-                <Button onClick={() => criarCompraMut.mutate()} disabled={!cNomeInsumo || criarCompraMut.isPending}>
-                  {criarCompraMut.isPending ? 'Salvando...' : 'Salvar'}
-                </Button>
-              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+              <Button variant="outline" onClick={() => { setShowDespesa(false); setEditDespesa(null) }}>Cancelar</Button>
+              <Button onClick={() => salvarDespMut.mutate()} disabled={!despForm.descricao || !despForm.valor || salvarDespMut.isPending}>
+                {salvarDespMut.isPending ? 'Salvando...' : editDespesa ? 'Salvar' : 'Lançar'}
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {confirmDelete && (
-        <ConfirmModal title="Excluir despesa"
-          message={`Excluir "${confirmDelete.nome}"? Esta ação não pode ser desfeita.`}
-          confirmLabel="Excluir" danger
-          onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
-          onCancel={() => setConfirmDelete(null)} />
+      {/* ── Modal compra ───────────────────────────────────────────────────── */}
+      {showCompra && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Registrar compra</h2>
+              <button onClick={() => setShowCompra(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div><Label>Descrição *</Label><Input value={compraForm.descricao} onChange={e => setCF('descricao', e.target.value)} className="mt-1" autoFocus /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Fornecedor</Label><Input value={compraForm.fornecedor} onChange={e => setCF('fornecedor', e.target.value)} className="mt-1" /></div>
+                <div><Label>Categoria</Label><Input value={compraForm.categoria} onChange={e => setCF('categoria', e.target.value)} className="mt-1" /></div>
+                <div><Label>Valor (R$) *</Label><Input type="number" value={compraForm.valor} onChange={e => setCF('valor', e.target.value)} className="mt-1" /></div>
+                <div><Label>Data</Label><Input type="date" value={compraForm.dataCompra} onChange={e => setCF('dataCompra', e.target.value)} className="mt-1" /></div>
+                <div className="col-span-2"><Label>Nº Nota Fiscal</Label><Input value={compraForm.notaFiscal} onChange={e => setCF('notaFiscal', e.target.value)} className="mt-1" /></div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+              <Button variant="outline" onClick={() => setShowCompra(false)}>Cancelar</Button>
+              <Button onClick={() => salvarCompraMut.mutate()} disabled={!compraForm.descricao || !compraForm.valor || salvarCompraMut.isPending}>
+                {salvarCompraMut.isPending ? 'Salvando...' : 'Registrar'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDel && (
+        <ConfirmModal title="Excluir despesa" message={`Excluir "${confirmDel.descricao}"?`} confirmLabel="Excluir" danger
+          onConfirm={() => { excluirDespMut.mutate(confirmDel.despesaId); setConfirmDel(null) }}
+          onCancel={() => setConfirmDel(null)} />
       )}
     </div>
   )

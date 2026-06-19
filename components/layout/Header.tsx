@@ -1,331 +1,262 @@
 'use client'
 import { useState } from 'react'
-import { usePathname } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useClerk, useUser } from '@clerk/nextjs'
-import {
-  Settings, LogOut, X, ToggleLeft, ToggleRight,
-  Menu, Search, Bell, AlertTriangle, Info, Moon, Sun,
-} from 'lucide-react'
-import Link from 'next/link'
+import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload } from 'lucide-react'
+import { useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
-import { Input }  from '@/components/ui/input'
-import { Label }  from '@/components/ui/label'
-import { LogoUpload } from '@/components/ui/LogoUpload'
+import { useToast } from '@/components/ui/Toast'
+import type { Config } from './ClientShell'
 
 interface Props {
-  tenantName:    string
-  tenantSlug:    string
-  onMenuToggle:  () => void
-  onPaletteOpen: () => void
-  darkMode:      boolean
-  onToggleDark:  () => void
+  tenantSlug:      string
+  tenantName:      string
+  config:          Config
+  darkMode:        boolean
+  onToggleDarkMode: () => void
+  onToggleSidebar:  () => void
+  logoBase64:      string | null
 }
 
-const LABELS: Record<string, string> = {
-  'cadastros': 'Cadastros', 'clientes': 'Clientes', 'fornecedores': 'Fornecedores',
-  'produtos': 'Produtos', 'insumos': 'Insumos', 'usuarios': 'Usuários',
-  'formas-pagamento': 'Formas de Pagamento', 'ficha-tecnica': 'Fichas Técnicas',
-  'vendas': 'Vendas', 'financeiro': 'Financeiro', 'estoque': 'Estoque',
-  'producao': 'Produção', 'pedidos': 'Pedidos', 'comandas': 'Comandas',
-  'fiscal': 'Fiscal', 'consultas': 'Consultas', 'plano-acao': 'Plano de Ação',
-  'configuracoes': 'Configurações', 'dominios': 'Domínios', 'metas': 'Metas & Simulador',
-}
-
-// Segmentos sem página própria — apenas agrupadores de menu
-const SEM_PAGINA = new Set(['cadastros'])
-
+// Módulos toggleáveis no painel de configurações
 const MODULOS = [
-  { key: 'metasAtivo',     label: 'Metas & Simulador', desc: 'Metas mensais e simulador de receita' },
-  { key: 'consultasAtivo', label: 'Consultas',          desc: 'Relatórios e animação de vendas' },
-  { key: 'pedidosAtivo',   label: 'Pedidos',            desc: 'Pedidos de fábrica e loja' },
-  { key: 'planoAcaoAtivo', label: 'Plano de Ação',      desc: 'Tarefas e ações da equipe' },
-  { key: 'producaoAtivo',  label: 'Produção',           desc: 'Grade semanal de produção' },
-  { key: 'estoqueAtivo',   label: 'Estoque',            desc: 'Controle de produtos e insumos' },
-  { key: 'comandasAtivo',  label: 'Comandas',           desc: 'Pedidos por mesa / comanda' },
-  { key: 'fiscalAtivo',    label: 'Fiscal',             desc: 'NFC-e, NF-e, NFS-e (requer Focus NFe)' },
+  { key: 'producaoAtivo',  label: 'Produção',          group: 'Operacional' },
+  { key: 'estoqueAtivo',   label: 'Estoque',           group: 'Operacional' },
+  { key: 'pedidosAtivo',   label: 'Pedidos',           group: 'Operacional' },
+  { key: 'comandasAtivo',  label: 'Comandas',          group: 'Operacional' },
+  { key: 'consultasAtivo', label: 'Consultas',         group: 'Gerencial'   },
+  { key: 'metasAtivo',     label: 'Metas & Simulador', group: 'Gerencial'   },
+  { key: 'planoAcaoAtivo', label: 'Plano de Ação',     group: 'Gerencial'   },
+  { key: 'fiscalAtivo',    label: 'Fiscal (NFC-e)',    group: 'Gerencial'   },
+  // Financeiro Completo
+  { key: 'contasPagarAtivo',         label: 'Contas a Pagar',   group: 'Financeiro' },
+  { key: 'contasReceberAtivo',       label: 'Contas a Receber', group: 'Financeiro' },
+  { key: 'conciliacaoBancariaAtivo', label: 'Conciliação OFX',  group: 'Financeiro' },
 ] as const
 
-const FIXOS = ['Dashboard', 'Cadastros', 'Vendas', 'Financeiro']
+export default function Header({
+  tenantSlug, tenantName, config, darkMode,
+  onToggleDarkMode, onToggleSidebar, logoBase64,
+}: Props) {
+  const qc          = useQueryClient()
+  const { toast }   = useToast()
+  const { signOut } = useClerk()
 
-export default function Header({ tenantName, tenantSlug, onMenuToggle, onPaletteOpen, darkMode, onToggleDark }: Props) {
-  const { signOut }   = useClerk()
-  const { user }      = useUser()
-  const qc            = useQueryClient()
-  const pathname      = usePathname()
-  const [showMenu, setShowMenu]         = useState(false)
-  const [showSettings, setShowSettings] = useState(false)
-  const [showNotifs, setShowNotifs]     = useState(false)
+  const [showSettings, setShowSettings]   = useState(false)
+  const [showNotifs, setShowNotifs]       = useState(false)
+  const [localConfig, setLocalConfig]     = useState<Record<string, boolean>>({})
+  const [logoPreview, setLogoPreview]     = useState<string | null>(logoBase64)
 
-  const segments    = pathname.split('/').filter(Boolean)
-  const afterTenant = segments.slice(1)
-  const crumbs      = afterTenant.map((seg, i) => ({
-    label:     LABELS[seg] ?? (isNaN(Number(seg)) ? seg.charAt(0).toUpperCase() + seg.slice(1) : `#${seg}`),
-    href:      `/${tenantSlug}/${afterTenant.slice(0, i + 1).join('/')}`,
-    isLast:    i === afterTenant.length - 1,
-    semPagina: SEM_PAGINA.has(seg),
-  }))
-
-  const { data: configData } = useQuery({
-    queryKey: ['configuracoes', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
-  })
-
-  const { data: notifsData } = useQuery({
+  const { data: notifsRaw } = useQuery({
     queryKey: ['notificacoes', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/notificacoes`)).json(),
     refetchInterval: 60000,
   })
 
-  const mut = useMutation({
-    mutationFn: async (payload: any) => fetch(`/api/${tenantSlug}/configuracoes`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
-    }),
+  const salvarConfigMut = useMutation({
+    mutationFn: async (changes: Record<string, any>) => {
+      const res = await fetch(`/api/${tenantSlug}/configuracoes`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(changes),
+      })
+      return res.json()
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
-      window.location.reload()
+      toast('Configuração salva!')
     },
+    onError: () => toast('Erro ao salvar.', 'error'),
   })
 
-  const config    = configData?.data
-  const notifs    = Array.isArray(notifsData?.data) ? notifsData.data : []
-  const cntAlerts = notifs.filter((n: any) => n.nivel === 'warning').length
+  const notifs    = Array.isArray(notifsRaw?.data) ? notifsRaw.data : []
+  const unread    = notifs.filter((n: any) => !n.lida).length
+
+  function getToggleValue(key: string): boolean {
+    if (key in localConfig) return localConfig[key]
+    return (config as any)[key] ?? false
+  }
+
+  function handleToggle(key: string) {
+    const novoValor = !getToggleValue(key)
+    setLocalConfig(prev => ({ ...prev, [key]: novoValor }))
+    salvarConfigMut.mutate({ [key]: novoValor })
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = async (ev) => {
+      const base64 = ev.target?.result as string
+      setLogoPreview(base64)
+      await salvarConfigMut.mutateAsync({ logoBase64: base64 })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Agrupar módulos por grupo
+  const grupos = [...new Set(MODULOS.map(m => m.group))]
 
   return (
     <>
-      <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <button onClick={onMenuToggle}
-            className="lg:hidden p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-            <Menu size={20} />
-          </button>
-          <nav className="flex items-center gap-1.5 text-sm">
-            <Link href={`/${tenantSlug}`} className="text-gray-400 hover:text-gray-700 font-medium transition-colors">
-              Início
-            </Link>
-            {crumbs.map((crumb, i) => (
-              <span key={i} className="flex items-center gap-1.5">
-                <span className="text-gray-300 text-xs">/</span>
-                {crumb.isLast || crumb.semPagina ? (
-                  <span className={crumb.isLast ? 'text-gray-900 font-semibold' : 'text-gray-400 font-medium'}>
-                    {crumb.label}
-                  </span>
-                ) : (
-                  <Link href={crumb.href} className="text-gray-400 hover:text-gray-700 font-medium transition-colors">
-                    {crumb.label}
-                  </Link>
-                )}
-              </span>
-            ))}
-          </nav>
+      <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0 z-20">
+        {/* Botão hamburger (mobile) */}
+        <button
+          onClick={onToggleSidebar}
+          className="lg:hidden p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100"
+        >
+          <Menu size={20} />
+        </button>
+
+        {/* Logo / Nome */}
+        <div className="hidden lg:flex items-center gap-3 ml-2">
+          {logoPreview ? (
+            <img src={logoPreview} alt="Logo" className="h-7 w-auto object-contain" />
+          ) : (
+            <div className="flex items-baseline">
+              <span className="text-sm font-bold text-gray-900">sistematiza</span>
+              <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <button onClick={onPaletteOpen}
-            className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
-            <Search size={14} />
-            <span className="text-xs">Buscar</span>
-            <kbd className="ml-1 px-1.5 py-0.5 text-[10px] bg-white rounded border border-gray-200">⌘K</kbd>
-          </button>
+        <div className="flex-1" />
 
-          <button onClick={onToggleDark}
-            className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-            title={darkMode ? 'Modo Claro' : 'Modo Escuro'}>
+        {/* Ações */}
+        <div className="flex items-center gap-1">
+          {/* Dark mode */}
+          <button
+            onClick={onToggleDarkMode}
+            className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            title={darkMode ? 'Modo claro' : 'Modo escuro'}
+          >
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
 
-          <div className="relative">
-            <button onClick={() => { setShowNotifs(!showNotifs); setShowMenu(false) }}
-              className="relative p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
-              <Bell size={18} />
-              {cntAlerts > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-                  {cntAlerts > 9 ? '9+' : cntAlerts}
-                </span>
-              )}
-            </button>
-            {showNotifs && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowNotifs(false)} />
-                <div className="absolute right-0 top-10 z-20 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-1 overflow-hidden">
-                  <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                    <p className="text-sm font-semibold text-gray-900">Notificações</p>
-                    {notifs.length > 0 && (
-                      <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">{notifs.length}</span>
-                    )}
-                  </div>
-                  {notifs.length === 0 ? (
-                    <div className="px-4 py-6 text-center">
-                      <Bell size={20} className="text-gray-200 mx-auto mb-2" />
-                      <p className="text-sm text-gray-400">Nenhuma notificação</p>
-                    </div>
-                  ) : (
-                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-50">
-                      {notifs.map((n: any) => (
-                        <Link key={n.id} href={`/${tenantSlug}/${n.href}`} onClick={() => setShowNotifs(false)}
-                          className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${n.nivel === 'warning' ? 'bg-amber-100' : 'bg-blue-100'}`}>
-                            {n.nivel === 'warning'
-                              ? <AlertTriangle size={13} className="text-amber-600" />
-                              : <Info size={13} className="text-blue-600" />
-                            }
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-gray-800">{n.titulo}</p>
-                            <p className="text-xs text-gray-500 mt-0.5 truncate">{n.descricao}</p>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
+          {/* Notificações */}
+          <button
+            onClick={() => setShowNotifs(p => !p)}
+            className="relative p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            <Bell size={18} />
+            {unread > 0 && (
+              <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
+                style={{ backgroundColor: '#2ecc71' }}>
+                {unread > 9 ? '9+' : unread}
+              </span>
             )}
-          </div>
+          </button>
 
-          <span className="text-sm text-gray-400 hidden sm:block truncate max-w-40">{tenantName}</span>
+          {/* Configurações */}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            <Settings size={18} />
+          </button>
 
-          <div className="relative">
-            <button onClick={() => { setShowMenu(!showMenu); setShowNotifs(false) }}
-              className="w-8 h-8 rounded-full bg-gray-900 flex items-center justify-center text-white text-sm font-medium hover:bg-gray-700 transition-colors">
-              {user?.firstName?.[0] ?? tenantName[0]}
-            </button>
-            {showMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                <div className="absolute right-0 top-10 z-20 w-52 bg-white rounded-xl shadow-lg border border-gray-100 py-1">
-                  <div className="px-3 py-2 border-b border-gray-100">
-                    <p className="text-sm font-medium text-gray-900">{user?.firstName} {user?.lastName}</p>
-                    <p className="text-xs text-gray-400 truncate">{user?.emailAddresses[0]?.emailAddress}</p>
-                  </div>
-                  <button onClick={() => { setShowMenu(false); setShowSettings(true) }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                    <Settings size={14} /> Configurações
-                  </button>
-                  <button onClick={() => signOut()}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50">
-                    <LogOut size={14} /> Sair
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          {/* Sair */}
+          <button
+            onClick={() => signOut()}
+            className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Sair"
+          >
+            <LogOut size={18} />
+          </button>
         </div>
       </header>
 
+      {/* Dropdown notificações */}
+      {showNotifs && (
+        <div className="fixed right-4 top-16 z-50 w-80 bg-white rounded-xl shadow-xl border border-gray-100">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <p className="text-sm font-semibold text-gray-900">Notificações</p>
+            <button onClick={() => setShowNotifs(false)} className="text-gray-400 hover:text-gray-600">
+              <X size={16} />
+            </button>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            {notifs.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">Sem notificações</p>
+            ) : notifs.slice(0, 10).map((n: any) => (
+              <div key={n.id} className={`px-4 py-3 border-b border-gray-50 ${!n.lida ? 'bg-green-50/50' : ''}`}>
+                <p className="text-sm text-gray-900">{n.titulo}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{n.mensagem}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal configurações */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Configurações</h2>
-              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h2 className="text-lg font-semibold">Configurações</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{tenantName}</p>
+              </div>
+              <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
             </div>
-            <div className="p-6 space-y-6">
 
-              {/* Módulos */}
-              <div>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Módulos do Menu</p>
-                <p className="text-xs text-gray-400 mb-3">Desativar remove do menu. Os dados são preservados.</p>
-                {FIXOS.map(nome => (
-                  <div key={nome} className="flex items-center justify-between py-2.5 border-b border-gray-50">
-                    <div>
-                      <p className="text-sm font-medium text-gray-400">{nome}</p>
-                      <p className="text-xs text-gray-300">Sempre visível</p>
-                    </div>
-                    <ToggleRight size={32} className="text-gray-200" />
-                  </div>
-                ))}
-                {MODULOS.map(m => (
-                  <div key={m.key} className="flex items-center justify-between py-2.5 border-b border-gray-50 last:border-0">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{m.label}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{m.desc}</p>
-                    </div>
-                    <button onClick={() => mut.mutate({ [m.key]: !config?.[m.key] })} disabled={mut.isPending}>
-                      {config?.[m.key]
-                        ? <ToggleRight size={32} className="text-green-500" />
-                        : <ToggleLeft  size={32} className="text-gray-300" />
-                      }
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Aparência */}
-              <div>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Aparência</p>
-                <div className="flex items-center justify-between py-2.5">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">Modo Escuro</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Alterna entre tema claro e escuro</p>
-                  </div>
-                  <button onClick={onToggleDark}>
-                    {darkMode
-                      ? <ToggleRight size={32} className="text-green-500" />
-                      : <ToggleLeft  size={32} className="text-gray-300" />
-                    }
-                  </button>
-                </div>
-              </div>
-
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Logo */}
-              <div className="border-t border-gray-100 pt-6">
-                <LogoUpload tenantSlug={tenantSlug} />
-              </div>
-
-              {/* Empresa */}
               <div>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Empresa</p>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Nome da empresa',                   key: 'nomeEmpresa' },
-                    { label: 'CNPJ',                              key: 'cnpj' },
-                    { label: 'IE Estadual',                       key: 'ieEstadual' },
-                    { label: 'UF',                                key: 'uf' },
-                    { label: 'Regime Tributário (1=SN,3=LR/LP)', key: 'regimeTributario' },
-                    { label: 'Telefone',                          key: 'telefone' },
-                    { label: 'Endereço',                          key: 'endereco' },
-                  ].map(f => (
-                    <div key={f.key}>
-                      <Label className="text-xs">{f.label}</Label>
-                      <Input
-                        defaultValue={config?.[f.key] ?? ''}
-                        onBlur={e => mut.mutate({ [f.key]: e.target.value })}
-                        className="mt-1 h-8 text-sm"
-                      />
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Logo</p>
+                <div className="flex items-center gap-4">
+                  {logoPreview ? (
+                    <img src={logoPreview} alt="Logo" className="h-12 w-auto object-contain rounded-lg border border-gray-100 p-1" />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
+                      <Upload size={16} className="text-gray-400" />
                     </div>
-                  ))}
+                  )}
+                  <label className="cursor-pointer">
+                    <span className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                      {logoPreview ? 'Trocar logo' : 'Enviar logo'}
+                    </span>
+                    <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                  </label>
+                  {logoPreview && (
+                    <button
+                      onClick={() => { setLogoPreview(null); salvarConfigMut.mutate({ logoBase64: null }) }}
+                      className="text-xs text-red-400 hover:text-red-600"
+                    >
+                      Remover
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {config?.fiscalAtivo && (
-                <div>
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-3">Integração Fiscal</p>
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="text-xs">Token Focus NFe</Label>
-                      <Input
-                        defaultValue={config?.focusNfeToken ?? ''}
-                        onBlur={e => mut.mutate({ focusNfeToken: e.target.value })}
-                        className="mt-1 h-8 text-sm font-mono"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Ambiente</Label>
-                      <select
-                        defaultValue={config?.focusNfeAmbiente ?? 'homologacao'}
-                        onChange={e => mut.mutate({ focusNfeAmbiente: e.target.value })}
-                        className="mt-1 w-full h-8 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                        <option value="homologacao">Homologação</option>
-                        <option value="producao">Produção</option>
-                      </select>
-                    </div>
+              {/* Módulos por grupo */}
+              {grupos.map(grupo => (
+                <div key={grupo}>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{grupo}</p>
+                  <div className="space-y-2">
+                    {MODULOS.filter(m => m.group === grupo).map(modulo => {
+                      const ativo = getToggleValue(modulo.key)
+                      return (
+                        <div key={modulo.key} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                          <span className="text-sm text-gray-700">{modulo.label}</span>
+                          <button
+                            onClick={() => handleToggle(modulo.key)}
+                            className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${ativo ? 'bg-green-500' : 'bg-gray-200'}`}
+                          >
+                            <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${ativo ? 'translate-x-4' : 'translate-x-0'}`} />
+                          </button>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
-              )}
+              ))}
             </div>
-            <div className="px-6 pb-6">
-              <Button className="w-full" onClick={() => setShowSettings(false)}>Fechar</Button>
+
+            <div className="p-6 border-t border-gray-100 flex-shrink-0">
+              <Button onClick={() => setShowSettings(false)} className="w-full">Fechar</Button>
             </div>
           </div>
         </div>

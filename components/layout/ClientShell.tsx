@@ -1,103 +1,106 @@
 'use client'
-import { useState, useEffect, type ReactNode } from 'react'
-import { ToastProvider }  from '@/components/ui/Toast'
-import Sidebar            from '@/components/layout/Sidebar'
-import Header             from '@/components/layout/Header'
-import CommandPalette     from '@/components/ui/CommandPalette'
+import { useState, useEffect, useCallback } from 'react'
+import Sidebar from './Sidebar'
+import Header  from './Header'
 
 export interface Config {
-  comandasAtivo:  boolean
-  producaoAtivo:  boolean
-  estoqueAtivo:   boolean
-  fiscalAtivo:    boolean
-  consultasAtivo: boolean
-  pedidosAtivo:   boolean
-  planoAcaoAtivo: boolean
-  metasAtivo:     boolean
+  // Módulos existentes
+  comandasAtivo:   boolean
+  producaoAtivo:   boolean
+  estoqueAtivo:    boolean
+  fiscalAtivo:     boolean
+  consultasAtivo:  boolean
+  pedidosAtivo:    boolean
+  planoAcaoAtivo:  boolean
+  metasAtivo:      boolean
+  // Financeiro Completo
+  contasPagarAtivo:         boolean
+  contasReceberAtivo:       boolean
+  conciliacaoBancariaAtivo: boolean
+  // Aparência
+  logoBase64: string | null
+  darkMode:   boolean
 }
 
-interface Props { children: ReactNode; tenantSlug: string; tenantName: string; config: Config }
-
-const DARK_CSS = `
-  body,main { background-color: #0f172a !important; color: #e2e8f0; }
-  .bg-white { background-color: #1e293b !important; }
-  .bg-gray-50 { background-color: #111827 !important; }
-  .bg-gray-100 { background-color: #1e293b !important; }
-  .border-gray-100 { border-color: #2d3748 !important; }
-  .border-gray-200 { border-color: #374151 !important; }
-  .text-gray-900 { color: #f1f5f9 !important; }
-  .text-gray-800 { color: #e2e8f0 !important; }
-  .text-gray-700 { color: #cbd5e1 !important; }
-  .text-gray-600 { color: #94a3b8 !important; }
-  .text-gray-500 { color: #64748b !important; }
-  .text-gray-400 { color: #4b5563 !important; }
-  input:not([type=checkbox]):not([type=radio]),select,textarea {
-    background-color: #1e293b !important;
-    border-color: #374151 !important;
-    color: #f1f5f9 !important;
-  }
-  .hover\\:bg-gray-50:hover { background-color: #1e293b !important; }
-  thead tr { background-color: #1e293b !important; }
-  .divide-gray-50 > * { border-color: #2d3748 !important; }
-`
-const STYLE_ID = 'sistematiza-dark-mode'
-
-function applyDark(on: boolean) {
-  const el = document.getElementById(STYLE_ID)
-  if (on && !el) {
-    const s = document.createElement('style')
-    s.id = STYLE_ID; s.textContent = DARK_CSS
-    document.head.appendChild(s)
-  } else if (!on && el) { el.remove() }
-  localStorage.setItem('sistematiza_theme', on ? 'dark' : 'light')
+interface Props {
+  children:   React.ReactNode
+  tenantSlug: string
+  tenantName: string
+  config:     Config
 }
 
 export default function ClientShell({ children, tenantSlug, tenantName, config }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [paletteOpen, setPaletteOpen] = useState(false)
-  const [darkMode, setDarkMode]       = useState(false)
+  const [darkMode, setDarkMode]       = useState(config.darkMode ?? false)
 
+  // Injeta dark mode dinamicamente no <head>
   useEffect(() => {
-    if (localStorage.getItem('sistematiza_theme') === 'dark') {
-      setDarkMode(true); applyDark(true)
+    const id  = 'sistematiza-dark'
+    let style = document.getElementById(id) as HTMLStyleElement | null
+    if (darkMode) {
+      if (!style) {
+        style = document.createElement('style')
+        style.id = id
+        document.head.appendChild(style)
+      }
+      style.textContent = `
+        body { background-color: #111827 !important; color: #f9fafb !important; }
+        .bg-white { background-color: #1f2937 !important; }
+        .bg-gray-50, .bg-gray-100 { background-color: #111827 !important; }
+        .border-gray-100, .border-gray-200 { border-color: #374151 !important; }
+        .text-gray-900 { color: #f9fafb !important; }
+        .text-gray-700, .text-gray-600 { color: #d1d5db !important; }
+        .text-gray-500, .text-gray-400 { color: #9ca3af !important; }
+      `
+    } else {
+      style?.remove()
     }
-  }, [])
+  }, [darkMode])
 
+  // Fechar sidebar ao apertar Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault(); setPaletteOpen(o => !o)
-      }
+      if (e.key === 'Escape') setSidebarOpen(false)
     }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
   }, [])
 
-  function toggleDark() { const next = !darkMode; setDarkMode(next); applyDark(next) }
+  const toggleDarkMode = useCallback(() => setDarkMode(prev => !prev), [])
 
   return (
-    <ToastProvider>
-      <div className="flex h-screen overflow-hidden bg-gray-50">
-        {sidebarOpen && (
-          <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />
-        )}
-        <Sidebar
-          tenantSlug={tenantSlug} tenantName={tenantName} config={config}
-          open={sidebarOpen} onClose={() => setSidebarOpen(false)}
+    <div className="flex h-screen overflow-hidden">
+      {/* Overlay mobile */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
         />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Header
-            tenantSlug={tenantSlug} tenantName={tenantName}
-            onMenuToggle={() => setSidebarOpen(o => !o)}
-            onPaletteOpen={() => setPaletteOpen(true)}
-            darkMode={darkMode} onToggleDark={toggleDark}
-          />
-          <main className="flex-1 overflow-y-auto">
-            <div className="p-6 max-w-[1600px]">{children}</div>
-          </main>
-        </div>
+      )}
+
+      <Sidebar
+        tenantSlug={tenantSlug}
+        tenantName={tenantName}
+        config={config}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <Header
+          tenantSlug={tenantSlug}
+          tenantName={tenantName}
+          config={config}
+          darkMode={darkMode}
+          onToggleDarkMode={toggleDarkMode}
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+          logoBase64={config.logoBase64}
+        />
+
+        <main className="flex-1 overflow-y-auto p-6">
+          {children}
+        </main>
       </div>
-      <CommandPalette tenantSlug={tenantSlug} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
-    </ToastProvider>
+    </div>
   )
 }

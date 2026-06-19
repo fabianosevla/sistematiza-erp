@@ -1,17 +1,18 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Pool, PoolClient } from 'pg'
-import * as publicSchema     from './schemas/public'
-import * as cadastrosSchema  from './schemas/cadastros'
-import * as estoqueSchema    from './schemas/estoque'
-import * as vendasSchema     from './schemas/vendas'
-import * as financeiroSchema from './schemas/financeiro'
-import * as producaoSchema   from './schemas/producao'
-import * as fiscalSchema     from './schemas/fiscal'
-import * as planoAcaoSchema  from './schemas/planoacao'
-import * as comprasSchema    from './schemas/compras'
-import * as dominiosSchema   from './schemas/dominios'
-import * as metasSchema      from './schemas/metas'
-import * as perfisSchema     from './schemas/perfis'
+import * as publicSchema              from './schemas/public'
+import * as cadastrosSchema           from './schemas/cadastros'
+import * as estoqueSchema             from './schemas/estoque'
+import * as vendasSchema              from './schemas/vendas'
+import * as financeiroSchema          from './schemas/financeiro'
+import * as producaoSchema            from './schemas/producao'
+import * as fiscalSchema              from './schemas/fiscal'
+import * as planoAcaoSchema           from './schemas/planoacao'
+import * as comprasSchema             from './schemas/compras'
+import * as dominiosSchema            from './schemas/dominios'
+import * as metasSchema               from './schemas/metas'
+import * as perfisSchema              from './schemas/perfis'
+import * as financeiroCompletoSchema  from './schemas/financeiro-completo'
 
 const pool = new Pool({
   host:     process.env.DB_HOST!,
@@ -40,6 +41,7 @@ export const allSchemas = {
   ...dominiosSchema,
   ...metasSchema,
   ...perfisSchema,
+  ...financeiroCompletoSchema,
 }
 
 export type AppDB = ReturnType<typeof drizzle<typeof allSchemas>>
