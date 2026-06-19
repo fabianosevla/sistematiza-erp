@@ -1,9 +1,9 @@
 // app/(dashboard)/[tenant]/selecionar-modulo/page.tsx
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
+import { eq } from 'drizzle-orm'
 import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
-import { eq } from 'drizzle-orm'
 import SelecionarModuloClient from './SelecionarModuloClient'
 import { PerfisService } from '@/lib/services/perfis/PerfisService'
 
@@ -34,19 +34,20 @@ export default async function SelecionarModuloPage({ params }: Props) {
     acessos = { gerencial: true, pdv: true, comanda: true, delivery: true }
   } finally { release() }
 
-  // Se só tem um acesso, redireciona direto
-  const acessosDisponiveis = [
+  // ⚠️ Auto-redirect considera APENAS Gerencial e PDV — os únicos ambientes
+  // que realmente existem hoje. Comanda e Delivery não têm rota própria
+  // ainda (Comanda vive como aba dentro do PDV); incluí-los aqui faria o
+  // usuário cair dentro do Gerencial sem perceber, quebrando a navegação.
+  const acessosReais = [
     acessos.gerencial && 'gerencial',
     acessos.pdv       && 'pdv',
-    acessos.comanda   && 'comanda',
-    acessos.delivery  && 'delivery',
   ].filter(Boolean)
 
-  if (acessosDisponiveis.length === 0) redirect('/sign-in')
-  if (acessosDisponiveis.length === 1) {
-    const destino = acessosDisponiveis[0]
+  if (acessosReais.length === 0) redirect('/sign-in')
+  if (acessosReais.length === 1) {
+    const destino = acessosReais[0]
     if (destino === 'gerencial') redirect(`/${params.tenant}`)
-    redirect(`/${params.tenant}/${destino}`)
+    redirect(`/${params.tenant}/pdv`)
   }
 
   return (

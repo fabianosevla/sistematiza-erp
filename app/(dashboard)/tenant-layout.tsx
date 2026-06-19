@@ -1,6 +1,8 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { pool } from '@/lib/db/connection'
+import { eq } from 'drizzle-orm'
+import { pool, getPublicDb } from '@/lib/db/connection'
+import { dbTenant } from '@/lib/db/schemas/public'
 import ClientShell from '@/components/layout/ClientShell'
 
 interface Props {
@@ -12,33 +14,37 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
-  // Busca configurações via raw SQL (padrão crítico — não alterar para Drizzle)
+  // 1. Resolve o schema do tenant via Drizzle — MESMO padrão usado em
+  //    selecionar-modulo/page.tsx e pdv/page.tsx (já comprovadamente funciona)
+  const { db: publicDb, release: releasePublic } = await getPublicDb()
+  let schemaName = ''
+  try {
+    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, tenantSlug))
+    schemaName = tenant?.schemaName ?? ''
+  } finally {
+    releasePublic()
+  }
+
+  // CRÍTICO: redirect() nunca pode ficar dentro de um try/catch que o engula.
+  // Next.js implementa redirect() lançando um erro especial — se um catch
+  // genérico capturar esse erro, o redirect é silenciosamente ignorado.
+  if (!schemaName) redirect('/onboarding')
+
+  // 2. Lê configurações do schema do tenant via raw SQL
+  //    (padrão crítico do projeto — não alterar para Drizzle ORM select)
   const client = await pool.connect()
   let cfg: any = null
-  let tenantName = tenantSlug
-
   try {
-    // Busca o tenant na tabela pública
-    const tenantResult = await client.query(
-      `SELECT schema_name, tenant_name FROM public.t_tenant WHERE slug = $1 LIMIT 1`,
-      [tenantSlug]
-    )
-    if (!tenantResult.rows[0]) redirect('/onboarding')
-
-    const schemaName = tenantResult.rows[0].schema_name
-    tenantName       = tenantResult.rows[0].tenant_name ?? tenantSlug
-
-    // Lê configurações do schema do tenant via raw SQL
     await client.query(`SET search_path TO "${schemaName}", public`)
-    const cfgResult = await client.query(
-      `SELECT * FROM t_configuracoes_tenant LIMIT 1`
-    )
+    const cfgResult = await client.query(`SELECT * FROM t_configuracoes_tenant LIMIT 1`)
     cfg = cfgResult.rows[0] ?? null
   } catch (_) {
     // tenant ainda não tem configurações — usa defaults
   } finally {
     client.release()
   }
+
+  const tenantName = cfg?.nome_empresa || cfg?.nome_fantasia || tenantSlug
 
   const config = {
     // Módulos existentes
@@ -50,7 +56,7 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     pedidosAtivo:    cfg?.pedidos_ativo    ?? true,
     planoAcaoAtivo:  cfg?.plano_acao_ativo ?? false,
     metasAtivo:      cfg?.metas_ativo      ?? false,
-    // Novos toggles — Financeiro Completo
+    // Financeiro Completo
     contasPagarAtivo:         cfg?.contas_pagar_ativo         ?? false,
     contasReceberAtivo:       cfg?.contas_receber_ativo       ?? false,
     conciliacaoBancariaAtivo: cfg?.conciliacao_bancaria_ativo ?? false,

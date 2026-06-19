@@ -2,7 +2,7 @@
 // app/(dashboard)/[tenant]/selecionar-modulo/SelecionarModuloClient.tsx
 
 import { useRouter } from 'next/navigation'
-import { BarChart3, ShoppingCart, ClipboardList, Truck } from 'lucide-react'
+import { BarChart3, ShoppingCart } from 'lucide-react'
 
 interface Props {
   tenantSlug: string
@@ -14,6 +14,12 @@ interface Props {
   }
 }
 
+// ⚠️ Comanda e Delivery foram REMOVIDOS desta tela.
+// Eles não têm ambiente dedicado ainda — Comanda já existe como aba
+// dentro do PDV (PdvShell → aba "Comanda"), e Delivery ainda não tem
+// nenhuma tela própria. Mostrar cards que levam para dentro do Gerencial
+// quebra a promessa da tela ("escolha seu ambiente") e confunde o usuário.
+// Quando esses ambientes existirem de verdade, adicionar de volta aqui.
 const MODULOS = [
   {
     key:         'gerencial' as const,
@@ -21,7 +27,6 @@ const MODULOS = [
     descricao:   'Acesso completo ao sistema',
     icon:        BarChart3,
     href:        (slug: string) => `/${slug}`,
-    gradient:    'from-[#0F1117] to-[#1a1f2e]',
     iconBg:      'bg-[#2ecc71]/10',
     iconColor:   'text-[#2ecc71]',
     borderHover: 'hover:border-[#2ecc71]/40',
@@ -29,35 +34,12 @@ const MODULOS = [
   {
     key:         'pdv' as const,
     label:       'PDV',
-    descricao:   'Ponto de venda',
+    descricao:   'Vendas, mesas e comandas',
     icon:        ShoppingCart,
     href:        (slug: string) => `/${slug}/pdv`,
-    gradient:    'from-blue-950 to-blue-900',
-    iconBg:      'bg-blue-400/10',
-    iconColor:   'text-blue-400',
-    borderHover: 'hover:border-blue-400/40',
-  },
-  {
-    key:         'comanda' as const,
-    label:       'Comanda',
-    descricao:   'Comanda eletrônica',
-    icon:        ClipboardList,
-    href:        (slug: string) => `/${slug}/comandas`,
-    gradient:    'from-purple-950 to-purple-900',
-    iconBg:      'bg-purple-400/10',
-    iconColor:   'text-purple-400',
-    borderHover: 'hover:border-purple-400/40',
-  },
-  {
-    key:         'delivery' as const,
-    label:       'Delivery',
-    descricao:   'Gestão de entregas',
-    icon:        Truck,
-    href:        (slug: string) => `/${slug}/pedidos`,
-    gradient:    'from-orange-950 to-orange-900',
-    iconBg:      'bg-orange-400/10',
-    iconColor:   'text-orange-400',
-    borderHover: 'hover:border-orange-400/40',
+    iconBg:      'bg-blue-100',
+    iconColor:   'text-blue-600',
+    borderHover: 'hover:border-blue-300',
   },
 ]
 
@@ -67,27 +49,19 @@ export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
   const disponiveis = MODULOS.filter(m => acessos[m.key])
 
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-4"
-      style={{ backgroundColor: '#0F1117' }}
-    >
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-gray-50">
+
       {/* Logo */}
       <div className="text-center mb-10">
         <div className="flex items-baseline justify-center gap-0.5">
-          <span className="text-3xl font-bold text-white tracking-tight">sistematiza</span>
-          <span className="text-3xl font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
+          <span className="text-2xl font-bold text-gray-900">sistematiza</span>
+          <span className="text-2xl font-bold" style={{ color: '#2ecc71' }}>.ia</span>
         </div>
-        <p className="text-white/30 text-sm mt-2">Selecione o ambiente de trabalho</p>
+        <p className="text-gray-400 text-sm mt-2">Selecione o ambiente de trabalho</p>
       </div>
 
       {/* Cards de módulo */}
-      <div className={`
-        grid gap-4 w-full max-w-3xl
-        ${disponiveis.length === 1 ? 'grid-cols-1 max-w-xs' : ''}
-        ${disponiveis.length === 2 ? 'grid-cols-2 max-w-lg' : ''}
-        ${disponiveis.length === 3 ? 'grid-cols-3' : ''}
-        ${disponiveis.length === 4 ? 'grid-cols-2 sm:grid-cols-4' : ''}
-      `}>
+      <div className={`grid gap-4 w-full ${disponiveis.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-2 max-w-lg'}`}>
         {disponiveis.map(modulo => {
           const Icon = modulo.icon
           return (
@@ -96,49 +70,29 @@ export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
               onClick={() => router.push(modulo.href(tenantSlug))}
               className={`
                 group relative flex flex-col items-center justify-center
-                gap-4 p-8 rounded-2xl border border-white/5
-                bg-gradient-to-b ${modulo.gradient}
+                gap-4 p-8 rounded-2xl border border-gray-200 bg-white
                 ${modulo.borderHover}
                 transition-all duration-200
-                hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40
+                hover:scale-[1.02] hover:shadow-lg
                 active:scale-[0.98]
                 cursor-pointer
               `}
             >
-              {/* Ícone */}
-              <div className={`
-                w-16 h-16 rounded-2xl flex items-center justify-center
-                ${modulo.iconBg} transition-transform duration-200
-                group-hover:scale-110
-              `}>
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${modulo.iconBg} transition-transform duration-200 group-hover:scale-110`}>
                 <Icon size={32} className={modulo.iconColor} />
               </div>
-
-              {/* Label */}
               <div className="text-center">
-                <p className="text-white font-semibold text-lg leading-tight">
-                  {modulo.label}
-                </p>
-                <p className="text-white/40 text-xs mt-1">
-                  {modulo.descricao}
-                </p>
-              </div>
-
-              {/* Seta hover */}
-              <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                <div className={`w-6 h-6 rounded-full ${modulo.iconBg} flex items-center justify-center`}>
-                  <span className={`text-xs ${modulo.iconColor}`}>→</span>
-                </div>
+                <p className="text-gray-900 font-semibold text-lg leading-tight">{modulo.label}</p>
+                <p className="text-gray-400 text-xs mt-1">{modulo.descricao}</p>
               </div>
             </button>
           )
         })}
       </div>
 
-      {/* Rodapé */}
-      <p className="text-white/20 text-xs mt-10">
-        Apenas ambientes autorizados para seu perfil são exibidos
-      </p>
+      {disponiveis.length === 0 && (
+        <p className="text-sm text-gray-400 mt-4">Nenhum ambiente disponível para seu perfil.</p>
+      )}
     </div>
   )
 }
