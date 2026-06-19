@@ -1,17 +1,16 @@
 'use client'
 // app/(dashboard)/[tenant]/pdv/PdvBalcao.tsx
 //
-// Venda rápida de balcão. Usa a API real /api/{tenant}/vendas (POST).
+// Venda rápida de balcão, estilo Mogo: barra de categorias horizontal no
+// topo + busca por nome/código de barras. Carrega os produtos uma vez e
+// filtra localmente (mais rápido para uso de PDV do que buscar no servidor
+// a cada tecla).
 //
-// NOTA IMPORTANTE: o schema Zod real dessa rota só aceita
-// { itens: [{produtoId, quantidade}], clienteId?, desconto, pagamentos }.
-// Não aceita tipoEntrega nem tipoPrecao por item — esses campos existem
-// no VendaService mas são descartados pelo Zod antes de chegar lá.
-// Por isso este Balcão usa SEMPRE o preço de varejo. Se quiser vender em
-// tabela de atacado pelo PDV, a rota /api/[tenant]/vendas/route.ts precisa
-// ser atualizada primeiro — me avisa que eu cuido disso depois.
+// Usa a API real /api/{tenant}/vendas (POST). O schema Zod dessa rota só
+// aceita {produtoId, quantidade} por item — por isso o Balcão usa sempre
+// o preço de varejo (sem seleção de tabela de atacado por enquanto).
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -34,12 +33,15 @@ function fmt(c: number) {
   return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+const TODAS = 'Todas'
+
 export default function PdvBalcao({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
   const searchRef = useRef<HTMLInputElement>(null)
 
   const [busca, setBusca]           = useState('')
+  const [categoria, setCategoria]   = useState(TODAS)
   const [carrinho, setCarrinho]     = useState<ItemCarrinho[]>([])
   const [desconto, setDesconto]     = useState('0')
   const [formaPgto, setFormaPgto]   = useState('')
@@ -49,15 +51,11 @@ export default function PdvBalcao({ tenantSlug }: Props) {
 
   useEffect(() => { searchRef.current?.focus() }, [])
 
+  // Carrega o catálogo uma vez — filtragem por categoria e busca é local
   const { data: produtosRaw, isLoading: loadingProd } = useQuery({
-    queryKey: ['pdv-balcao-produtos', tenantSlug, busca],
-    queryFn:  async () => {
-      const p = new URLSearchParams({ limit: '12' })
-      if (busca) p.set('search', busca)
-      return (await fetch(`/api/${tenantSlug}/cadastros/produtos?${p}`)).json()
-    },
-    enabled:   busca.length >= 1,
-    staleTime: 30000,
+    queryKey: ['pdv-balcao-catalogo', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=300`)).json(),
+    staleTime: 60000,
   })
 
   const { data: formasRaw } = useQuery({
@@ -75,10 +73,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          itens: carrinho.map(i => ({
-            produtoId:  i.produtoId,
-            quantidade: i.quantidade,
-          })),
+          itens: carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
           desconto:   descontoVal,
           pagamentos: [{ forma: formaPgto || formasNomes[0] || 'PIX', valor: totalVal }],
         }),
@@ -118,7 +113,6 @@ export default function PdvBalcao({ tenantSlug }: Props) {
         subtotal:      preco,
       }]
     })
-    setBusca('')
     setTimeout(() => searchRef.current?.focus(), 50)
   }
 
@@ -136,8 +130,38 @@ export default function PdvBalcao({ tenantSlug }: Props) {
     setCarrinho(prev => prev.filter(i => i.produtoId !== produtoId))
   }
 
-  const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
+  const todosProdutos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
     : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
+
+  // Categorias distintas presentes no catálogo, na ordem em que aparecem
+  const categorias = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of todosProdutos) if (p.categoria) set.add(p.categoria)
+    return [TODAS, ...Array.from(set)]
+  }, [todosProdutos])
+
+  // Filtro local: categoria + busca por nome ou código de barras
+  const produtosFiltrados = useMemo(() => {
+    return todosProdutos.filter((p: any) => {
+      const passaCategoria = categoria === TODAS || p.categoria === categoria
+      const buscaLower = busca.trim().toLowerCase()
+      const passaBusca = !buscaLower
+        || p.nome?.toLowerCase().includes(buscaLower)
+        || p.codigoBarras === busca.trim()
+      return passaCategoria && passaBusca
+    })
+  }, [todosProdutos, categoria, busca])
+
+  // Enter com código de barras exato → adiciona direto e limpa o campo
+  function handleBuscaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    const exato = todosProdutos.find((p: any) => p.codigoBarras === busca.trim())
+    if (exato) {
+      addProduto(exato)
+      setBusca('')
+    }
+  }
+
   const formas       = Array.isArray(formasRaw?.data) ? formasRaw.data : []
   const formasNomes  = formas.map((f: any) => f.nome).filter(Boolean)
 
@@ -153,19 +177,21 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   return (
     <div className="flex gap-6 h-full max-w-[1400px] mx-auto">
 
-      <div className="flex-1 flex flex-col gap-4 min-w-0">
+      <div className="flex-1 flex flex-col gap-3 min-w-0">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Pedido Balcão</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Busque o produto para adicionar ao pedido</p>
+          <p className="text-sm text-gray-400 mt-0.5">Selecione uma categoria ou busque o produto</p>
         </div>
 
+        {/* Busca */}
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input
             ref={searchRef}
             value={busca}
             onChange={e => setBusca(e.target.value)}
-            placeholder="Digite o nome ou código de barras do produto..."
+            onKeyDown={handleBuscaKeyDown}
+            placeholder="Digite o nome ou bipe o código de barras..."
             className="pl-9 pr-9 h-11 text-sm"
           />
           {busca && (
@@ -178,23 +204,41 @@ export default function PdvBalcao({ tenantSlug }: Props) {
           )}
         </div>
 
+        {/* Barra de categorias — estilo Mogo */}
+        {categorias.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {categorias.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setCategoria(cat)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors border ${
+                  categoria === cat
+                    ? 'bg-gray-900 text-white border-gray-900'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Grid de produtos */}
         <div className="flex-1 overflow-y-auto">
-          {!busca ? (
-            <div className="flex flex-col items-center justify-center h-64 text-center">
-              <ShoppingCart size={36} className="text-gray-200 mb-3" />
-              <p className="text-sm font-medium text-gray-500">Digite para buscar produtos</p>
-            </div>
-          ) : loadingProd ? (
+          {loadingProd ? (
             <div className="flex items-center justify-center h-32">
               <Loader2 size={18} className="text-gray-300 animate-spin" />
             </div>
-          ) : produtos.length === 0 ? (
+          ) : produtosFiltrados.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-              <p className="text-sm text-gray-400">Nenhum produto encontrado para "{busca}"</p>
+              <ShoppingCart size={28} className="text-gray-200 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">
+                {busca ? `Nenhum produto encontrado para "${busca}"` : 'Nenhum produto nesta categoria'}
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {produtos.map((p: any) => (
+              {produtosFiltrados.map((p: any) => (
                 <button
                   key={p.produtoId}
                   onClick={() => addProduto(p)}
@@ -214,6 +258,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
         </div>
       </div>
 
+      {/* Carrinho */}
       <div className="w-80 xl:w-96 flex flex-col gap-4 flex-shrink-0">
         <div className="bg-white rounded-xl border border-gray-100 flex flex-col flex-1 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">

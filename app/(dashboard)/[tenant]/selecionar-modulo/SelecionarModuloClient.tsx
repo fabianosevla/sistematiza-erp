@@ -1,7 +1,6 @@
 'use client'
 // app/(dashboard)/[tenant]/selecionar-modulo/SelecionarModuloClient.tsx
 
-import { useRouter } from 'next/navigation'
 import { BarChart3, ShoppingCart } from 'lucide-react'
 
 interface Props {
@@ -14,12 +13,8 @@ interface Props {
   }
 }
 
-// ⚠️ Comanda e Delivery foram REMOVIDOS desta tela.
-// Eles não têm ambiente dedicado ainda — Comanda já existe como aba
-// dentro do PDV (PdvShell → aba "Comanda"), e Delivery ainda não tem
-// nenhuma tela própria. Mostrar cards que levam para dentro do Gerencial
-// quebra a promessa da tela ("escolha seu ambiente") e confunde o usuário.
-// Quando esses ambientes existirem de verdade, adicionar de volta aqui.
+// Comanda e Delivery seguem fora desta tela — Comanda já existe como aba
+// dentro do PDV (PdvShell), Delivery ainda não tem ambiente próprio.
 const MODULOS = [
   {
     key:         'gerencial' as const,
@@ -44,14 +39,11 @@ const MODULOS = [
 ]
 
 export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
-  const router = useRouter()
-
   const disponiveis = MODULOS.filter(m => acessos[m.key])
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-gray-50">
 
-      {/* Logo */}
       <div className="text-center mb-10">
         <div className="flex items-baseline justify-center gap-0.5">
           <span className="text-2xl font-bold text-gray-900">sistematiza</span>
@@ -60,14 +52,16 @@ export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
         <p className="text-gray-400 text-sm mt-2">Selecione o ambiente de trabalho</p>
       </div>
 
-      {/* Cards de módulo */}
       <div className={`grid gap-4 w-full ${disponiveis.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-2 max-w-lg'}`}>
         {disponiveis.map(modulo => {
           const Icon = modulo.icon
           return (
-            <button
+            // ⚠️ <a href> em vez de router.push() — navegação completa,
+            // evita o bug de cache do App Router entre rotas que
+            // compartilham o mesmo segmento dinâmico [tenant]
+            <a
               key={modulo.key}
-              onClick={() => router.push(modulo.href(tenantSlug))}
+              href={modulo.href(tenantSlug)}
               className={`
                 group relative flex flex-col items-center justify-center
                 gap-4 p-8 rounded-2xl border border-gray-200 bg-white
@@ -85,7 +79,7 @@ export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
                 <p className="text-gray-900 font-semibold text-lg leading-tight">{modulo.label}</p>
                 <p className="text-gray-400 text-xs mt-1">{modulo.descricao}</p>
               </div>
-            </button>
+            </a>
           )
         })}
       </div>

@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload } from 'lucide-react'
+import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, ShoppingCart } from 'lucide-react'
 import { useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
@@ -17,7 +17,6 @@ interface Props {
   logoBase64:      string | null
 }
 
-// Módulos toggleáveis no painel de configurações
 const MODULOS = [
   { key: 'producaoAtivo',  label: 'Produção',          group: 'Operacional' },
   { key: 'estoqueAtivo',   label: 'Estoque',           group: 'Operacional' },
@@ -27,7 +26,6 @@ const MODULOS = [
   { key: 'metasAtivo',     label: 'Metas & Simulador', group: 'Gerencial'   },
   { key: 'planoAcaoAtivo', label: 'Plano de Ação',     group: 'Gerencial'   },
   { key: 'fiscalAtivo',    label: 'Fiscal (NFC-e)',    group: 'Gerencial'   },
-  // Financeiro Completo
   { key: 'contasPagarAtivo',         label: 'Contas a Pagar',   group: 'Financeiro' },
   { key: 'contasReceberAtivo',       label: 'Contas a Receber', group: 'Financeiro' },
   { key: 'conciliacaoBancariaAtivo', label: 'Conciliação OFX',  group: 'Financeiro' },
@@ -94,13 +92,11 @@ export default function Header({
     reader.readAsDataURL(file)
   }
 
-  // Agrupar módulos por grupo
   const grupos = [...new Set(MODULOS.map(m => m.group))]
 
   return (
     <>
       <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0 z-20">
-        {/* Botão hamburger (mobile) */}
         <button
           onClick={onToggleSidebar}
           className="lg:hidden p-2 text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-100"
@@ -108,7 +104,6 @@ export default function Header({
           <Menu size={20} />
         </button>
 
-        {/* Logo / Nome */}
         <div className="hidden lg:flex items-center gap-3 ml-2">
           {logoPreview ? (
             <img src={logoPreview} alt="Logo" className="h-7 w-auto object-contain" />
@@ -122,9 +117,19 @@ export default function Header({
 
         <div className="flex-1" />
 
-        {/* Ações */}
         <div className="flex items-center gap-1">
-          {/* Dark mode */}
+          {/* ── Abrir PDV ────────────────────────────────────────────────
+              <a href> (não router.push) — navegação completa, evita o bug
+              de cache do App Router entre rotas que compartilham [tenant] */}
+          <a
+            href={`/${tenantSlug}/pdv`}
+            className="flex items-center gap-1.5 px-3 py-1.5 mr-1 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
+            title="Abrir PDV"
+          >
+            <ShoppingCart size={15} />
+            <span className="hidden sm:inline">PDV</span>
+          </a>
+
           <button
             onClick={onToggleDarkMode}
             className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
@@ -133,7 +138,6 @@ export default function Header({
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
 
-          {/* Notificações */}
           <button
             onClick={() => setShowNotifs(p => !p)}
             className="relative p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
@@ -147,7 +151,6 @@ export default function Header({
             )}
           </button>
 
-          {/* Configurações */}
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
@@ -155,7 +158,6 @@ export default function Header({
             <Settings size={18} />
           </button>
 
-          {/* Sair */}
           <button
             onClick={() => signOut()}
             className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 transition-colors"
@@ -166,7 +168,6 @@ export default function Header({
         </div>
       </header>
 
-      {/* Dropdown notificações */}
       {showNotifs && (
         <div className="fixed right-4 top-16 z-50 w-80 bg-white rounded-xl shadow-xl border border-gray-100">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
@@ -188,7 +189,6 @@ export default function Header({
         </div>
       )}
 
-      {/* Modal configurações */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
@@ -203,7 +203,6 @@ export default function Header({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Logo */}
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Logo</p>
                 <div className="flex items-center gap-4">
@@ -231,7 +230,6 @@ export default function Header({
                 </div>
               </div>
 
-              {/* Módulos por grupo */}
               {grupos.map(grupo => (
                 <div key={grupo}>
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{grupo}</p>
