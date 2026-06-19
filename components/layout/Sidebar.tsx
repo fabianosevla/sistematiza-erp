@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronRight, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target, Code2,
+  Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Config } from '@/components/layout/ClientShell'
@@ -41,6 +41,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
     ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
     ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
+    ...(config.comprasAtivo   ? [{ label: 'Compras',           href: '/compras',    icon: ShoppingBag }]    : []),
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
     ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
     ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
@@ -87,8 +88,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
           if ('children' in item && item.children) {
             const anyActive = item.children.some(c => isActive(c.href))
             return (
-              // Grupo com submenu expansível NO HOVER (CSS puro via named group,
-              // sem estado em JS) — abre ao passar o mouse, fecha ao sair.
               <div key={item.label} className="group/menu relative">
                 <button
                   className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',

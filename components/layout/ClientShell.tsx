@@ -4,7 +4,6 @@ import Sidebar from './Sidebar'
 import Header  from './Header'
 
 export interface Config {
-  // Módulos existentes
   comandasAtivo:   boolean
   producaoAtivo:   boolean
   estoqueAtivo:    boolean
@@ -13,11 +12,10 @@ export interface Config {
   pedidosAtivo:    boolean
   planoAcaoAtivo:  boolean
   metasAtivo:      boolean
-  // Financeiro Completo
   contasPagarAtivo:         boolean
   contasReceberAtivo:       boolean
   conciliacaoBancariaAtivo: boolean
-  // Aparência
+  comprasAtivo:             boolean
   logoBase64: string | null
   darkMode:   boolean
 }
@@ -33,7 +31,6 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [darkMode, setDarkMode]       = useState(config.darkMode ?? false)
 
-  // Injeta dark mode dinamicamente no <head>
   useEffect(() => {
     const id  = 'sistematiza-dark'
     let style = document.getElementById(id) as HTMLStyleElement | null
@@ -57,7 +54,6 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
     }
   }, [darkMode])
 
-  // Fechar sidebar ao apertar Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSidebarOpen(false)
@@ -70,7 +66,6 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Overlay mobile */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/40 lg:hidden"

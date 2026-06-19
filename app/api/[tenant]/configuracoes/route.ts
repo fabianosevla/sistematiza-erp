@@ -16,7 +16,6 @@ export async function GET(req: NextRequest, { params }: Params) {
       const result = await client.query(`SELECT * FROM t_configuracoes_tenant LIMIT 1`)
       const r = result.rows[0] ?? {}
       return ok({
-        // Módulos existentes
         comandasAtivo:   r.comandas_ativo   ?? false,
         producaoAtivo:   r.producao_ativo   ?? true,
         estoqueAtivo:    r.estoque_ativo    ?? true,
@@ -25,14 +24,12 @@ export async function GET(req: NextRequest, { params }: Params) {
         pedidosAtivo:    r.pedidos_ativo    ?? true,
         planoAcaoAtivo:  r.plano_acao_ativo ?? false,
         metasAtivo:      r.metas_ativo      ?? false,
-        // Financeiro Completo
         contasPagarAtivo:         r.contas_pagar_ativo         ?? false,
         contasReceberAtivo:       r.contas_receber_ativo       ?? false,
         conciliacaoBancariaAtivo: r.conciliacao_bancaria_ativo ?? false,
-        // Aparência
+        comprasAtivo:             r.modulo_compras_ativo       ?? true,
         logoBase64: r.logo_base64 ?? null,
         darkMode:   r.dark_mode   ?? false,
-        // Dados do tenant
         nomeEmpresa:  r.nome_empresa  ?? '',
         nomeFantasia: r.nome_fantasia ?? '',
         cnpj:         r.cnpj          ?? '',
@@ -56,7 +53,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
-      // PADRÃO CRÍTICO: raw SQL UPDATE individual por campo
       const updates: [string, any][] = [
         ['comandas_ativo',           body.comandasAtivo],
         ['producao_ativo',           body.producaoAtivo],
@@ -66,14 +62,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['pedidos_ativo',            body.pedidosAtivo],
         ['plano_acao_ativo',         body.planoAcaoAtivo],
         ['metas_ativo',              body.metasAtivo],
-        // Financeiro Completo
         ['contas_pagar_ativo',         body.contasPagarAtivo],
         ['contas_receber_ativo',       body.contasReceberAtivo],
         ['conciliacao_bancaria_ativo', body.conciliacaoBancariaAtivo],
-        // Aparência
+        ['modulo_compras_ativo',       body.comprasAtivo],
         ['logo_base64', body.logoBase64],
         ['dark_mode',   body.darkMode],
-        // Dados do tenant
         ['nome_empresa',  body.nomeEmpresa],
         ['nome_fantasia', body.nomeFantasia],
         ['cnpj',          body.cnpj],

@@ -1,3 +1,7 @@
+// ════════════════════════════════════════════════════════════════════════
+// ESTE ARQUIVO VAI EM: app/(dashboard)/tenant-layout.tsx
+// (NÃO importa Sidebar nem Header diretamente — só ClientShell)
+// ════════════════════════════════════════════════════════════════════════
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
@@ -14,8 +18,6 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
-  // 1. Resolve o schema do tenant via Drizzle — MESMO padrão usado em
-  //    selecionar-modulo/page.tsx e pdv/page.tsx (já comprovadamente funciona)
   const { db: publicDb, release: releasePublic } = await getPublicDb()
   let schemaName = ''
   try {
@@ -25,13 +27,8 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     releasePublic()
   }
 
-  // CRÍTICO: redirect() nunca pode ficar dentro de um try/catch que o engula.
-  // Next.js implementa redirect() lançando um erro especial — se um catch
-  // genérico capturar esse erro, o redirect é silenciosamente ignorado.
   if (!schemaName) redirect('/onboarding')
 
-  // 2. Lê configurações do schema do tenant via raw SQL
-  //    (padrão crítico do projeto — não alterar para Drizzle ORM select)
   const client = await pool.connect()
   let cfg: any = null
   try {
@@ -47,7 +44,6 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
   const tenantName = cfg?.nome_empresa || cfg?.nome_fantasia || tenantSlug
 
   const config = {
-    // Módulos existentes
     comandasAtivo:   cfg?.comandas_ativo   ?? false,
     producaoAtivo:   cfg?.producao_ativo   ?? true,
     estoqueAtivo:    cfg?.estoque_ativo    ?? true,
@@ -56,11 +52,10 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     pedidosAtivo:    cfg?.pedidos_ativo    ?? true,
     planoAcaoAtivo:  cfg?.plano_acao_ativo ?? false,
     metasAtivo:      cfg?.metas_ativo      ?? false,
-    // Financeiro Completo
     contasPagarAtivo:         cfg?.contas_pagar_ativo         ?? false,
     contasReceberAtivo:       cfg?.contas_receber_ativo       ?? false,
     conciliacaoBancariaAtivo: cfg?.conciliacao_bancaria_ativo ?? false,
-    // Metadados
+    comprasAtivo:             cfg?.modulo_compras_ativo       ?? true,
     logoBase64: cfg?.logo_base64 ?? null,
     darkMode:   cfg?.dark_mode   ?? false,
   }
