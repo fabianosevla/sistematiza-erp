@@ -1,16 +1,42 @@
-// ════════════════════════════════════════════════════════════════════════
-// ESTE ARQUIVO VAI EM: app/(dashboard)/[tenant]/page.tsx
-// (a pasta "[tenant]" diretamente — renderiza o Dashboard do Gerencial)
-// ════════════════════════════════════════════════════════════════════════
-import TenantLayout from '@/app/(dashboard)/tenant-layout'
-import DashboardHome from '@/components/modules/dashboard/DashboardHome'
+// app/(dashboard)/[tenant]/selecionar-modulo/page.tsx
+import { auth } from '@clerk/nextjs/server'
+import { redirect } from 'next/navigation'
+import { eq } from 'drizzle-orm'
+import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
+import { dbTenant } from '@/lib/db/schemas/public'
+import SelecionarModuloClient from './SelecionarModuloClient'
+import { PerfisService } from '@/lib/services/perfis/PerfisService'
 
 interface Props { params: { tenant: string } }
 
-export default async function DashboardPage({ params }: Props) {
+export default async function SelecionarModuloPage({ params }: Props) {
+  const { userId } = await auth()
+  if (!userId) redirect('/sign-in')
+
+  const { db: publicDb, release: releasePublic } = await getPublicDb()
+  let schemaName = ''
+  try {
+    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, params.tenant))
+    schemaName = tenant?.schemaName ?? ''
+  } finally { releasePublic() }
+
+  if (!schemaName) redirect('/onboarding')
+
+  const { db, release } = await getDbForTenant(schemaName)
+  let acessos = { gerencial: false, pdv: false, comanda: false, delivery: false }
+  try {
+    const service = new PerfisService(db)
+    acessos = await service.getAcessosUsuario(userId)
+  } catch (_) {
+    acessos = { gerencial: true, pdv: true, comanda: true, delivery: true }
+  } finally { release() }
+
+  if (!acessos.gerencial && !acessos.pdv) redirect('/sign-in')
+
   return (
-    <TenantLayout tenantSlug={params.tenant}>
-      <DashboardHome tenantSlug={params.tenant} />
-    </TenantLayout>
+    <SelecionarModuloClient
+      tenantSlug={params.tenant}
+      acessos={acessos}
+    />
   )
 }
