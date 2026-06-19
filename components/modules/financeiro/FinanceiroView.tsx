@@ -426,7 +426,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   <h3 className="text-sm font-semibold text-gray-700 mb-4">Distribuição</h3>
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
-                      <Pie data={gastos.categorias} dataKey="real" nameKey="categoria" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                      <Pie data={gastos.categorias} dataKey="real" nameKey="categoria" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>
                         {(gastos.categorias ?? []).map((_: any, i: number) => (
                           <Cell key={i} fill={CORES[i % CORES.length]} />
                         ))}
