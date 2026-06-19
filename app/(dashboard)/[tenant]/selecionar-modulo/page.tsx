@@ -34,21 +34,11 @@ export default async function SelecionarModuloPage({ params }: Props) {
     acessos = { gerencial: true, pdv: true, comanda: true, delivery: true }
   } finally { release() }
 
-  // ⚠️ Auto-redirect considera APENAS Gerencial e PDV — os únicos ambientes
-  // que realmente existem hoje. Comanda e Delivery não têm rota própria
-  // ainda (Comanda vive como aba dentro do PDV); incluí-los aqui faria o
-  // usuário cair dentro do Gerencial sem perceber, quebrando a navegação.
-  const acessosReais = [
-    acessos.gerencial && 'gerencial',
-    acessos.pdv       && 'pdv',
-  ].filter(Boolean)
-
-  if (acessosReais.length === 0) redirect('/sign-in')
-  if (acessosReais.length === 1) {
-    const destino = acessosReais[0]
-    if (destino === 'gerencial') redirect(`/${params.tenant}`)
-    redirect(`/${params.tenant}/pdv`)
-  }
+  // ⚠️ SEM auto-redirect. Esta tela SEMPRE se mostra, mesmo que o usuário
+  // tenha só um ambiente disponível (nesse caso aparece um único card).
+  // Isso garante que botões como "Sair" do PDV — que levam pra cá — nunca
+  // se transformam num teleporte silencioso direto pro Gerencial ou pro PDV.
+  if (!acessos.gerencial && !acessos.pdv) redirect('/sign-in')
 
   return (
     <SelecionarModuloClient
