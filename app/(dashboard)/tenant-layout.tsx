@@ -1,7 +1,3 @@
-// ════════════════════════════════════════════════════════════════════════
-// ESTE ARQUIVO VAI EM: app/(dashboard)/tenant-layout.tsx
-// (NÃO importa Sidebar nem Header diretamente — só ClientShell)
-// ════════════════════════════════════════════════════════════════════════
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
@@ -56,6 +52,10 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     contasReceberAtivo:       cfg?.contas_receber_ativo       ?? false,
     conciliacaoBancariaAtivo: cfg?.conciliacao_bancaria_ativo ?? false,
     comprasAtivo:             cfg?.modulo_compras_ativo       ?? true,
+    entradaNfeAtivo:          cfg?.entrada_nfe_ativo          ?? true,
+    perdaProdutoAtivo:        cfg?.perda_produto_ativo        ?? true,
+    contagemInventarioAtivo:  cfg?.contagem_inventario_ativo  ?? true,
+    multiplosLocaisAtivo:     cfg?.multiplos_locais_ativo     ?? false,
     logoBase64: cfg?.logo_base64 ?? null,
     darkMode:   cfg?.dark_mode   ?? false,
   }

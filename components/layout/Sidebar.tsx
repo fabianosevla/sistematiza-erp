@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronRight, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
+  Search, ClipboardCheck, X, Target, Code2, ShoppingBag, Warehouse,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Config } from '@/components/layout/ClientShell'
@@ -37,6 +37,9 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     },
   ]
 
+  const estoqueAvancadoLigado =
+    config.entradaNfeAtivo || config.perdaProdutoAtivo || config.contagemInventarioAtivo || config.multiplosLocaisAtivo
+
   const modulares = [
     ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
     ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
@@ -45,6 +48,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
     ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
     ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
+    ...(estoqueAvancadoLigado ? [{ label: 'Estoque Avançado',  href: '/estoque-avancado', icon: Warehouse }] : []),
     ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
     ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
   ]

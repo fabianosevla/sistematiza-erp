@@ -16,6 +16,10 @@ export interface Config {
   contasReceberAtivo:       boolean
   conciliacaoBancariaAtivo: boolean
   comprasAtivo:             boolean
+  entradaNfeAtivo:          boolean
+  perdaProdutoAtivo:        boolean
+  contagemInventarioAtivo:  boolean
+  multiplosLocaisAtivo:     boolean
   logoBase64: string | null
   darkMode:   boolean
 }
