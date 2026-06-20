@@ -75,7 +75,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
           <Code2 size={18} style={{ color: '#2ecc71' }} />
           <div className="flex items-baseline">
             <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
-            <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
+            <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
           </div>
         </div>
         <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">

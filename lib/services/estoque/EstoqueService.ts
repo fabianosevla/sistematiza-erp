@@ -3,6 +3,7 @@ import type { AppDB } from '@/lib/db/connection'
 import { dbProduto } from '@/lib/db/schemas/cadastros'
 import { dbInsumo } from '@/lib/db/schemas/cadastros'
 import { dbMovimentacaoEstoque } from '@/lib/db/schemas/estoque'
+import { DebitoInsumoService } from './DebitoInsumoService'
 
 export type StatusEstoque = 'normal' | 'atencao' | 'critico' | 'zerado'
 
@@ -104,6 +105,8 @@ export class EstoqueService {
     })
 
     // 2. Atualizar estoque da entidade
+    let debitoInsumos: Awaited<ReturnType<DebitoInsumoService['debitar']>> | null = null
+
     if (entidade === 'produto') {
       if (tipo === 'ajuste') {
         await this.db.update(dbProduto).set({
@@ -118,6 +121,16 @@ export class EstoqueService {
           updatedDt: now,
           updatedBy: userId,
         }).where(eq(dbProduto.produtoId, entidadeId))
+
+        // ── Débito automático de insumo via ficha técnica ──────────────────
+        // Só na ENTRADA (representa "acabei de fabricar X unidades" desse
+        // produto). Na SAÍDA não debita nada aqui — saída de produto normal
+        // é coberta pela venda, que já debita só o produto acabado, não os
+        // insumos de novo. AJUSTE (correção de contagem) também não debita,
+        // já que não representa um evento real de fabricação.
+        if (tipo === 'entrada' && quantidade > 0) {
+          debitoInsumos = await new DebitoInsumoService(this.db).debitar(entidadeId, Math.abs(quantidade), userId)
+        }
       }
     } else {
       if (tipo === 'ajuste') {
@@ -136,7 +149,7 @@ export class EstoqueService {
       }
     }
 
-    return { ok: true }
+    return { ok: true, debitoInsumos }
   }
 
   // ─── Histórico ───────────────────────────────────────────────────────────────

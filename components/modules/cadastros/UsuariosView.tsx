@@ -13,9 +13,9 @@ import { Badge } from '@/components/ui/badge'
 interface Props { tenantSlug: string }
 
 const schema = z.object({
-  nome:   z.string().min(2, 'Nome obrigatório'),
-  email:  z.string().email('E-mail inválido'),
-  perfil: z.enum(['admin', 'user']),
+  nome:     z.string().min(2, 'Nome obrigatório'),
+  email:    z.string().email('E-mail inválido'),
+  perfilId: z.coerce.number({ required_error: 'Selecione um perfil' }).int(),
 })
 type FormData = z.infer<typeof schema>
 
@@ -33,15 +33,50 @@ export default function UsuariosView({ tenantSlug }: Props) {
     },
   })
 
+  // Perfis reais (Administrador, Vendedor, e os que mais existirem)
+  // em vez do combobox fixo admin/usuário
+  const { data: perfisRaw } = useQuery({
+    queryKey: ['perfis', tenantSlug],
+    queryFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/perfis`)
+      return res.json()
+    },
+  })
+  const perfis: any[] = Array.isArray(perfisRaw?.data) ? perfisRaw.data : []
+
   const createMutation = useMutation({
     mutationFn: async (payload: FormData) => {
+      const perfilSelecionado = perfis.find(p => p.perfilId === payload.perfilId)
+
+      // Mantém o fluxo de criação/convite exatamente como já funciona —
+      // só adiciona perfilId no corpo (campo extra, não quebra nada se o
+      // backend ainda não usar). 'perfil' legado segue enviado também,
+      // derivado do isAdmin do perfil escolhido, pra compatibilidade.
       const res = await fetch(apiBase, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          nome:     payload.nome,
+          email:    payload.email,
+          perfil:   perfilSelecionado?.isAdmin ? 'admin' : 'user',
+          perfilId: payload.perfilId,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message ?? 'Erro ao criar usuário')
+
+      // Vincula o perfil explicitamente via rota aditiva, caso o usuarioId
+      // venha na resposta de criação — reforça o link sem depender de o
+      // endpoint de criação já suportar perfilId nativamente.
+      const novoId = data?.data?.usuarioId ?? data?.usuarioId
+      if (novoId) {
+        await fetch(`${apiBase}/${novoId}/perfil`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ perfilId: payload.perfilId }),
+        }).catch(() => {}) // não bloqueia o fluxo se essa parte falhar
+      }
+
       return data
     },
     onSuccess: (_, variables) => {
@@ -54,7 +89,6 @@ export default function UsuariosView({ tenantSlug }: Props) {
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { perfil: 'user' },
   })
 
   const [formError, setFormError] = useState('')
@@ -71,6 +105,13 @@ export default function UsuariosView({ tenantSlug }: Props) {
   const items = data?.data?.data ?? []
   const meta  = data?.data?.meta
 
+  function nomePerfilDoItem(item: any) {
+    if (item.perfilNome) return item.perfilNome
+    const p = perfis.find(p => p.perfilId === item.perfilId)
+    if (p) return p.nome
+    return item.perfil === 'admin' ? 'Administrador' : 'Vendedor'
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -80,7 +121,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
             {meta ? `${meta.total} usuário${meta.total !== 1 ? 's' : ''}` : ''}
           </p>
         </div>
-        <Button onClick={() => { form.reset({ perfil: 'user' }); setFormError(''); setShowForm(true) }}>
+        <Button onClick={() => { form.reset({ perfilId: undefined }); setFormError(''); setShowForm(true) }}>
           <Plus size={15} className="mr-1.5" /> Novo usuário
         </Button>
       </div>
@@ -122,7 +163,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
                 <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{item.email || '—'}</td>
                 <td className="px-4 py-3">
                   <Badge variant={item.perfil === 'admin' ? 'default' : 'secondary'}>
-                    {item.perfil === 'admin' ? 'Admin' : 'Usuário'}
+                    {nomePerfilDoItem(item)}
                   </Badge>
                 </td>
               </tr>
@@ -151,10 +192,16 @@ export default function UsuariosView({ tenantSlug }: Props) {
               </div>
               <div>
                 <Label>Perfil *</Label>
-                <select {...form.register('perfil')} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                  <option value="user">Usuário</option>
-                  <option value="admin">Admin</option>
+                <select {...form.register('perfilId')} defaultValue="" className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                  <option value="" disabled>Selecione um perfil...</option>
+                  {perfis.map(p => (
+                    <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>
+                  ))}
                 </select>
+                {form.formState.errors.perfilId && <p className="text-xs text-red-500 mt-1">{form.formState.errors.perfilId.message}</p>}
+                <p className="text-xs text-gray-400 mt-1">
+                  Os privilégios de cada perfil são definidos em Cadastros → Perfis de Acesso.
+                </p>
               </div>
 
               {formError && (
