@@ -15,7 +15,12 @@ function parsePreco(val: string): number {
   return Math.round(parseFloat(clean || '0') * 100)
 }
 
-function parseInt(val: string): number {
+// Renomeada de "parseInt" para "parseIntSafe" — o nome antigo colidia com a
+// funcao nativa do JS. Como a funcao era declarada "function parseInt(...)",
+// a chamada a "parseInt" dentro do proprio corpo passava a apontar pra ela
+// mesma (nao pra global), causando recursao infinita e estourando a pilha
+// em toda importacao de produtos/insumos.
+function parseIntSafe(val: string): number {
   return parseInt(String(val || '0').replace(/\D/g, '')) || 0
 }
 
@@ -82,8 +87,8 @@ export class ImportacaoService {
             codigoBarras:  row.codigo_barras?.trim() || null,
             unidade:       row.unidade?.trim() || 'un',
             categoria:     row.categoria?.trim() || null,
-            estoqueAtual:  parseInt(row.estoque_atual),
-            estoqueMinimo: parseInt(row.estoque_minimo),
+            estoqueAtual:  parseIntSafe(row.estoque_atual),
+            estoqueMinimo: parseIntSafe(row.estoque_minimo),
             precoCusto:    parsePreco(row.preco_custo),
             precoVarejo:   parsePreco(row.preco_varejo),
             precoAtacado:  parsePreco(row.preco_atacado),
@@ -102,8 +107,8 @@ export class ImportacaoService {
             codigoBarras:  row.codigo_barras?.trim() || null,
             unidade:       row.unidade?.trim() || 'kg',
             tipo:          row.tipo?.trim().toUpperCase() || 'MP',
-            estoqueAtual:  parseInt(row.estoque_atual),
-            estoqueMinimo: parseInt(row.estoque_minimo),
+            estoqueAtual:  parseIntSafe(row.estoque_atual),
+            estoqueMinimo: parseIntSafe(row.estoque_minimo),
             precoCusto:    parsePreco(row.preco_custo),
             createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
           })

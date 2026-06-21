@@ -10,7 +10,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
-import CsvImportModal from '@/components/ui/CsvImportModal'
+import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import { useDominio } from '@/hooks/useDominio'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
@@ -184,7 +184,6 @@ export default function InsumosView({ tenantSlug }: Props) {
         </table>
       </div>
 
-      {/* Modal Insumo */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
@@ -238,8 +237,7 @@ export default function InsumosView({ tenantSlug }: Props) {
       )}
 
       {showImport && (
-        <CsvImportModal tenantSlug={tenantSlug} entidade="insumos" nomeEntidade="Insumos"
-          onClose={() => setShowImport(false)} onSuccess={() => { invalidate(); setShowImport(false) }} />
+        <ImportacaoModal tenantSlug={tenantSlug} entidade="insumos" queryKey="insumos" onClose={() => setShowImport(false)} />
       )}
 
       {confirmDelete && (

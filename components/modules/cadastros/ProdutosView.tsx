@@ -10,7 +10,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
-import CsvImportModal from '@/components/ui/CsvImportModal'
+import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import { useDominio } from '@/hooks/useDominio'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
@@ -266,7 +266,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
         </table>
       </div>
 
-      {/* Modal Produto */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl mx-4 max-h-[90vh] overflow-y-auto">
@@ -345,7 +344,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Ficha Técnica */}
       {showFicha && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
@@ -406,8 +404,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       )}
 
       {showImport && (
-        <CsvImportModal tenantSlug={tenantSlug} entidade="produtos" nomeEntidade="Produtos"
-          onClose={() => setShowImport(false)} onSuccess={() => { invalidate(); setShowImport(false) }} />
+        <ImportacaoModal tenantSlug={tenantSlug} entidade="produtos" queryKey="produtos" onClose={() => setShowImport(false)} />
       )}
 
       {confirmDelete && (
