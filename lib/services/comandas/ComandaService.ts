@@ -2,6 +2,8 @@ import { and, eq, desc, count, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbComanda, dbComandaItem, dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
 import { dbProduto } from '@/lib/db/schemas/cadastros'
+import { FiscalService } from '@/lib/services/fiscal/FiscalService'
+import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 
 export class ComandaService {
   constructor(private db: AppDB) {}
@@ -134,6 +136,12 @@ export class ComandaService {
       .where(eq(dbComanda.comandaId, comandaId))
   }
 
+  /**
+   * Fecha a comanda: gera a venda, os itens, os pagamentos, baixa o
+   * estoque e — se o módulo Fiscal estiver ativo — cria automaticamente
+   * um rascunho de NFC-e ('pendente') vinculado à venda gerada. Igual ao
+   * comportamento de VendaService.criarDireta, sem emitir sozinha.
+   */
   async fechar({ comandaId, desconto, pagamentos, userId }: {
     comandaId:  number
     desconto:   number
@@ -223,9 +231,30 @@ export class ComandaService {
         .where(eq(dbProduto.produtoId, item.produtoId))
     }
 
+    // 6. Rascunho de nota fiscal — mesma lógica de VendaService.criarDireta
+    try {
+      const cfgFiscal = await new ConfiguracoesService(this.db).get()
+      if (cfgFiscal?.fiscalAtivo) {
+        await new FiscalService(this.db).criarNota({
+          tipo:       'NFC-e',
+          valorTotal: total,
+          vendaId:    venda.vendaId,
+          itens: comanda.itens.map(item => ({
+            descricao:     item.nomeProduto,
+            quantidade:    item.quantidade,
+            precoUnitario: item.precoUnitario,
+          })),
+          userId,
+        })
+      }
+    } catch (_) {
+      // módulo fiscal pode não estar configurado ainda — não bloqueia o fechamento
+    }
+
     return { vendaId: venda.vendaId }
   }
-    async cancelar({ comandaId, userId }: { comandaId: number; userId: number }) {
+
+  async cancelar({ comandaId, userId }: { comandaId: number; userId: number }) {
     const now = new Date()
     const [comanda] = await this.db
       .select()

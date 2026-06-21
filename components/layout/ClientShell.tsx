@@ -1,7 +1,8 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import Sidebar from './Sidebar'
 import Header  from './Header'
+import { useDarkMode } from '@/hooks/useDarkMode'
 
 export interface Config {
   comandasAtivo:   boolean
@@ -33,30 +34,7 @@ interface Props {
 
 export default function ClientShell({ children, tenantSlug, tenantName, config }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [darkMode, setDarkMode]       = useState(config.darkMode ?? false)
-
-  useEffect(() => {
-    const id  = 'sistematiza-dark'
-    let style = document.getElementById(id) as HTMLStyleElement | null
-    if (darkMode) {
-      if (!style) {
-        style = document.createElement('style')
-        style.id = id
-        document.head.appendChild(style)
-      }
-      style.textContent = `
-        body { background-color: #111827 !important; color: #f9fafb !important; }
-        .bg-white { background-color: #1f2937 !important; }
-        .bg-gray-50, .bg-gray-100 { background-color: #111827 !important; }
-        .border-gray-100, .border-gray-200 { border-color: #374151 !important; }
-        .text-gray-900 { color: #f9fafb !important; }
-        .text-gray-700, .text-gray-600 { color: #d1d5db !important; }
-        .text-gray-500, .text-gray-400 { color: #9ca3af !important; }
-      `
-    } else {
-      style?.remove()
-    }
-  }, [darkMode])
+  const { darkMode, toggleDarkMode }  = useDarkMode(tenantSlug, config.darkMode ?? false)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -65,8 +43,6 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [])
-
-  const toggleDarkMode = useCallback(() => setDarkMode(prev => !prev), [])
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -15,10 +15,29 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { searchParams } = new URL(req.url)
-      const tipo      = searchParams.get('tipo')    ?? undefined
-      const status    = searchParams.get('status')  ?? undefined
-      const turno     = searchParams.get('turno')   === 'true'
+      const tipo      = searchParams.get('tipo')      ?? undefined
+      const status    = searchParams.get('status')    ?? undefined
+      const turno     = searchParams.get('turno')     === 'true'
+      const relatorio = searchParams.get('relatorio') ?? undefined
       const service   = new FiscalService(db)
+
+      if (relatorio === 'resumo-mensal') {
+        const ano = Number(searchParams.get('ano') ?? new Date().getFullYear())
+        return ok(await service.relatorioResumoMensal(ano))
+      }
+      if (relatorio === 'por-forma') {
+        return ok(await service.relatorioPorFormaPagamento({
+          dataInicio: searchParams.get('dataInicio') ?? undefined,
+          dataFim:    searchParams.get('dataFim') ?? undefined,
+        }))
+      }
+      if (relatorio === 'apuracao') {
+        return ok(await service.relatorioApuracaoImpostos({
+          dataInicio: searchParams.get('dataInicio') ?? undefined,
+          dataFim:    searchParams.get('dataFim') ?? undefined,
+        }))
+      }
+
       if (turno) return ok(await service.getTurnoAberto())
       return ok(await service.listNotas({ tipo, status }))
     } finally { release() }

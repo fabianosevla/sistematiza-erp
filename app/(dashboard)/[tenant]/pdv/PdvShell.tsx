@@ -1,35 +1,45 @@
-'use client'
+﻿'use client'
 // app/(dashboard)/[tenant]/pdv/PdvShell.tsx
 
 import { useState } from 'react'
-import { ShoppingCart, LayoutGrid, ClipboardList, LogOut, Code2 } from 'lucide-react'
+import { ShoppingCart, LayoutGrid, ClipboardList, LogOut, Code2, Sun, Moon } from 'lucide-react'
 import ComandasView from '@/components/modules/comandas/ComandasView'
 import PdvBalcao from './PdvBalcao'
 import PdvMesas from './PdvMesas'
+import { useDarkMode } from '@/hooks/useDarkMode'
 
-interface Props { tenantSlug: string }
+interface Props {
+  tenantSlug: string
+  darkModeInicial?: boolean
+}
 
 type Aba = 'balcao' | 'mesas' | 'comanda'
 
 const ABAS = [
-  { key: 'balcao'  as Aba, label: 'Balcão',  icon: ShoppingCart },
-  { key: 'mesas'   as Aba, label: 'Mesas',   icon: LayoutGrid   },
+  { key: 'balcao' as Aba, label: 'Balcão', icon: ShoppingCart },
+  { key: 'mesas' as Aba, label: 'Mesas', icon: LayoutGrid },
   { key: 'comanda' as Aba, label: 'Comanda', icon: ClipboardList },
 ]
 
-export default function PdvShell({ tenantSlug }: Props) {
+// Elemento de link referenciado por variavel em vez da tag JSX literal de
+// ancora -- alguma etapa do transporte deste texto ate o arquivo no disco
+// estava removendo essa tag toda vez que ela ficava sozinha numa linha
+// seguida de atributos. Esta forma evita o problema por completo.
+const Anchor = 'a' as const
+
+export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props) {
   const [aba, setAba] = useState<Aba>('balcao')
+  const { darkMode, toggleDarkMode } = useDarkMode(tenantSlug, darkModeInicial)
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gray-50">
-
       <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <Code2 size={18} style={{ color: '#2ecc71' }} />
             <div className="flex items-baseline">
               <span className="text-lg font-bold text-gray-900">sistematiza</span>
-              <span className="text-lg font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+              <span className="text-lg font-bold" style={{ color: '#2ecc71' }}>.ai</span>
             </div>
           </div>
           <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500 uppercase tracking-wide">
@@ -38,29 +48,37 @@ export default function PdvShell({ tenantSlug }: Props) {
         </div>
 
         <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
-          {ABAS.map(a => (
+          {ABAS.map(item => (
             <button
-              key={a.key}
-              onClick={() => setAba(a.key)}
+              key={item.key}
+              onClick={() => setAba(item.key)}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                aba === a.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                aba === item.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
               }`}
             >
-              <a.icon size={14} />
-              {a.label}
+              <item.icon size={14} />
+              {item.label}
             </button>
           ))}
         </div>
 
-        {/* ⚠️ <a href> em vez de router.push() — navegação completa,
-            evita o bug de cache do App Router entre /[tenant] e /[tenant]/pdv */}
-        <a
-          href={`/${tenantSlug}/selecionar-modulo`}
-          className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
-        >
-          <LogOut size={15} />
-          Sair
-        </a>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={toggleDarkMode}
+            className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            title={darkMode ? 'Modo claro' : 'Modo escuro'}
+          >
+            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+
+          <Anchor
+            href={`/${tenantSlug}/selecionar-modulo`}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
+          >
+            <LogOut size={15} />
+            Sair
+          </Anchor>
+        </div>
       </header>
 
       <main className="flex-1 overflow-hidden">

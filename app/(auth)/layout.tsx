@@ -8,7 +8,7 @@ export default function AuthLayout({
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-8">
           <span className="text-3xl font-semibold text-white">sistematiza</span>
-          <span className="text-3xl font-semibold" style={{ color: '#2ecc71' }}>.ia</span>
+          <span className="text-3xl font-semibold" style={{ color: '#2ecc71' }}>.ai</span>
         </div>
         {children}
       </div>

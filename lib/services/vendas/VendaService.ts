@@ -2,6 +2,8 @@ import { and, eq, gte, lte, desc, count, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
 import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
+import { FiscalService } from '@/lib/services/fiscal/FiscalService'
+import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -134,12 +136,12 @@ export class VendaService {
   /**
    * Cria uma venda direta (não via comanda).
    *
-   * CORREÇÃO DOS GAPS 2 e 3:
-   * - Cada item agora recebe `tipoPrecao` (varejo | atacado_a … atacado_e)
+   * - Cada item recebe `tipoPrecao` (varejo | atacado_a … atacado_e)
    * - O preço unitário é SEMPRE resolvido no servidor via `resolverPreco()`,
    *   nunca confiando no valor enviado pelo cliente
-   * - `t_venda_item` agora persiste `tipo_precao` e `nome_tipo_precao` para
-   *   rastreabilidade (requer migration abaixo)
+   * - Quando o módulo Fiscal está ativo, gera automaticamente um rascunho
+   *   de NFC-e (status 'pendente') vinculado a esta venda — não emite
+   *   sozinha, só deixa pronta pra emitir no módulo Fiscal
    */
   async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, userId }: {
     itens: {
@@ -268,6 +270,28 @@ export class VendaService {
         updatedDt:    now,
         updatedBy:    userId,
       }).where(eq(dbProduto.produtoId, item.produtoId))
+    }
+
+    // Gera automaticamente um rascunho de nota fiscal quando o módulo
+    // Fiscal está ativo — fica 'pendente' no Fiscal, pronta pra emitir com
+    // um clique. Não emite sozinha: emissão real continua manual.
+    try {
+      const cfg = await new ConfiguracoesService(this.db).get()
+      if (cfg?.fiscalAtivo) {
+        await new FiscalService(this.db).criarNota({
+          tipo:       'NFC-e',
+          valorTotal: total,
+          vendaId:    venda.vendaId,
+          itens: itemsDetalhados.map(item => ({
+            descricao:     item.nomeProduto,
+            quantidade:    item.quantidade,
+            precoUnitario: item.precoUnitario,
+          })),
+          userId,
+        })
+      }
+    } catch (_) {
+      // módulo fiscal pode não estar configurado ainda — não bloqueia a venda
     }
 
     return { vendaId: venda.vendaId }

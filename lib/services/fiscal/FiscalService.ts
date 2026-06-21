@@ -1,4 +1,4 @@
-import { and, eq, desc, gte, lte } from 'drizzle-orm'
+import { and, eq, desc, gte, lte, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbNotaFiscal, dbNotaFiscalItem, dbTurnoCaixa } from '@/lib/db/schemas/fiscal'
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
@@ -180,5 +180,63 @@ export class FiscalService {
     }).where(eq(dbNotaFiscal.notaId, notaId))
 
     return { ok: true }
+  }
+
+  // ── Relatórios ────────────────────────────────────────────────────────────
+  // Importante: somam o que já está LANÇADO nos itens das notas. Não
+  // calculam imposto por regra fiscal — não existe motor de tributação
+  // automático aqui, só agregação do que foi preenchido manualmente ou
+  // veio do payload de emissão.
+
+  async relatorioResumoMensal(ano: number) {
+    const result = await this.db.execute(sql`
+      SELECT TO_CHAR(DATE_TRUNC('month', data_emissao), 'Mon/YY') as mes,
+             tipo,
+             COUNT(*) FILTER (WHERE status = 'autorizada')::int as autorizadas,
+             COUNT(*) FILTER (WHERE status = 'cancelada')::int  as canceladas,
+             COUNT(*) FILTER (WHERE status = 'pendente')::int   as pendentes,
+             COALESCE(SUM(valor_total) FILTER (WHERE status = 'autorizada'), 0)::bigint as valor_total
+      FROM t_nota_fiscal
+      WHERE active_flg = true AND EXTRACT(YEAR FROM data_emissao) = ${ano}
+      GROUP BY DATE_TRUNC('month', data_emissao), tipo
+      ORDER BY DATE_TRUNC('month', data_emissao)
+    `)
+    return (result.rows as any[]).map(r => ({
+      mes: r.mes, tipo: r.tipo,
+      autorizadas: Number(r.autorizadas), canceladas: Number(r.canceladas), pendentes: Number(r.pendentes),
+      valorTotal: Number(r.valor_total),
+    }))
+  }
+
+  async relatorioPorFormaPagamento({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+    const result = await this.db.execute(sql`
+      SELECT vp.forma, COUNT(DISTINCT n.nota_id)::int as qtd_notas, COALESCE(SUM(vp.valor), 0)::bigint as total
+      FROM t_nota_fiscal n
+      JOIN t_venda_pagamento vp ON vp.venda_id = n.venda_id
+      WHERE n.active_flg = true AND n.status = 'autorizada'
+        ${dataInicio ? sql`AND n.data_emissao >= ${dataInicio}` : sql``}
+        ${dataFim    ? sql`AND n.data_emissao <= ${dataFim}`    : sql``}
+      GROUP BY vp.forma ORDER BY total DESC
+    `)
+    return (result.rows as any[]).map(r => ({ forma: r.forma, qtdNotas: Number(r.qtd_notas), total: Number(r.total) }))
+  }
+
+  async relatorioApuracaoImpostos({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+    const result = await this.db.execute(sql`
+      SELECT TO_CHAR(DATE_TRUNC('month', n.data_emissao), 'Mon/YY') as mes,
+             COALESCE(SUM(i.valor_icms), 0)::bigint as icms,
+             COALESCE(SUM(i.valor_ipi),  0)::bigint as ipi,
+             COALESCE(SUM(i.base_st),    0)::bigint as base_st,
+             COALESCE(SUM(i.valor_st),   0)::bigint as valor_st
+      FROM t_nota_fiscal_item i
+      JOIN t_nota_fiscal n ON n.nota_id = i.nota_id
+      WHERE n.active_flg = true AND n.status = 'autorizada'
+        ${dataInicio ? sql`AND n.data_emissao >= ${dataInicio}` : sql``}
+        ${dataFim    ? sql`AND n.data_emissao <= ${dataFim}`    : sql``}
+      GROUP BY DATE_TRUNC('month', n.data_emissao) ORDER BY DATE_TRUNC('month', n.data_emissao)
+    `)
+    return (result.rows as any[]).map(r => ({
+      mes: r.mes, icms: Number(r.icms), ipi: Number(r.ipi), baseSt: Number(r.base_st), valorSt: Number(r.valor_st),
+    }))
   }
 }

@@ -43,6 +43,10 @@ export async function GET(req: NextRequest, { params }: Params) {
         cidade:       r.cidade        ?? '',
         uf:           r.uf            ?? '',
         cep:          r.cep           ?? '',
+        ieEstadual:       r.ie_estadual        ?? '',
+        regimeTributario: r.regime_tributario  ?? '',
+        focusNfeToken:    r.focus_nfe_token    ?? '',
+        focusNfeAmbiente: r.focus_nfe_ambiente ?? 'homologacao',
       })
     } finally { client.release() }
   } catch (err) { return serverError(err) }
@@ -85,6 +89,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['cidade',        body.cidade],
         ['uf',            body.uf],
         ['cep',           body.cep],
+        ['ie_estadual',        body.ieEstadual],
+        ['regime_tributario',  body.regimeTributario],
+        ['focus_nfe_token',    body.focusNfeToken],
+        ['focus_nfe_ambiente', body.focusNfeAmbiente],
       ]
 
       for (const [col, val] of updates) {

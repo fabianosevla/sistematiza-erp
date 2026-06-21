@@ -149,15 +149,23 @@ export default function ComandasView({ tenantSlug }: Props) {
     addItemMutation.mutate({ produtoId: p.produtoId, qtd: quantidade })
   }
 
-  function handleBarcodeKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' && buscaProduto.trim()) {
-      const produtos = produtosData?.data?.data ?? []
-      const match = produtos.find((p: any) =>
-        p.codigoBarras === buscaProduto.trim() ||
-        p.nome.toLowerCase().includes(buscaProduto.toLowerCase())
-      )
-      if (match) addItemMutation.mutate({ produtoId: match.produtoId, qtd: quantidade })
-    }
+  async function handleBarcodeKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter' || !buscaProduto.trim()) return
+    const codigo = buscaProduto.trim()
+
+    // Tenta primeiro nos resultados já carregados (mais rápido)
+    const produtosCarregados = produtosData?.data?.data ?? []
+    const direto = produtosCarregados.find((p: any) => p.codigoBarras === codigo)
+    if (direto) { addItemMutation.mutate({ produtoId: direto.produtoId, qtd: quantidade }); return }
+
+    // Se o scanner foi mais rápido que a busca em tela (typeahead ainda não
+    // voltou), busca direto no servidor por código exato — evita perder a
+    // leitura por causa do debounce
+    const res   = await fetch(`/api/${tenantSlug}/cadastros/produtos?search=${encodeURIComponent(codigo)}&limit=5`)
+    const data  = await res.json()
+    const lista = data?.data?.data ?? data?.data ?? []
+    const match = lista.find((p: any) => p.codigoBarras === codigo) ?? lista[0]
+    if (match) addItemMutation.mutate({ produtoId: match.produtoId, qtd: quantidade })
   }
 
   const comandas = listData?.data ?? []

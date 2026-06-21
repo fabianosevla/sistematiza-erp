@@ -1,9 +1,11 @@
-'use client'
-import { useState } from 'react'
+﻿'use client'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, ShoppingCart, Code2 } from 'lucide-react'
 import { useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
 import type { Config } from './ClientShell'
 
@@ -30,6 +32,12 @@ const MODULOS = [
   { key: 'contasReceberAtivo',       label: 'Contas a Receber', group: 'Financeiro' },
   { key: 'conciliacaoBancariaAtivo', label: 'Conciliação OFX',  group: 'Financeiro' },
 ] as const
+
+// Elemento de link referenciado por variavel em vez da tag JSX literal de
+// ancora -- alguma etapa do transporte deste texto ate o arquivo no disco
+// estava removendo essa tag toda vez que ela ficava sozinha numa linha
+// seguida de atributos. Esta forma evita o problema por completo.
+const Anchor = 'a' as const
 
 export default function Header({
   tenantSlug, tenantName, config, darkMode,
@@ -66,8 +74,52 @@ export default function Header({
     onError: () => toast('Erro ao salvar.', 'error'),
   })
 
-  const notifs    = Array.isArray(notifsRaw?.data) ? notifsRaw.data : []
-  const unread    = notifs.filter((n: any) => !n.lida).length
+  const { data: configCompletoRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    enabled:  showSettings,
+  })
+
+  const [empresaForm, setEmpresaForm] = useState({
+    nomeEmpresa: '',
+    cnpj: '',
+    telefone: '',
+    email: '',
+    endereco: '',
+    cidade: '',
+    uf: '',
+    cep: '',
+    ieEstadual: '',
+    regimeTributario: '',
+    focusNfeToken: '',
+    focusNfeAmbiente: 'homologacao',
+  })
+
+  useEffect(() => {
+    const d = configCompletoRaw?.data
+    if (!d) return
+    setEmpresaForm({
+      nomeEmpresa: d.nomeEmpresa ?? '',
+      cnpj: d.cnpj ?? '',
+      telefone: d.telefone ?? '',
+      email: d.email ?? '',
+      endereco: d.endereco ?? '',
+      cidade: d.cidade ?? '',
+      uf: d.uf ?? '',
+      cep: d.cep ?? '',
+      ieEstadual: d.ieEstadual ?? '',
+      regimeTributario: d.regimeTributario ?? '',
+      focusNfeToken: d.focusNfeToken ?? '',
+      focusNfeAmbiente: d.focusNfeAmbiente ?? 'homologacao',
+    })
+  }, [configCompletoRaw])
+
+  function setEF(k: string, v: string) {
+    setEmpresaForm(prev => ({ ...prev, [k]: v }))
+  }
+
+  const notifs = Array.isArray(notifsRaw?.data) ? notifsRaw.data : []
+  const unread = notifs.filter((n: any) => !n.lida).length
 
   function getToggleValue(key: string): boolean {
     if (key in localConfig) return localConfig[key]
@@ -112,7 +164,7 @@ export default function Header({
               <Code2 size={16} style={{ color: '#2ecc71' }} />
               <div className="flex items-baseline">
                 <span className="text-sm font-bold text-gray-900">sistematiza</span>
-                <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+                <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>.ai</span>
               </div>
             </div>
           )}
@@ -121,17 +173,14 @@ export default function Header({
         <div className="flex-1" />
 
         <div className="flex items-center gap-1">
-          {/* ── Abrir PDV ────────────────────────────────────────────────
-              <a href> (não router.push) — navegação completa, evita o bug
-              de cache do App Router entre rotas que compartilham [tenant] */}
-          <a
+          <Anchor
             href={`/${tenantSlug}/pdv`}
             className="flex items-center gap-1.5 px-3 py-1.5 mr-1 text-sm font-medium text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
             title="Abrir PDV"
           >
             <ShoppingCart size={15} />
             <span className="hidden sm:inline">PDV</span>
-          </a>
+          </Anchor>
 
           <button
             onClick={onToggleDarkMode}
@@ -147,8 +196,10 @@ export default function Header({
           >
             <Bell size={18} />
             {unread > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
-                style={{ backgroundColor: '#2ecc71' }}>
+              <span
+                className="absolute top-1 right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
+                style={{ backgroundColor: '#2ecc71' }}
+              >
                 {unread > 9 ? '9+' : unread}
               </span>
             )}
@@ -182,12 +233,14 @@ export default function Header({
           <div className="max-h-72 overflow-y-auto">
             {notifs.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">Sem notificações</p>
-            ) : notifs.slice(0, 10).map((n: any) => (
-              <div key={n.id} className={`px-4 py-3 border-b border-gray-50 ${!n.lida ? 'bg-green-50/50' : ''}`}>
-                <p className="text-sm text-gray-900">{n.titulo}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{n.mensagem}</p>
-              </div>
-            ))}
+            ) : (
+              notifs.slice(0, 10).map((n: any) => (
+                <div key={n.id} className={`px-4 py-3 border-b border-gray-50 ${!n.lida ? 'bg-green-50/50' : ''}`}>
+                  <p className="text-sm text-gray-900">{n.titulo}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{n.mensagem}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -232,6 +285,106 @@ export default function Header({
                   )}
                 </div>
               </div>
+
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Dados da Empresa</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <Label className="text-xs">Razão Social / Nome</Label>
+                    <Input value={empresaForm.nomeEmpresa} onChange={e => setEF('nomeEmpresa', e.target.value)} className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">CNPJ</Label>
+                    <Input value={empresaForm.cnpj} onChange={e => setEF('cnpj', e.target.value)} className="mt-1 h-9 text-sm" placeholder="00.000.000/0000-00" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Telefone</Label>
+                    <Input value={empresaForm.telefone} onChange={e => setEF('telefone', e.target.value)} className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">E-mail</Label>
+                    <Input value={empresaForm.email} onChange={e => setEF('email', e.target.value)} className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs">Endereço</Label>
+                    <Input value={empresaForm.endereco} onChange={e => setEF('endereco', e.target.value)} className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Cidade</Label>
+                    <Input value={empresaForm.cidade} onChange={e => setEF('cidade', e.target.value)} className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">UF</Label>
+                      <Input
+                        value={empresaForm.uf}
+                        onChange={e => setEF('uf', e.target.value.toUpperCase().slice(0, 2))}
+                        className="mt-1 h-9 text-sm"
+                        maxLength={2}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">CEP</Label>
+                      <Input value={empresaForm.cep} onChange={e => setEF('cep', e.target.value)} className="mt-1 h-9 text-sm" />
+                    </div>
+                  </div>
+                </div>
+                <Button size="sm" className="mt-3" onClick={() => salvarConfigMut.mutate(empresaForm)} disabled={salvarConfigMut.isPending}>
+                  {salvarConfigMut.isPending ? 'Salvando...' : 'Salvar dados da empresa'}
+                </Button>
+              </div>
+
+              {getToggleValue('fiscalAtivo') && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fiscal - Focus NFe</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Inscrição Estadual</Label>
+                      <Input value={empresaForm.ieEstadual} onChange={e => setEF('ieEstadual', e.target.value)} className="mt-1 h-9 text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Regime Tributário</Label>
+                      <select
+                        value={empresaForm.regimeTributario}
+                        onChange={e => setEF('regimeTributario', e.target.value)}
+                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm focus:outline-none"
+                      >
+                        <option value="">Selecionar...</option>
+                        <option value="1">Simples Nacional</option>
+                        <option value="2">Simples Nacional - sublimite</option>
+                        <option value="3">Regime Normal</option>
+                      </select>
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Token Focus NFe</Label>
+                      <Input
+                        type="password"
+                        value={empresaForm.focusNfeToken}
+                        onChange={e => setEF('focusNfeToken', e.target.value)}
+                        className="mt-1 h-9 text-sm font-mono"
+                        placeholder="Token de acesso da API"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Ambiente</Label>
+                      <select
+                        value={empresaForm.focusNfeAmbiente}
+                        onChange={e => setEF('focusNfeAmbiente', e.target.value)}
+                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm focus:outline-none"
+                      >
+                        <option value="homologacao">Homologação (testes)</option>
+                        <option value="producao">Produção</option>
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Token obtido no painel da Focus NFe. Em homologação as notas emitidas não têm validade fiscal.
+                  </p>
+                  <Button size="sm" className="mt-3" onClick={() => salvarConfigMut.mutate(empresaForm)} disabled={salvarConfigMut.isPending}>
+                    {salvarConfigMut.isPending ? 'Salvando...' : 'Salvar credenciais fiscais'}
+                  </Button>
+                </div>
+              )}
 
               {grupos.map(grupo => (
                 <div key={grupo}>

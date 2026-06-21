@@ -1,12 +1,11 @@
 // ════════════════════════════════════════════════════════════════════════
 // ESTE ARQUIVO VAI EM: app/(dashboard)/[tenant]/pdv/page.tsx
-// (a pasta "pdv" — renderiza o PdvShell, NUNCA o Dashboard/TenantLayout)
 // ════════════════════════════════════════════════════════════════════════
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { PerfisService } from '@/lib/services/perfis/PerfisService'
 import PdvShell from './PdvShell'
 
@@ -33,7 +32,17 @@ export default async function PdvPage({ params }: Props) {
     }
   } catch (_) {
     // sem perfis ainda — libera
-  } finally { release() }
+  }
 
-  return <PdvShell tenantSlug={params.tenant} />
+  let darkModeInicial = false
+  try {
+    const cfgResult = await db.execute(sql`SELECT dark_mode FROM t_configuracoes_tenant LIMIT 1`)
+    darkModeInicial = Boolean((cfgResult.rows[0] as any)?.dark_mode ?? false)
+  } catch (_) {
+    // tenant sem configurações ainda — mantém claro
+  } finally {
+    release()
+  }
+
+  return <PdvShell tenantSlug={params.tenant} darkModeInicial={darkModeInicial} />
 }

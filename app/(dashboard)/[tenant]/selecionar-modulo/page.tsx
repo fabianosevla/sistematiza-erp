@@ -1,7 +1,7 @@
 // app/(dashboard)/[tenant]/selecionar-modulo/page.tsx
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
 import SelecionarModuloClient from './SelecionarModuloClient'
@@ -24,12 +24,21 @@ export default async function SelecionarModuloPage({ params }: Props) {
 
   const { db, release } = await getDbForTenant(schemaName)
   let acessos = { gerencial: false, pdv: false, comanda: false, delivery: false }
+  let darkModeInicial = false
   try {
     const service = new PerfisService(db)
     acessos = await service.getAcessosUsuario(userId)
   } catch (_) {
     acessos = { gerencial: true, pdv: true, comanda: true, delivery: true }
-  } finally { release() }
+  }
+  try {
+    const cfgResult = await db.execute(sql`SELECT dark_mode FROM t_configuracoes_tenant LIMIT 1`)
+    darkModeInicial = Boolean((cfgResult.rows[0] as any)?.dark_mode ?? false)
+  } catch (_) {
+    // sem configurações ainda
+  } finally {
+    release()
+  }
 
   if (!acessos.gerencial && !acessos.pdv) redirect('/sign-in')
 
@@ -37,6 +46,7 @@ export default async function SelecionarModuloPage({ params }: Props) {
     <SelecionarModuloClient
       tenantSlug={params.tenant}
       acessos={acessos}
+      darkModeInicial={darkModeInicial}
     />
   )
 }

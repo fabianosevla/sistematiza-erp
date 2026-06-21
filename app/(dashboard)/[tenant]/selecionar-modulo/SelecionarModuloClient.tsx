@@ -1,53 +1,65 @@
-'use client'
+﻿'use client'
 // app/(dashboard)/[tenant]/selecionar-modulo/SelecionarModuloClient.tsx
 
-import { BarChart3, ShoppingCart } from 'lucide-react'
+import { BarChart3, ShoppingCart, Sun, Moon } from 'lucide-react'
+import { useDarkMode } from '@/hooks/useDarkMode'
 
 interface Props {
   tenantSlug: string
   acessos: {
     gerencial: boolean
-    pdv:       boolean
-    comanda:   boolean
-    delivery:  boolean
+    pdv: boolean
+    comanda: boolean
+    delivery: boolean
   }
+  darkModeInicial?: boolean
 }
 
-// Comanda e Delivery seguem fora desta tela — Comanda já existe como aba
-// dentro do PDV (PdvShell), Delivery ainda não tem ambiente próprio.
 const MODULOS = [
   {
-    key:         'gerencial' as const,
-    label:       'Gerencial',
-    descricao:   'Acesso completo ao sistema',
-    icon:        BarChart3,
-    href:        (slug: string) => `/${slug}`,
-    iconBg:      'bg-[#2ecc71]/10',
-    iconColor:   'text-[#2ecc71]',
+    key: 'gerencial' as const,
+    label: 'Gerencial',
+    descricao: 'Acesso completo ao sistema',
+    icon: BarChart3,
+    href: (slug: string) => `/${slug}`,
+    iconBg: 'bg-[#2ecc71]/10',
+    iconColor: 'text-[#2ecc71]',
     borderHover: 'hover:border-[#2ecc71]/40',
   },
   {
-    key:         'pdv' as const,
-    label:       'PDV',
-    descricao:   'Vendas, mesas e comandas',
-    icon:        ShoppingCart,
-    href:        (slug: string) => `/${slug}/pdv`,
-    iconBg:      'bg-blue-100',
-    iconColor:   'text-blue-600',
+    key: 'pdv' as const,
+    label: 'PDV',
+    descricao: 'Vendas, mesas e comandas',
+    icon: ShoppingCart,
+    href: (slug: string) => `/${slug}/pdv`,
+    iconBg: 'bg-blue-100',
+    iconColor: 'text-blue-600',
     borderHover: 'hover:border-blue-300',
   },
 ]
 
-export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
+// Mesmo motivo do PdvShell.tsx: usamos uma referencia de variavel para o
+// elemento de ancora em vez da tag JSX literal.
+const Anchor = 'a' as const
+
+export default function SelecionarModuloClient({ tenantSlug, acessos, darkModeInicial = false }: Props) {
   const disponiveis = MODULOS.filter(m => acessos[m.key])
+  const { darkMode, toggleDarkMode } = useDarkMode(tenantSlug, darkModeInicial)
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-gray-50">
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-gray-50 relative">
+      <button
+        onClick={toggleDarkMode}
+        className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+        title={darkMode ? 'Modo claro' : 'Modo escuro'}
+      >
+        {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
 
       <div className="text-center mb-10">
         <div className="flex items-baseline justify-center gap-0.5">
           <span className="text-2xl font-bold text-gray-900">sistematiza</span>
-          <span className="text-2xl font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+          <span className="text-2xl font-bold" style={{ color: '#2ecc71' }}>.ai</span>
         </div>
         <p className="text-gray-400 text-sm mt-2">Selecione o ambiente de trabalho</p>
       </div>
@@ -56,10 +68,7 @@ export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
         {disponiveis.map(modulo => {
           const Icon = modulo.icon
           return (
-            // ⚠️ <a href> em vez de router.push() — navegação completa,
-            // evita o bug de cache do App Router entre rotas que
-            // compartilham o mesmo segmento dinâmico [tenant]
-            <a
+            <Anchor
               key={modulo.key}
               href={modulo.href(tenantSlug)}
               className={`
@@ -79,7 +88,7 @@ export default function SelecionarModuloClient({ tenantSlug, acessos }: Props) {
                 <p className="text-gray-900 font-semibold text-lg leading-tight">{modulo.label}</p>
                 <p className="text-gray-400 text-xs mt-1">{modulo.descricao}</p>
               </div>
-            </a>
+            </Anchor>
           )
         })}
       </div>

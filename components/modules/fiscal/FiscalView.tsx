@@ -1,20 +1,17 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Play, Square, FileText, AlertTriangle, CheckCircle, Clock, Printer } from 'lucide-react'
+import { Plus, X, Play, Square, FileText, AlertTriangle, CheckCircle, Clock, Printer, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import NovaNotaModal from './NovaNotaModal'
 
 interface Props { tenantSlug: string }
 
 function formatCents(c: number) {
   return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-function formatDate(d: string) {
-  return new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -24,7 +21,9 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   rejeitada:  { label: 'Rejeitada',  color: 'destructive' },
 }
 
-const TIPOS_NOTA = ['NFC-e', 'NF-e', 'NFS-e']
+// Mesmo motivo dos demais arquivos do projeto: referencia de variavel
+// para o elemento de ancora em vez da tag JSX literal.
+const Anchor = 'a' as const
 
 export default function FiscalView({ tenantSlug }: Props) {
   const qc = useQueryClient()
@@ -35,7 +34,6 @@ export default function FiscalView({ tenantSlug }: Props) {
   const [showCancelar, setShowCancelar]   = useState<number | null>(null)
   const [motivoCancelamento, setMotivo]   = useState('')
 
-  // Turno
   const [showAbrirTurno, setShowAbrirTurno] = useState(false)
   const [operador, setOperador]             = useState('')
   const [valorAbertura, setValorAbertura]   = useState('0')
@@ -95,7 +93,6 @@ export default function FiscalView({ tenantSlug }: Props) {
         </div>
       </div>
 
-      {/* Abas */}
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
         {([
           { value: 'pdv',         label: 'PDV / Caixa' },
@@ -110,10 +107,8 @@ export default function FiscalView({ tenantSlug }: Props) {
         ))}
       </div>
 
-      {/* PDV */}
       {aba === 'pdv' && (
         <div className="space-y-4">
-          {/* Turno */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -141,7 +136,6 @@ export default function FiscalView({ tenantSlug }: Props) {
             </div>
           </div>
 
-          {/* NFC-e */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">NFC-e — Nota Fiscal do Consumidor</h2>
@@ -157,14 +151,12 @@ export default function FiscalView({ tenantSlug }: Props) {
             )}
           </div>
 
-          {/* Lista NFC-e */}
           <NotasList notas={notas.filter((n: any) => n.tipo === 'NFC-e')} isLoading={isLoading}
             onEmitir={id => emitirMut.mutate(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
         </div>
       )}
 
-      {/* NF-e Saída */}
       {aba === 'nfe-saida' && (
         <div className="space-y-4">
           <div className="flex justify-between items-center">
@@ -179,41 +171,22 @@ export default function FiscalView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* NF-e Entrada */}
       {aba === 'nfe-entrada' && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-sm font-semibold text-gray-700">Notas de Entrada de Fornecedores</h2>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-            <FileText size={32} className="mx-auto text-gray-200 mb-3" />
-            <p className="text-sm text-gray-400">Registro de notas de entrada via chave de acesso.</p>
-            <p className="text-xs text-gray-300 mt-1">Em desenvolvimento — disponível na próxima versão.</p>
-          </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+          <FileText size={32} className="mx-auto text-gray-200 mb-3" />
+          <p className="text-sm text-gray-600 font-medium">Entrada de NF-e de fornecedor já existe no Estoque Avançado</p>
+          <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
+            Upload do XML, vínculo com insumos, entrada no estoque e geração da conta a pagar — tudo em um único fluxo, sem duplicar lançamento.
+          </p>
+          <Anchor href={`/${tenantSlug}/estoque-avancado`}
+            className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 transition-colors">
+            Ir para Entrada NF-e <ArrowRight size={14} />
+          </Anchor>
         </div>
       )}
 
-      {/* Relatórios */}
-      {aba === 'relatorios' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[
-            { titulo: 'Relatório NFC-e',              desc: 'NFC-e emitidas, canceladas e inutilizadas' },
-            { titulo: 'Relatório NF-e Saída',         desc: 'Resumo sintético/analítico das saídas' },
-            { titulo: 'Apuração ICMS',                desc: 'Base de cálculo e valor por período' },
-            { titulo: 'Apuração PIS/COFINS',          desc: 'Apuração por período' },
-            { titulo: 'Resumo por Forma de Pagamento',desc: 'Totais NFC-e por forma de pagamento' },
-            { titulo: 'Resumo Mensal',                desc: 'Totais de emissões por mês' },
-          ].map(r => (
-            <div key={r.titulo} className="bg-white rounded-xl border border-gray-100 p-4">
-              <p className="text-sm font-semibold text-gray-900">{r.titulo}</p>
-              <p className="text-xs text-gray-400 mt-1">{r.desc}</p>
-              <p className="text-xs text-amber-600 mt-2 bg-amber-50 rounded px-2 py-1">Disponível após configuração do Focus NFe</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {aba === 'relatorios' && <RelatoriosFiscal tenantSlug={tenantSlug} />}
 
-      {/* Modal Abrir Turno */}
       {showAbrirTurno && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
@@ -233,7 +206,6 @@ export default function FiscalView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Cancelamento */}
       {showCancelar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
@@ -259,6 +231,14 @@ export default function FiscalView({ tenantSlug }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {showNovaNota && (
+        <NovaNotaModal
+          tenantSlug={tenantSlug}
+          tipoInicial={filtroTipo === 'NF-e' ? 'NF-e' : 'NFC-e'}
+          onClose={() => setShowNovaNota(false)}
+        />
       )}
     </div>
   )
@@ -303,7 +283,7 @@ function NotasList({ notas, isLoading, onEmitir, onCancelar }: {
                       <button onClick={() => onEmitir(n.notaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Emitir</button>
                     )}
                     {n.danfeUrl && (
-                      <a href={n.danfeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-700">DANFE</a>
+                      <Anchor href={n.danfeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-700">DANFE</Anchor>
                     )}
                     {n.status === 'autorizada' && (
                       <button onClick={() => onCancelar(n.notaId)} className="text-xs text-red-500 hover:text-red-600">Cancelar</button>
@@ -315,6 +295,102 @@ function NotasList({ notas, isLoading, onEmitir, onCancelar }: {
           })}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function RelatoriosFiscal({ tenantSlug }: { tenantSlug: string }) {
+  const api = `/api/${tenantSlug}/fiscal`
+  const ano = new Date().getFullYear()
+
+  const { data: resumoRaw, isLoading: loadingResumo } = useQuery({
+    queryKey: ['fiscal-relatorio-resumo', tenantSlug, ano],
+    queryFn:  async () => (await fetch(`${api}?relatorio=resumo-mensal&ano=${ano}`)).json(),
+  })
+  const { data: formaRaw, isLoading: loadingForma } = useQuery({
+    queryKey: ['fiscal-relatorio-forma', tenantSlug],
+    queryFn:  async () => (await fetch(`${api}?relatorio=por-forma`)).json(),
+  })
+  const { data: apuracaoRaw, isLoading: loadingApuracao } = useQuery({
+    queryKey: ['fiscal-relatorio-apuracao', tenantSlug],
+    queryFn:  async () => (await fetch(`${api}?relatorio=apuracao`)).json(),
+  })
+
+  const resumo   = Array.isArray(resumoRaw?.data) ? resumoRaw.data : []
+  const porForma = Array.isArray(formaRaw?.data) ? formaRaw.data : []
+  const apuracao = Array.isArray(apuracaoRaw?.data) ? apuracaoRaw.data : []
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <p className="text-sm font-semibold text-gray-700">Resumo mensal de emissões — {ano}</p>
+        </div>
+        {loadingResumo ? (
+          <p className="text-sm text-gray-400 text-center py-8">Carregando...</p>
+        ) : resumo.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-8">Nenhuma nota emitida em {ano} ainda.</p>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['Mês', 'Tipo', 'Autorizadas', 'Canceladas', 'Pendentes', 'Valor'].map((h, i) => (
+                  <th key={h} className={`text-${i >= 2 ? 'right' : 'left'} text-xs font-medium text-gray-400 px-4 py-2.5`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {resumo.map((r: any, i: number) => (
+                <tr key={i} className="border-b border-gray-50">
+                  <td className="px-4 py-2 text-sm text-gray-900">{r.mes}</td>
+                  <td className="px-4 py-2 text-sm text-gray-500">{r.tipo}</td>
+                  <td className="px-4 py-2 text-right text-sm text-green-600 font-medium">{r.autorizadas}</td>
+                  <td className="px-4 py-2 text-right text-sm text-red-500">{r.canceladas}</td>
+                  <td className="px-4 py-2 text-right text-sm text-amber-500">{r.pendentes}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold">{(r.valorTotal / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100"><p className="text-sm font-semibold text-gray-700">Notas por forma de pagamento</p></div>
+          {loadingForma ? (
+            <p className="text-sm text-gray-400 text-center py-8">Carregando...</p>
+          ) : porForma.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">Sem dados ainda.</p>
+          ) : porForma.map((f: any, i: number) => (
+            <div key={i} className="flex justify-between px-4 py-2.5 border-b border-gray-50 last:border-0">
+              <span className="text-sm text-gray-700">{f.forma} <span className="text-gray-400">({f.qtdNotas})</span></span>
+              <span className="text-sm font-semibold">{(f.total / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <p className="text-sm font-semibold text-gray-700">Impostos lançados nas notas</p>
+            <p className="text-xs text-gray-400 mt-0.5">Soma do que já está registrado — não é cálculo automático de tributos</p>
+          </div>
+          {loadingApuracao ? (
+            <p className="text-sm text-gray-400 text-center py-8">Carregando...</p>
+          ) : apuracao.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">Sem dados ainda.</p>
+          ) : apuracao.map((a: any, i: number) => (
+            <div key={i} className="px-4 py-2.5 border-b border-gray-50 last:border-0">
+              <p className="text-sm font-medium text-gray-900 mb-1">{a.mes}</p>
+              <div className="flex gap-4 text-xs text-gray-500">
+                <span>ICMS: <b className="text-gray-700">{(a.icms/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></span>
+                <span>IPI: <b className="text-gray-700">{(a.ipi/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></span>
+                <span>ST: <b className="text-gray-700">{(a.valorSt/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
