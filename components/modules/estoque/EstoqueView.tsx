@@ -1,12 +1,18 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Download, AlertTriangle, CheckCircle, Edit3 } from 'lucide-react'
+import { Plus, X, Download, AlertTriangle, CheckCircle, Edit3, Warehouse, ClipboardCheck, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import LocaisTab from './LocaisTab'
+import PerdasTab from './PerdasTab'
+import ContagemTab from './ContagemTab'
+import EntradaNfeTab from './EntradaNfeTab'
 
 interface Props { tenantSlug: string }
+
+type Aba = 'produtos' | 'insumos' | 'ajuste' | 'locais' | 'perdas' | 'contagem' | 'nfe'
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
@@ -18,7 +24,7 @@ function StatusIcon({ atual, min }: { atual: number; min: number }) {
 
 export default function EstoqueView({ tenantSlug }: Props) {
   const qc = useQueryClient()
-  const [aba, setAba]               = useState<'produtos' | 'insumos' | 'ajuste'>('produtos')
+  const [aba, setAba]               = useState<Aba>('produtos')
   const [showModal, setShowModal]   = useState<'produto' | 'insumo' | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [qtdAdicionar, setQtdAdicionar]     = useState('')
@@ -30,6 +36,15 @@ export default function EstoqueView({ tenantSlug }: Props) {
     qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
     qc.invalidateQueries({ queryKey: ['estoque-ajuste', tenantSlug] })
   }
+
+  // Config — gate das abas avançadas pelos toggles, mesmo padrão usado em
+  // FinanceiroView para A Pagar/A Receber/Conciliação
+  const { data: configRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 60000,
+  })
+  const config = configRaw?.data
 
   const { data: produtosRaw, isLoading: prodLoad } = useQuery({
     queryKey: ['estoque-produtos', tenantSlug],
@@ -47,7 +62,6 @@ export default function EstoqueView({ tenantSlug }: Props) {
     enabled: aba === 'ajuste',
   })
 
-  // FIX: extração defensiva sempre com Array.isArray
   const produtos = Array.isArray(produtosRaw?.data) ? produtosRaw.data : Array.isArray(produtosRaw) ? produtosRaw : []
   const insumos  = Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : Array.isArray(insumosRaw)  ? insumosRaw  : []
   const ajuste   = Array.isArray(ajusteRaw?.data)   ? ajusteRaw.data   : Array.isArray(ajusteRaw)   ? ajusteRaw   : []
@@ -101,10 +115,27 @@ export default function EstoqueView({ tenantSlug }: Props) {
     criticos: insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length,
   }
 
+  const ABAS_BASE: { key: Aba; label: string }[] = [
+    { key: 'produtos', label: 'Produto Acabado' },
+    { key: 'insumos',  label: 'Insumos' },
+    { key: 'ajuste',   label: 'Ajuste Sem Baixa' },
+  ]
+  const ABAS_AVANCADAS: { key: Aba; label: string; icon: any; check: boolean }[] = [
+    { key: 'locais',   label: 'Locais',       icon: Warehouse,       check: !!config?.multiplosLocaisAtivo },
+    { key: 'perdas',   label: 'Perdas',       icon: AlertTriangle,   check: !!config?.perdaProdutoAtivo },
+    { key: 'contagem', label: 'Contagem',     icon: ClipboardCheck,  check: !!config?.contagemInventarioAtivo },
+    { key: 'nfe',      label: 'Entrada NF-e', icon: FileSpreadsheet, check: !!config?.entradaNfeAtivo },
+  ]
+
+  const mostrarKpisBase = aba === 'produtos' || aba === 'insumos' || aba === 'ajuste'
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div><h1 className="text-2xl font-semibold text-gray-900">Estoque</h1></div>
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Estoque</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Produtos, insumos, locais, perdas, contagem e entrada via NF-e</p>
+        </div>
         {aba === 'produtos' && produtos.length > 0 && (
           <Button variant="outline" onClick={() => exportCSV(produtos, 'estoque-produtos')}>
             <Download size={14} className="mr-1.5" /> CSV
@@ -117,36 +148,44 @@ export default function EstoqueView({ tenantSlug }: Props) {
         )}
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {[
-          { label: 'Produtos',          value: String(kpisProd.total),    color: '' },
-          { label: 'Produtos críticos', value: String(kpisProd.criticos), color: kpisProd.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisProd.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
-          { label: 'Insumos',           value: String(kpisIns.total),     color: '' },
-          { label: 'Insumos críticos',  value: String(kpisIns.criticos),  color: kpisIns.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisIns.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
-        ].map((kpi, i) => (
-          <div key={i} className={`rounded-xl border p-4 ${kpi.bg ?? 'bg-white border-gray-100'}`}>
-            <p className="text-xs text-gray-400">{kpi.label}</p>
-            <p className={`text-2xl font-bold mt-1 ${kpi.color || 'text-gray-900'}`}>{kpi.value}</p>
-          </div>
-        ))}
+      {mostrarKpisBase && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: 'Produtos',          value: String(kpisProd.total),    color: '' },
+            { label: 'Produtos críticos', value: String(kpisProd.criticos), color: kpisProd.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisProd.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
+            { label: 'Insumos',           value: String(kpisIns.total),     color: '' },
+            { label: 'Insumos críticos',  value: String(kpisIns.criticos),  color: kpisIns.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisIns.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
+          ].map((kpi, i) => (
+            <div key={i} className={`rounded-xl border p-4 ${kpi.bg ?? 'bg-white border-gray-100'}`}>
+              <p className="text-xs text-gray-400">{kpi.label}</p>
+              <p className={`text-2xl font-bold mt-1 ${kpi.color || 'text-gray-900'}`}>{kpi.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="border-b border-gray-100 mb-6 overflow-x-auto">
+        <div className="flex gap-0 min-w-max">
+          {ABAS_BASE.map(a => (
+            <button key={a.key} onClick={() => setAba(a.key)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              {a.label}
+            </button>
+          ))}
+          {ABAS_AVANCADAS.filter(a => a.check).map(a => (
+            <button key={a.key} onClick={() => setAba(a.key)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              <a.icon size={14} />
+              {a.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Abas */}
-      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
-        {([
-          { value: 'produtos', label: 'Produto Acabado' },
-          { value: 'insumos',  label: 'Insumos' },
-          { value: 'ajuste',   label: 'Ajuste Sem Baixa' },
-        ] as const).map(a => (
-          <button key={a.value} onClick={() => setAba(a.value)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {a.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Produtos */}
       {aba === 'produtos' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
@@ -182,7 +221,6 @@ export default function EstoqueView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Insumos */}
       {aba === 'insumos' && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
@@ -219,7 +257,6 @@ export default function EstoqueView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Ajuste Sem Baixa */}
       {aba === 'ajuste' && (
         <div>
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-start gap-3">
@@ -277,7 +314,11 @@ export default function EstoqueView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Adicionar Produto */}
+      {aba === 'locais'   && <LocaisTab tenantSlug={tenantSlug} />}
+      {aba === 'perdas'   && <PerdasTab tenantSlug={tenantSlug} />}
+      {aba === 'contagem' && <ContagemTab tenantSlug={tenantSlug} />}
+      {aba === 'nfe'      && <EntradaNfeTab tenantSlug={tenantSlug} />}
+
       {showModal === 'produto' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
@@ -296,7 +337,6 @@ export default function EstoqueView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Adicionar Insumo */}
       {showModal === 'insumo' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">

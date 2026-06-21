@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronRight, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target, Code2, ShoppingBag, Warehouse,
+  Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Config } from '@/components/layout/ClientShell'
@@ -37,8 +37,12 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     },
   ]
 
-  const estoqueAvancadoLigado =
-    config.entradaNfeAtivo || config.perdaProdutoAtivo || config.contagemInventarioAtivo || config.multiplosLocaisAtivo
+  // Estoque agora é um único item — Estoque Avançado virou abas dentro
+  // dele. O link aparece se o estoque básico estiver ativo OU se qualquer
+  // um dos toggles avançados estiver ligado (pra não sumir da sidebar de
+  // quem só ligou Locais/Perdas/Contagem/NFe sem o estoque básico).
+  const estoqueLigado =
+    config.estoqueAtivo || config.entradaNfeAtivo || config.perdaProdutoAtivo || config.contagemInventarioAtivo || config.multiplosLocaisAtivo
 
   const modulares = [
     ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
@@ -47,8 +51,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.comprasAtivo   ? [{ label: 'Compras',           href: '/compras',    icon: ShoppingBag }]    : []),
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
     ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
-    ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
-    ...(estoqueAvancadoLigado ? [{ label: 'Estoque Avançado',  href: '/estoque-avancado', icon: Warehouse }] : []),
+    ...(estoqueLigado         ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
     ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
     ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
   ]
