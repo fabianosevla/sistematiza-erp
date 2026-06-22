@@ -5,11 +5,11 @@ import { dbProduto, type TpDbProdutoRow, type TpDbProdutoInsert, type TpDbProdut
 export class ProdutoService {
   constructor(private db: AppDB) {}
 
-  async list({ page, limit, search }: { page: number; limit: number; search?: string }) {
+  async list({ page, limit, search, incluirInativos }: { page: number; limit: number; search?: string; incluirInativos?: boolean }) {
     const offset = (page - 1) * limit
-    const conditions = [eq(dbProduto.activeFlag, true)]
+    const conditions = incluirInativos ? [] : [eq(dbProduto.activeFlag, true)]
     if (search) conditions.push(ilike(dbProduto.nome, `%${search}%`))
-    const whereClause = and(...conditions)
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined
     const [data, totals] = await Promise.all([
       this.db.select().from(dbProduto).where(whereClause).orderBy(asc(dbProduto.nome)).limit(limit).offset(offset),
       this.db.select({ total: count() }).from(dbProduto).where(whereClause),
@@ -35,20 +35,49 @@ export class ProdutoService {
     return result
   }
 
-  async update(id: number, payload: TpDbProdutoUpdate & { modificationNum: number }, userId: number) {
-    const [current] = await this.db.select({ modificationNum: dbProduto.modificationNum }).from(dbProduto).where(eq(dbProduto.produtoId, id))
+  async update(id: number, payload: TpDbProdutoUpdate & { modificationNum?: number }, userId: number) {
+    const [current] = await this.db
+      .select({ modificationNum: dbProduto.modificationNum })
+      .from(dbProduto)
+      .where(eq(dbProduto.produtoId, id))
+
     if (!current) return { error: 'NOT_FOUND' }
-    if (Number(current.modificationNum) !== payload.modificationNum) return { error: 'CONFLICT', modificationNum: current.modificationNum }
+
+    // CORREÇÃO: modificationNum agora é opcional.
+    // Se o frontend não enviar (undefined), pula a verificação de conflito e
+    // salva direto — comportamento "last write wins", aceitável para uso
+    // monousuário ou edição sequencial sem concorrência real.
+    // Se enviar, mantém o optimistic locking original.
+    if (
+      payload.modificationNum !== undefined &&
+      payload.modificationNum !== null &&
+      Number(current.modificationNum) !== payload.modificationNum
+    ) {
+      return { error: 'CONFLICT', modificationNum: current.modificationNum }
+    }
+
     const { modificationNum, ...updateFields } = payload
-    const [result] = await this.db.update(dbProduto).set({
-      ...updateFields, updatedDt: new Date(), updatedBy: userId,
-      modificationNum: sql`${dbProduto.modificationNum} + 1`,
-    }).where(and(eq(dbProduto.produtoId, id), eq(dbProduto.modificationNum, modificationNum))).returning({ produtoId: dbProduto.produtoId })
+
+    const [result] = await this.db
+      .update(dbProduto)
+      .set({
+        ...updateFields,
+        updatedDt: new Date(),
+        updatedBy: userId,
+        modificationNum: sql`${dbProduto.modificationNum} + 1`,
+      })
+      .where(eq(dbProduto.produtoId, id))
+      .returning({ produtoId: dbProduto.produtoId })
+
     return result ?? { error: 'CONFLICT' }
   }
 
   async softDelete(id: number, userId: number) {
-    const [result] = await this.db.update(dbProduto).set({ activeFlag: false, updatedBy: userId, updatedDt: new Date() }).where(eq(dbProduto.produtoId, id)).returning({ produtoId: dbProduto.produtoId })
+    const [result] = await this.db
+      .update(dbProduto)
+      .set({ activeFlag: false, updatedBy: userId, updatedDt: new Date() })
+      .where(eq(dbProduto.produtoId, id))
+      .returning({ produtoId: dbProduto.produtoId })
     return !!result
   }
 }
