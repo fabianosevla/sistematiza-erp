@@ -11,15 +11,20 @@ export interface ImportacaoResult {
 
 function parsePreco(val: string): number {
   if (!val) return 0
-  const clean = String(val).replace(/[R$\s.]/g, '').replace(',', '.')
+  // CORREÇÃO: o regex anterior removia o ponto ('.') junto com R$, espaços
+  // e separadores — mas o ponto também é o separador decimal em CSVs no
+  // formato inglês (ex: "34.90"). O resultado era "3490" * 100 = 349000.
+  // Agora: remove apenas R$, espaços e separadores de milhar (ponto seguido
+  // de exatamente 3 dígitos), converte vírgula decimal para ponto, e aí
+  // multiplica por 100 para guardar em centavos.
+  const clean = String(val)
+    .replace(/R\$\s*/g, '')           // remove símbolo R$
+    .replace(/\s/g, '')               // remove espaços
+    .replace(/\.(?=\d{3})/g, '')      // remove ponto de milhar (1.290 → 1290)
+    .replace(',', '.')                // vírgula decimal → ponto
   return Math.round(parseFloat(clean || '0') * 100)
 }
 
-// Renomeada de "parseInt" para "parseIntSafe" — o nome antigo colidia com a
-// funcao nativa do JS. Como a funcao era declarada "function parseInt(...)",
-// a chamada a "parseInt" dentro do proprio corpo passava a apontar pra ela
-// mesma (nao pra global), causando recursao infinita e estourando a pilha
-// em toda importacao de produtos/insumos.
 function parseIntSafe(val: string): number {
   return parseInt(String(val || '0').replace(/\D/g, '')) || 0
 }
@@ -33,7 +38,7 @@ export class ImportacaoService {
 
     for (let i = 0; i < rows.length; i++) {
       const row    = rows[i]
-      const linha  = i + 2 // linha 1 = header
+      const linha  = i + 2
       try {
         if (entidade === 'clientes') {
           if (!row.nome_completo?.trim()) {
