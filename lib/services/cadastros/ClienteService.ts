@@ -35,20 +35,35 @@ export class ClienteService {
     return result
   }
 
-  async update(id: number, payload: TpDbClienteUpdate & { modificationNum: number }, userId: number) {
-    const [current] = await this.db.select({ modificationNum: dbCliente.modificationNum }).from(dbCliente).where(eq(dbCliente.clienteId, id))
+  async update(id: number, payload: TpDbClienteUpdate & { modificationNum?: number }, userId: number) {
+    const [current] = await this.db
+      .select({ modificationNum: dbCliente.modificationNum })
+      .from(dbCliente)
+      .where(eq(dbCliente.clienteId, id))
+
     if (!current) return { error: 'NOT_FOUND' }
-    if (Number(current.modificationNum) !== payload.modificationNum) return { error: 'CONFLICT', modificationNum: current.modificationNum }
+
+    // modificationNum opcional: se não vier, atualiza sem verificar conflito
+    if (
+      payload.modificationNum !== undefined &&
+      payload.modificationNum !== null &&
+      Number(current.modificationNum) !== payload.modificationNum
+    ) {
+      return { error: 'CONFLICT', modificationNum: current.modificationNum }
+    }
+
     const { modificationNum, ...updateFields } = payload
     const [result] = await this.db.update(dbCliente).set({
       ...updateFields, updatedDt: new Date(), updatedBy: userId,
       modificationNum: sql`${dbCliente.modificationNum} + 1`,
-    }).where(and(eq(dbCliente.clienteId, id), eq(dbCliente.modificationNum, modificationNum))).returning({ clienteId: dbCliente.clienteId })
+    }).where(eq(dbCliente.clienteId, id)).returning({ clienteId: dbCliente.clienteId })
+
     return result ?? { error: 'CONFLICT' }
   }
 
   async softDelete(id: number, userId: number) {
-    const [result] = await this.db.update(dbCliente).set({ activeFlag: false, updatedBy: userId, updatedDt: new Date() }).where(eq(dbCliente.clienteId, id)).returning({ clienteId: dbCliente.clienteId })
+    const [result] = await this.db.update(dbCliente).set({ activeFlag: false, updatedBy: userId, updatedDt: new Date() })
+      .where(eq(dbCliente.clienteId, id)).returning({ clienteId: dbCliente.clienteId })
     return !!result
   }
 }

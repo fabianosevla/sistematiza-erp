@@ -35,20 +35,35 @@ export class InsumoService {
     return result
   }
 
-  async update(id: number, payload: TpDbInsumoUpdate & { modificationNum: number }, userId: number) {
-    const [current] = await this.db.select({ modificationNum: dbInsumo.modificationNum }).from(dbInsumo).where(eq(dbInsumo.insumoId, id))
+  async update(id: number, payload: TpDbInsumoUpdate & { modificationNum?: number }, userId: number) {
+    const [current] = await this.db
+      .select({ modificationNum: dbInsumo.modificationNum })
+      .from(dbInsumo)
+      .where(eq(dbInsumo.insumoId, id))
+
     if (!current) return { error: 'NOT_FOUND' }
-    if (Number(current.modificationNum) !== payload.modificationNum) return { error: 'CONFLICT', modificationNum: current.modificationNum }
+
+    // modificationNum opcional: se não vier, atualiza sem verificar conflito
+    if (
+      payload.modificationNum !== undefined &&
+      payload.modificationNum !== null &&
+      Number(current.modificationNum) !== payload.modificationNum
+    ) {
+      return { error: 'CONFLICT', modificationNum: current.modificationNum }
+    }
+
     const { modificationNum, ...updateFields } = payload
     const [result] = await this.db.update(dbInsumo).set({
       ...updateFields, updatedDt: new Date(), updatedBy: userId,
       modificationNum: sql`${dbInsumo.modificationNum} + 1`,
-    }).where(and(eq(dbInsumo.insumoId, id), eq(dbInsumo.modificationNum, modificationNum))).returning({ insumoId: dbInsumo.insumoId })
+    }).where(eq(dbInsumo.insumoId, id)).returning({ insumoId: dbInsumo.insumoId })
+
     return result ?? { error: 'CONFLICT' }
   }
 
   async softDelete(id: number, userId: number) {
-    const [result] = await this.db.update(dbInsumo).set({ activeFlag: false, updatedBy: userId, updatedDt: new Date() }).where(eq(dbInsumo.insumoId, id)).returning({ insumoId: dbInsumo.insumoId })
+    const [result] = await this.db.update(dbInsumo).set({ activeFlag: false, updatedBy: userId, updatedDt: new Date() })
+      .where(eq(dbInsumo.insumoId, id)).returning({ insumoId: dbInsumo.insumoId })
     return !!result
   }
 }
