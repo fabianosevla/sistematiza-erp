@@ -16,6 +16,12 @@ interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
+function fmtDateHora(d: string) {
+  return new Date(d).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +138,11 @@ export default function VendasView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/formas-pagamento`)).json(),
   })
 
+  const { data: usuariosRaw } = useQuery({
+    queryKey: ['usuarios-select', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/usuarios`)).json(),
+  })
+
   // ── Mutations ──────────────────────────────────────────────────────────────
   const criarMut = useMutation({
     mutationFn: async () => {
@@ -227,7 +238,7 @@ export default function VendasView({ tenantSlug }: Props) {
 
   function exportCSV() {
     const rows = vendas.map((v: any) => [
-      v.vendaId, fmtDate(v.vendidaEm),
+      v.vendaId, fmtDateHora(v.vendidaEm),
       v.clienteNome ?? 'Cons. Final',
       v.tipoEntrega,
       (v.total / 100).toFixed(2),
@@ -247,6 +258,7 @@ export default function VendasView({ tenantSlug }: Props) {
     : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
   const formas     = Array.isArray(formasRaw?.data) ? formasRaw.data : []
   const formasNomes = formas.map((f: any) => f.nome).filter(Boolean)
+  const usuarios   = Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
 
   const vendas = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
     : Array.isArray(vendasData?.data) ? vendasData.data : []
@@ -337,7 +349,7 @@ export default function VendasView({ tenantSlug }: Props) {
               <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma venda encontrada.</td></tr>
             ) : vendas.map((v: any) => (
               <tr key={v.vendaId} className="group border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
-                <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(v.vendidaEm)}</td>
+                <td className="px-4 py-3 text-sm text-gray-500">{fmtDateHora(v.vendidaEm)}</td>
                 <td className="px-4 py-3 text-sm font-medium text-gray-900">{v.clienteNome ?? 'Consumidor Final'}</td>
                 <td className="px-4 py-3"><CanalBadge tipo={v.tipoEntrega ?? 'retirada'} /></td>
                 <td className="px-4 py-3 text-right text-sm font-semibold text-green-600">{fmt(v.total)}</td>
@@ -426,7 +438,16 @@ export default function VendasView({ tenantSlug }: Props) {
                 </div>
                 <div>
                   <Label>Vendedor</Label>
-                  <Input value={vendedor} onChange={e => setVendedor(e.target.value)} className="mt-1 h-9 text-sm" />
+                  <select
+                    value={vendedor}
+                    onChange={e => setVendedor(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none"
+                  >
+                    <option value="">Selecionar...</option>
+                    {usuarios.map((u: any) => (
+                      <option key={u.usuarioId} value={u.nome}>{u.nome}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <Label>Endereço Entrega</Label>
