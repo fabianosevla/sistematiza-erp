@@ -76,11 +76,11 @@ export const produtoInsertSchema = z.object({
   precoAtacado:  z.number().int().default(0),
   // CORREÇÃO: campos de atacado A-E enviados pelo ProdutosView mas ignorados
   // pelo schema anterior — Zod descartava todos eles.
-  precoAtacadoA: z.number().int().optional().nullable(),
-  precoAtacadoB: z.number().int().optional().nullable(),
-  precoAtacadoC: z.number().int().optional().nullable(),
-  precoAtacadoD: z.number().int().optional().nullable(),
-  precoAtacadoE: z.number().int().optional().nullable(),
+  precoAtacadoA: z.number().int().optional(),
+  precoAtacadoB: z.number().int().optional(),
+  precoAtacadoC: z.number().int().optional(),
+  precoAtacadoD: z.number().int().optional(),
+  precoAtacadoE: z.number().int().optional(),
   // CORREÇÃO: activeFlag enviado pelo frontend (desativar produto) mas ignorado
   activeFlag:    z.boolean().optional(),
 })
