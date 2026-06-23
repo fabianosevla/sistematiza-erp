@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       const limit  = Math.min(200, Math.max(1, Number(searchParams.get('limit') ?? 50)))
       const search = searchParams.get('search') ?? undefined
       const status = searchParams.get('status') ?? undefined
-      const service = new EstoqueService(db)
+      const service = new EstoqueService(db, tenant.schemaName)
       const result  = await service.listProdutos({ page, limit, search, status })
       return ok(result)
     } finally {

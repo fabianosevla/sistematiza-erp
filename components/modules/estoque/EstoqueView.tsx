@@ -60,8 +60,8 @@ export default function EstoqueView({ tenantSlug }: Props) {
     enabled: aba === 'ajuste',
   })
 
-  const produtos = Array.isArray(produtosRaw?.data) ? produtosRaw.data : Array.isArray(produtosRaw) ? produtosRaw : []
-  const insumos  = Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : Array.isArray(insumosRaw)  ? insumosRaw  : []
+  const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data : Array.isArray(produtosRaw?.data) ? produtosRaw.data : Array.isArray(produtosRaw) ? produtosRaw : []
+  const insumos  = Array.isArray(insumosRaw?.data?.data)  ? insumosRaw.data.data  : Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : Array.isArray(insumosRaw)  ? insumosRaw  : []
   const ajuste   = Array.isArray(ajusteRaw?.data)   ? ajusteRaw.data   : Array.isArray(ajusteRaw)   ? ajusteRaw   : []
 
   // CORRIGIDO: campos trocados — schema da rota espera "entidade" e "tipo",
