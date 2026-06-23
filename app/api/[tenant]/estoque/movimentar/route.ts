@@ -18,12 +18,14 @@ const movimentarSchema = z.object({
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
-    const tenant  = await resolveTenant(params.tenant)
+    const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()
       const payload = movimentarSchema.parse(body)
-      const service = new EstoqueService(db)
+      // CORRECAO: passa tenant.schemaName para o EstoqueService repassar ao
+      // DebitoInsumoService, que precisa do search_path correto via pool direto.
+      const service = new EstoqueService(db, tenant.schemaName)
       const result  = await service.movimentar({ ...payload, userId: 1 })
       return ok(result)
     } finally {
