@@ -90,7 +90,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
         precoAtacadoD: parseP(atacados.D),
         precoAtacadoE: parseP(atacados.E),
         estoqueMinimo: Number(estoqueMin),
-        estoqueAtual:  Number(estoqueAtual),
         // inclui modificationNum para suportar o optimistic locking da rota PUT
         ...(editando?.modificationNum !== undefined
           ? { modificationNum: editando.modificationNum }
@@ -452,8 +451,13 @@ export default function ProdutosView({ tenantSlug }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Estoque Atual</Label>
-                  <Input type="number" min="0" value={estoqueAtual}
-                    onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" />
+                  <Input
+                    type="number"
+                    value={estoqueAtual}
+                    readOnly
+                    className="mt-1 bg-gray-50 text-gray-400 cursor-not-allowed"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">Altere via módulo Estoque → Produto Acabado</p>
                 </div>
                 <div>
                   <Label>Estoque Mínimo</Label>
