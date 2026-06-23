@@ -37,8 +37,6 @@ export default function EstoqueView({ tenantSlug }: Props) {
     qc.invalidateQueries({ queryKey: ['estoque-ajuste', tenantSlug] })
   }
 
-  // Config — gate das abas avançadas pelos toggles, mesmo padrão usado em
-  // FinanceiroView para A Pagar/A Receber/Conciliação
   const { data: configRaw } = useQuery({
     queryKey: ['configuracoes', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
@@ -66,24 +64,42 @@ export default function EstoqueView({ tenantSlug }: Props) {
   const insumos  = Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : Array.isArray(insumosRaw)  ? insumosRaw  : []
   const ajuste   = Array.isArray(ajusteRaw?.data)   ? ajusteRaw.data   : Array.isArray(ajusteRaw)   ? ajusteRaw   : []
 
+  // CORRIGIDO: campos trocados — schema da rota espera "entidade" e "tipo",
+  // não "tipo" para entidade e "tipoMovimento" para o tipo de operação.
   const adicionarProdMut = useMutation({
-    mutationFn: () => fetch(`/api/${tenantSlug}/estoque/movimentar`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tipo: 'produto', entidadeId: selectedId, quantidade: Number(qtdAdicionar), tipoMovimento: 'entrada' }),
-    }).then(r => r.json()),
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/estoque/movimentar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entidade:   'produto',
+          entidadeId: selectedId,
+          quantidade: Number(qtdAdicionar),
+          tipo:       'entrada',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao movimentar estoque')
+      return data
+    },
     onSuccess: () => { invalidate(); setShowModal(null); setQtdAdicionar('') },
   })
 
   const adicionarInsMut = useMutation({
-    mutationFn: () => fetch(`/api/${tenantSlug}/estoque/movimentar`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tipo: 'insumo', entidadeId: selectedId,
-        quantidade: Number(qtdAdicionar),
-        precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : undefined,
-        tipoMovimento: 'entrada',
-      }),
-    }).then(r => r.json()),
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/estoque/movimentar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entidade:   'insumo',
+          entidadeId: selectedId,
+          quantidade: Number(qtdAdicionar),
+          tipo:       'entrada',
+          precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao movimentar estoque')
+      return data
+    },
     onSuccess: () => { invalidate(); setShowModal(null); setQtdAdicionar(''); setPrecoCusto('') },
   })
 
@@ -323,14 +339,19 @@ export default function EstoqueView({ tenantSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Adicionar Estoque</h2>
+              <h2 className="text-lg font-semibold">Adicionar Estoque de Produto</h2>
               <button onClick={() => setShowModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-700">Os insumos da ficha técnica serão debitados automaticamente proporcionalmente à quantidade adicionada.</p>
+              </div>
               <div><Label>Quantidade a adicionar *</Label><Input type="number" min="1" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
-                <Button onClick={() => adicionarProdMut.mutate()} disabled={!qtdAdicionar || adicionarProdMut.isPending}>Confirmar</Button>
+                <Button onClick={() => adicionarProdMut.mutate()} disabled={!qtdAdicionar || adicionarProdMut.isPending}>
+                  {adicionarProdMut.isPending ? 'Processando...' : 'Confirmar'}
+                </Button>
               </div>
             </div>
           </div>
@@ -349,7 +370,9 @@ export default function EstoqueView({ tenantSlug }: Props) {
               <div><Label>Preço de Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" placeholder="0,00" /></div>
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
-                <Button onClick={() => adicionarInsMut.mutate()} disabled={!qtdAdicionar || adicionarInsMut.isPending}>Confirmar</Button>
+                <Button onClick={() => adicionarInsMut.mutate()} disabled={!qtdAdicionar || adicionarInsMut.isPending}>
+                  {adicionarInsMut.isPending ? 'Processando...' : 'Confirmar'}
+                </Button>
               </div>
             </div>
           </div>

@@ -258,7 +258,8 @@ export default function VendasView({ tenantSlug }: Props) {
     : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
   const formas     = Array.isArray(formasRaw?.data) ? formasRaw.data : []
   const formasNomes = formas.map((f: any) => f.nome).filter(Boolean)
-  const usuarios   = Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
+  const usuarios = Array.isArray(usuariosRaw?.data?.data) ? usuariosRaw.data.data
+    : Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
 
   const vendas = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
     : Array.isArray(vendasData?.data) ? vendasData.data : []
