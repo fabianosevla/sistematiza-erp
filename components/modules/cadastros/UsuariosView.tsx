@@ -35,6 +35,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
   const [editPerfilId, setEditPerfilId]       = useState<number | ''>('')
   const [confirmInativar, setConfirmInativar] = useState<any>(null)
   const [confirmReset, setConfirmReset]       = useState<any>(null)
+  const [linkReset, setLinkReset]             = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['usuarios', tenantSlug],
@@ -123,8 +124,14 @@ export default function UsuariosView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar reset')
       return data
     },
-    onSuccess: (_, usuario) => {
-      toast(`E-mail de reset enviado para ${usuario.email}`)
+    onSuccess: (data: any) => {
+      if (data?.data?.tipo === 'convite_reenviado') {
+        toast('Convite reenviado por e-mail!')
+      } else if (data?.data?.url) {
+        setLinkReset(data.data.url)
+      } else {
+        toast('Link de reset gerado.')
+      }
     },
     onError: (err: any) => toast(err?.message ?? 'Erro ao enviar reset.', 'error'),
   })
@@ -321,6 +328,28 @@ export default function UsuariosView({ tenantSlug }: Props) {
                 <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
                 <Button onClick={() => editarMut.mutate()} disabled={!editNome || !editEmail || editarMut.isPending}>
                   {editarMut.isPending ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal link reset */}
+      {linkReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Link de acesso para reset</h2>
+              <button onClick={() => setLinkReset('')} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">Copie o link abaixo e envie para o usuário. Válido por 24 horas.</p>
+              <div className="bg-gray-50 rounded-lg p-3 break-all text-xs text-gray-700 font-mono">{linkReset}</div>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setLinkReset('')}>Fechar</Button>
+                <Button onClick={() => { navigator.clipboard.writeText(linkReset); toast('Link copiado!') }}>
+                  Copiar link
                 </Button>
               </div>
             </div>
