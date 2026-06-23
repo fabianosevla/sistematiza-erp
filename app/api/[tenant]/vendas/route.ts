@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { VendaService } from '@/lib/services/vendas/VendaService'
-import { ok, created, serverError } from '@/lib/api/responses'
+import { ok, created, serverError, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
 
@@ -19,14 +19,11 @@ export async function GET(req: NextRequest, { params }: Params) {
       const dataInicio = searchParams.get('dataInicio') ?? undefined
       const dataFim    = searchParams.get('dataFim') ?? undefined
       const origem     = searchParams.get('origem') ?? undefined
-      const kpis       = searchParams.get('kpis') === 'true'
+      const tipo       = searchParams.get('tipo') ?? undefined
 
       const service = new VendaService(db)
 
-      if (kpis) {
-        const result = await service.kpis()
-        return ok(result)
-      }
+      if (tipo === 'kpis') return ok(await service.kpis())
 
       const result = await service.list({ page, limit, dataInicio, dataFim, origem })
       return ok(result)
@@ -40,15 +37,23 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 const criarVendaSchema = z.object({
   itens: z.array(z.object({
-    produtoId:  z.number().int(),
-    quantidade: z.number().int().min(1),
+    produtoId:   z.number().int(),
+    quantidade:  z.number().int().min(1),
+    tipoPrecao:  z.string().optional(),
   })).min(1),
-  clienteId:  z.number().int().optional(),
-  desconto:   z.number().int().default(0),
-  pagamentos: z.array(z.object({
-    forma: z.string(),
-    valor: z.number().int(),
+  clienteId:       z.number().int().optional().nullable(),
+  desconto:        z.number().int().default(0),
+  pagamentos:      z.array(z.object({
+    forma:  z.string(),
+    valor:  z.number().int(),
   })).min(1),
+  // campos extras que o frontend envia
+  tipoEntrega:        z.string().optional(),
+  dataEntrega:        z.string().optional().nullable(),
+  enderecoEntrega:    z.string().optional().nullable(),
+  vendedor:           z.string().optional().nullable(),
+  observacao:         z.string().optional().nullable(),
+  vendidaEm:          z.string().optional(),
 })
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -56,10 +61,28 @@ export async function POST(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      const body    = await req.json()
-      const payload = criarVendaSchema.parse(body)
+      const body = await req.json()
+
+      let payload: z.infer<typeof criarVendaSchema>
+      try {
+        payload = criarVendaSchema.parse(body)
+      } catch (zodErr: any) {
+        return badRequest('Dados inválidos: ' + JSON.stringify(zodErr.errors))
+      }
+
+      // Garante pelo menos 1 pagamento com valor > 0
+      const pagamentosValidos = payload.pagamentos.filter(p => p.valor > 0)
+      if (pagamentosValidos.length === 0) {
+        return badRequest('Informe pelo menos uma forma de pagamento com valor.')
+      }
+
       const service = new VendaService(db)
-      const result  = await service.criarDireta({ ...payload, userId: 1 })
+      const result  = await service.criarDireta({
+        ...payload,
+        pagamentos: pagamentosValidos,
+        clienteId:  payload.clienteId ?? undefined,
+        userId: 1,
+      })
       return created(result)
     } finally {
       release()
@@ -67,4 +90,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   } catch (err) {
     return serverError(err)
   }
+}
+
+export async function DELETE(req: NextRequest, { params: routeParams }: Params) {
+  // Extrai o ID da URL: /api/[tenant]/vendas/[id]
+  // Esta rota não tem [id] — o delete fica em /api/[tenant]/vendas/[id]/route.ts
+  return serverError(new Error('Use DELETE /api/[tenant]/vendas/[id]'))
 }
