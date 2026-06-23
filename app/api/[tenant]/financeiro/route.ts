@@ -31,13 +31,12 @@ export async function GET(req: NextRequest, { params }: Params) {
       const mes       = Number(searchParams.get('mes')  ?? now.getMonth() + 1)
       const ano       = Number(searchParams.get('ano')  ?? now.getFullYear())
       const categoria = searchParams.get('categoria') ?? undefined
-      const service   = new FinanceiroService(db)
+      const service   = new FinanceiroService(db, tenant.schemaName)
 
       if (tipo === 'kpis')           return ok(await service.kpisMes(mes, ano))
       if (tipo === 'dre')            return ok(await service.dreMes(mes, ano))
       if (tipo === 'demonstrativo')  return ok(await service.demonstrativo(ano))
 
-      // Default: lista despesas do mês (auto-gera recorrentes)
       return ok(await service.listDespesasMes({ mes, ano, categoria }))
     } finally { release() }
   } catch (err) { return serverError(err) }
@@ -49,7 +48,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const payload = despesaSchema.parse(await req.json())
-      return created(await new FinanceiroService(db).criar({ ...payload, userId: 1 }))
+      return created(await new FinanceiroService(db, tenant.schemaName).criar({ ...payload, userId: 1 }))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }
