@@ -39,12 +39,11 @@ export default function InsumosView({ tenantSlug }: Props) {
   const [sortKey, setSortKey]             = useState<SortKey>('nome')
   const [sortDir, setSortDir]             = useState<SortDir>('asc')
 
-  const [nome, setNome]               = useState('')
-  const [tipo, setTipo]               = useState('')
-  const [unidade, setUnidade]         = useState('')
-  const [estoqueMin, setEstoqueMin]   = useState('0')
-  const [estoqueAtual, setEstoqueAtual] = useState('0')
-  const [precoCusto, setPrecoCusto]   = useState('')
+  const [nome, setNome]             = useState('')
+  const [tipo, setTipo]             = useState('')
+  const [unidade, setUnidade]       = useState('')
+  const [estoqueMin, setEstoqueMin] = useState('0')
+  const [precoCusto, setPrecoCusto] = useState('')
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
 
@@ -55,34 +54,55 @@ export default function InsumosView({ tenantSlug }: Props) {
 
   const salvarMut = useMutation({
     mutationFn: async () => {
-      const payload = {
-        nome, tipo, unidade,
-        estoqueMinimo: Number(estoqueMin), estoqueAtual: Number(estoqueAtual),
+      const payload: any = {
+        nome, tipo,
+        estoqueMinimo: Number(estoqueMin),
         precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : 0,
       }
+      // Unidade só é enviada na criação — não pode ser editada após cadastro
+      if (!editando) payload.unidade = unidade
+
       const url    = editando ? `${api}/${editando.insumoId}` : api
       const method = editando ? 'PUT' : 'POST'
-      return fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => r.json())
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao salvar')
+      return data
     },
     onSuccess: () => { invalidate(); fecharModal(); toast(editando ? 'Insumo atualizado!' : 'Insumo criado!') },
-    onError:   () => toast('Erro ao salvar insumo.', 'error'),
+    onError:   (err: any) => toast(err?.message ?? 'Erro ao salvar insumo.', 'error'),
   })
 
   const excluirMut = useMutation({
-    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${api}/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao excluir')
+      return data
+    },
     onSuccess: () => { invalidate(); toast('Insumo excluído.') },
-    onError:   () => toast('Erro ao excluir.', 'error'),
+    onError:   (err: any) => toast(err?.message ?? 'Erro ao excluir.', 'error'),
   })
 
   function abrirModal(item?: any) {
     if (item) {
-      setEditando(item); setNome(item.nome)
-      setTipo(item.tipo ?? tipos[0] ?? ''); setUnidade(item.unidade ?? unidades[0] ?? '')
-      setEstoqueMin(String(item.estoqueMinimo ?? 0)); setEstoqueAtual(String(item.estoqueAtual ?? 0))
+      setEditando(item)
+      setNome(item.nome)
+      setTipo(item.tipo ?? tipos[0] ?? '')
+      setUnidade(item.unidade ?? '')
+      setEstoqueMin(String(item.estoqueMinimo ?? 0))
       setPrecoCusto(item.precoCusto ? (item.precoCusto / 100).toFixed(2) : '')
     } else {
-      setEditando(null); setNome(''); setTipo(tipos[0] ?? ''); setUnidade(unidades[0] ?? '')
-      setEstoqueMin('0'); setEstoqueAtual('0'); setPrecoCusto('')
+      setEditando(null)
+      setNome('')
+      setTipo(tipos[0] ?? '')
+      setUnidade(unidades[0] ?? '')
+      setEstoqueMin('0')
+      setPrecoCusto('')
     }
     setShowModal(true)
   }
@@ -199,18 +219,30 @@ export default function InsumosView({ tenantSlug }: Props) {
                   <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                     {tipos.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
-                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
                 </div>
                 <div>
-                  <Label>Unidade</Label>
-                  <select value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {unidades.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+                  <Label>Unidade de Medida</Label>
+                  {editando ? (
+                    // Unidade não editável após cadastro
+                    <div className="mt-1">
+                      <Input
+                        value={unidade}
+                        readOnly
+                        className="bg-gray-50 text-gray-500 cursor-not-allowed"
+                      />
+                      <p className="text-[10px] text-amber-600 mt-1">Unidade não pode ser alterada após cadastro.</p>
+                    </div>
+                  ) : (
+                    <div className="mt-1">
+                      <select value={unidade} onChange={e => setUnidade(e.target.value)} className="w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                        {unidades.map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                      <p className="text-[10px] text-gray-400 mt-1">Não poderá ser alterada após salvar.</p>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div><Label>Est. Atual</Label><Input type="number" min="0" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
+              <div className="grid grid-cols-2 gap-3">
                 <div><Label>Est. Mínimo</Label><Input type="number" min="0" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
                 <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
               </div>
