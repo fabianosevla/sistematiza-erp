@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Shield, User, X, Mail, Pencil, UserX } from 'lucide-react'
+import { Plus, Shield, User, X, Mail, Pencil, UserX, KeyRound } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -29,9 +29,12 @@ export default function UsuariosView({ tenantSlug }: Props) {
   const [showForm, setShowForm]               = useState(false)
   const [successMsg, setSuccessMsg]           = useState('')
   const [formError, setFormError]             = useState('')
-  const [editandoPerfil, setEditandoPerfil]   = useState<any>(null)
-  const [novoPerfilId, setNovoPerfilId]       = useState<number | ''>('')
+  const [editando, setEditando]               = useState<any>(null)
+  const [editNome, setEditNome]               = useState('')
+  const [editEmail, setEditEmail]             = useState('')
+  const [editPerfilId, setEditPerfilId]       = useState<number | ''>('')
   const [confirmInativar, setConfirmInativar] = useState<any>(null)
+  const [confirmReset, setConfirmReset]       = useState<any>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['usuarios', tenantSlug],
@@ -44,7 +47,8 @@ export default function UsuariosView({ tenantSlug }: Props) {
   })
   const perfis: any[] = Array.isArray(perfisRaw?.data) ? perfisRaw.data : []
 
-  const createMutation = useMutation({
+  // ── Criar usuário ─────────────────────────────────────────────────────────
+  const createMut = useMutation({
     mutationFn: async (payload: FormData) => {
       const perfilSelecionado = perfis.find(p => p.perfilId === payload.perfilId)
       const res = await fetch(apiBase, {
@@ -77,30 +81,60 @@ export default function UsuariosView({ tenantSlug }: Props) {
     },
   })
 
-  const editarPerfilMut = useMutation({
-    mutationFn: async ({ id, perfilId }: { id: number; perfilId: number }) => {
-      const res = await fetch(`${apiBase}/${id}/perfil`, {
+  // ── Editar usuário (nome + email + perfil) ────────────────────────────────
+  const editarMut = useMutation({
+    mutationFn: async () => {
+      // 1. Atualiza nome e e-mail
+      const res = await fetch(`${apiBase}/${editando.usuarioId}`, {
         method:  'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ perfilId }),
+        body: JSON.stringify({ nome: editNome, email: editEmail }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.message ?? 'Erro ao atualizar perfil')
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao atualizar')
+
+      // 2. Atualiza perfil se mudou
+      if (editPerfilId && editPerfilId !== editando.perfilId) {
+        await fetch(`${apiBase}/${editando.usuarioId}/perfil`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ perfilId: editPerfilId }),
+        }).catch(() => {})
+      }
       return data
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
-      setEditandoPerfil(null)
-      toast('Perfil atualizado!')
+      setEditando(null)
+      toast('Usuário atualizado!')
     },
-    onError: (err: any) => toast(err?.message ?? 'Erro ao atualizar perfil.', 'error'),
+    onError: (err: any) => toast(err?.message ?? 'Erro ao atualizar.', 'error'),
   })
 
+  // ── Reset de senha ────────────────────────────────────────────────────────
+  const resetMut = useMutation({
+    mutationFn: async (usuario: any) => {
+      const res = await fetch(`${apiBase}/${usuario.usuarioId}/reset-senha`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: usuario.email }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar reset')
+      return data
+    },
+    onSuccess: (_, usuario) => {
+      toast(`E-mail de reset enviado para ${usuario.email}`)
+    },
+    onError: (err: any) => toast(err?.message ?? 'Erro ao enviar reset.', 'error'),
+  })
+
+  // ── Inativar ──────────────────────────────────────────────────────────────
   const inativarMut = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`${apiBase}/${id}`, { method: 'DELETE' })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.message ?? 'Erro ao inativar usuário')
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao inativar')
       return data
     },
     onSuccess: () => {
@@ -115,10 +149,17 @@ export default function UsuariosView({ tenantSlug }: Props) {
   async function onSubmit(data: FormData) {
     setFormError('')
     try {
-      await createMutation.mutateAsync(data)
+      await createMut.mutateAsync(data)
     } catch (err: any) {
       setFormError(err.message)
     }
+  }
+
+  function abrirEdicao(item: any) {
+    setEditando(item)
+    setEditNome(item.nome ?? '')
+    setEditEmail(item.email ?? '')
+    setEditPerfilId(item.perfilId ?? '')
   }
 
   const items = Array.isArray(data?.data?.data) ? data.data.data
@@ -160,7 +201,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Nome</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">E-mail</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Perfil</th>
-              <th className="w-20" />
+              <th className="w-28" />
             </tr>
           </thead>
           <tbody>
@@ -188,15 +229,15 @@ export default function UsuariosView({ tenantSlug }: Props) {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => { setEditandoPerfil(item); setNovoPerfilId(item.perfilId ?? '') }}
-                      title="Alterar perfil"
+                    <button onClick={() => abrirEdicao(item)} title="Editar"
                       className="p-1.5 text-gray-400 hover:text-blue-600 rounded">
                       <Pencil size={14} />
                     </button>
-                    <button
-                      onClick={() => setConfirmInativar(item)}
-                      title="Inativar usuário"
+                    <button onClick={() => setConfirmReset(item)} title="Resetar senha"
+                      className="p-1.5 text-gray-400 hover:text-amber-500 rounded">
+                      <KeyRound size={14} />
+                    </button>
+                    <button onClick={() => setConfirmInativar(item)} title="Inativar"
                       className="p-1.5 text-gray-400 hover:text-red-500 rounded">
                       <UserX size={14} />
                     </button>
@@ -208,11 +249,12 @@ export default function UsuariosView({ tenantSlug }: Props) {
         </table>
       </div>
 
+      {/* Modal Novo Usuário */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">Novo usuário</h2>
+              <h2 className="text-lg font-semibold">Novo usuário</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
@@ -231,21 +273,17 @@ export default function UsuariosView({ tenantSlug }: Props) {
                 <select {...form.register('perfilId')} defaultValue=""
                   className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                   <option value="" disabled>Selecione um perfil...</option>
-                  {perfis.map(p => (
-                    <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>
-                  ))}
+                  {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
                 </select>
                 {form.formState.errors.perfilId && <p className="text-xs text-red-500 mt-1">{form.formState.errors.perfilId.message}</p>}
                 <p className="text-xs text-gray-400 mt-1">Os privilégios são definidos em Cadastros → Perfis de Acesso.</p>
               </div>
-              {formError && (
-                <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formError}</p>
-              )}
+              {formError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formError}</p>}
               <p className="text-xs text-gray-400">Um e-mail será enviado para o usuário definir sua senha.</p>
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMutation.isPending}>
-                  {createMutation.isPending ? 'Enviando...' : 'Criar e enviar convite'}
+                <Button type="submit" disabled={createMut.isPending}>
+                  {createMut.isPending ? 'Enviando...' : 'Criar e enviar convite'}
                 </Button>
               </div>
             </form>
@@ -253,33 +291,36 @@ export default function UsuariosView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {editandoPerfil && (
+      {/* Modal Editar Usuário */}
+      {editando && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Alterar perfil</h2>
-              <button onClick={() => setEditandoPerfil(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h2 className="text-lg font-semibold">Editar usuário</h2>
+              <button onClick={() => setEditando(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-600">Usuário: <strong>{editandoPerfil.nome}</strong></p>
               <div>
-                <Label>Novo perfil</Label>
-                <select
-                  value={novoPerfilId}
-                  onChange={e => setNovoPerfilId(Number(e.target.value))}
+                <Label>Nome completo</Label>
+                <Input value={editNome} onChange={e => setEditNome(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>E-mail</Label>
+                <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="mt-1" />
+                <p className="text-xs text-gray-400 mt-1">Alterar o e-mail atualiza o cadastro local. O login no Clerk continuará com o e-mail anterior até o usuário fazer login novamente.</p>
+              </div>
+              <div>
+                <Label>Perfil</Label>
+                <select value={editPerfilId} onChange={e => setEditPerfilId(Number(e.target.value))}
                   className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                   <option value="">Selecionar...</option>
-                  {perfis.map(p => (
-                    <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>
-                  ))}
+                  {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
                 </select>
               </div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setEditandoPerfil(null)}>Cancelar</Button>
-                <Button
-                  onClick={() => editarPerfilMut.mutate({ id: editandoPerfil.usuarioId, perfilId: Number(novoPerfilId) })}
-                  disabled={!novoPerfilId || editarPerfilMut.isPending}>
-                  {editarPerfilMut.isPending ? 'Salvando...' : 'Salvar'}
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
+                <Button onClick={() => editarMut.mutate()} disabled={!editNome || !editEmail || editarMut.isPending}>
+                  {editarMut.isPending ? 'Salvando...' : 'Salvar'}
                 </Button>
               </div>
             </div>
@@ -287,6 +328,18 @@ export default function UsuariosView({ tenantSlug }: Props) {
         </div>
       )}
 
+      {/* Confirm reset senha */}
+      {confirmReset && (
+        <ConfirmModal
+          title="Resetar senha"
+          message={`Enviar e-mail de redefinição de senha para ${confirmReset.email}?`}
+          confirmLabel="Enviar e-mail"
+          onConfirm={() => { resetMut.mutate(confirmReset); setConfirmReset(null) }}
+          onCancel={() => setConfirmReset(null)}
+        />
+      )}
+
+      {/* Confirm inativar */}
       {confirmInativar && (
         <ConfirmModal
           title="Inativar usuário"
