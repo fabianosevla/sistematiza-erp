@@ -40,6 +40,28 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   const [ano, setAno] = useState(now.getFullYear())
   const [aba, setAba] = useState<Aba>('despesas')
 
+  // ── Período para DRE e Demonstrativo ────────────────────────────────────
+  type Periodo = 'mensal' | 'trimestral' | 'semestral' | 'anual' | 'tudo'
+  const [periodo, setPeriodo] = useState<Periodo>('mensal')
+
+  // Calcula o intervalo de meses com base no período selecionado e no mês atual
+  function calcularIntervalo(): { mesInicio: number; mesFim: number; anoInicio: number; anoFim: number } {
+    const m = mes; const a = ano
+    if (periodo === 'mensal')     return { mesInicio: m, mesFim: m, anoInicio: a, anoFim: a }
+    if (periodo === 'trimestral') {
+      const trimestre = Math.ceil(m / 3)
+      return { mesInicio: (trimestre - 1) * 3 + 1, mesFim: trimestre * 3, anoInicio: a, anoFim: a }
+    }
+    if (periodo === 'semestral') {
+      return m <= 6
+        ? { mesInicio: 1, mesFim: 6, anoInicio: a, anoFim: a }
+        : { mesInicio: 7, mesFim: 12, anoInicio: a, anoFim: a }
+    }
+    if (periodo === 'anual') return { mesInicio: 1, mesFim: 12, anoInicio: a, anoFim: a }
+    // tudo — desde jan/ano até mês atual
+    return { mesInicio: 1, mesFim: m, anoInicio: a, anoFim: a }
+  }
+
   // ── Form Despesa ────────────────────────────────────────────────────────
   const [showDespesa, setShowDespesa] = useState(false)
   const [editDespesa, setEditDespesa] = useState<any>(null)
@@ -73,9 +95,16 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   })
 
   const { data: dreRaw } = useQuery({
-    queryKey: ['fin-dre', tenantSlug, mes, ano],
-    queryFn:  async () => (await fetch(`${api}?tipo=dre&mes=${mes}&ano=${ano}`)).json(),
-    enabled:  aba === 'dre',
+    queryKey: ['fin-dre', tenantSlug, mes, ano, periodo],
+    queryFn:  async () => {
+      const { mesInicio, mesFim } = calcularIntervalo()
+      if (periodo === 'mensal') {
+        return (await fetch(`${api}?tipo=dre&mes=${mes}&ano=${ano}`)).json()
+      }
+      // Para período multi-mês: busca o demonstrativo anual e filtra
+      return (await fetch(`${api}?tipo=demonstrativo&ano=${ano}`)).json()
+    },
+    enabled: aba === 'dre',
   })
 
   const { data: gastosRaw } = useQuery({
@@ -169,7 +198,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   // ── Dados derivados ──────────────────────────────────────────────────────
   const kpis     = kpisRaw?.data
   const despesas = Array.isArray(despesasRaw?.data) ? despesasRaw.data : []
-  const dre      = dreRaw?.data
+  const dre      = periodo === 'mensal' ? dreRaw?.data : null
+  // Para períodos multi-mês, o dreRaw contém o demonstrativo anual
+  const dreDemoData = periodo !== 'mensal' && Array.isArray(dreRaw?.data) ? dreRaw.data : []
   const gastos   = Array.isArray(gastosRaw?.data) ? gastosRaw.data : []
   // demonstrativo retorna array de meses diretamente
   const demo     = Array.isArray(demoRaw?.data) ? demoRaw.data : []
@@ -347,24 +378,68 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       )}
 
       {/* ABA: DRE */}
-      {aba === 'dre' && (
+      {aba === 'dre' && (() => {
+        const { mesInicio, mesFim, anoInicio, anoFim } = calcularIntervalo()
+        // Para período multi-mês: usa dreDemoData (demonstrativo anual filtrado)
+        // O acúmulo de resultado é: soma de todos os resultados mensais do período
+        const fonteDados = periodo === 'mensal' ? demo : dreDemoData
+        const mesesDoPeriodo = fonteDados.filter((m: any) => {
+          return m.mesNum >= mesInicio && m.mesNum <= mesFim
+        })
+        const receitaPeriodo  = mesesDoPeriodo.reduce((a: number, m: any) => a + m.receita, 0)
+        const despesasPeriodo = mesesDoPeriodo.reduce((a: number, m: any) => a + m.despesas + m.fixos, 0)
+        // Resultado acumulado: soma de todos os resultados mensais (positivos e negativos)
+        const resultadoAcumulado = mesesDoPeriodo.reduce((a: number, m: any) => a + m.resultado - m.fixos, 0)
+        const margemPeriodo = receitaPeriodo > 0 ? (resultadoAcumulado / receitaPeriodo) * 100 : 0
+
+        // Para período mensal, usa o DRE do servidor (mais preciso com gastos fixos)
+        const dreExibir = periodo === 'mensal' ? dre : null
+
+        return (
         <div className="space-y-4">
-          {!dre ? (
+          {/* Seletor de período */}
+          <div className="flex items-center gap-3 mb-2">
+            <span className="text-sm text-gray-500">Período:</span>
+            <select value={periodo} onChange={e => setPeriodo(e.target.value as Periodo)}
+              className="h-8 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+              <option value="mensal">Mensal</option>
+              <option value="trimestral">Trimestral</option>
+              <option value="semestral">Semestral</option>
+              <option value="anual">Anual</option>
+              <option value="tudo">Todo o período</option>
+            </select>
+            {periodo !== 'mensal' && mesesDoPeriodo.length > 0 && (
+              <span className="text-xs text-gray-400">
+                {MESES[mesInicio - 1]}/{anoInicio} → {MESES[mesFim - 1]}/{anoFim}
+                {' '}({mesesDoPeriodo.length} meses)
+              </span>
+            )}
+          </div>
+
+          {periodo === 'mensal' && !dreExibir ? (
             <p className="text-sm text-gray-400 text-center py-12">Carregando DRE...</p>
+          ) : mesesDoPeriodo.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-12">Sem dados para o período.</p>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-white rounded-xl border border-gray-100 p-5">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">DRE — {MESES[mes - 1]}/{ano}</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">DRE — {periodo === 'mensal' ? `${MESES[mes-1]}/${ano}` : `${MESES[mesInicio-1]}–${MESES[mesFim-1]}/${ano}`}</h3>
                 <div className="space-y-3">
-                  {[
-                    { label: '(+) Receita Bruta',   value: dre.receita      ?? 0, color: 'text-green-600' },
-                    { label: '(=) Receita Líquida',  value: dre.receita      ?? 0, color: 'text-green-700', bold: true },
-                    { label: '(-) Total Despesas',   value: -(dre.totalDespesas ?? 0), color: 'text-red-500' },
-                    { label: '(=) Resultado',        value: dre.resultado    ?? 0, color: (dre.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
-                  ].map((item, i) => (
+                  {(periodo === 'mensal' && dreExibir ? [
+                    { label: '(+) Receita Bruta',   value: dreExibir.receita      ?? 0, color: 'text-green-600' },
+                    { label: '(=) Receita Líquida',  value: dreExibir.receita      ?? 0, color: 'text-green-700', bold: true },
+                    { label: '(-) Total Despesas',   value: -(dreExibir.totalDespesas ?? 0), color: 'text-red-500' },
+                    { label: '(=) Resultado',        value: dreExibir.resultado    ?? 0, color: (dreExibir.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
+                  ] : [
+                    { label: '(+) Receita Bruta',   value: receitaPeriodo,       color: 'text-green-600' },
+                    { label: '(=) Receita Líquida',  value: receitaPeriodo,       color: 'text-green-700', bold: true },
+                    { label: '(-) Total Despesas',   value: -despesasPeriodo,     color: 'text-red-500' },
+                    { label: '(=) Resultado Acum.',  value: resultadoAcumulado,   color: resultadoAcumulado >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
+                    { label: 'Margem',               value: margemPeriodo,        color: 'text-blue-600', isPct: true },
+                  ]).map((item: any, i) => (
                     <div key={i} className={`flex justify-between items-center ${item.border ? 'border-t border-gray-100 pt-3' : ''}`}>
                       <span className={`text-sm ${item.bold ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>{item.label}</span>
-                      <span className={`text-sm ${item.bold ? 'font-bold' : ''} ${item.color}`}>{fmt(item.value)}</span>
+                      <span className={`text-sm ${item.bold ? 'font-bold' : ''} ${item.color}`}>{item.isPct ? fmtPct(item.value) : fmt(item.value)}</span>
                     </div>
                   ))}
                 </div>
@@ -400,7 +475,8 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             </div>
           )}
         </div>
-      )}
+        )
+      })()}
 
       {/* ABA: GASTOS FIXOS — grade categoria × mês */}
       {aba === 'gastos-fixos' && (() => {
@@ -528,23 +604,41 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       {aba === 'demonstrativo' && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-700">Demonstrativo Anual — {ano}</h3>
+              <select value={periodo} onChange={e => setPeriodo(e.target.value as Periodo)}
+                className="h-7 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none">
+                <option value="mensal">Mensal</option>
+                <option value="trimestral">Trimestral</option>
+                <option value="semestral">Semestral</option>
+                <option value="anual">Anual</option>
+                <option value="tudo">Todo o período</option>
+              </select>
             </div>
             {demo.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">Sem dados.</p>
-            ) : (
+            ) : (() => {
+              const { mesInicio, mesFim } = calcularIntervalo()
+              const demoFiltrado = (periodo === 'anual' || periodo === 'tudo')
+                ? demo
+                : demo.filter((m: any) => m.mesNum >= mesInicio && m.mesNum <= mesFim)
+              let acum = 0
+              const demoComAcum = demoFiltrado.map((m: any) => {
+                acum += m.resultado
+                return { ...m, resultadoAcumulado: acum }
+              })
+              return (
               <>
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
-                      {['Mês', 'Receita', 'Despesas', 'Fixos', 'Resultado', 'Margem'].map((h, i) => (
+                      {['Mês', 'Receita', 'Despesas', 'Fixos', 'Resultado', 'Acumulado', 'Margem'].map((h, i) => (
                         <th key={i} className={`text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {demo.map((m: any, i: number) => (
+                    {demoComAcum.map((m: any, i: number) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
                         <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{m.mes}</td>
                         <td className="px-4 py-2.5 text-right text-sm text-green-600">{m.receita > 0 ? fmt(m.receita) : '—'}</td>
@@ -553,6 +647,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                         <td className={`px-4 py-2.5 text-right text-sm font-semibold ${m.resultado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {m.receita > 0 || m.despesas > 0 ? fmt(m.resultado) : '—'}
                         </td>
+                        <td className={`px-4 py-2.5 text-right text-sm font-bold ${(m.resultadoAcumulado ?? m.resultado) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                          {m.receita > 0 || m.despesas > 0 ? fmt(m.resultadoAcumulado ?? m.resultado) : '—'}
+                        </td>
                         <td className="px-4 py-2.5 text-right text-sm text-gray-500">{m.receita > 0 ? `${m.margem}%` : '—'}</td>
                       </tr>
                     ))}
@@ -560,31 +657,33 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   <tfoot>
                     <tr className="border-t-2 border-gray-200 bg-gray-50">
                       <td className="px-4 py-2.5 text-xs font-bold text-gray-700">Total</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-green-600">{fmt(demo.reduce((a: number, m: any) => a + m.receita, 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-500">{fmt(demo.reduce((a: number, m: any) => a + m.despesas, 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-400">{fmt(demo.reduce((a: number, m: any) => a + m.fixos, 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-900">{fmt(demo.reduce((a: number, m: any) => a + m.resultado, 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-sm font-bold text-green-600">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.receita, 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-500">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.despesas, 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-400">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.fixos, 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-900">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.resultado, 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-700">{fmt(demoComAcum[demoComAcum.length - 1]?.resultadoAcumulado ?? 0)}</td>
                       <td />
                     </tr>
                   </tfoot>
                 </table>
 
-                {/* Gráfico anual */}
+                {/* Gráfico */}
                 <div className="p-5 border-t border-gray-100">
                   <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={demo.map((m: any) => ({ mes: m.mes, receita: m.receita/100, despesas: m.despesas/100 }))} margin={{ left: -20 }}>
+                    <BarChart data={demoComAcum.map((m: any) => ({ mes: m.mes, receita: m.receita/100, despesas: (m.despesas + m.fixos)/100 }))} margin={{ left: -20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                       <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
                       <Tooltip formatter={(v: unknown) => [`R$ ${Number(v).toLocaleString('pt-BR')}`, '']} />
                       <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
                       <Bar dataKey="receita"  fill="#2ecc71" radius={[4,4,0,0]} name="Receita" />
-                      <Bar dataKey="despesas" fill="#e74c3c" radius={[4,4,0,0]} name="Despesas" />
+                      <Bar dataKey="despesas" fill="#e74c3c" radius={[4,4,0,0]} name="Despesas + Fixos" />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </>
-            )}
+              )
+            })()}
           </div>
         </div>
       )}
