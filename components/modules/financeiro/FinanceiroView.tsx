@@ -80,7 +80,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
 
   const { data: gastosRaw } = useQuery({
     queryKey: ['fin-gastos', tenantSlug, mes, ano],
-    queryFn:  async () => (await fetch(`${apiGastos}?mes=${mes}&ano=${ano}`)).json(),
+    queryFn:  async () => (await fetch(`${apiGastos}?ano=${ano}`)).json(),
     enabled:  aba === 'gastos-fixos',
   })
 
@@ -146,13 +146,11 @@ export default function FinanceiroView({ tenantSlug }: Props) {
 
   const salvarGastoMut = useMutation({
     mutationFn: async () => {
-      const res = await fetch(apiGastos, {
+      const res = await fetch(`${apiGastos}/categorias`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          categoria: gastoForm.categoria,
-          valor:     Math.round(parseFloat(gastoForm.valor.replace(',', '.') || '0') * 100),
-          mes:       parseInt(gastoForm.mes),
-          ano:       parseInt(gastoForm.ano),
+          nome:  gastoForm.categoria,
+          ordem: 99,
         }),
       })
       const d = await res.json()
@@ -404,52 +402,127 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* ABA: GASTOS FIXOS */}
-      {aba === 'gastos-fixos' && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Gastos fixos de {MESES[mes-1]}/{ano}</p>
-            <Button size="sm" onClick={() => { setGastoForm({ categoria: '', valor: '', mes: String(mes), ano: String(ano) }); setShowGasto(true) }}>
-              <Plus size={13} className="mr-1" /> Novo gasto fixo
-            </Button>
-          </div>
+      {/* ABA: GASTOS FIXOS — grade categoria × mês */}
+      {aba === 'gastos-fixos' && (() => {
+        const gastosData  = gastosRaw?.data
+        const categorias  = Array.isArray(gastosData?.categorias) ? gastosData.categorias : []
+        const grade       = gastosData?.grade ?? {}
 
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  {['Categoria', 'Mês', 'Valor', ''].map((h, i) => (
-                    <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 2 ? 'text-right' : ''}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {gastos.length === 0 ? (
-                  <tr><td colSpan={4} className="text-center py-8 text-sm text-gray-400">Nenhum gasto fixo cadastrado.</td></tr>
-                ) : gastos.map((g: any, i: number) => (
-                  <tr key={i} className="border-b border-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{g.categoria ?? g.categoria_id}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{MESES[(g.mes ?? 1) - 1]}/{g.ano}</td>
-                    <td className="px-4 py-3 text-right text-sm font-medium text-red-600">{fmt(g.valor)}</td>
-                    <td className="px-4 py-3 text-center text-sm text-gray-300">—</td>
+        function salvarCelula(categoriaId: number, mes: number, valor: number) {
+          fetch(`/api/${tenantSlug}/financeiro/gastos-fixos`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categoriaId, ano, mes, valor }),
+          }).then(() => qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] }))
+        }
+
+        function propagarLinha(categoriaId: number, valor: number) {
+          fetch(`/api/${tenantSlug}/financeiro/gastos-fixos`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ acao: 'propagarAnual', categoriaId, ano, valor }),
+          }).then(() => {
+            qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] })
+            toast('Valor propagado para todos os meses!')
+          })
+        }
+
+        const totalPorMes = Array.from({ length: 12 }, (_, i) => {
+          return categorias.reduce((sum: number, cat: any) => {
+            return sum + (grade[cat.categoriaId]?.[i + 1] ?? 0)
+          }, 0)
+        })
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">Grade anual de gastos fixos — {ano}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => {
+                  fetch(`/api/${tenantSlug}/financeiro/gastos-fixos`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ acao: 'copiarMesAnterior', mes, ano }),
+                  }).then(() => {
+                    qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] })
+                    toast('Valores copiados do mês anterior!')
+                  })
+                }}>
+                  Copiar mês anterior
+                </Button>
+                <Button size="sm" onClick={() => { setGastoForm({ categoria: '', valor: '', mes: String(mes), ano: String(ano) }); setShowGasto(true) }}>
+                  <Plus size={13} className="mr-1" /> Nova categoria
+                </Button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-40">Categoria</th>
+                    {MESES.map(m => (
+                      <th key={m} className="text-center text-xs font-medium text-gray-400 px-2 py-3 w-20">{m}</th>
+                    ))}
+                    <th className="text-center text-xs font-medium text-gray-400 px-2 py-3 w-24">Anual</th>
+                    <th className="w-20" />
                   </tr>
-                ))}
-              </tbody>
-              {gastos.length > 0 && (
+                </thead>
+                <tbody>
+                  {categorias.length === 0 ? (
+                    <tr><td colSpan={15} className="text-center py-8 text-sm text-gray-400">Nenhuma categoria cadastrada.</td></tr>
+                  ) : categorias.map((cat: any) => {
+                    const totalAnual = Array.from({ length: 12 }, (_, i) => grade[cat.categoriaId]?.[i + 1] ?? 0).reduce((a, b) => a + b, 0)
+                    const valorJan   = grade[cat.categoriaId]?.[1] ?? 0
+                    return (
+                      <tr key={cat.categoriaId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="px-4 py-2 text-sm font-medium text-gray-900">{cat.nome}</td>
+                        {Array.from({ length: 12 }, (_, i) => {
+                          const m   = i + 1
+                          const val = grade[cat.categoriaId]?.[m] ?? 0
+                          return (
+                            <td key={m} className="px-1 py-1">
+                              <input
+                                type="number" min="0" step="0.01"
+                                defaultValue={(val / 100).toFixed(2)}
+                                onBlur={e => {
+                                  const novoVal = Math.round(parseFloat(e.target.value || '0') * 100)
+                                  if (novoVal !== val) salvarCelula(cat.categoriaId, m, novoVal)
+                                }}
+                                className="w-full h-7 text-center text-xs border border-gray-200 rounded focus:outline-none focus:border-green-400"
+                              />
+                            </td>
+                          )
+                        })}
+                        <td className="px-2 py-2 text-center text-sm font-semibold text-red-600">{fmt(totalAnual)}</td>
+                        <td className="px-2 py-2 text-center">
+                          {valorJan > 0 && (
+                            <button onClick={() => propagarLinha(cat.categoriaId, valorJan)}
+                              className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap">
+                              ↔ propagar
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
                 <tfoot>
-                  <tr className="border-t border-gray-100 bg-gray-50">
-                    <td colSpan={2} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
-                    <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">
-                      {fmt(gastos.reduce((a: number, g: any) => a + (g.valor ?? 0), 0))}
+                  <tr className="border-t-2 border-gray-200 bg-gray-50">
+                    <td className="px-4 py-2 text-xs font-bold text-gray-700">Total/mês</td>
+                    {totalPorMes.map((t, i) => (
+                      <td key={i} className="px-2 py-2 text-center text-xs font-bold text-red-600">
+                        {t > 0 ? fmt(t) : '—'}
+                      </td>
+                    ))}
+                    <td className="px-2 py-2 text-center text-xs font-bold text-red-600">
+                      {fmt(totalPorMes.reduce((a, b) => a + b, 0))}
                     </td>
                     <td />
                   </tr>
                 </tfoot>
-              )}
-            </table>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* ABA: DEMONSTRATIVO */}
       {aba === 'demonstrativo' && (
@@ -570,7 +643,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Novo gasto fixo</h2>
+              <h2 className="text-lg font-semibold">Nova categoria de gasto fixo</h2>
               <button onClick={() => setShowGasto(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-6 space-y-4">
