@@ -12,7 +12,7 @@ const COLORS = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e6
 const tooltipFmt = (v: unknown) => fmt(Number(v ?? 0))
 
 export default function DashboardHome({ tenantSlug }: Props) {
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['dashboard', tenantSlug],
     queryFn:  async () => {
       const res = await fetch(`/api/${tenantSlug}/dashboard`)
@@ -29,7 +29,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
     </div>
   )
 
-  if (error || !data?.data) return (
+  if (!data?.data) return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
@@ -43,7 +43,6 @@ export default function DashboardHome({ tenantSlug }: Props) {
 
   const raw = data.data
 
-  // Garantia defensiva — sempre arrays
   const faturamento6m     = Array.isArray(raw.faturamento6m)     ? raw.faturamento6m     : []
   const vendasDia         = Array.isArray(raw.vendasDia)         ? raw.vendasDia         : []
   const topProdutos       = Array.isArray(raw.topProdutos)       ? raw.topProdutos       : []
@@ -51,10 +50,10 @@ export default function DashboardHome({ tenantSlug }: Props) {
   const estoqueCritico    = Array.isArray(raw.estoqueCritico)    ? raw.estoqueCritico    : []
   const porForma          = Array.isArray(raw.porForma)          ? raw.porForma          : []
 
-  const totalHoje  = vendasDia[vendasDia.length - 1]?.valor ?? 0
-  const totalOntem = vendasDia[vendasDia.length - 2]?.valor ?? 0
-  const totalMes   = faturamento6m[faturamento6m.length - 1]?.valor ?? 0
-  const variacao   = totalOntem > 0 ? ((totalHoje - totalOntem) / totalOntem * 100).toFixed(1) : null
+  // Usa campos diretos da API — mais confiável que derivar do array
+  const totalHoje = raw.receitaHoje ?? vendasDia[vendasDia.length - 1]?.valor ?? 0
+  const totalMes  = raw.receitaMes  ?? faturamento6m[faturamento6m.length - 1]?.valor ?? 0
+  const qtdMes    = raw.qtdMes ?? 0
 
   return (
     <div className="space-y-6">
@@ -66,8 +65,8 @@ export default function DashboardHome({ tenantSlug }: Props) {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: 'Hoje',               value: fmt(totalHoje),  sub: variacao ? `${Number(variacao) > 0 ? '+' : ''}${variacao}% vs ontem` : '', color: '#2ecc71' },
-          { label: 'Faturamento do mês', value: fmt(totalMes) },
+          { label: 'Hoje',               value: fmt(totalHoje),  sub: '', color: '#2ecc71' },
+          { label: 'Faturamento do mês', value: fmt(totalMes),   sub: `${qtdMes} venda${qtdMes !== 1 ? 's' : ''}` },
           { label: 'Estoque crítico',    value: String(estoqueCritico.length), sub: 'produtos abaixo do mínimo', color: estoqueCritico.length > 0 ? '#e74c3c' : undefined },
           { label: 'Top produto',        value: topProdutos[0]?.nome?.split(' ').slice(0, 2).join(' ') ?? '—', sub: topProdutos[0] ? `${topProdutos[0].qtd} un` : '' },
         ].map((kpi, i) => (
