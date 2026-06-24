@@ -146,7 +146,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
-      toast('Usuário inativado.')
+      toast('Usuário deletado permanentemente.')
     },
     onError: (err: any) => toast(err?.message ?? 'Erro ao inativar.', 'error'),
   })
@@ -371,9 +371,9 @@ export default function UsuariosView({ tenantSlug }: Props) {
       {/* Confirm inativar */}
       {confirmInativar && (
         <ConfirmModal
-          title="Inativar usuário"
-          message={`Inativar "${confirmInativar.nome}"? O usuário perderá acesso ao sistema.`}
-          confirmLabel="Inativar"
+          title="Deletar usuário permanentemente"
+          message={`Deletar permanentemente "${confirmInativar.nome}"? O usuário será removido do sistema e do login (Clerk). Esta ação não pode ser desfeita.`}
+          confirmLabel="Deletar permanentemente"
           danger
           onConfirm={() => { inativarMut.mutate(confirmInativar.usuarioId); setConfirmInativar(null) }}
           onCancel={() => setConfirmInativar(null)}

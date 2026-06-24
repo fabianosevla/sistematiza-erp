@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       const origem     = searchParams.get('origem') ?? undefined
       const tipo       = searchParams.get('tipo') ?? undefined
 
-      const service = new VendaService(db)
+      const service = new VendaService(db, tenant.schemaName)
 
       if (tipo === 'kpis') return ok(await service.kpis())
 
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         return badRequest('Informe pelo menos uma forma de pagamento com valor.')
       }
 
-      const service = new VendaService(db)
+      const service = new VendaService(db, tenant.schemaName)
       const result  = await service.criarDireta({
         ...payload,
         pagamentos: pagamentosValidos,

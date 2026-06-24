@@ -13,29 +13,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const body   = await req.json()
     const { nome, email } = body
-
     if (!nome?.trim() && !email?.trim()) return badRequest('Nenhum campo para atualizar')
-
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const id = Number(params.id)
-
-      // Busca o clerkId do usuário para atualizar no Clerk também
       const [usuario] = await db
         .select({ clerkId: dbUsuario.clerkId, email: dbUsuario.email })
         .from(dbUsuario)
         .where(eq(dbUsuario.usuarioId, id))
-
       if (!usuario) return notFound('Usuário não encontrado')
-
-      // Atualiza no banco local
       const updates: any = { updatedDt: new Date() }
       if (nome?.trim())  updates.nome  = nome.trim()
       if (email?.trim()) updates.email = email.trim()
-
       await db.update(dbUsuario).set(updates).where(eq(dbUsuario.usuarioId, id))
-
-      // Atualiza no Clerk se o clerkId for real (não provisório pending_*)
       if (usuario.clerkId && !usuario.clerkId.startsWith('pending_')) {
         try {
           const updateData: any = {}
@@ -45,16 +35,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
             updateData.lastName  = partes.slice(1).join(' ') || undefined
           }
           await clerkClient().users.updateUser(usuario.clerkId, updateData)
-        } catch {} // não bloqueia se o Clerk falhar
+        } catch {}
       }
-
       return ok({ atualizado: true })
-    } finally {
-      release()
-    }
-  } catch (err) {
-    return serverError(err)
-  }
+    } finally { release() }
+  } catch (err) { return serverError(err) }
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
@@ -63,17 +48,31 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const id = Number(params.id)
-      const [result] = await db
-        .update(dbUsuario)
-        .set({ activeFlag: false, updatedDt: new Date() })
+
+      // Busca clerkId antes de deletar
+      const [usuario] = await db
+        .select({ clerkId: dbUsuario.clerkId, nome: dbUsuario.nome })
+        .from(dbUsuario)
         .where(eq(dbUsuario.usuarioId, id))
-        .returning({ usuarioId: dbUsuario.usuarioId })
-      if (!result) return notFound('Usuário não encontrado')
-      return ok({ inativado: true })
-    } finally {
-      release()
-    }
-  } catch (err) {
-    return serverError(err)
-  }
+      if (!usuario) return notFound('Usuário não encontrado')
+
+      // 1. Deleta do Clerk (bloqueia login imediatamente)
+      if (usuario.clerkId && !usuario.clerkId.startsWith('pending_')) {
+        try {
+          await clerkClient().users.deleteUser(usuario.clerkId)
+        } catch (clerkErr: any) {
+          // Se o usuário não existe mais no Clerk, continua deletando do banco
+          const msg = clerkErr?.errors?.[0]?.message ?? ''
+          if (!msg.includes('not found') && !msg.includes('does not exist')) {
+            return serverError(new Error('Erro ao deletar usuário do Clerk: ' + msg))
+          }
+        }
+      }
+
+      // 2. Remove do banco local (hard delete — não é soft delete)
+      await db.delete(dbUsuario).where(eq(dbUsuario.usuarioId, id))
+
+      return ok({ deletado: true, nome: usuario.nome })
+    } finally { release() }
+  } catch (err) { return serverError(err) }
 }

@@ -96,7 +96,12 @@ export default function VendasView({ tenantSlug }: Props) {
   // ── Form state ────────────────────────────────────────────────────────────
   const [clienteId, setClienteId]             = useState('')
   const [tipoEntrega, setTipoEntrega]         = useState('')
-  const [vendidaEm, setVendidaEm]             = useState(new Date().toISOString().slice(0, 16))
+  // Horário local (não UTC) — evita defasagem de 3h no Brasil
+  const localNow = () => {
+    const d = new Date()
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  }
+  const [vendidaEm, setVendidaEm] = useState(localNow())
   const [dataEntrega, setDataEntrega]         = useState('')
   const [enderecoEntrega, setEnderecoEntrega] = useState('')
   const [vendedor, setVendedor]               = useState('')
@@ -147,11 +152,24 @@ export default function VendasView({ tenantSlug }: Props) {
   const criarMut = useMutation({
     mutationFn: async () => {
       const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
+
+  // Auto-preenche o valor do primeiro pagamento com o total da venda
+  // quando ainda há só um pagamento e o valor está vazio ou é 0
+  const totalVendaCalc = Math.max(0, subtotalTotal - Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100))
       const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
       const total         = subtotalTotal - descontoVal
+      // Se o usuário não preencheu o valor do pagamento, usa o total da venda automaticamente
       const pgtos = pagamentos
-        .filter(p => p.valor && parseFloat(p.valor) > 0)
-        .map(p => ({ forma: p.forma, valor: Math.round(parseFloat(p.valor.replace(',', '.')) * 100) }))
+        .map(p => {
+          const val = parseFloat(p.valor.replace(',', '.') || '0')
+          return { forma: p.forma, valor: Math.round(val * 100) }
+        })
+        .filter(p => p.valor > 0)
+
+      // Se ainda vazio, injeta o total no primeiro pagamento
+      const pgtosFinais = pgtos.length > 0
+        ? pgtos
+        : [{ forma: pagamentos[0]?.forma ?? 'PIX', valor: Math.max(0, subtotalTotal - descontoVal) }]
 
       // ✅ CORREÇÃO: envia tipoPrecao, NÃO envia precoUnitario
       //    O servidor resolve o preço com base no tipoPrecao + dados do banco
@@ -172,7 +190,7 @@ export default function VendasView({ tenantSlug }: Props) {
             // precoUnitario OMITIDO intencionalmente — servidor define
           })),
         desconto: descontoVal,
-        pagamentos: pgtos,
+        pagamentos: pgtosFinais,
       }
 
       const res = await fetch(api, {
@@ -204,7 +222,7 @@ export default function VendasView({ tenantSlug }: Props) {
     setItens([novoItem()])
     setPagamentos([{ forma: formasNomes[0] ?? 'PIX', valor: '' }])
     setClienteId(''); setTipoEntrega(''); setVendidaEm(new Date().toISOString().slice(0, 16))
-    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0')
+    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0'); setVendidaEm(localNow())
   }
 
   function updateItem(key: string, field: Partial<ItemVenda>) {
@@ -258,8 +276,7 @@ export default function VendasView({ tenantSlug }: Props) {
     : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
   const formas     = Array.isArray(formasRaw?.data) ? formasRaw.data : []
   const formasNomes = formas.map((f: any) => f.nome).filter(Boolean)
-  const usuarios = Array.isArray(usuariosRaw?.data?.data) ? usuariosRaw.data.data
-    : Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
+  const usuarios   = Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
 
   const vendas = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
     : Array.isArray(vendasData?.data) ? vendasData.data : []
@@ -267,6 +284,9 @@ export default function VendasView({ tenantSlug }: Props) {
   const kpis = kpisData?.data
 
   const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
+
+  // Auto-preenche o valor do primeiro pagamento com o total da venda
+  // quando ainda há só um pagamento e o valor está vazio ou é 0
   const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
   const totalVenda    = subtotalTotal - descontoVal
   const totalPago     = pagamentos.reduce((a, p) => a + (parseFloat(p.valor.replace(',', '.') || '0') * 100), 0)

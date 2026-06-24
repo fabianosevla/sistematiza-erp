@@ -1,18 +1,7 @@
 'use client'
-// app/(dashboard)/[tenant]/pdv/PdvBalcao.tsx
-//
-// Venda rápida de balcão, estilo Mogo: barra de categorias horizontal no
-// topo + busca por nome/código de barras. Carrega os produtos uma vez e
-// filtra localmente (mais rápido para uso de PDV do que buscar no servidor
-// a cada tecla).
-//
-// Usa a API real /api/{tenant}/vendas (POST). O schema Zod dessa rota só
-// aceita {produtoId, quantidade} por item — por isso o Balcão usa sempre
-// o preço de varejo (sem seleção de tabela de atacado por enquanto).
-
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart } from 'lucide-react'
+import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -40,18 +29,26 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   const { toast } = useToast()
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const [busca, setBusca]           = useState('')
-  const [categoria, setCategoria]   = useState(TODAS)
-  const [carrinho, setCarrinho]     = useState<ItemCarrinho[]>([])
-  const [desconto, setDesconto]     = useState('0')
-  const [formaPgto, setFormaPgto]   = useState('')
+  const [busca, setBusca]                 = useState('')
+  const [categoria, setCategoria]         = useState(TODAS)
+  const [carrinho, setCarrinho]           = useState<ItemCarrinho[]>([])
+  const [desconto, setDesconto]           = useState('0')
+  const [formaPgto, setFormaPgto]         = useState('')
   const [valorRecebido, setValorRecebido] = useState('')
   const [confirmLimpar, setConfirmLimpar] = useState(false)
-  const [vendaOk, setVendaOk]       = useState(false)
+  const [vendaOk, setVendaOk]             = useState(false)
+  const [showExtras, setShowExtras]       = useState(false)
+
+  // Campos extras — iguais ao modal Nova Venda do gerencial
+  const [clienteId, setClienteId]             = useState('')
+  const [vendedor, setVendedor]               = useState('')
+  const [tipoEntrega, setTipoEntrega]         = useState('Retirada')
+  const [observacao, setObservacao]           = useState('')
+  const [dataEntrega, setDataEntrega]         = useState('')
+  const [enderecoEntrega, setEnderecoEntrega] = useState('')
 
   useEffect(() => { searchRef.current?.focus() }, [])
 
-  // Carrega o catálogo uma vez — filtragem por categoria e busca é local
   const { data: produtosRaw, isLoading: loadingProd } = useQuery({
     queryKey: ['pdv-balcao-catalogo', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=300`)).json(),
@@ -64,6 +61,18 @@ export default function PdvBalcao({ tenantSlug }: Props) {
     staleTime: 60000,
   })
 
+  const { data: clientesRaw } = useQuery({
+    queryKey: ['pdv-clientes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=500`)).json(),
+    staleTime: 60000,
+  })
+
+  const { data: usuariosRaw } = useQuery({
+    queryKey: ['pdv-usuarios', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/usuarios`)).json(),
+    staleTime: 60000,
+  })
+
   const venderMut = useMutation({
     mutationFn: async () => {
       const descontoVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
@@ -73,7 +82,13 @@ export default function PdvBalcao({ tenantSlug }: Props) {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          itens: carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
+          clienteId:      clienteId ? Number(clienteId) : undefined,
+          tipoEntrega:    tipoEntrega || 'Retirada',
+          dataEntrega:    dataEntrega || undefined,
+          enderecoEntrega: enderecoEntrega || undefined,
+          vendedor:       vendedor || undefined,
+          observacao:     observacao || undefined,
+          itens:      carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
           desconto:   descontoVal,
           pagamentos: [{ forma: formaPgto || formasNomes[0] || 'PIX', valor: totalVal }],
         }),
@@ -86,10 +101,19 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       setCarrinho([])
       setDesconto('0')
       setValorRecebido('')
+      setClienteId('')
+      setVendedor('')
+      setTipoEntrega('Retirada')
+      setObservacao('')
+      setDataEntrega('')
+      setEnderecoEntrega('')
+      setShowExtras(false)
       setVendaOk(true)
       setTimeout(() => { setVendaOk(false); searchRef.current?.focus() }, 2000)
       qc.invalidateQueries({ queryKey: ['vendas', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
       toast('Venda registrada!')
     },
     onError: (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
@@ -105,13 +129,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
           : i
         )
       }
-      return [...prev, {
-        produtoId:     produto.produtoId,
-        nomeProduto:   produto.nome,
-        quantidade:    1,
-        precoUnitario: preco,
-        subtotal:      preco,
-      }]
+      return [...prev, { produtoId: produto.produtoId, nomeProduto: produto.nome, quantidade: 1, precoUnitario: preco, subtotal: preco }]
     })
     setTimeout(() => searchRef.current?.focus(), 50)
   }
@@ -130,126 +148,98 @@ export default function PdvBalcao({ tenantSlug }: Props) {
     setCarrinho(prev => prev.filter(i => i.produtoId !== produtoId))
   }
 
+  function handleBuscaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    const exato = todosProdutos.find((p: any) => p.codigoBarras === busca.trim())
+    if (exato) { addProduto(exato); setBusca('') }
+  }
+
   const todosProdutos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
     : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
 
-  // Categorias distintas presentes no catálogo, na ordem em que aparecem
+  const clientes  = Array.isArray(clientesRaw?.data?.data) ? clientesRaw.data.data
+    : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
+
+  const usuarios  = Array.isArray(usuariosRaw?.data?.data) ? usuariosRaw.data.data
+    : Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
+
   const categorias = useMemo(() => {
     const set = new Set<string>()
     for (const p of todosProdutos) if (p.categoria) set.add(p.categoria)
     return [TODAS, ...Array.from(set)]
   }, [todosProdutos])
 
-  // Filtro local: categoria + busca por nome ou código de barras
   const produtosFiltrados = useMemo(() => {
     return todosProdutos.filter((p: any) => {
       const passaCategoria = categoria === TODAS || p.categoria === categoria
       const buscaLower = busca.trim().toLowerCase()
-      const passaBusca = !buscaLower
-        || p.nome?.toLowerCase().includes(buscaLower)
-        || p.codigoBarras === busca.trim()
+      const passaBusca = !buscaLower || p.nome?.toLowerCase().includes(buscaLower) || p.codigoBarras === busca.trim()
       return passaCategoria && passaBusca
     })
   }, [todosProdutos, categoria, busca])
 
-  // Enter com código de barras exato → adiciona direto e limpa o campo
-  function handleBuscaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== 'Enter') return
-    const exato = todosProdutos.find((p: any) => p.codigoBarras === busca.trim())
-    if (exato) {
-      addProduto(exato)
-      setBusca('')
-    }
-  }
-
-  const formas       = Array.isArray(formasRaw?.data) ? formasRaw.data : []
-  const formasNomes  = formas.map((f: any) => f.nome).filter(Boolean)
+  const formas      = Array.isArray(formasRaw?.data) ? formasRaw.data : []
+  const formasNomes = formas.map((f: any) => f.nome).filter(Boolean)
 
   const subtotal    = carrinho.reduce((a, i) => a + i.subtotal, 0)
   const descontoVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
   const total       = Math.max(0, subtotal - descontoVal)
   const troco       = (formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && valorRecebido
-    ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - total)
-    : 0
+    ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - total) : 0
 
-  const podeVender = carrinho.length > 0 && (formaPgto || formasNomes.length > 0) && !venderMut.isPending
+  const podeVender = carrinho.length > 0 && !venderMut.isPending
 
   return (
     <div className="flex gap-6 h-full max-w-[1400px] mx-auto">
 
+      {/* Catálogo */}
       <div className="flex-1 flex flex-col gap-3 min-w-0">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Pedido Balcão</h1>
           <p className="text-sm text-gray-400 mt-0.5">Selecione uma categoria ou busque o produto</p>
         </div>
 
-        {/* Busca */}
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <Input
-            ref={searchRef}
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            onKeyDown={handleBuscaKeyDown}
-            placeholder="Digite o nome ou bipe o código de barras..."
-            className="pl-9 pr-9 h-11 text-sm"
-          />
+          <Input ref={searchRef} value={busca} onChange={e => setBusca(e.target.value)}
+            onKeyDown={handleBuscaKeyDown} placeholder="Digite o nome ou bipe o código de barras..."
+            className="pl-9 pr-9 h-11 text-sm" />
           {busca && (
-            <button
-              onClick={() => { setBusca(''); searchRef.current?.focus() }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
+            <button onClick={() => { setBusca(''); searchRef.current?.focus() }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X size={14} />
             </button>
           )}
         </div>
 
-        {/* Barra de categorias — estilo Mogo */}
         {categorias.length > 1 && (
           <div className="flex gap-1.5 overflow-x-auto pb-1">
             {categorias.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setCategoria(cat)}
+              <button key={cat} onClick={() => setCategoria(cat)}
                 className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors border ${
-                  categoria === cat
-                    ? 'bg-gray-900 text-white border-gray-900'
-                    : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
-                }`}
-              >
+                  categoria === cat ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                }`}>
                 {cat}
               </button>
             ))}
           </div>
         )}
 
-        {/* Grid de produtos */}
         <div className="flex-1 overflow-y-auto">
           {loadingProd ? (
-            <div className="flex items-center justify-center h-32">
-              <Loader2 size={18} className="text-gray-300 animate-spin" />
-            </div>
+            <div className="flex items-center justify-center h-32"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
           ) : produtosFiltrados.length === 0 ? (
             <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
               <ShoppingCart size={28} className="text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">
-                {busca ? `Nenhum produto encontrado para "${busca}"` : 'Nenhum produto nesta categoria'}
-              </p>
+              <p className="text-sm text-gray-400">{busca ? `Nenhum produto para "${busca}"` : 'Nenhum produto nesta categoria'}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {produtosFiltrados.map((p: any) => (
-                <button
-                  key={p.produtoId}
-                  onClick={() => addProduto(p)}
-                  className="bg-white rounded-xl border border-gray-100 hover:border-green-300 hover:shadow-sm p-4 text-left transition-all active:scale-95 group"
-                >
-                  <p className="text-sm font-medium text-gray-900 truncate group-hover:text-green-700">
-                    {p.nome}
-                  </p>
-                  <p className="text-lg font-bold mt-2" style={{ color: '#2ecc71' }}>
-                    {p.precoVarejo ? fmt(p.precoVarejo) : '—'}
-                  </p>
+                <button key={p.produtoId} onClick={() => addProduto(p)}
+                  className="bg-white rounded-xl border border-gray-100 hover:border-green-300 hover:shadow-sm p-4 text-left transition-all active:scale-95 group">
+                  <p className="text-sm font-medium text-gray-900 truncate group-hover:text-green-700">{p.nome}</p>
+                  <p className="text-lg font-bold mt-2" style={{ color: '#2ecc71' }}>{p.precoVarejo ? fmt(p.precoVarejo) : '—'}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{p.unidade}</p>
                 </button>
               ))}
@@ -266,9 +256,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
               {carrinho.length === 0 ? 'Nenhum item' : `${carrinho.reduce((a, i) => a + i.quantidade, 0)} item(s)`}
             </p>
             {carrinho.length > 0 && (
-              <button onClick={() => setConfirmLimpar(true)} className="text-xs text-red-400 hover:text-red-600 transition-colors">
-                Limpar
-              </button>
+              <button onClick={() => setConfirmLimpar(true)} className="text-xs text-red-400 hover:text-red-600">Limpar</button>
             )}
           </div>
 
@@ -281,19 +269,13 @@ export default function PdvBalcao({ tenantSlug }: Props) {
               <div key={item.produtoId} className="px-4 py-3">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-medium text-gray-900 flex-1 leading-tight">{item.nomeProduto}</p>
-                  <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-500 flex-shrink-0 transition-colors">
-                    <Trash2 size={13} />
-                  </button>
+                  <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-500 flex-shrink-0"><Trash2 size={13} /></button>
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => alterarQtd(item.produtoId, -1)} className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
-                      <Minus size={11} />
-                    </button>
+                    <button onClick={() => alterarQtd(item.produtoId, -1)} className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Minus size={11} /></button>
                     <span className="text-sm font-bold text-gray-900 w-5 text-center">{item.quantidade}</span>
-                    <button onClick={() => alterarQtd(item.produtoId, 1)} className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition-colors">
-                      <Plus size={11} />
-                    </button>
+                    <button onClick={() => alterarQtd(item.produtoId, 1)} className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Plus size={11} /></button>
                   </div>
                   <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>{fmt(item.subtotal)}</span>
                 </div>
@@ -323,46 +305,28 @@ export default function PdvBalcao({ tenantSlug }: Props) {
 
         {carrinho.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
+
+            {/* Desconto */}
             <div>
               <Label className="text-xs">Desconto (R$)</Label>
-              <Input
-                type="number" min="0" step="0.01"
-                value={desconto}
-                onChange={e => setDesconto(e.target.value)}
-                className="mt-1 h-9 text-sm"
-                placeholder="0,00"
-              />
+              <Input type="number" min="0" step="0.01" value={desconto} onChange={e => setDesconto(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
             </div>
-
             <div className="flex gap-1.5">
               {[0, 5, 10, 15].map(pct => (
-                <button
-                  key={pct}
-                  onClick={() => setDesconto(pct === 0 ? '0' : ((subtotal * pct / 100) / 100).toFixed(2))}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors border ${
-                    descontoVal === Math.round(subtotal * pct / 100) && pct > 0
-                      ? 'bg-red-50 border-red-200 text-red-600'
-                      : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
-                  }`}
-                >
+                <button key={pct} onClick={() => setDesconto(pct === 0 ? '0' : ((subtotal * pct / 100) / 100).toFixed(2))}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${descontoVal === Math.round(subtotal * pct / 100) && pct > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'}`}>
                   {pct === 0 ? 'Sem' : `${pct}%`}
                 </button>
               ))}
             </div>
 
+            {/* Forma de pagamento */}
             <div>
               <Label className="text-xs">Forma de pagamento</Label>
               <div className="grid grid-cols-2 gap-1.5 mt-1.5">
                 {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).slice(0, 6).map((f: string) => (
-                  <button
-                    key={f}
-                    onClick={() => setFormaPgto(f)}
-                    className={`py-2 rounded-lg text-sm font-medium transition-all border ${
-                      formaPgto === f
-                        ? 'border-green-400 bg-green-50 text-green-700'
-                        : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
+                  <button key={f} onClick={() => setFormaPgto(f)}
+                    className={`py-2 rounded-lg text-sm font-medium border ${formaPgto === f ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
                     {f}
                   </button>
                 ))}
@@ -372,19 +336,63 @@ export default function PdvBalcao({ tenantSlug }: Props) {
             {(formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && (
               <div>
                 <Label className="text-xs">Valor recebido (R$)</Label>
-                <Input
-                  type="number" min="0" step="0.01"
-                  value={valorRecebido}
-                  onChange={e => setValorRecebido(e.target.value)}
-                  className="mt-1 h-9 text-sm"
-                  placeholder="0,00"
-                />
+                <Input type="number" min="0" step="0.01" value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
                 {troco > 0 && (
                   <div className="flex justify-between mt-2 px-1">
                     <span className="text-sm text-amber-600">Troco</span>
                     <span className="text-sm font-bold text-amber-600">{fmt(troco)}</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Campos extras — recolhíveis */}
+            <button onClick={() => setShowExtras(v => !v)}
+              className="w-full flex items-center justify-between py-2 text-xs text-gray-400 hover:text-gray-600 border-t border-gray-100 pt-3">
+              <span>Dados adicionais (cliente, vendedor, entrega...)</span>
+              {showExtras ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </button>
+
+            {showExtras && (
+              <div className="space-y-2 pt-1">
+                <div>
+                  <Label className="text-xs">Cliente</Label>
+                  <select value={clienteId} onChange={e => {
+                    setClienteId(e.target.value)
+                    const c = clientes.find((x: any) => String(x.clienteId) === e.target.value)
+                    if (c?.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+                  }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="">Consumidor Final</option>
+                    {clientes.map((c: any) => <option key={c.clienteId} value={c.clienteId}>{c.nomeCompleto}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-xs">Vendedor</Label>
+                  <select value={vendedor} onChange={e => setVendedor(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="">Selecionar...</option>
+                    {usuarios.map((u: any) => <option key={u.usuarioId} value={u.nome}>{u.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-xs">Tipo de entrega</Label>
+                  <select value={tipoEntrega} onChange={e => setTipoEntrega(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    {['Retirada', 'Entrega', 'Transportadora'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-xs">Data de entrega</Label>
+                  <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Endereço de entrega</Label>
+                  <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
+                <div>
+                  <Label className="text-xs">Observação</Label>
+                  <Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
               </div>
             )}
 
@@ -406,13 +414,10 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       </div>
 
       {confirmLimpar && (
-        <ConfirmModal
-          title="Limpar carrinho"
-          message="Remover todos os itens do carrinho?"
+        <ConfirmModal title="Limpar carrinho" message="Remover todos os itens do carrinho?"
           confirmLabel="Limpar" danger
           onConfirm={() => { setCarrinho([]); setConfirmLimpar(false) }}
-          onCancel={() => setConfirmLimpar(false)}
-        />
+          onCancel={() => setConfirmLimpar(false)} />
       )}
     </div>
   )
