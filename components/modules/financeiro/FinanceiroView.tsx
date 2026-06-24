@@ -94,17 +94,18 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     enabled:  aba === 'despesas',
   })
 
+  // DRE mensal — sempre busca para qualquer período (base de dados)
   const { data: dreRaw } = useQuery({
-    queryKey: ['fin-dre', tenantSlug, mes, ano, periodo],
-    queryFn:  async () => {
-      const { mesInicio, mesFim } = calcularIntervalo()
-      if (periodo === 'mensal') {
-        return (await fetch(`${api}?tipo=dre&mes=${mes}&ano=${ano}`)).json()
-      }
-      // Para período multi-mês: busca o demonstrativo anual e filtra
-      return (await fetch(`${api}?tipo=demonstrativo&ano=${ano}`)).json()
-    },
-    enabled: aba === 'dre',
+    queryKey: ['fin-dre', tenantSlug, mes, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=dre&mes=${mes}&ano=${ano}`)).json(),
+    enabled:  aba === 'dre',
+  })
+
+  // Demonstrativo anual — usado para períodos multi-mês no DRE
+  const { data: dreDemoAnualRaw } = useQuery({
+    queryKey: ['fin-dre-demo', tenantSlug, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=demonstrativo&ano=${ano}`)).json(),
+    enabled:  aba === 'dre' && periodo !== 'mensal',
   })
 
   const { data: gastosRaw } = useQuery({
@@ -196,14 +197,12 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   })
 
   // ── Dados derivados ──────────────────────────────────────────────────────
-  const kpis     = kpisRaw?.data
-  const despesas = Array.isArray(despesasRaw?.data) ? despesasRaw.data : []
-  const dre      = periodo === 'mensal' ? dreRaw?.data : null
-  // Para períodos multi-mês, o dreRaw contém o demonstrativo anual
-  const dreDemoData = periodo !== 'mensal' && Array.isArray(dreRaw?.data) ? dreRaw.data : []
-  const gastos   = Array.isArray(gastosRaw?.data) ? gastosRaw.data : []
-  // demonstrativo retorna array de meses diretamente
-  const demo     = Array.isArray(demoRaw?.data) ? demoRaw.data : []
+  const kpis        = kpisRaw?.data
+  const despesas    = Array.isArray(despesasRaw?.data) ? despesasRaw.data : []
+  const dre         = dreRaw?.data  // DRE mensal
+  const dreDemoAnual = Array.isArray(dreDemoAnualRaw?.data) ? dreDemoAnualRaw.data : []
+  const gastos      = Array.isArray(gastosRaw?.data) ? gastosRaw.data : []
+  const demo        = Array.isArray(demoRaw?.data) ? demoRaw.data : []
 
   function navMes(delta: number) {
     setMes(prev => {
@@ -380,11 +379,10 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       {/* ABA: DRE */}
       {aba === 'dre' && (() => {
         const { mesInicio, mesFim, anoInicio, anoFim } = calcularIntervalo()
-        // Para período multi-mês: usa dreDemoData (demonstrativo anual filtrado)
-        // O acúmulo de resultado é: soma de todos os resultados mensais do período
-        const fonteDados = periodo === 'mensal' ? demo : dreDemoData
+        // Para período multi-mês: usa dreDemoAnual (demonstrativo anual filtrado)
+        const fonteDados = periodo === 'mensal' ? [] : dreDemoAnual
         const mesesDoPeriodo = fonteDados.filter((m: any) => {
-          return m.mesNum >= mesInicio && m.mesNum <= mesFim
+          return Number(m.mesNum) >= mesInicio && Number(m.mesNum) <= mesFim
         })
         const receitaPeriodo  = mesesDoPeriodo.reduce((a: number, m: any) => a + m.receita, 0)
         const despesasPeriodo = mesesDoPeriodo.reduce((a: number, m: any) => a + m.despesas + m.fixos, 0)
@@ -393,7 +391,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         const margemPeriodo = receitaPeriodo > 0 ? (resultadoAcumulado / receitaPeriodo) * 100 : 0
 
         // Para período mensal, usa o DRE do servidor (mais preciso com gastos fixos)
-        const dreExibir = periodo === 'mensal' ? dre : null
+        const dreExibir = periodo === 'mensal' ? dre : null  // DRE mensal
 
         return (
         <div className="space-y-4">
@@ -416,10 +414,10 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             )}
           </div>
 
-          {periodo === 'mensal' && !dreExibir ? (
+          {periodo === 'mensal' && !dre ? (
             <p className="text-sm text-gray-400 text-center py-12">Carregando DRE...</p>
-          ) : mesesDoPeriodo.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-12">Sem dados para o período.</p>
+          ) : periodo !== 'mensal' && mesesDoPeriodo.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-12">Sem dados para o período. Aguarde carregar...</p>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className="bg-white rounded-xl border border-gray-100 p-5">
