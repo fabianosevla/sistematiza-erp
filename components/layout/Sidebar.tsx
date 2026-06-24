@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronRight, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
+  Search, ClipboardCheck, X, Target, Code2, ShoppingBag, Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Config } from '@/components/layout/ClientShell'
@@ -37,10 +37,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     },
   ]
 
-  // Estoque agora é um único item — Estoque Avançado virou abas dentro
-  // dele. O link aparece se o estoque básico estiver ativo OU se qualquer
-  // um dos toggles avançados estiver ligado (pra não sumir da sidebar de
-  // quem só ligou Locais/Perdas/Contagem/NFe sem o estoque básico).
   const estoqueLigado =
     config.estoqueAtivo || config.entradaNfeAtivo || config.perdaProdutoAtivo || config.contagemInventarioAtivo || config.multiplosLocaisAtivo
 
@@ -48,7 +44,13 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
     ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
     ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
-    ...(config.comprasAtivo   ? [{ label: 'Compras',           href: '/compras',    icon: ShoppingBag }]    : []),
+    ...(config.comprasAtivo   ? [{
+      label: 'Compras', icon: ShoppingBag,
+      children: [
+        { label: 'Compra Rápida',   href: '/compras?aba=rapida',   icon: Zap },
+        { label: 'Compras Avançado', href: '/compras?aba=avancado', icon: ShoppingBag },
+      ],
+    }] : []),
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
     ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
     ...(estoqueLigado         ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
@@ -64,8 +66,9 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   const allItems = [...fixos, ...modulares, ...finais]
 
   function isActive(href: string) {
-    const full = `${base}${href}`
-    return href === '' ? pathname === base : pathname.startsWith(full)
+    const path = href.split('?')[0] // ignora query string na comparação
+    const full = `${base}${path}`
+    return path === '' ? pathname === base : pathname.startsWith(full)
   }
 
   return (
@@ -103,7 +106,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
                   <ChevronRight size={12} className="transition-transform duration-200 group-hover/menu:rotate-90" />
                 </button>
                 <div className="ml-7 mt-0.5 space-y-0.5 max-h-0 overflow-hidden group-hover/menu:max-h-96 transition-[max-height] duration-200 ease-in-out">
-                  {item.children.map(child => {
+                  {item.children.map((child: any) => {
                     const active = isActive(child.href)
                     return (
                       <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}

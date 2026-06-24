@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Calculator, ClipboardList, ListChecks, Scale, ShoppingBag, PackageCheck, ShoppingCart, Plus, X, Trash2 } from 'lucide-react'
 import { Button }       from '@/components/ui/button'
@@ -35,7 +36,10 @@ export default function ComprasView({ tenantSlug }: Props) {
   const { toast } = useToast()
   const api       = `/api/${tenantSlug}/compras`
 
-  const [aba, setAba]                           = useState<Aba>('rapida')
+  const searchParams = useSearchParams()
+  const abaParam = searchParams.get('aba')
+  const abaInicial: Aba = abaParam === 'avancado' ? 'mrp' : 'rapida'
+  const [aba, setAba] = useState<Aba>(abaInicial)
   const [listaSelecionada, setListaSelecionada]   = useState<number | null>(null)
   const [pedidoSelecionado, setPedidoSelecionado] = useState<number | null>(null)
 
