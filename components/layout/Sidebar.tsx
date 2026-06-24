@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronRight, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target, Code2, ShoppingBag, Zap,
+  Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Config } from '@/components/layout/ClientShell'
@@ -47,8 +47,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.comprasAtivo   ? [{
       label: 'Compras', icon: ShoppingBag,
       children: [
-        { label: 'Compra Rápida',   href: '/compras?aba=rapida',   icon: Zap },
-        { label: 'Compras Avançado', href: '/compras?aba=avancado', icon: ShoppingBag },
+        { label: 'Compra Rápida',    href: '/compras/rapida' },
+        { label: 'Compras Avançado', href: '/compras' },
       ],
     }] : []),
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
