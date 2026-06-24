@@ -144,7 +144,7 @@ export class FinanceiroService {
     const inicio = new Date(ano, mes - 1, 1)
     const fim    = new Date(ano, mes, 0, 23, 59, 59, 999)
 
-    const [receitaData, despesasData] = await Promise.all([
+    const [receitaData, despesasData, gastosFixosData] = await Promise.all([
       this.db.select({ total: sql<number>`COALESCE(SUM(total), 0)`, qtd: count() }).from(dbVenda)
         .where(and(eq(dbVenda.activeFlag, true), gte(dbVenda.vendidaEm, inicio), lte(dbVenda.vendidaEm, fim))),
       this.withSchema(async client => {
@@ -154,14 +154,35 @@ export class FinanceiroService {
         )
         return r.rows
       }),
+      // Gastos fixos do mês também entram como despesas operacionais no DRE
+      this.withSchema(async client => {
+        const r = await client.query(
+          `SELECT gc.nome as categoria, COALESCE(SUM(gv.valor), 0) as total
+           FROM t_gasto_fixo_valor gv
+           JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
+           WHERE gv.active_flg = true AND gv.mes = $1 AND gv.ano = $2 AND gv.valor > 0
+           GROUP BY gc.nome ORDER BY gc.nome`,
+          [mes, ano]
+        )
+        return r.rows
+      }),
     ])
 
     const receita       = Number(receitaData[0]?.total ?? 0)
     const qtdVendas     = Number(receitaData[0]?.qtd ?? 0)
     const porCategoria: Record<string, number> = {}
+
+    // Despesas avulsas
     for (const row of despesasData as any[]) {
       porCategoria[row.categoria] = Number(row.total)
     }
+
+    // Gastos fixos — soma na categoria correspondente
+    for (const row of gastosFixosData as any[]) {
+      const cat = `[Fixo] ${row.categoria}`
+      porCategoria[cat] = (porCategoria[cat] ?? 0) + Number(row.total)
+    }
+
     const totalDespesas = Object.values(porCategoria).reduce((a, b) => a + b, 0)
     return { receita, qtdVendas, totalDespesas, resultado: receita - totalDespesas, porCategoria, mes, ano }
   }
