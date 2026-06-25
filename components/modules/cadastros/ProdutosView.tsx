@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, Clock, EyeOff } from 'lucide-react'
+import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,7 +12,6 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import { useDominio } from '@/hooks/useDominio'
-import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
 
 interface Props { tenantSlug: string }
@@ -36,7 +35,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [showModal, setShowModal]         = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [showFicha, setShowFicha]         = useState<any>(null)
-  const [showHistorico, setShowHistorico] = useState<any>(null)
   const [editando, setEditando]           = useState<any>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
   const [sortKey, setSortKey]             = useState<SortKey>('nome')
@@ -50,6 +48,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [estoqueMin, setEstoqueMin]   = useState('0')
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [ativo, setAtivo]             = useState(true)
+  const [revenda, setRevenda]         = useState(false)
   const [fichaInsumoId, setFichaInsumoId] = useState('')
   const [fichaQtd, setFichaQtd]           = useState('')
   const [fichaUnidade, setFichaUnidade]   = useState('')
@@ -81,7 +80,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
     mutationFn: async () => {
       const parseP = (v: string) => v ? Math.round(parseFloat(v.replace(',', '.')) * 100) : 0
       const payload = {
-        nome, tipo, unidade, activeFlag: ativo,
+        nome, tipo: revenda ? 'Revenda' : tipo, unidade, activeFlag: ativo, revenda,
         precoVarejo:   parseP(precoVarejo),
         precoAtacado:  parseP(atacados.A),
         precoAtacadoA: parseP(atacados.A),
@@ -204,6 +203,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setEstoqueMin(String(item.estoqueMinimo ?? 0))
       setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setAtivo(item.activeFlag ?? true)
+      setRevenda(item.tipo === 'Revenda' || item.revenda === true)
     } else {
       setEditando(null)
       setNome('')
@@ -214,6 +214,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setEstoqueMin('0')
       setEstoqueAtual('0')
       setAtivo(true)
+      setRevenda(false)
     }
     setShowModal(true)
   }
@@ -372,10 +373,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
                           <BookOpen size={14} />
                         </button>
                       )}
-                      <button onClick={() => setShowHistorico(p)} title="Histórico"
-                        className="p-1 text-purple-400 hover:text-purple-600">
-                        <Clock size={14} />
-                      </button>
                       {inativo ? (
                         <button onClick={() => reativarMut.mutate(p.produtoId)} title="Reativar"
                           className="p-1 text-green-400 hover:text-green-600 text-xs font-medium">↺</button>
@@ -466,10 +463,21 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-4 h-4 rounded" />
-                <span className="text-sm text-gray-700">Produto ativo</span>
-              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-4 h-4 rounded" />
+                  <span className="text-sm text-gray-700">Produto ativo</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={revenda} onChange={e => setRevenda(e.target.checked)} className="w-4 h-4 rounded" />
+                  <span className="text-sm text-gray-700">Produto para revenda</span>
+                </label>
+              </div>
+              {revenda && (
+                <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+                  Produtos de revenda aparecem na seleção de Compra Rápida.
+                </p>
+              )}
 
               {editando && (
                 <AuditoriaInfo
@@ -611,16 +619,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
         />
       )}
 
-      {/* Histórico */}
-      {showHistorico && (
-        <HistoricoModal
-          tenantSlug={tenantSlug}
-          entidade="produto"
-          entidadeId={showHistorico.produtoId}
-          titulo={showHistorico.nome}
-          onClose={() => setShowHistorico(null)}
-        />
-      )}
+
     </div>
   )
 }
