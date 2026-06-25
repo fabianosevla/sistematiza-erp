@@ -1,6 +1,6 @@
-import { and, eq, count, asc } from 'drizzle-orm'
+import { and, eq, count, asc, ilike } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
-import { dbUsuario, type TpDbUsuarioRow, type TpDbUsuarioInsert } from '@/lib/db/schemas/cadastros'
+import { dbUsuario } from '@/lib/db/schemas/cadastros'
 
 export class UsuarioService {
   constructor(private db: AppDB) {}
@@ -16,8 +16,17 @@ export class UsuarioService {
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } }
   }
 
+  async findByEmail(email: string) {
+    const [result] = await this.db
+      .select()
+      .from(dbUsuario)
+      .where(ilike(dbUsuario.email, email.trim()))
+      .limit(1)
+    return result ?? null
+  }
+
   async create(
-    payload: { clerkId: string; nome: string; email: string; perfil: string },
+    payload: { clerkId: string; nome: string; email: string; perfil: string; perfilId?: number | null },
     userId: number
   ) {
     const now = new Date()
@@ -28,6 +37,7 @@ export class UsuarioService {
         nome:      payload.nome,
         email:     payload.email,
         perfil:    payload.perfil,
+        ...(payload.perfilId != null ? { perfilId: payload.perfilId } : {}),
         createdBy: userId,
         updatedBy: userId,
         createdDt: now,
@@ -36,6 +46,21 @@ export class UsuarioService {
       .returning({ usuarioId: dbUsuario.usuarioId })
     if (!result) throw new Error('Erro ao criar usuário')
     return result
+  }
+
+  async update(id: number, payload: { nome?: string; email?: string; clerkId?: string; perfil?: string; perfilId?: number | null }) {
+    const updates: any = { updatedDt: new Date() }
+    if (payload.nome    != null) updates.nome    = payload.nome
+    if (payload.email   != null) updates.email   = payload.email
+    if (payload.clerkId != null) updates.clerkId = payload.clerkId
+    if (payload.perfil  != null) updates.perfil  = payload.perfil
+    if (payload.perfilId !== undefined) updates.perfilId = payload.perfilId
+    const [result] = await this.db
+      .update(dbUsuario)
+      .set(updates)
+      .where(eq(dbUsuario.usuarioId, id))
+      .returning({ usuarioId: dbUsuario.usuarioId })
+    return result ?? null
   }
 
   async updatePerfil(id: number, perfil: string, userId: number) {

@@ -89,7 +89,12 @@ export default function PerfisView({ tenantSlug }: Props) {
   })
 
   const excluirMut = useMutation({
-    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${api}/${id}`, { method: 'DELETE' })
+      const d   = await res.json()
+      if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir perfil')
+      return d
+    },
     onSuccess: () => { invalidate(); toast('Perfil excluído.') },
     onError:   (e: any) => toast(e.message || 'Erro ao excluir.', 'error'),
   })
@@ -196,9 +201,10 @@ export default function PerfisView({ tenantSlug }: Props) {
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => abrirModal(p)}
-                    className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                    title="Editar perfil"
+                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                   >
-                    <Shield size={13} />
+                    <Pencil size={13} />
                   </button>
                   <button
                     onClick={() => setConfirmDelete({ id: p.perfilId, nome: p.nome })}
