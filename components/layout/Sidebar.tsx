@@ -6,7 +6,7 @@ import {
   ChevronRight, ClipboardList, Factory, CreditCard,
   Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
 } from 'lucide-react'
-import { useUser } from '@clerk/nextjs'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import type { Config } from '@/components/layout/ClientShell'
 
@@ -16,13 +16,16 @@ interface Props {
 }
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
-  const pathname   = usePathname()
-  const base       = `/${tenantSlug}`
-  const { user: clerkUser } = useUser()
-  const nomeUsuario = clerkUser?.firstName
-    ? `${clerkUser.firstName} ${clerkUser.lastName ?? ''}`.trim()
-    : clerkUser?.emailAddresses?.[0]?.emailAddress ?? tenantName
-  const initials = nomeUsuario.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
+  const pathname = usePathname()
+  const base     = `/${tenantSlug}`
+
+  const { data: meuAcessoRaw } = useQuery({
+    queryKey: ['meu-acesso', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
+    staleTime: 60000,
+  })
+  const nomeUsuario = meuAcessoRaw?.data?.nome ?? tenantName
+  const initials    = nomeUsuario.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
 
   const fixos = [
     { label: 'Dashboard', href: '', icon: BarChart3 },

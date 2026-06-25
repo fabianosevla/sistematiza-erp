@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, ShoppingCart, Code2 } from 'lucide-react'
-import { useClerk, useUser } from '@clerk/nextjs'
+import { useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
 import type { Config } from './ClientShell'
@@ -38,8 +38,16 @@ export default function Header({
   const qc          = useQueryClient()
   const { toast }   = useToast()
   const { signOut } = useClerk()
-  const { user: clerkUser } = useUser()
-  const nomeUsuario = clerkUser?.firstName ? `${clerkUser.firstName} ${clerkUser.lastName ?? ''}`.trim() : clerkUser?.emailAddresses?.[0]?.emailAddress ?? ''
+
+  // Busca o usuário do BANCO (não do Clerk) — garante nome correto
+  const { data: meuAcessoRaw } = useQuery({
+    queryKey: ['meu-acesso', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
+    staleTime: 60000,
+  })
+  const usuarioDB  = meuAcessoRaw?.data
+  const nomeUsuario = usuarioDB?.nome ?? ''
+  const emailUsuario = usuarioDB?.email ?? ''
 
   const [showSettings, setShowSettings]   = useState(false)
   const [showNotifs, setShowNotifs]       = useState(false)
@@ -195,7 +203,7 @@ export default function Header({
                       </div>
                       <div className="min-w-0">
                         <p className="text-sm font-semibold text-gray-900 truncate">{nomeUsuario || 'Usuário'}</p>
-                        <p className="text-xs text-gray-400 truncate">{clerkUser?.emailAddresses?.[0]?.emailAddress ?? ''}</p>
+                        <p className="text-xs text-gray-400 truncate">{emailUsuario}</p>
                       </div>
                     </div>
                   </div>
