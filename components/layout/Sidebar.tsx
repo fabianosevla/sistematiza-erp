@@ -6,6 +6,7 @@ import {
   ChevronRight, ClipboardList, Factory, CreditCard,
   Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
 } from 'lucide-react'
+import { useUser } from '@clerk/nextjs'
 import { cn } from '@/lib/utils'
 import type { Config } from '@/components/layout/ClientShell'
 
@@ -15,9 +16,13 @@ interface Props {
 }
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
-  const pathname = usePathname()
-  const base     = `/${tenantSlug}`
-  const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  const pathname   = usePathname()
+  const base       = `/${tenantSlug}`
+  const { user: clerkUser } = useUser()
+  const nomeUsuario = clerkUser?.firstName
+    ? `${clerkUser.firstName} ${clerkUser.lastName ?? ''}`.trim()
+    : clerkUser?.emailAddresses?.[0]?.emailAddress ?? tenantName
+  const initials = nomeUsuario.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
 
   const fixos = [
     { label: 'Dashboard', href: '', icon: BarChart3 },
@@ -143,8 +148,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
             {initials}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-white/60 truncate">{tenantName}</p>
-            <p className="text-[10px] text-white/25">cliente ativo</p>
+            <p className="text-xs font-semibold text-white/80 truncate">{nomeUsuario}</p>
+            <p className="text-[10px] text-white/30 truncate">{tenantName}</p>
           </div>
         </div>
       </div>
