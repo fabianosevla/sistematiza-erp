@@ -1,28 +1,3 @@
-// app/api/[tenant]/perfis/meu-acesso/route.ts
-import type { NextRequest } from 'next/server'
-import { auth, currentUser } from '@clerk/nextjs/server'
-import { resolveTenant } from '@/lib/auth/tenant'
-import { getDbForTenant } from '@/lib/db/connection'
-import { PerfisService } from '@/lib/services/perfis/PerfisService'
-import { ok, serverError } from '@/lib/api/responses'
-
-type Params = { params: { tenant: string } }
-
-export async function GET(req: NextRequest, { params }: Params) {
-  try {
-    const { userId } = await auth()
-    if (!userId) throw new Error('UNAUTHORIZED')
-
-    const user = await currentUser()
-    const tenant = await resolveTenant(params.tenant)
-    const { db, release } = await getDbForTenant(tenant.schemaName)
-    try {
-      const service = new PerfisService(db)
-      const acessos = await service.getAcessosUsuario(userId)
-      return ok(acessos)
-    } finally { release() }
-  } catch (err) { return serverError(err) }
-}
 // @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
@@ -43,7 +18,6 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
-      // Busca dados do usuário logado no banco do tenant
       const result = await client.query(
         `SELECT u.usuario_id, u.nome, u.email, u.perfil, u.perfil_id,
                 p.is_admin, p.acesso_gerencial, p.acesso_pdv, p.acesso_comanda, p.acesso_delivery,
@@ -66,11 +40,11 @@ export async function GET(req: NextRequest, { params }: Params) {
       const isAdmin = row.is_admin ?? (row.perfil === 'admin')
 
       return ok({
-        usuarioId:  row.usuario_id,
-        nome:       row.nome,
-        email:      row.email,
-        perfil:     row.perfil,
-        perfilId:   row.perfil_id,
+        usuarioId:       row.usuario_id,
+        nome:            row.nome,
+        email:           row.email,
+        perfil:          row.perfil,
+        perfilId:        row.perfil_id,
         isAdmin,
         acessoGerencial: isAdmin || row.acesso_gerencial,
         acessoPdv:       isAdmin || row.acesso_pdv,
