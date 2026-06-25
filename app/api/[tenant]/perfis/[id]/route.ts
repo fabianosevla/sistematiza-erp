@@ -1,62 +1,94 @@
-// app/api/[tenant]/perfis/route.ts
+// @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
+import { eq } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { PerfisService } from '@/lib/services/perfis/PerfisService'
-import { ok, created, serverError } from '@/lib/api/responses'
+import { dbUsuario } from '@/lib/db/schemas/cadastros'
+import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
 
-type Params = { params: { tenant: string } }
+type Params = { params: { tenant: string; id: string } }
+
+const schema = z.object({
+  nome:      z.string().min(2).max(100).optional(),
+  descricao: z.string().max(300).optional(),
+  acessoGerencial: z.boolean().optional(),
+  acessoPdv:       z.boolean().optional(),
+  acessoComanda:   z.boolean().optional(),
+  acessoDelivery:  z.boolean().optional(),
+  moduloDashboard:  z.boolean().optional(),
+  moduloCadastros:  z.boolean().optional(),
+  moduloVendas:     z.boolean().optional(),
+  moduloFinanceiro: z.boolean().optional(),
+  moduloEstoque:    z.boolean().optional(),
+  moduloProducao:   z.boolean().optional(),
+  moduloPedidos:    z.boolean().optional(),
+  moduloComandas:   z.boolean().optional(),
+  moduloConsultas:  z.boolean().optional(),
+  moduloFiscal:     z.boolean().optional(),
+  moduloPlanoAcao:  z.boolean().optional(),
+  moduloMetas:      z.boolean().optional(),
+  moduloUsuarios:   z.boolean().optional(),
+  percDescontoMax:  z.number().min(0).max(100).optional(),
+  valorDescontoMax: z.number().int().min(0).optional(),
+  isAdmin:          z.boolean().optional(),
+})
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      return ok(await new PerfisService(db).list())
+      const perfil = await new PerfisService(db).findById(Number(params.id))
+      if (!perfil) return notFound('Perfil não encontrado')
+      return ok(perfil)
     } finally { release() }
   } catch (err) { return serverError(err) }
 }
 
-const schema = z.object({
-  nome:      z.string().min(2).max(100),
-  descricao: z.string().max(300).optional(),
-
-  acessoGerencial: z.boolean().default(false),
-  acessoPdv:       z.boolean().default(false),
-  acessoComanda:   z.boolean().default(false),
-  acessoDelivery:  z.boolean().default(false),
-
-  moduloDashboard:  z.boolean().default(true),
-  moduloCadastros:  z.boolean().default(true),
-  moduloVendas:     z.boolean().default(true),
-  moduloFinanceiro: z.boolean().default(false),
-  moduloEstoque:    z.boolean().default(false),
-  moduloProducao:   z.boolean().default(false),
-  moduloPedidos:    z.boolean().default(false),
-  moduloComandas:   z.boolean().default(false),
-  moduloConsultas:  z.boolean().default(false),
-  moduloFiscal:     z.boolean().default(false),
-  moduloPlanoAcao:  z.boolean().default(false),
-  moduloMetas:      z.boolean().default(false),
-  moduloUsuarios:   z.boolean().default(false),
-
-  percDescontoMax:  z.number().min(0).max(100).default(0),
-  valorDescontoMax: z.number().int().min(0).default(0),
-  isAdmin:          z.boolean().default(false),
-})
-
-export async function POST(req: NextRequest, { params }: Params) {
+export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
+      const id      = Number(params.id)
       const payload = schema.parse(await req.json())
-      return created(await new PerfisService(db).criar({
+      const perfil  = await new PerfisService(db).findById(id)
+      if (!perfil) return notFound('Perfil não encontrado')
+      const updated = await new PerfisService(db).atualizar(id, {
         ...payload,
-        percDescontoMax: String(payload.percDescontoMax),
-        activeFlag: true,
-      }, 1))
+        percDescontoMax: payload.percDescontoMax !== undefined
+          ? String(payload.percDescontoMax)
+          : undefined,
+      }, 1)
+      return ok(updated)
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const id = Number(params.id)
+
+      // Verifica se há usuários vinculados ao perfil
+      const usuarios = await db
+        .select({ usuarioId: dbUsuario.usuarioId, nome: dbUsuario.nome })
+        .from(dbUsuario)
+        .where(eq((dbUsuario as any).perfilId, id))
+
+      if (usuarios.length > 0) {
+        return badRequest(
+          `Não é possível excluir este perfil pois ${usuarios.length} usuário(s) estão vinculados a ele: ${usuarios.map(u => u.nome).join(', ')}.`
+        )
+      }
+
+      const result = await new PerfisService(db).excluir(id, 1)
+      if (!result) return notFound('Perfil não encontrado')
+      return ok({ excluido: true })
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

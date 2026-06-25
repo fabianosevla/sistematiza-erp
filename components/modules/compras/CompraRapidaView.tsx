@@ -298,7 +298,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
                 </div>
                 <div>
                   <Label>Quantidade *</Label>
-                  <Input type="number" min="0" step="0.001" value={form.quantidade}
+                  <Input type="number" min="0" step="1" value={form.quantidade}
                     onChange={e => setF('quantidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0" />
                 </div>
                 <div>
