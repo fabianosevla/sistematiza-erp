@@ -52,7 +52,27 @@ export async function GET(req: NextRequest, { params }: Params) {
         unidade:       p.unidade,
       }))
 
-      return ok({ produtos, grade, inicio, fim })
+      // Pedidos da semana (por produto e data de previsão de produção)
+      const pedidosRes = await client.query(`
+        SELECT pi.produto_id, 
+               COALESCE(p.previsao_producao, p.data_pedido)::date as data_ref,
+               SUM(pi.quantidade) as qtd
+        FROM t_pedido_item pi
+        JOIN t_pedido p ON pi.pedido_id = p.pedido_id
+        WHERE p.active_flg = true
+          AND p.status IN ('pendente', 'producao')
+          AND COALESCE(p.previsao_producao, p.data_pedido)::date BETWEEN $1::date AND $2::date
+        GROUP BY pi.produto_id, COALESCE(p.previsao_producao, p.data_pedido)::date
+      `, [inicio, fim]).catch(() => ({ rows: [] }))
+
+      const pedidos: Record<number, Record<string, number>> = {}
+      for (const row of pedidosRes.rows) {
+        const data = row.data_ref instanceof Date ? row.data_ref.toISOString().slice(0, 10) : String(row.data_ref).slice(0, 10)
+        if (!pedidos[row.produto_id]) pedidos[row.produto_id] = {}
+        pedidos[row.produto_id][data] = Number(row.qtd)
+      }
+
+      return ok({ produtos, grade, pedidos, inicio, fim })
     } finally {
       client.release()
     }

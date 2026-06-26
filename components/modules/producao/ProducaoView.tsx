@@ -22,10 +22,12 @@ function fmtDate(d: Date) { return d.toLocaleDateString('pt-BR', { day: '2-digit
 function isoDate(d: Date) { return d.toISOString().slice(0, 10) }
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
+type CelulaKey = { produtoId: number; data: string; tipo: 'producao' | 'pedido' }
+
 export default function ProducaoView({ tenantSlug }: Props) {
   const qc = useQueryClient()
   const [weekOffset, setWeekOffset]         = useState(0)
-  const [editandoCelula, setEditandoCelula] = useState<{ produtoId: number; data: string; tipo: 'producao' | 'pedido' } | null>(null)
+  const [editandoCelula, setEditandoCelula] = useState<CelulaKey | null>(null)
   const [valorCelula, setValorCelula]       = useState('')
   const [showPrevisao, setShowPrevisao]     = useState(false)
   const [showBaixa, setShowBaixa]           = useState(false)
@@ -38,11 +40,10 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const dias   = getWeekDates(weekOffset)
   const inicio = isoDate(dias[0])
   const fim    = isoDate(dias[5])
-  const apiGrade = `/api/${tenantSlug}/producao/grade`
 
   const { data: gradeData } = useQuery({
     queryKey: ['producao-grade', tenantSlug, inicio, fim],
-    queryFn:  async () => (await fetch(`${apiGrade}?inicio=${inicio}&fim=${fim}`)).json(),
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/grade?inicio=${inicio}&fim=${fim}`)).json(),
   })
 
   const { data: previsaoData } = useQuery({
@@ -51,33 +52,40 @@ export default function ProducaoView({ tenantSlug }: Props) {
     enabled:  showPrevisao,
   })
 
+  // Previsão semanal necessária — média histórica de todos os meses anteriores ÷ 4
+  const { data: prevSemanalData } = useQuery({
+    queryKey: ['previsao-semanal', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/metas?tipo=previsao&mes=${new Date().getMonth() + 1}&ano=${new Date().getFullYear()}&mesesHistorico=12`)).json(),
+    staleTime: 300000, // 5 min
+  })
+
   const { data: produtosData } = useQuery({
     queryKey: ['produtos-select', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos`)).json(),
   })
 
-  // Pedidos da semana para mostrar na grade
-  const { data: pedidosData } = useQuery({
-    queryKey: ['pedidos-semana', tenantSlug, inicio, fim],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/pedidos?inicio=${inicio}&fim=${fim}&status=pendente`)).json(),
-  })
-
   const salvarCelulaMut = useMutation({
-    mutationFn: ({ produtoId, data, quantidade }: any) => fetch(apiGrade, {
+    mutationFn: ({ produtoId, data, quantidade, tipo }: any) => fetch(`/api/${tenantSlug}/producao/grade`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ produtoId, dataProducao: data, quantidade: Number(quantidade) }),
+      body: JSON.stringify({ produtoId, dataProducao: data, quantidade: Number(quantidade), tipo }),
     }).then(r => r.json()),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] }),
   })
 
-  function salvarCelula(produtoId: number, data: string) {
-    salvarCelulaMut.mutate({ produtoId, data, quantidade: valorCelula })
+  function iniciarEdicao(produtoId: number, data: string, tipo: 'producao' | 'pedido', valorAtual: number) {
+    setEditandoCelula({ produtoId, data, tipo })
+    setValorCelula(String(valorAtual || ''))
+  }
+
+  function salvarCelula(produtoId: number, data: string, tipo: 'producao' | 'pedido') {
+    salvarCelulaMut.mutate({ produtoId, data, quantidade: valorCelula || '0', tipo })
     setEditandoCelula(null)
   }
 
-  const grade    = gradeData?.data ?? gradeData ?? {}
-  const produtos = Array.isArray(grade.produtos) ? grade.produtos : []
-  const celulas  = grade.grade ?? {}
+  const grade        = gradeData?.data ?? gradeData ?? {}
+  const produtos     = Array.isArray(grade.produtos) ? grade.produtos : []
+  const celulas      = grade.grade ?? {}         // grade[produtoId][data] = qtd produção
+  const celulasPed   = grade.pedidos ?? {}       // pedidos[produtoId][data] = qtd pedido
 
   const previsao = Array.isArray(previsaoData?.data) ? previsaoData.data
     : Array.isArray(previsaoData) ? previsaoData : []
@@ -85,27 +93,23 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const todosProdutos = Array.isArray(produtosData?.data?.data) ? produtosData.data.data
     : Array.isArray(produtosData?.data) ? produtosData.data : []
 
-  // Monta mapa de pedidos por produto por dia
-  const pedidosList = Array.isArray(pedidosData?.data) ? pedidosData.data : []
-  const pedidosPorProdutoDia: Record<number, Record<string, number>> = {}
-  for (const pedido of pedidosList) {
-    const dataPrev = pedido.previsaoProducao?.slice(0, 10) ?? pedido.dataPedido?.slice(0, 10)
-    if (!dataPrev) continue
-    for (const item of pedido.itens ?? []) {
-      if (!pedidosPorProdutoDia[item.produtoId]) pedidosPorProdutoDia[item.produtoId] = {}
-      pedidosPorProdutoDia[item.produtoId][dataPrev] = (pedidosPorProdutoDia[item.produtoId][dataPrev] ?? 0) + (item.quantidade ?? 0)
-    }
+  // Mapa de previsão semanal por produto (média histórica ÷ 4)
+  const prevSemanal: Record<number, number> = {}
+  const prevProdutos = previsaoRaw?.data?.produtos ?? prevSemanalData?.data?.produtos ?? []
+  for (const p of prevProdutos) {
+    prevSemanal[p.produtoId] = Math.ceil((p.mediaVendas ?? 0) / 4)
   }
 
   async function verPreviewBaixa() {
     if (!produtoBaixa || !qtdBaixa) return
     setLoadingBaixa(true)
     try {
-      const res  = await fetch(`/api/${tenantSlug}/producao/baixar-insumos`, {
+      const res = await fetch(`/api/${tenantSlug}/producao/baixar-insumos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ produtoId: produtoBaixa.produtoId, quantidade: Number(qtdBaixa), confirmar: false }),
       })
-      setPreviewBaixa((await res.json())?.data ?? (await res.json()))
+      const data = await res.json()
+      setPreviewBaixa(data?.data ?? data)
     } finally { setLoadingBaixa(false) }
   }
 
@@ -113,7 +117,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
     if (!produtoBaixa || !qtdBaixa) return
     setLoadingBaixa(true)
     try {
-      const res  = await fetch(`/api/${tenantSlug}/producao/baixar-insumos`, {
+      const res = await fetch(`/api/${tenantSlug}/producao/baixar-insumos`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ produtoId: produtoBaixa.produtoId, quantidade: Number(qtdBaixa), confirmar: true }),
       })
@@ -128,6 +132,37 @@ export default function ProducaoView({ tenantSlug }: Props) {
     setPreviewBaixa(null); setResultadoBaixa(null)
   }
 
+  function CelulaEditavel({ produtoId, data, tipo, valor, cor }: { produtoId: number; data: string; tipo: 'producao' | 'pedido'; valor: number; cor: string }) {
+    const isEdit = editandoCelula?.produtoId === produtoId && editandoCelula?.data === data && editandoCelula?.tipo === tipo
+    if (isEdit) {
+      return (
+        <input type="number" min="0" value={valorCelula}
+          onChange={e => setValorCelula(e.target.value)}
+          onBlur={() => salvarCelula(produtoId, data, tipo)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') salvarCelula(produtoId, data, tipo)
+            if (e.key === 'Escape') setEditandoCelula(null)
+          }}
+          className="w-10 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
+      )
+    }
+    return (
+      <button onClick={() => iniciarEdicao(produtoId, data, tipo, valor)}
+        className={`w-10 h-6 rounded text-xs font-medium transition-colors ${valor > 0 ? `${cor} hover:opacity-80` : 'text-gray-200 hover:bg-gray-100'}`}>
+        {valor > 0 ? valor : '—'}
+      </button>
+    )
+  }
+
+  // Totais por coluna
+  const totaisPedDia: Record<string, number> = {}
+  const totaisPrevDia: Record<string, number> = {}
+  for (const dia of dias) {
+    const d = isoDate(dia)
+    totaisPedDia[d]  = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
+    totaisPrevDia[d] = produtos.reduce((a: number, p: any) => a + (celulas?.[p.produtoId]?.[d] ?? 0), 0)
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -137,7 +172,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowPrevisao(!showPrevisao)}>
-            {showPrevisao ? 'Ocultar Previsão' : 'Ver Previsão de Insumos'}
+            {showPrevisao ? 'Ocultar Previsão Insumos' : 'Ver Previsão de Insumos'}
           </Button>
           <Button onClick={() => setShowBaixa(true)}>
             <Factory size={14} className="mr-1.5" /> Registrar Produção
@@ -161,120 +196,107 @@ export default function ProducaoView({ tenantSlug }: Props) {
           <table className="w-full min-w-max text-xs">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-40">Produto</th>
-                <th className="text-center text-xs font-medium text-gray-400 px-3 py-3 w-20">Estoque</th>
+                <th className="text-left text-xs font-medium text-gray-500 px-3 py-2 w-36 sticky left-0 bg-gray-50">Produto</th>
+                <th className="text-center text-xs font-medium text-gray-500 px-2 py-2 w-16">Estoque</th>
                 {DIAS.map((d, i) => (
-                  <th key={d} className="text-center text-xs font-medium text-gray-400 px-1 py-2" colSpan={2}>
-                    <div>{d}</div>
-                    <div className="font-normal text-gray-300 text-[10px]">{fmtDate(dias[i])}</div>
-                    <div className="grid grid-cols-2 gap-0 mt-1 text-[9px] font-normal text-gray-300">
-                      <span className="text-center">Pedido</span>
-                      <span className="text-center">Prev.</span>
+                  <th key={d} className="text-center text-xs font-medium text-gray-400 px-0 py-1" colSpan={2}>
+                    <div className="font-semibold text-gray-600">{d}</div>
+                    <div className="text-[10px] text-gray-400">{fmtDate(dias[i])}</div>
+                    <div className="grid grid-cols-2 text-[9px] text-gray-300 mt-0.5">
+                      <span className="text-blue-400">Ped</span>
+                      <span className="text-green-500">PP</span>
                     </div>
                   </th>
                 ))}
-                <th className="text-center text-xs font-medium text-gray-400 px-3 py-3 w-24">Total Ped.</th>
-                <th className="text-center text-xs font-medium text-gray-400 px-3 py-3 w-24">Prev. Estoque</th>
+                <th className="text-center text-xs font-medium text-blue-600 px-2 py-2 w-20">Total Ped.</th>
+                <th className="text-center text-xs font-medium text-gray-500 px-2 py-2 w-20">Prev. Est.</th>
+                <th className="text-center text-xs font-bold text-orange-600 px-2 py-2 w-24 bg-orange-50">Prod. Semanal Necessária</th>
               </tr>
             </thead>
             <tbody>
               {produtos.length === 0 ? (
-                <tr><td colSpan={3 + DIAS.length * 2} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
+                <tr><td colSpan={3 + DIAS.length * 2 + 3} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
               ) : produtos.map((p: any) => {
-                const estoqueAtual = p.estoqueAtual ?? 0
-                let totalPedidosSemana = 0
-                let totalPrevisaoSemana = 0
+                const estoque = p.estoqueAtual ?? 0
+                let totalPed = 0, totalPrev = 0
 
                 return (
-                  <tr key={p.produtoId} className="border-b border-gray-50 last:border-0">
-                    <td className="px-4 py-2.5 text-sm font-medium text-gray-900 whitespace-nowrap">{p.nome}</td>
-                    <td className="px-3 py-2.5 text-center">
-                      <span className={`text-xs font-semibold ${estoqueAtual <= (p.estoqueMinimo ?? 0) ? 'text-red-600' : 'text-green-600'}`}>
-                        {estoqueAtual}
-                      </span>
+                  <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/30 last:border-0">
+                    <td className="px-3 py-2 text-xs font-medium text-gray-900 sticky left-0 bg-white whitespace-nowrap max-w-[140px] truncate">{p.nome}</td>
+                    <td className="px-2 py-2 text-center">
+                      <span className={`text-xs font-semibold ${estoque <= (p.estoqueMinimo ?? 0) ? 'text-red-600' : 'text-gray-700'}`}>{estoque}</span>
                     </td>
                     {dias.map(dia => {
-                      const dataStr = isoDate(dia)
-                      const previsao_val = celulas?.[p.produtoId]?.[dataStr] ?? 0
-                      const pedido_val  = pedidosPorProdutoDia[p.produtoId]?.[dataStr] ?? 0
-                      const isEdit = editandoCelula?.produtoId === p.produtoId && editandoCelula?.data === dataStr && editandoCelula?.tipo === 'producao'
-                      totalPedidosSemana += pedido_val
-                      totalPrevisaoSemana += previsao_val
-
+                      const d = isoDate(dia)
+                      const ped  = celulasPed?.[p.produtoId]?.[d] ?? 0
+                      const prev = celulas?.[p.produtoId]?.[d] ?? 0
+                      totalPed  += ped
+                      totalPrev += prev
                       return (
                         <>
-                          {/* Pedido */}
-                          <td key={`ped-${dataStr}`} className="px-1 py-2 text-center">
-                            <span className={`text-xs ${pedido_val > 0 ? 'text-blue-600 font-medium' : 'text-gray-200'}`}>
-                              {pedido_val > 0 ? pedido_val : '—'}
-                            </span>
+                          <td key={`ped-${d}`} className="px-0.5 py-1 text-center">
+                            <CelulaEditavel produtoId={p.produtoId} data={d} tipo="pedido" valor={ped} cor="bg-blue-100 text-blue-700" />
                           </td>
-                          {/* Previsão de produção (editável) */}
-                          <td key={`prev-${dataStr}`} className="px-1 py-2 text-center">
-                            {isEdit ? (
-                              <input type="number" min="0" value={valorCelula}
-                                onChange={e => setValorCelula(e.target.value)}
-                                onBlur={() => salvarCelula(p.produtoId, dataStr)}
-                                onKeyDown={e => { if (e.key === 'Enter') salvarCelula(p.produtoId, dataStr); if (e.key === 'Escape') setEditandoCelula(null) }}
-                                className="w-12 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
-                            ) : (
-                              <button
-                                onClick={() => { setEditandoCelula({ produtoId: p.produtoId, data: dataStr, tipo: 'producao' }); setValorCelula(String(previsao_val || '')) }}
-                                className={`w-12 h-6 rounded text-xs font-medium transition-colors ${previsao_val > 0 ? 'bg-green-100 text-green-800 hover:bg-green-200' : 'text-gray-200 hover:bg-gray-100'}`}>
-                                {previsao_val > 0 ? previsao_val : '—'}
-                              </button>
-                            )}
+                          <td key={`prev-${d}`} className="px-0.5 py-1 text-center">
+                            <CelulaEditavel produtoId={p.produtoId} data={d} tipo="producao" valor={prev} cor="bg-green-100 text-green-700" />
                           </td>
                         </>
                       )
                     })}
-                    <td className="px-3 py-2.5 text-center">
-                      <span className={`text-xs font-semibold ${totalPedidosSemana > 0 ? 'text-blue-700' : 'text-gray-300'}`}>
-                        {totalPedidosSemana > 0 ? totalPedidosSemana : '—'}
-                      </span>
+                    <td className="px-2 py-2 text-center">
+                      <span className={`text-xs font-semibold ${totalPed > 0 ? 'text-blue-700' : 'text-gray-200'}`}>{totalPed > 0 ? totalPed : '—'}</span>
                     </td>
-                    <td className="px-3 py-2.5 text-center">
-                      <span className={`text-xs font-semibold ${(estoqueAtual + totalPrevisaoSemana - totalPedidosSemana) >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                        {estoqueAtual + totalPrevisaoSemana - totalPedidosSemana}
-                      </span>
+                    <td className="px-2 py-2 text-center">
+                      {(() => {
+                        const prevEst = estoque + totalPrev - totalPed
+                        return <span className={`text-xs font-semibold ${prevEst < 0 ? 'text-red-600' : 'text-gray-700'}`}>{prevEst}</span>
+                      })()}
+                    </td>
+                    <td className="px-2 py-2 text-center bg-orange-50">
+                      {(() => {
+                        const ps = prevSemanal[p.produtoId] ?? 0
+                        return <span className={`text-xs font-bold ${ps > 0 ? 'text-orange-600' : 'text-gray-300'}`}>{ps > 0 ? ps : '—'}</span>
+                      })()}
                     </td>
                   </tr>
                 )
               })}
             </tbody>
-            {/* Somatório */}
+            {/* Totais */}
             {produtos.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
-                  <td className="px-4 py-2 text-xs font-bold text-gray-600">Total</td>
-                  <td className="px-3 py-2 text-center text-xs font-bold text-gray-600">
+                  <td className="px-3 py-2 text-xs font-bold text-gray-600 sticky left-0 bg-gray-50">Total Geral ({produtos.length})</td>
+                  <td className="px-2 py-2 text-center text-xs font-bold text-gray-700">
                     {produtos.reduce((a: number, p: any) => a + (p.estoqueAtual ?? 0), 0)}
                   </td>
                   {dias.map(dia => {
-                    const dataStr = isoDate(dia)
-                    const totPed  = produtos.reduce((a: number, p: any) => a + (pedidosPorProdutoDia[p.produtoId]?.[dataStr] ?? 0), 0)
-                    const totPrev = produtos.reduce((a: number, p: any) => a + (celulas?.[p.produtoId]?.[dataStr] ?? 0), 0)
+                    const d = isoDate(dia)
                     return (
                       <>
-                        <td key={`tot-ped-${dataStr}`} className="px-1 py-2 text-center text-xs font-bold text-blue-600">{totPed > 0 ? totPed : '—'}</td>
-                        <td key={`tot-prev-${dataStr}`} className="px-1 py-2 text-center text-xs font-bold text-green-600">{totPrev > 0 ? totPrev : '—'}</td>
+                        <td key={`tot-ped-${d}`} className="px-0.5 py-2 text-center text-xs font-bold text-blue-600">{totaisPedDia[d] > 0 ? totaisPedDia[d] : '—'}</td>
+                        <td key={`tot-prev-${d}`} className="px-0.5 py-2 text-center text-xs font-bold text-green-600">{totaisPrevDia[d] > 0 ? totaisPrevDia[d] : '—'}</td>
                       </>
                     )
                   })}
-                  <td className="px-3 py-2 text-center text-xs font-bold text-blue-700">
-                    {produtos.reduce((a: number, p: any) => a + Object.values(pedidosPorProdutoDia[p.produtoId] ?? {}).reduce((s: number, v: any) => s + v, 0), 0) || '—'}
+                  <td className="px-2 py-2 text-center text-xs font-bold text-blue-700">
+                    {Object.values(totaisPedDia).reduce((a: number, v) => a + v, 0) || '—'}
                   </td>
-                  <td className="px-3 py-2 text-center text-xs font-bold text-gray-600">—</td>
+                  <td className="px-2 py-2 text-center text-xs text-gray-400">—</td>
+                  <td className="px-2 py-2 text-center text-xs font-bold text-orange-600 bg-orange-50">
+                    {Object.values(prevSemanal).reduce((a, v) => a + v, 0) || '—'}
+                  </td>
                 </tr>
               </tfoot>
             )}
           </table>
         </div>
         {/* Legenda */}
-        <div className="px-4 py-2 border-t border-gray-100 flex gap-4 text-[10px] text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido (automático)</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" /> Previsão de produção (editável — clique para editar)</span>
-          <span className="flex items-center gap-1 text-gray-300">Prev. Estoque = Estoque + Produção − Pedidos</span>
+        <div className="px-4 py-2 border-t border-gray-100 flex gap-4 flex-wrap text-[10px] text-gray-400">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido — editável</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" /> Previsão de Produção (PP) — editável</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-100 inline-block" /> Prod. Necessária = média histórica ÷ 4 semanas</span>
+          <span className="text-gray-300">Prev. Est. = Estoque + Produção − Pedidos</span>
         </div>
       </div>
 
@@ -283,7 +305,6 @@ export default function ProducaoView({ tenantSlug }: Props) {
         <div className="mt-4 bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
             <h3 className="text-sm font-semibold text-gray-700">Previsão de Insumos — semana atual</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Calculado com base na grade e ficha técnica de cada produto</p>
           </div>
           {previsao.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-gray-400">Sem produção planejada ou fichas técnicas não cadastradas.</p>
@@ -350,36 +371,28 @@ export default function ProducaoView({ tenantSlug }: Props) {
                     </Button>
                   )}
                   {previewBaixa && (
-                    <div>
+                    <>
                       {!previewBaixa.temFicha ? (
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                           <p className="text-sm text-amber-700">{previewBaixa.message}</p>
                         </div>
                       ) : (
                         <>
-                          <div className="border border-gray-100 rounded-lg overflow-hidden mb-4">
-                            <table className="w-full">
-                              <thead><tr className="border-b border-gray-100 bg-gray-50">
-                                {['Insumo', 'Consumo', 'Estoque Atual', 'Ficará'].map((h, i) => (
-                                  <th key={h} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-3 py-2`}>{h}</th>
-                                ))}
-                              </tr></thead>
-                              <tbody>
-                                {previewBaixa.itens?.map((item: any, i: number) => (
-                                  <tr key={i} className={`border-b border-gray-50 last:border-0 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
-                                    <td className="px-3 py-2 text-sm font-medium text-gray-900">{item.nomeInsumo}</td>
-                                    <td className="px-3 py-2 text-center text-sm text-gray-600">{item.qtdNecessaria.toFixed(3)} {item.unidade}</td>
-                                    <td className="px-3 py-2 text-center text-sm text-gray-600">{item.estoqueAtual.toFixed(3)}</td>
-                                    <td className="px-3 py-2 text-center text-sm">
-                                      <span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
-                                        {Math.max(0, item.estoqueRestante).toFixed(3)}{!item.suficiente && <span className="text-xs ml-1">(insuficiente)</span>}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
+                          <table className="w-full border border-gray-100 rounded-lg overflow-hidden">
+                            <thead><tr className="bg-gray-50">
+                              {['Insumo','Consumo','Estoque','Ficará'].map((h,i) => <th key={h} className={`text-xs font-medium text-gray-400 px-3 py-2 ${i===0?'text-left':'text-center'}`}>{h}</th>)}
+                            </tr></thead>
+                            <tbody>
+                              {previewBaixa.itens?.map((item: any, i: number) => (
+                                <tr key={i} className={`border-t border-gray-50 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
+                                  <td className="px-3 py-2 text-sm font-medium text-gray-900">{item.nomeInsumo}</td>
+                                  <td className="px-3 py-2 text-center text-sm">{item.qtdNecessaria.toFixed(3)} {item.unidade}</td>
+                                  <td className="px-3 py-2 text-center text-sm">{item.estoqueAtual.toFixed(3)}</td>
+                                  <td className="px-3 py-2 text-center text-sm"><span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{Math.max(0, item.estoqueRestante).toFixed(3)}</span></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                           <div className="flex gap-3">
                             <Button variant="outline" className="flex-1" onClick={() => setPreviewBaixa(null)}>Recalcular</Button>
                             <Button className="flex-1" onClick={confirmarBaixa} disabled={loadingBaixa}>
@@ -388,7 +401,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                           </div>
                         </>
                       )}
-                    </div>
+                    </>
                   )}
                 </>
               ) : (

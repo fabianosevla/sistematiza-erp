@@ -95,6 +95,8 @@ export default function VendasView({ tenantSlug }: Props) {
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [clienteId, setClienteId]             = useState('')
+  const [buscaCliente, setBuscaCliente]       = useState('')
+  const [clienteNomeDisplay, setClienteNomeDisplay] = useState('')
   const [tipoEntrega, setTipoEntrega]         = useState('')
   // Horário local (não UTC) — evita defasagem de 3h no Brasil
   const localNow = () => {
@@ -134,8 +136,9 @@ export default function VendasView({ tenantSlug }: Props) {
   })
 
   const { data: clientesRaw } = useQuery({
-    queryKey: ['clientes-select', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=500`)).json(),
+    queryKey: ['clientes-select', tenantSlug, buscaCliente],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=8&search=${encodeURIComponent(buscaCliente)}`)).json(),
+    enabled:  buscaCliente.length > 1,
   })
 
   const { data: formasRaw } = useQuery({
@@ -221,7 +224,7 @@ export default function VendasView({ tenantSlug }: Props) {
     setShowModal(false)
     setItens([novoItem()])
     setPagamentos([{ forma: formasNomes[0] ?? 'PIX', valor: '' }])
-    setClienteId(''); setTipoEntrega(''); setVendidaEm(new Date().toISOString().slice(0, 16))
+    setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setTipoEntrega(''); setVendidaEm(new Date().toISOString().slice(0, 16))
     setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0'); setVendidaEm(localNow())
   }
 
