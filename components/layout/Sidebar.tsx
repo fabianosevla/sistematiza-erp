@@ -89,13 +89,13 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
       style={{ backgroundColor: '#0F1117' }}>
 
       <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5">
-        <div className="flex items-center gap-2">
+        <Link href={base} onClick={onClose} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <Code2 size={18} style={{ color: '#2ecc71' }} />
           <div className="flex items-baseline">
             <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
             <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
           </div>
-        </div>
+        </Link>
         <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">
           <X size={16} />
         </button>
