@@ -95,7 +95,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
 
   // Mapa de previsão semanal por produto (média histórica ÷ 4)
   const prevSemanal: Record<number, number> = {}
-  const prevProdutos = previsaoRaw?.data?.produtos ?? prevSemanalData?.data?.produtos ?? []
+  const prevProdutos = prevSemanalData?.data?.produtos ?? []
   for (const p of prevProdutos) {
     prevSemanal[p.produtoId] = Math.ceil((p.mediaVendas ?? 0) / 4)
   }
