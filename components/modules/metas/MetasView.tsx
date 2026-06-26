@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, Target, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight, Lightbulb, Calculator, Plus } from 'lucide-react'
+import { X, Target, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight, Lightbulb, Calculator, Plus, BarChart2 } from 'lucide-react'
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
 import { Label }    from '@/components/ui/label'
@@ -18,7 +18,7 @@ export default function MetasView({ tenantSlug }: Props) {
   const api       = `/api/${tenantSlug}/metas`
   const now       = new Date()
 
-  const [aba, setAba]               = useState<'metas'|'simulador'>('metas')
+  const [aba, setAba]               = useState<'metas'|'simulador'|'previsao'>('metas')
   const [mes, setMes]               = useState(now.getMonth() + 1)
   const [ano, setAno]               = useState(now.getFullYear())
   const [showEditMeta, setShowEditMeta] = useState(false)
@@ -28,6 +28,7 @@ export default function MetasView({ tenantSlug }: Props) {
   const [simItens, setSimItens]     = useState<SimItem[]>([{ _key: '1', produtoId: 0, nome: '', quantidade: 1 }])
   const [simulado, setSimulado]     = useState<any>(null)
   const [simLoading, setSimLoading] = useState(false)
+  const [previsaoMeses, setPrevisaoMeses] = useState(3) // quantos meses de histórico usar
 
   function navMes(d: number) {
     let m = mes + d; let a = ano
@@ -44,6 +45,13 @@ export default function MetasView({ tenantSlug }: Props) {
   const { data: produtosRaw } = useQuery({
     queryKey: ['produtos-metas', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=500`)).json(),
+  })
+
+  // Previsão de produção — busca histórico de vendas dos últimos N meses
+  const { data: previsaoRaw, isLoading: loadingPrevisao } = useQuery({
+    queryKey: ['previsao-producao', tenantSlug, mes, ano, previsaoMeses],
+    queryFn:  async () => (await fetch(`${api}?tipo=previsao&mes=${mes}&ano=${ano}&mesesHistorico=${previsaoMeses}`)).json(),
+    enabled:  aba === 'previsao',
   })
 
   const salvarMetaMut = useMutation({
@@ -77,6 +85,7 @@ export default function MetasView({ tenantSlug }: Props) {
   const real     = dados?.real
   const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
   const eMesAtual = mes === now.getMonth() + 1 && ano === now.getFullYear()
+  const previsao = previsaoRaw?.data
 
   function ProgressBar({ value, max, invertColor = false }: { value: number; max: number; invertColor?: boolean }) {
     if (max <= 0) return null
@@ -105,8 +114,13 @@ export default function MetasView({ tenantSlug }: Props) {
         </div>
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
-        {([{ value: 'metas', label: 'Metas', icon: Target }, { value: 'simulador', label: 'Simulador', icon: Calculator }] as const).map(a => (
+        {([
+          { value: 'metas',    label: 'Metas',    icon: Target },
+          { value: 'simulador',label: 'Simulador',icon: Calculator },
+          { value: 'previsao', label: 'Previsão de Produção', icon: BarChart2 },
+        ] as const).map(a => (
           <button key={a.value} onClick={() => setAba(a.value)}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             <a.icon size={14} /> {a.label}
@@ -114,14 +128,15 @@ export default function MetasView({ tenantSlug }: Props) {
         ))}
       </div>
 
+      {/* ABA: METAS */}
       {aba === 'metas' && (
         <div className="space-y-4">
           {real && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
-                { label: 'Receita',   real: real.receita, metaVal: meta?.metaReceita ?? 0,       icon: TrendingUp,   corReal: 'text-green-600', invertColor: false, labelMeta: 'Meta' },
-                { label: 'Despesas',  real: real.despesa, metaVal: meta?.metaDespesaMaxima ?? 0, icon: TrendingDown, corReal: 'text-red-600',   invertColor: true,  labelMeta: 'Máximo' },
-                { label: 'Lucro',     real: real.lucro,   metaVal: meta?.metaLucro ?? 0,         icon: DollarSign,   corReal: real.lucro >= 0 ? 'text-green-600' : 'text-red-600', invertColor: false, labelMeta: 'Meta' },
+                { label: 'Receita',  real: real.receita, metaVal: meta?.metaReceita ?? 0,       icon: TrendingUp,   corReal: 'text-green-600', invertColor: false, labelMeta: 'Meta' },
+                { label: 'Despesas', real: real.despesa, metaVal: meta?.metaDespesaMaxima ?? 0, icon: TrendingDown, corReal: 'text-red-600',   invertColor: true,  labelMeta: 'Máximo' },
+                { label: 'Lucro',    real: real.lucro,   metaVal: meta?.metaLucro ?? 0,         icon: DollarSign,   corReal: real.lucro >= 0 ? 'text-green-600' : 'text-red-600', invertColor: false, labelMeta: 'Meta' },
               ].map((card, i) => {
                 const pct = card.metaVal > 0 ? Math.min(100, (card.real / card.metaVal) * 100) : null
                 return (
@@ -157,12 +172,13 @@ export default function MetasView({ tenantSlug }: Props) {
           {!meta?.metaReceita && !meta?.metaLucro && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
               <Lightbulb size={16} className="text-blue-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-blue-700">Defina metas mensais para acompanhar o progresso em tempo real. Use o <b>Simulador</b> para projetar receitas e lucros antes de fechar o mês.</p>
+              <p className="text-sm text-blue-700">Defina metas mensais para acompanhar o progresso em tempo real. Use o <b>Simulador</b> para projetar receitas e lucros antes de fechar o mês. Use <b>Previsão de Produção</b> para calcular quanto produzir no próximo mês.</p>
             </div>
           )}
         </div>
       )}
 
+      {/* ABA: SIMULADOR */}
       {aba === 'simulador' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
@@ -223,29 +239,10 @@ export default function MetasView({ tenantSlug }: Props) {
                     ))}
                   </div>
                 </div>
-                {simulado.meta && (simulado.meta.metaReceita > 0 || simulado.meta.metaLucro > 0) && (
-                  <div className="bg-white rounded-xl border border-gray-100 p-5">
-                    <p className="text-sm font-semibold text-gray-700 mb-3">vs Metas de {MESES[mes - 1]}</p>
-                    <div className="space-y-3">
-                      {simulado.meta.metaReceita > 0 && (
-                        <div>
-                          <div className="flex justify-between text-xs text-gray-500 mb-1"><span>Receita</span><span>{fmt(simulado.receitaProjetada)} / {fmt(simulado.meta.metaReceita)}</span></div>
-                          <div className="w-full bg-gray-100 rounded-full h-2"><div className="h-2 rounded-full bg-green-500 transition-all" style={{ width: `${Math.min(100, (simulado.receitaProjetada / simulado.meta.metaReceita) * 100)}%` }} /></div>
-                        </div>
-                      )}
-                      {simulado.meta.metaLucro > 0 && (
-                        <div>
-                          <div className="flex justify-between text-xs text-gray-500 mb-1"><span>Lucro</span><span>{fmt(simulado.lucroLiquido)} / {fmt(simulado.meta.metaLucro)}</span></div>
-                          <div className="w-full bg-gray-100 rounded-full h-2"><div className={`h-2 rounded-full transition-all ${simulado.lucroLiquido >= simulado.meta.metaLucro ? 'bg-green-500' : 'bg-amber-400'}`} style={{ width: `${Math.min(100, Math.max(0, (simulado.lucroLiquido / simulado.meta.metaLucro) * 100))}%` }} /></div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
                 {simulado.sugestoes?.length > 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-2"><Lightbulb size={15} className="text-amber-600" /><p className="text-sm font-semibold text-amber-700">Sugestões</p></div>
-                    <ul className="space-y-1.5">{simulado.sugestoes.map((s: string, i: number) => <li key={i} className="text-sm text-amber-700 flex items-start gap-2"><span className="text-amber-400 mt-0.5 flex-shrink-0">→</span>{s}</li>)}</ul>
+                    <ul className="space-y-1.5">{simulado.sugestoes.map((s: string, i: number) => <li key={i} className="text-sm text-amber-700 flex items-start gap-2"><span className="text-amber-400 mt-0.5">→</span>{s}</li>)}</ul>
                   </div>
                 )}
               </>
@@ -254,6 +251,163 @@ export default function MetasView({ tenantSlug }: Props) {
         </div>
       )}
 
+      {/* ABA: PREVISÃO DE PRODUÇÃO */}
+      {aba === 'previsao' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+            <BarChart2 size={16} className="text-blue-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-blue-700 mb-1">Previsão de Produção para {MESES[mes - 1]} {ano}</p>
+              <p className="text-xs text-blue-600">Calcula a média de vendas e pedidos dos meses anteriores para projetar quanto produzir, quanto de cada insumo será necessário (via ficha técnica) e qual será o custo estimado.</p>
+            </div>
+          </div>
+
+          {/* Controle de histórico */}
+          <div className="flex items-center gap-3">
+            <Label className="text-sm text-gray-600 whitespace-nowrap">Meses de histórico:</Label>
+            <div className="flex gap-1">
+              {[1, 2, 3, 6].map(n => (
+                <button key={n} onClick={() => setPrevisaoMeses(n)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${previsaoMeses === n ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {n === 1 ? '1 mês' : `${n} meses`}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400">
+              {mes === now.getMonth() + 1 && ano === now.getFullYear()
+                ? `Usando média dos últimos ${previsaoMeses} meses para projetar ${MESES[mes - 1]}`
+                : `Usando média dos ${previsaoMeses} meses anteriores a ${MESES[mes - 1]}`}
+            </p>
+          </div>
+
+          {loadingPrevisao ? (
+            <div className="text-center py-12 text-sm text-gray-400">Calculando previsão...</div>
+          ) : !previsao ? (
+            <div className="text-center py-12 text-sm text-gray-400">Sem dados históricos suficientes.</div>
+          ) : (
+            <>
+              {/* Tabela de produtos */}
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-700">Produção necessária por produto</h3>
+                  <p className="text-xs text-gray-400">Média de {previsaoMeses} mês{previsaoMeses > 1 ? 'es' : ''} anteriores</p>
+                </div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      {['Produto', 'Média/mês', 'Pedidos pendentes', 'Prev. produção', 'Receita estimada'].map((h, i) => (
+                        <th key={i} className={`text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(previsao.produtos ?? []).length === 0 ? (
+                      <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">Sem histórico de vendas para calcular.</td></tr>
+                    ) : (previsao.produtos ?? []).map((p: any, i: number) => (
+                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-600">{p.mediaVendas.toFixed(1)} un</td>
+                        <td className="px-4 py-3 text-right text-sm text-blue-600">{p.pedidosPendentes} un</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-sm font-bold text-green-700">{p.previsaoProducao} un</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-sm font-medium text-green-600">{fmt(p.receitaEstimada)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {(previsao.produtos ?? []).length > 0 && (
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 bg-gray-50">
+                        <td className="px-4 py-2.5 text-xs font-bold text-gray-600">Total</td>
+                        <td className="px-4 py-2.5 text-right text-xs font-bold text-gray-600">
+                          {(previsao.produtos ?? []).reduce((a: number, p: any) => a + p.mediaVendas, 0).toFixed(1)} un
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs font-bold text-blue-600">
+                          {(previsao.produtos ?? []).reduce((a: number, p: any) => a + p.pedidosPendentes, 0)} un
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs font-bold text-green-700">
+                          {(previsao.produtos ?? []).reduce((a: number, p: any) => a + p.previsaoProducao, 0)} un
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs font-bold text-green-600">
+                          {fmt((previsao.produtos ?? []).reduce((a: number, p: any) => a + p.receitaEstimada, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+
+              {/* Tabela de insumos */}
+              {(previsao.insumos ?? []).length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+                    <h3 className="text-sm font-semibold text-gray-700">Insumos necessários (via ficha técnica)</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">Baseado na previsão de produção × ficha técnica de cada produto</p>
+                  </div>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        {['Insumo', 'Unidade', 'Necessário', 'Estoque Atual', 'Comprar', 'Custo estimado'].map((h, i) => (
+                          <th key={i} className={`text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(previsao.insumos ?? []).map((ins: any, i: number) => {
+                        const precisaComprar = ins.necessario > ins.estoqueAtual
+                        return (
+                          <tr key={i} className={`border-b border-gray-50 ${precisaComprar ? 'bg-red-50/30' : ''}`}>
+                            <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{ins.nome}</td>
+                            <td className="px-4 py-2.5 text-right text-sm text-gray-500">{ins.unidade}</td>
+                            <td className="px-4 py-2.5 text-right text-sm text-gray-700">{ins.necessario.toFixed(3)}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <span className={`text-sm font-medium ${precisaComprar ? 'text-red-600' : 'text-green-600'}`}>
+                                {parseFloat(String(ins.estoqueAtual)).toFixed(3)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2.5 text-right">
+                              {precisaComprar ? (
+                                <span className="text-sm font-bold text-red-600">{(ins.necessario - ins.estoqueAtual).toFixed(3)}</span>
+                              ) : (
+                                <span className="text-xs text-green-600">✓ OK</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-right text-sm font-medium text-gray-700">{fmt(ins.custoEstimado)}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-gray-200 bg-gray-50">
+                        <td colSpan={5} className="px-4 py-2.5 text-xs font-bold text-gray-600">Custo total de insumos</td>
+                        <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">
+                          {fmt((previsao.insumos ?? []).reduce((a: number, i: any) => a + i.custoEstimado, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* Resumo financeiro da previsão */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { label: 'Receita estimada',       value: previsao.totalReceitaEstimada, color: 'text-green-600' },
+                  { label: 'Custo de insumos',       value: previsao.totalCustoInsumos,    color: 'text-orange-600' },
+                  { label: 'Lucro bruto estimado',   value: previsao.totalReceitaEstimada - previsao.totalCustoInsumos, color: 'text-blue-600' },
+                ].map((k, i) => (
+                  <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
+                    <p className="text-xs text-gray-400">{k.label}</p>
+                    <p className={`text-xl font-bold mt-1 ${k.color}`}>{fmt(k.value ?? 0)}</p>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Modal Metas */}
       {showEditMeta && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">

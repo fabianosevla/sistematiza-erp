@@ -41,6 +41,8 @@ export default function PdvBalcao({ tenantSlug }: Props) {
 
   // Campos extras — iguais ao modal Nova Venda do gerencial
   const [clienteId, setClienteId]             = useState('')
+  const [clienteNomeDisplay, setClienteNomeDisplay] = useState('')
+  const [buscaCliente, setBuscaCliente]         = useState('')
   const [vendedor, setVendedor]               = useState('')
   const [tipoEntrega, setTipoEntrega]         = useState('Retirada')
   const [observacao, setObservacao]           = useState('')
@@ -62,9 +64,10 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   })
 
   const { data: clientesRaw } = useQuery({
-    queryKey: ['pdv-clientes', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=500`)).json(),
-    staleTime: 60000,
+    queryKey: ['pdv-clientes', tenantSlug, buscaCliente],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=8&search=${encodeURIComponent(buscaCliente)}`)).json(),
+    enabled:  buscaCliente.length > 1,
+    staleTime: 5000,
   })
 
   const { data: usuariosRaw } = useQuery({
@@ -102,6 +105,8 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       setDesconto('0')
       setValorRecebido('')
       setClienteId('')
+      setClienteNomeDisplay('')
+      setBuscaCliente('')
       setVendedor('')
       setTipoEntrega('Retirada')
       setObservacao('')
@@ -357,14 +362,36 @@ export default function PdvBalcao({ tenantSlug }: Props) {
               <div className="space-y-2 pt-1">
                 <div>
                   <Label className="text-xs">Cliente</Label>
-                  <select value={clienteId} onChange={e => {
-                    setClienteId(e.target.value)
-                    const c = clientes.find((x: any) => String(x.clienteId) === e.target.value)
-                    if (c?.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
-                  }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="">Consumidor Final</option>
-                    {clientes.map((c: any) => <option key={c.clienteId} value={c.clienteId}>{c.nomeCompleto}</option>)}
-                  </select>
+                  {clienteId && clienteNomeDisplay ? (
+                    <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+                      <span className="text-xs font-medium text-green-800 truncate">{clienteNomeDisplay}</span>
+                      <button onClick={() => { setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente('') }} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
+                    </div>
+                  ) : (
+                    <div className="relative mt-1">
+                      <Input value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
+                        placeholder="Nome ou CPF..." className="h-9 text-xs" />
+                      {buscaCliente.length > 1 && clientes.length > 0 && (
+                        <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
+                          <button onClick={() => { setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente('') }}
+                            className="w-full px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 border-b border-gray-50">
+                            Consumidor Final
+                          </button>
+                          {clientes.map((c: any) => (
+                            <button key={c.clienteId} onClick={() => {
+                              setClienteId(String(c.clienteId))
+                              setClienteNomeDisplay(c.nomeCompleto)
+                              setBuscaCliente('')
+                              if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+                            }} className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                              <span className="text-xs font-medium text-gray-900">{c.nomeCompleto}</span>
+                              <span className="text-[10px] text-gray-400">{c.cpfCnpj ?? ''}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs">Vendedor</Label>
