@@ -185,20 +185,25 @@ export default function DashboardHome({ tenantSlug }: Props) {
               <div className="text-center">
                 <p className="text-3xl mb-2">✓</p>
                 <p className="text-sm text-green-600 font-medium">Estoque OK</p>
-                <p className="text-xs text-gray-400 mt-1">Todos os produtos acima do mínimo</p>
+                <p className="text-xs text-gray-400 mt-1">Todos os itens acima do mínimo</p>
               </div>
             </div>
           ) : (
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {estoqueCritico.map((p: any, i: number) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                  <p className="text-sm text-gray-900 truncate max-w-40">{p.nome}</p>
-                  <div className="flex items-center gap-3 flex-shrink-0">
-                    <div className="w-24 bg-gray-100 rounded-full h-1.5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-900 truncate">{p.nome}</p>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.tipo === 'insumo' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                      {p.tipo === 'insumo' ? 'Insumo' : 'Produto'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+                    <div className="w-20 bg-gray-100 rounded-full h-1.5">
                       <div className="bg-red-500 h-1.5 rounded-full"
                         style={{ width: `${Math.min(100, (p.estoqueAtual / Math.max(1, p.estoqueMinimo)) * 100)}%` }} />
                     </div>
-                    <span className="text-xs font-medium text-red-600 w-16 text-right">{p.estoqueAtual}/{p.estoqueMinimo}</span>
+                    <span className="text-xs font-medium text-red-600 w-16 text-right">{Number(p.estoqueAtual).toFixed(1)}/{Number(p.estoqueMinimo).toFixed(1)}</span>
                   </div>
                 </div>
               ))}

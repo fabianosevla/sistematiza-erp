@@ -26,9 +26,13 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   })
   const nomeUsuario = meuAcessoRaw?.data?.nome ?? tenantName
   const initials    = nomeUsuario.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
+  const isAdmin     = meuAcessoRaw?.data?.isAdmin ?? true
+  const modulos     = meuAcessoRaw?.data?.modulos ?? {}
+  // Helper: tem acesso ao módulo? Admin tem acesso a tudo
+  function temAcesso(modulo: string) { return isAdmin || modulos[modulo] === true }
 
   const fixos = [
-    { label: 'Dashboard', href: '', icon: BarChart3 },
+    ...(temAcesso('dashboard') ? [{ label: 'Dashboard', href: '', icon: BarChart3 }] : []),
     {
       label: 'Cadastros', icon: Users,
       children: [
@@ -49,26 +53,26 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     config.estoqueAtivo || config.entradaNfeAtivo || config.perdaProdutoAtivo || config.contagemInventarioAtivo || config.multiplosLocaisAtivo
 
   const modulares = [
-    ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
-    ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
-    ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
-    ...(config.comprasAtivo   ? [{
+    ...(config.metasAtivo     && temAcesso('metas')      ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
+    ...(config.consultasAtivo && temAcesso('consultas')  ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
+    ...(config.pedidosAtivo   && temAcesso('pedidos')    ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
+    ...(config.comprasAtivo                              ? [{
       label: 'Compras', icon: ShoppingBag,
       children: [
         { label: 'Compra Rápida',    href: '/compras/rapida' },
         { label: 'Compras Avançado', href: '/compras' },
       ],
     }] : []),
-    ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
-    ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
-    ...(estoqueLigado         ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
-    ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
-    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
+    ...(config.planoAcaoAtivo && temAcesso('planoAcao')  ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
+    ...(config.producaoAtivo  && temAcesso('producao')   ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
+    ...(estoqueLigado         && temAcesso('estoque')    ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
+    ...(config.comandasAtivo  && temAcesso('comandas')   ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
+    ...(config.fiscalAtivo    && temAcesso('fiscal')     ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
   ]
 
   const finais = [
-    { label: 'Vendas',     href: '/vendas',     icon: ShoppingCart },
-    { label: 'Financeiro', href: '/financeiro', icon: DollarSign },
+    ...(temAcesso('vendas')     ? [{ label: 'Vendas',     href: '/vendas',     icon: ShoppingCart }] : []),
+    ...(temAcesso('financeiro') ? [{ label: 'Financeiro', href: '/financeiro', icon: DollarSign }]   : []),
   ]
 
   const allItems = [...fixos, ...modulares, ...finais]

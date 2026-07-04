@@ -51,8 +51,14 @@ export async function GET(req: NextRequest, { params }: Params) {
           GROUP BY DATE_TRUNC('month', data_despesa) ORDER BY DATE_TRUNC('month', data_despesa)
         `).catch(() => ({ rows: [] })),
         client.query(`
-          SELECT nome, estoque_atual, estoque_minimo FROM t_produto
-          WHERE active_flg=true AND estoque_atual<=estoque_minimo ORDER BY estoque_atual LIMIT 8
+          SELECT nome, estoque_atual::float as estoque_atual, estoque_minimo::float as estoque_minimo, 'produto' as tipo
+          FROM t_produto
+          WHERE active_flg=true AND estoque_minimo > 0 AND estoque_atual <= estoque_minimo
+          UNION ALL
+          SELECT nome, estoque_atual::float, estoque_minimo::float, 'insumo' as tipo
+          FROM t_insumo
+          WHERE active_flg=true AND estoque_minimo > 0 AND estoque_atual <= estoque_minimo
+          ORDER BY estoque_atual LIMIT 12
         `),
         client.query(`
           SELECT vp.forma, COALESCE(SUM(vp.valor),0)::bigint as total
