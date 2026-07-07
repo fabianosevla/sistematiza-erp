@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Pencil, X, Upload, Clock } from 'lucide-react'
+import { Plus, Search, Pencil, X, Upload, Clock, Trash2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { clienteInsertSchema, type ClienteInsertInput } from '@/lib/validations/cadastros'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import Paginacao from '@/components/ui/Paginacao'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
@@ -25,6 +26,7 @@ export default function ClientesView({ tenantSlug }: Props) {
   const [showImport, setShowImport]   = useState(false)
   const [showHistorico, setShowHistorico] = useState<any>(null)
   const [editItem, setEditItem]       = useState<any>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
   const apiBase = `/api/${tenantSlug}/cadastros/clientes`
 
   const { data, isLoading } = useQuery({
@@ -35,6 +37,16 @@ export default function ClientesView({ tenantSlug }: Props) {
       const res = await fetch(`${apiBase}?${params}`)
       return res.json()
     },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${apiBase}/${id}`, { method: 'DELETE' })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir')
+      return d
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] }),
   })
 
   const createMutation = useMutation({
