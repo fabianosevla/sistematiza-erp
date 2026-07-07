@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { clienteInsertSchema, type ClienteInsertInput } from '@/lib/validations/cadastros'
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
+import Paginacao from '@/components/ui/Paginacao'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
 
@@ -19,6 +20,7 @@ export default function ClientesView({ tenantSlug }: Props) {
   const queryClient = useQueryClient()
   const [search, setSearch]           = useState('')
   const [page, setPage]               = useState(1)
+  const [limit, setLimit]             = useState(20)
   const [showForm, setShowForm]       = useState(false)
   const [showImport, setShowImport]   = useState(false)
   const [showHistorico, setShowHistorico] = useState<any>(null)
@@ -26,9 +28,9 @@ export default function ClientesView({ tenantSlug }: Props) {
   const apiBase = `/api/${tenantSlug}/cadastros/clientes`
 
   const { data, isLoading } = useQuery({
-    queryKey: ['clientes', tenantSlug, page, search],
+    queryKey: ['clientes', tenantSlug, page, search, limit],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '20' })
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (search) params.set('search', search)
       const res = await fetch(`${apiBase}?${params}`)
       return res.json()

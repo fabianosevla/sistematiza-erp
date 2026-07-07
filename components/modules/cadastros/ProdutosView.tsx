@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
+import Paginacao from '@/components/ui/Paginacao'
 import { useDominio } from '@/hooks/useDominio'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
 
@@ -31,6 +32,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const unidades = useDominio(tenantSlug, 'unidade_medida', ['kg','g','l','ml','un','cx'])
 
   const [busca, setBusca]                 = useState('')
+  const [page, setPage]               = useState(1)
+  const [limit, setLimit]             = useState(20)
   const [showInativos, setShowInativos]   = useState(false)
   const [showModal, setShowModal]         = useState(false)
   const [showImport, setShowImport]       = useState(false)
