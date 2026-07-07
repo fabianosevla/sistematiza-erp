@@ -1,4 +1,6 @@
-// @ts-nocheck
+const fs = require('fs')
+
+const novaRota = `// @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
@@ -18,33 +20,33 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     const client = await pool.connect()
     try {
-      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+      await client.query(\`SET search_path TO "\${tenant.schemaName}", public\`)
 
       const conditions = []
       const values: any[] = []
       let idx = 1
 
       if (!incluirInativos) {
-        conditions.push(`active_flg = true`)
+        conditions.push(\`active_flg = true\`)
       }
       if (search) {
-        conditions.push(`LOWER(nome) LIKE $${idx++}`)
-        values.push(`%${search.toLowerCase()}%`)
+        conditions.push(\`LOWER(nome) LIKE $\${idx++}\`)
+        values.push(\`%\${search.toLowerCase()}%\`)
       }
 
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+      const where = conditions.length > 0 ? \`WHERE \${conditions.join(' AND ')}\` : ''
 
       const [dataRes, countRes] = await Promise.all([
-        client.query(`
+        client.query(\`
           SELECT produto_id, nome, descricao, codigo_barras, unidade, tipo, categoria,
                  estoque_atual, estoque_minimo, preco_custo, preco_varejo,
                  preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
                  active_flg, modification_num, created_dt, updated_dt
-          FROM t_produto ${where}
+          FROM t_produto \${where}
           ORDER BY nome ASC
-          LIMIT $${idx++} OFFSET $${idx++}
-        `, [...values, limit, offset]),
-        client.query(`SELECT COUNT(*)::int as total FROM t_produto ${where}`, values),
+          LIMIT $\${idx++} OFFSET $\${idx++}
+        \`, [...values, limit, offset]),
+        client.query(\`SELECT COUNT(*)::int as total FROM t_produto \${where}\`, values),
       ])
 
       const total      = Number(countRes.rows[0]?.total ?? 0)
@@ -86,8 +88,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     const client = await pool.connect()
     try {
-      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
-      const res = await client.query(`
+      await client.query(\`SET search_path TO "\${tenant.schemaName}", public\`)
+      const res = await client.query(\`
         INSERT INTO t_produto (
           nome, descricao, codigo_barras, unidade, tipo, categoria,
           estoque_atual, estoque_minimo, preco_custo, preco_varejo,
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,0,1,1,NOW(),NOW())
         RETURNING produto_id as "produtoId"
-      `, [
+      \`, [
         body.nome.trim(),
         body.descricao?.trim() || null,
         body.codigoBarras?.trim() || null,
@@ -121,3 +123,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     return serverError(err)
   }
 }
+`
+
+fs.writeFileSync('app/api/[tenant]/cadastros/produtos/route.ts', novaRota, 'utf8')
+console.log('OK: rota produtos reescrita com pool+search_path e paginacao correta')
