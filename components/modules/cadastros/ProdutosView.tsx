@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, EyeOff, Pencil } from 'lucide-react'
@@ -370,12 +370,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!inativo && (
-                        <button onClick={() => setShowFicha(p)} title="Ficha técnica"
-                          className="p-1 text-blue-400 hover:text-blue-600">
-                          <BookOpen size={14} />
-                        </button>
-                      )}
+                      {!inativo && (<><button onClick={() => abrirModal(p)} title="Editar" className="p-1 text-green-400 hover:text-green-600"><Pencil size={14} /></button><button onClick={() => setShowFicha(p)} title="Ficha técnica" className="p-1 text-blue-400 hover:text-blue-600"><BookOpen size={14} /></button></>)}
                       {inativo ? (
                         <button onClick={() => reativarMut.mutate(p.produtoId)} title="Reativar"
                           className="p-1 text-green-400 hover:text-green-600 text-xs font-medium">↺</button>
