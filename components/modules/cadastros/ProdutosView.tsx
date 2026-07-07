@@ -1,5 +1,5 @@
 ﻿'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, EyeOff, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -55,6 +55,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [fichaInsumoId, setFichaInsumoId] = useState('')
   const [fichaQtd, setFichaQtd]           = useState('')
   const [fichaUnidade, setFichaUnidade]   = useState('')
+
+  useEffect(() => { setPage(1) }, [busca])
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
 
@@ -271,7 +273,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
     : Array.isArray(fichaRaw) ? fichaRaw : []
 
   const produtos = [...todos]
-    .filter((p: any) => p.nome?.toLowerCase().includes(busca.toLowerCase()))
     .sort((a: any, b: any) => {
       const av = a[sortKey] ?? ''
       const bv = b[sortKey] ?? ''
