@@ -391,8 +391,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
       <Paginacao
         page={page}
-        totalPages={produtosRaw?.data?.meta?.totalPages ?? 1}
-        total={produtosRaw?.data?.meta?.total ?? produtos.length}
+        totalPages={raw?.data?.meta?.totalPages ?? 1}
+        total={raw?.data?.meta?.total ?? produtos.length}
         limit={limit}
         onPage={setPage}
         onLimit={(l) => { setLimit(l); setPage(1) }}
