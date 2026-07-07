@@ -42,6 +42,9 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   // Campos extras — iguais ao modal Nova Venda do gerencial
   const [clienteId, setClienteId]             = useState('')
   const [clienteNomeDisplay, setClienteNomeDisplay] = useState('')
+  const [showCadastrarCliente, setShowCadastrarCliente] = useState(false)
+  const [novoClienteNome, setNovoClienteNome] = useState('')
+  const [novoClienteTel, setNovoClienteTel]   = useState('')
   const [buscaCliente, setBuscaCliente]         = useState('')
   const [vendedor, setVendedor]               = useState('')
   const [tipoEntrega, setTipoEntrega]         = useState('Retirada')
@@ -74,6 +77,28 @@ export default function PdvBalcao({ tenantSlug }: Props) {
     queryKey: ['pdv-usuarios', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/usuarios`)).json(),
     staleTime: 60000,
+  })
+
+  const criarClienteMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/cadastros/clientes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nomeCompleto: novoClienteNome.trim(), telefone: novoClienteTel.trim() || undefined }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message ?? 'Erro ao criar cliente')
+      return d
+    },
+    onSuccess: (d) => {
+      const cli = d?.data
+      if (cli?.clienteId) {
+        setClienteId(String(cli.clienteId))
+        setClienteNomeDisplay(novoClienteNome.trim())
+      }
+      setShowCadastrarCliente(false)
+      setNovoClienteNome('')
+      setNovoClienteTel('')
+    },
   })
 
   const venderMut = useMutation({
@@ -447,5 +472,35 @@ export default function PdvBalcao({ tenantSlug }: Props) {
           onCancel={() => setConfirmLimpar(false)} />
       )}
     </div>
+      {/* Modal Cadastrar Cliente rápido */}
+      {showCadastrarCliente && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold">Cadastrar cliente</h3>
+              <button onClick={() => setShowCadastrarCliente(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
+            </div>
+            <div>
+              <Label className="text-xs">Nome completo *</Label>
+              <Input value={novoClienteNome} onChange={e => setNovoClienteNome(e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nome do cliente" autoFocus />
+            </div>
+            <div>
+              <Label className="text-xs">Telefone</Label>
+              <Input value={novoClienteTel} onChange={e => setNovoClienteTel(e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 00000-0000" />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowCadastrarCliente(false)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={() => criarClienteMut.mutate()} disabled={!novoClienteNome.trim() || criarClienteMut.isPending}
+                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                style={{ backgroundColor: '#2ecc71' }}>
+                {criarClienteMut.isPending ? 'Salvando...' : 'Salvar e usar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
   )
 }
