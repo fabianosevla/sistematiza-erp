@@ -471,8 +471,6 @@ export default function PdvBalcao({ tenantSlug }: Props) {
           onConfirm={() => { setCarrinho([]); setConfirmLimpar(false) }}
           onCancel={() => setConfirmLimpar(false)} />
       )}
-    </div>
-      {/* Modal Cadastrar Cliente rápido */}
       {showCadastrarCliente && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
@@ -502,5 +500,6 @@ export default function PdvBalcao({ tenantSlug }: Props) {
           </div>
         </div>
       )}
+    </div>
   )
 }
