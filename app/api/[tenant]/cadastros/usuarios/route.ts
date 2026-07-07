@@ -1,4 +1,4 @@
-// @ts-nocheck
+﻿// @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     try {
       await clerkClient().invitations.createInvitation({
         emailAddress: email.trim(),
-        redirectUrl:  `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://sistematiza-erp.vercel.app'}/sign-in`,
+        redirectUrl:  `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://sistematiza-erp.vercel.app'}/${tenant.slug}`,
         publicMetadata: {
           tenantSlug: tenant.slug,
           perfil:     perfil ?? 'user',
