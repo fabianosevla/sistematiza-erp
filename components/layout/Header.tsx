@@ -156,7 +156,17 @@ export default function Header({
             onClick={() => setShowNotifs(p => !p)}
             className="relative p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
           >
-            <Bell size={18} />
+            {usuarioDB?.acessoPdv && (
+            
+              href={`/${tenantSlug}/pdv`}
+              className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+              title="Ir para o PDV"
+            >
+              <ShoppingCart size={14} />
+              <span className="hidden sm:inline">PDV</span>
+            </a>
+          )}
+          <Bell size={18} />
             {unread > 0 && (
               <span className="absolute top-1 right-1 w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center text-white"
                 style={{ backgroundColor: '#2ecc71' }}>

@@ -3,6 +3,7 @@
 
 import { useState } from 'react'
 import { useClerk } from '@clerk/nextjs'
+import { useQuery } from '@tanstack/react-query'
 import { ShoppingCart, LayoutGrid, ClipboardList, LogOut, Code2, Sun, Moon } from 'lucide-react'
 import ComandasView from '@/components/modules/comandas/ComandasView'
 import PdvBalcao from './PdvBalcao'
@@ -32,6 +33,12 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
   const [aba, setAba] = useState<Aba>('balcao')
   const { signOut } = useClerk()
   const { darkMode, toggleDarkMode } = useDarkMode(tenantSlug, darkModeInicial)
+  const { data: meuAcessoRaw } = useQuery({
+    queryKey: ['meu-acesso-pdv', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
+    staleTime: 60000,
+  })
+  const temGerencial = meuAcessoRaw?.data?.acessoGerencial || meuAcessoRaw?.data?.isAdmin
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gray-50">
@@ -73,13 +80,15 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
           </button>
 
-          <Anchor
-            href={`/${tenantSlug}`}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
-            title="Voltar ao gerencial"
-          >
-            Dashboard
-          </Anchor>
+          {temGerencial && (
+            <Anchor
+              href={`/${tenantSlug}`}
+              className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
+              title="Voltar ao gerencial"
+            >
+              Gerencial
+            </Anchor>
+          )}
           <button
             onClick={() => signOut({ redirectUrl: '/sign-in' })}
             className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors px-3 py-2 rounded-lg hover:bg-red-50"
