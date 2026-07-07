@@ -38,7 +38,7 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
     staleTime: 60000,
   })
-  const temGerencial = meuAcessoRaw?.data?.acessoGerencial || meuAcessoRaw?.data?.isAdmin
+  const temGerencial = meuAcessoRaw?.data?.isAdmin === true || meuAcessoRaw?.data?.acessoGerencial === true
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gray-50">
