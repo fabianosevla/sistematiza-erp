@@ -207,6 +207,15 @@ export default function InsumosView({ tenantSlug }: Props) {
         </table>
       </div>
 
+      <Paginacao
+        page={page}
+        totalPages={raw?.data?.meta?.totalPages ?? 1}
+        total={raw?.data?.meta?.total ?? insumos.length}
+        limit={limit}
+        onPage={setPage}
+        onLimit={(l) => { setLimit(l); setPage(1) }}
+      />
+
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
