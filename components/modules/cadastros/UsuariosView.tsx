@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Shield, User, X, Mail, Pencil, UserX, KeyRound } from 'lucide-react'
@@ -318,7 +318,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
               </div>
               <div>
                 <Label>Perfil</Label>
-                <select value={editPerfilId} onChange={e => setEditPerfilId(Number(e.target.value))}
+                <select value={String(editPerfilId ?? "")} onChange={e => setEditPerfilId(Number(e.target.value))}
                   className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                   <option value="">Selecionar...</option>
                   {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
