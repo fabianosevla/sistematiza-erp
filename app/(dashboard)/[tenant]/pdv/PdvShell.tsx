@@ -2,6 +2,7 @@
 // app/(dashboard)/[tenant]/pdv/PdvShell.tsx
 
 import { useState } from 'react'
+import { useClerk } from '@clerk/nextjs'
 import { ShoppingCart, LayoutGrid, ClipboardList, LogOut, Code2, Sun, Moon } from 'lucide-react'
 import ComandasView from '@/components/modules/comandas/ComandasView'
 import PdvBalcao from './PdvBalcao'
@@ -29,6 +30,7 @@ const Anchor = 'a' as const
 
 export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props) {
   const [aba, setAba] = useState<Aba>('balcao')
+  const { signOut } = useClerk()
   const { darkMode, toggleDarkMode } = useDarkMode(tenantSlug, darkModeInicial)
 
   return (
@@ -72,12 +74,20 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
           </button>
 
           <Anchor
-            href={`/${tenantSlug}/selecionar-modulo`}
+            href={`/${tenantSlug}`}
             className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
+            title="Voltar ao gerencial"
+          >
+            Dashboard
+          </Anchor>
+          <button
+            onClick={() => signOut({ redirectUrl: '/sign-in' })}
+            className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors px-3 py-2 rounded-lg hover:bg-red-50"
+            title="Sair do sistema"
           >
             <LogOut size={15} />
             Sair
-          </Anchor>
+          </button>
         </div>
       </header>
 
