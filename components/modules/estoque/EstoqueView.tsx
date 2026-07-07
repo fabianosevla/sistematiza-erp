@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import Paginacao from '@/components/ui/Paginacao'
 import { Plus, X, Download, AlertTriangle, CheckCircle, Edit3, Warehouse, ClipboardCheck, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,6 +26,10 @@ function StatusIcon({ atual, min }: { atual: number; min: number }) {
 export default function EstoqueView({ tenantSlug }: Props) {
   const qc = useQueryClient()
   const [aba, setAba]               = useState<Aba>('produtos')
+  const [buscaInsumo, setBuscaInsumo] = useState('')
+  const [buscaProduto, setBuscaProduto] = useState('')
+  const [page, setPage]               = useState(1)
+  const [limit, setLimit]             = useState(20)
   const [showModal, setShowModal]   = useState<'produto' | 'insumo' | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [qtdAdicionar, setQtdAdicionar]     = useState('')
@@ -45,13 +50,21 @@ export default function EstoqueView({ tenantSlug }: Props) {
   const config = configRaw?.data
 
   const { data: produtosRaw, isLoading: prodLoad } = useQuery({
-    queryKey: ['estoque-produtos', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/produtos`)).json(),
+    queryKey: ['estoque-produtos', tenantSlug, page, limit, buscaProduto],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (buscaProduto) params.set('search', buscaProduto)
+      return (await fetch(`/api/${tenantSlug}/estoque/produtos?${params}`)).json()
+    },
   })
 
   const { data: insumosRaw, isLoading: insLoad } = useQuery({
-    queryKey: ['estoque-insumos', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/insumos`)).json(),
+    queryKey: ['estoque-insumos', tenantSlug, page, limit, buscaInsumo],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (buscaInsumo) params.set('search', buscaInsumo)
+      return (await fetch(`/api/${tenantSlug}/estoque/insumos?${params}`)).json()
+    },
   })
 
   const { data: ajusteRaw, isLoading: ajusteLoad } = useQuery({
@@ -203,6 +216,8 @@ export default function EstoqueView({ tenantSlug }: Props) {
       </div>
 
       {aba === 'produtos' && (
+        <>
+        <div className="mb-4"><input value={buscaProduto} onChange={e => { setBuscaProduto(e.target.value); setPage(1) }} placeholder="Buscar produto..." className="h-9 max-w-xs px-3 rounded-lg border border-gray-200 text-sm focus:outline-none" /></div>
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
             <thead>
@@ -238,6 +253,8 @@ export default function EstoqueView({ tenantSlug }: Props) {
       )}
 
       {aba === 'insumos' && (
+        <>
+        <div className="mb-4"><input value={buscaInsumo} onChange={e => { setBuscaInsumo(e.target.value); setPage(1) }} placeholder="Buscar insumo..." className="h-9 max-w-xs px-3 rounded-lg border border-gray-200 text-sm focus:outline-none" /></div>
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
             <thead>
