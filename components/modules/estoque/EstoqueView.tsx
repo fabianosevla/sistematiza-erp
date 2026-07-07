@@ -250,6 +250,8 @@ export default function EstoqueView({ tenantSlug }: Props) {
             </tbody>
           </table>
         </div>
+        </>
+        <Paginacao page={page} totalPages={produtosRaw?.data?.meta?.totalPages ?? 1} total={produtosRaw?.data?.meta?.total ?? 0} limit={limit} onPage={setPage} onLimit={(l) => { setLimit(l); setPage(1) }} />
       )}
 
       {aba === 'insumos' && (
@@ -288,6 +290,8 @@ export default function EstoqueView({ tenantSlug }: Props) {
             </tbody>
           </table>
         </div>
+        </>
+        <Paginacao page={page} totalPages={insumosRaw?.data?.meta?.totalPages ?? 1} total={insumosRaw?.data?.meta?.total ?? 0} limit={limit} onPage={setPage} onLimit={(l) => { setLimit(l); setPage(1) }} />
       )}
 
       {aba === 'ajuste' && (
