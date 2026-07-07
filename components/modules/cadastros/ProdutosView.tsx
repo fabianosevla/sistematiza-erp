@@ -59,8 +59,13 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
 
   const { data: raw, isLoading } = useQuery({
-    queryKey: ['produtos', tenantSlug, showInativos],
-    queryFn:  async () => (await fetch(`${api}?limit=500${showInativos ? '&incluirInativos=true' : ''}`)).json(),
+    queryKey: ['produtos', tenantSlug, page, limit, busca, showInativos],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (busca) params.set('search', busca)
+      if (showInativos) params.set('incluirInativos', 'true')
+      return (await fetch(`${api}?${params}`)).json()
+    },
   })
 
   const { data: insumosRaw } = useQuery({
