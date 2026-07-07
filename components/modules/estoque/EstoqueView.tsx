@@ -196,7 +196,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
       <div className="border-b border-gray-100 mb-6 overflow-x-auto">
         <div className="flex gap-0 min-w-max">
           {ABAS_BASE.map(a => (
-            <button key={a.key} onClick={() => setAba(a.key)}
+            <button key={a.key} onClick={() => { setAba(a.key); setPage(1); setBuscaInsumo(''); setBuscaProduto('') }}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}>
@@ -204,7 +204,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
             </button>
           ))}
           {ABAS_AVANCADAS.filter(a => a.check).map(a => (
-            <button key={a.key} onClick={() => setAba(a.key)}
+            <button key={a.key} onClick={() => { setAba(a.key); setPage(1); setBuscaInsumo(''); setBuscaProduto('') }}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}>
