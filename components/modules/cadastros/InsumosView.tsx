@@ -51,8 +51,12 @@ export default function InsumosView({ tenantSlug }: Props) {
   const invalidate = () => qc.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
 
   const { data: raw, isLoading } = useQuery({
-    queryKey: ['insumos', tenantSlug],
-    queryFn:  async () => (await fetch(api)).json(),
+    queryKey: ['insumos', tenantSlug, page, limit, busca],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (busca) params.set('search', busca)
+      return (await fetch(`${api}?${params}`)).json()
+    },
   })
 
   const salvarMut = useMutation({
