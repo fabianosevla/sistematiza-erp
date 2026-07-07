@@ -34,8 +34,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [busca, setBusca]                 = useState('')
   const [page, setPage]               = useState(1)
   const [limit, setLimit]             = useState(20)
-  const [page, setPage]               = useState(1)
-  const [limit, setLimit]             = useState(20)
   const [showInativos, setShowInativos]   = useState(false)
   const [showModal, setShowModal]         = useState(false)
   const [showImport, setShowImport]       = useState(false)
