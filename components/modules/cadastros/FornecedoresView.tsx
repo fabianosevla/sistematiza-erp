@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Pencil, X, Upload, Clock } from 'lucide-react'
+import { Plus, Search, Pencil, X, Upload, Clock, Trash2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
@@ -12,17 +12,21 @@ import { fornecedorInsertSchema, type FornecedorInsertInput } from '@/lib/valida
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useToast } from '@/components/ui/Toast'
 
 interface Props { tenantSlug: string }
 
 export default function FornecedoresView({ tenantSlug }: Props) {
   const queryClient = useQueryClient()
+  const { toast }   = useToast()
   const [search, setSearch]             = useState('')
   const [page, setPage]                 = useState(1)
   const [showForm, setShowForm]         = useState(false)
   const [showImport, setShowImport]     = useState(false)
   const [showHistorico, setShowHistorico] = useState<any>(null)
   const [editItem, setEditItem]         = useState<any>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
   const apiBase = `/api/${tenantSlug}/cadastros/fornecedores`
 
   const { data, isLoading } = useQuery({
@@ -56,6 +60,17 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] })
       setShowForm(false); setEditItem(null)
     },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${apiBase}/${id}`, { method: 'DELETE' })
+      const d   = await res.json()
+      if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir')
+      return d
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] }); toast('Fornecedor excluído.') },
+    onError:   (e: any) => toast(e.message || 'Erro ao excluir.', 'error'),
   })
 
   const form = useForm<FornecedorInsertInput>({ resolver: zodResolver(fornecedorInsertSchema) })
@@ -118,7 +133,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Tipo</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">E-mail</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Cidade</th>
-              <th className="px-4 py-3 w-20" />
+              <th className="px-4 py-3 w-24" />
             </tr>
           </thead>
           <tbody>
@@ -135,7 +150,8 @@ export default function FornecedoresView({ tenantSlug }: Props) {
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => setShowHistorico(item)} title="Histórico" className="p-1 text-purple-400 hover:text-purple-600"><Clock size={14} /></button>
-                    <button onClick={() => handleEdit(item)} className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
+                    <button onClick={() => handleEdit(item)} title="Editar" className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
+                    <button onClick={() => setConfirmDelete({ id: item.fornecedorId, nome: item.nomeCompleto })} title="Excluir" className="p-1 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
@@ -220,6 +236,17 @@ export default function FornecedoresView({ tenantSlug }: Props) {
           entidadeId={showHistorico.fornecedorId}
           titulo={showHistorico.nomeCompleto}
           onClose={() => setShowHistorico(null)}
+        />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Excluir fornecedor"
+          message={`Excluir "${confirmDelete.nome}"? Ele deixará de aparecer nos cadastros e nas seleções de compra.`}
+          confirmLabel="Excluir"
+          danger
+          onConfirm={() => { deleteMutation.mutate(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
     </div>

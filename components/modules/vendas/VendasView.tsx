@@ -135,10 +135,14 @@ export default function VendasView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=500`)).json(),
   })
 
+  // CORREÇÃO: o modal usa um <select> simples, não um typeahead. A versão
+  // anterior deixava a query com `enabled: buscaCliente.length > 1`, mas nada
+  // preenchia `buscaCliente` — então a lista ficava sempre vazia (só
+  // "Consumidor Final"). Agora carrega todos os clientes de uma vez.
   const { data: clientesRaw } = useQuery({
-    queryKey: ['clientes-select', tenantSlug, buscaCliente],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=8&search=${encodeURIComponent(buscaCliente)}`)).json(),
-    enabled:  buscaCliente.length > 1,
+    queryKey: ['clientes-select', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=1000`)).json(),
+    staleTime: 60000,
   })
 
   const { data: formasRaw } = useQuery({
@@ -267,7 +271,7 @@ export default function VendasView({ tenantSlug }: Props) {
     const csv = [['ID', 'Data', 'Cliente', 'Entrega', 'Total'], ...rows]
       .map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }))
     a.download = 'vendas.csv'
     a.click()
   }
