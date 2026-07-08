@@ -1,9 +1,10 @@
 ﻿import type { NextRequest } from 'next/server'
+import { sql } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { fornecedorInsertSchema } from '@/lib/validations/cadastros'
 import { FornecedorService } from '@/lib/services/cadastros/FornecedorService'
-import { ok, created, serverError } from '@/lib/api/responses'
+import { ok, created, serverError, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
 
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       const { searchParams } = new URL(req.url)
       const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
-      const limit  = Math.min(1000, Math.max(1, Number(searchParams.get('limit') ?? 500)))
+      const limit  = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? 20)))
       const search = searchParams.get('search') ?? undefined
       const service = new FornecedorService(db)
       const result  = await service.list({ page, limit, search })
@@ -34,13 +35,27 @@ export async function POST(req: NextRequest, { params }: Params) {
     try {
       const body    = await req.json()
       const payload = fornecedorInsertSchema.parse(body)
+
+      // Impede cadastro duplicado: chave = cnpj/cpf (comparando só dígitos).
+      const doc = (body.cnpjCpf ?? (payload as any).cnpjCpf ?? '').toString().trim()
+      if (doc) {
+        const dup = await db.execute(sql`
+          SELECT 1 FROM t_fornecedor
+          WHERE active_flg = true
+            AND REGEXP_REPLACE(COALESCE(cnpj_cpf,''), '[^0-9]', '', 'g') = REGEXP_REPLACE(${doc}, '[^0-9]', '', 'g')
+            AND REGEXP_REPLACE(${doc}, '[^0-9]', '', 'g') <> ''
+          LIMIT 1`)
+        if (dup.rows.length > 0) return badRequest('Registro já existente')
+      }
+
       const service = new FornecedorService(db)
       const result  = await service.create(payload, 1)
       return created(result)
     } finally {
       release()
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.code === '23505') return badRequest('Registro já existente')
     return serverError(err)
   }
 }

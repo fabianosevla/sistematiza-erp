@@ -1,17 +1,16 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Search, Pencil, X, Upload, Clock, Trash2 } from 'lucide-react'
+import { Plus, Search, Pencil, X, Upload, Clock, Trash2, Eye, EyeOff } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { clienteInsertSchema, type ClienteInsertInput } from '@/lib/validations/cadastros'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { clienteInsertSchema, type ClienteInsertInput } from '@/lib/validations/cadastros'
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
-import Paginacao from '@/components/ui/Paginacao'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
 
@@ -21,32 +20,27 @@ export default function ClientesView({ tenantSlug }: Props) {
   const queryClient = useQueryClient()
   const [search, setSearch]           = useState('')
   const [page, setPage]               = useState(1)
-  const [limit, setLimit]             = useState(20)
   const [showForm, setShowForm]       = useState(false)
   const [showImport, setShowImport]   = useState(false)
   const [showHistorico, setShowHistorico] = useState<any>(null)
   const [editItem, setEditItem]       = useState<any>(null)
-  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
+  const [incluirInativos, setIncluirInativos] = useState(false)
+  const [confirmDelete, setConfirmDelete]     = useState<any>(null)
+  const [formError, setFormError]     = useState('')
+  const [flash, setFlash]             = useState('')
   const apiBase = `/api/${tenantSlug}/cadastros/clientes`
 
+  const flashMsg = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 4000) }
+
   const { data, isLoading } = useQuery({
-    queryKey: ['clientes', tenantSlug, page, search, limit],
+    queryKey: ['clientes', tenantSlug, page, search, incluirInativos],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      const params = new URLSearchParams({ page: String(page), limit: '20' })
       if (search) params.set('search', search)
+      if (incluirInativos) params.set('incluirInativos', 'true')
       const res = await fetch(`${apiBase}?${params}`)
       return res.json()
     },
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`${apiBase}/${id}`, { method: 'DELETE' })
-      const d = await res.json()
-      if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir')
-      return d
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] }),
   })
 
   const createMutation = useMutation({
@@ -54,9 +48,13 @@ export default function ClientesView({ tenantSlug }: Props) {
       const res = await fetch(apiBase, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
-      return res.json()
+      const json = await res.json()
+      // Sem esse check, um 400 "Registro já existente" caía em onSuccess e fechava o form.
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar cliente')
+      return json
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] }); setShowForm(false) },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] }); setShowForm(false); setFormError('') },
+    onError: (e: any) => setFormError(e?.message ?? 'Erro ao salvar.'),
   })
 
   const updateMutation = useMutation({
@@ -64,22 +62,40 @@ export default function ClientesView({ tenantSlug }: Props) {
       const res = await fetch(`${apiBase}/${id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
-      return res.json()
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar cliente')
+      return json
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] })
-      setShowForm(false); setEditItem(null)
+      setShowForm(false); setEditItem(null); setFormError('')
     },
+    onError: (e: any) => setFormError(e?.message ?? 'Erro ao salvar.'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${apiBase}?id=${id}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao excluir cliente')
+      return json
+    },
+    onSuccess: (json: any) => {
+      queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] })
+      setConfirmDelete(null)
+      flashMsg(json?.data?.message ?? 'Cliente removido.')
+    },
+    onError: (e: any) => { setConfirmDelete(null); flashMsg(e?.message ?? 'Erro ao excluir.') },
   })
 
   const form = useForm<ClienteInsertInput>({ resolver: zodResolver(clienteInsertSchema) })
 
   function handleNew() {
-    form.reset({ tipoPessoa: 'PF' }); setEditItem(null); setShowForm(true)
+    form.reset({ tipoPessoa: 'PF' }); setEditItem(null); setFormError(''); setShowForm(true)
   }
 
   function handleEdit(item: any) {
-    setEditItem(item)
+    setEditItem(item); setFormError('')
     form.reset({
       tipoPessoa: item.tipoPessoa, nomeCompleto: item.nomeCompleto, nomeFantasia: item.nomeFantasia,
       documento: item.documento, email: item.email, telefone: item.telefone, celular: item.celular,
@@ -109,10 +125,18 @@ export default function ClientesView({ tenantSlug }: Props) {
           <p className="text-sm text-gray-400 mt-0.5">{meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => { setIncluirInativos(v => !v); setPage(1) }}>
+            {incluirInativos ? <Eye size={14} className="mr-1.5" /> : <EyeOff size={14} className="mr-1.5" />}
+            {incluirInativos ? 'Vendo inativos' : 'Ver inativos'}
+          </Button>
           <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
           <Button onClick={handleNew}><Plus size={15} className="mr-1.5" /> Novo cliente</Button>
         </div>
       </div>
+
+      {flash && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-2.5">{flash}</div>
+      )}
 
       {showImport && (
         <ImportacaoModal tenantSlug={tenantSlug} entidade="clientes" queryKey="clientes" onClose={() => setShowImport(false)} />
@@ -131,7 +155,7 @@ export default function ClientesView({ tenantSlug }: Props) {
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Tipo</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">E-mail</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Cidade</th>
-              <th className="px-4 py-3 w-20" />
+              <th className="px-4 py-3 w-28" />
             </tr>
           </thead>
           <tbody>
@@ -140,15 +164,21 @@ export default function ClientesView({ tenantSlug }: Props) {
             ) : clientes.length === 0 ? (
               <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum cliente encontrado.</td></tr>
             ) : clientes.map((c: any) => (
-              <tr key={c.clienteId} className="group border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.nomeCompleto}</td>
+              <tr key={c.clienteId} className={`group border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${c.activeFlag === false ? 'opacity-60' : ''}`}>
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                  <span className="flex items-center gap-2">
+                    {c.nomeCompleto}
+                    {c.activeFlag === false && <Badge variant="outline" className="text-gray-400">Inativo</Badge>}
+                  </span>
+                </td>
                 <td className="px-4 py-3 hidden md:table-cell"><Badge variant={c.tipoPessoa === 'PJ' ? 'secondary' : 'outline'}>{c.tipoPessoa}</Badge></td>
                 <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">{c.email ?? '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">{c.cidade ? `${c.cidade}/${c.uf ?? ''}` : '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => setShowHistorico(c)} title="Histórico" className="p-1 text-purple-400 hover:text-purple-600"><Clock size={14} /></button>
-                    <button onClick={() => handleEdit(c)} className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
+                    <button onClick={() => handleEdit(c)} title="Editar" className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
+                    <button onClick={() => setConfirmDelete(c)} title="Excluir" className="p-1 text-gray-300 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </td>
               </tr>
@@ -171,9 +201,12 @@ export default function ClientesView({ tenantSlug }: Props) {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-gray-900">{editItem ? 'Editar cliente' : 'Novo cliente'}</h2>
-              <button onClick={() => { setShowForm(false); setEditItem(null) }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <button onClick={() => { setShowForm(false); setEditItem(null); setFormError('') }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
+              {formError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-2.5">{formError}</div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo de pessoa *</Label>
@@ -214,12 +247,23 @@ export default function ClientesView({ tenantSlug }: Props) {
               )}
 
               <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditItem(null) }}>Cancelar</Button>
+                <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditItem(null); setFormError('') }}>Cancelar</Button>
                 <Button type="submit" disabled={isPending}>{isPending ? 'Salvando...' : editItem ? 'Salvar alterações' : 'Salvar cliente'}</Button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Excluir cliente"
+          message={`Excluir "${confirmDelete.nomeCompleto}"? Se ele tiver vendas associadas, será apenas inativado (histórico preservado).`}
+          confirmLabel="Excluir"
+          danger
+          onConfirm={() => deleteMutation.mutate(confirmDelete.clienteId)}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
 
       {showHistorico && (

@@ -105,7 +105,7 @@ export async function POST(req: NextRequest, { params }: Params) {
          WHERE active_flg = true AND LOWER(nome) = LOWER($1) LIMIT 1`,
         [body.nome.trim()]
       )
-      if (dup.rows.length > 0) return badRequest('Insumo já existente')
+      if (dup.rows.length > 0) return badRequest('Registro já existente')
 
       const res = await client.query(`
         INSERT INTO t_insumo (
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       client.release()
     }
   } catch (err: any) {
-    if (err?.code === '23505') return badRequest('Insumo já existente')
+    if (err?.code === '23505') return badRequest('Registro já existente')
     return serverError(err)
   }
 }

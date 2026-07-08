@@ -111,7 +111,7 @@ export async function POST(req: NextRequest, { params }: Params) {
            LIMIT 1`,
           [doc]
         )
-        if (dup.rows.length > 0) return badRequest('Cliente já existente')
+        if (dup.rows.length > 0) return badRequest('Registro já existente')
       }
 
       const res = await client.query(`
@@ -143,7 +143,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       client.release()
     }
   } catch (err: any) {
-    if (err?.code === '23505') return badRequest('Cliente já existente')
+    if (err?.code === '23505') return badRequest('Registro já existente')
     return serverError(err)
   }
 }
