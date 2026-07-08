@@ -1,4 +1,11 @@
 // @ts-nocheck
+// app/api/[tenant]/cadastros/insumos/route.ts
+//
+// GET aceita ?incluirProdutos=true — quando ligado, faz UNION dos produtos
+// marcados como insumo (insumo_flg=true), que aparecem com insumoId negativo
+// (= -produto_id). A tela de cadastro de Insumos NÃO passa esse parâmetro
+// (continua só com insumos reais e editáveis); os dropdowns de Ficha Técnica
+// passam, pra deixar o produto-insumo selecionável.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
@@ -13,40 +20,55 @@ export async function GET(req: NextRequest, { params }: Params) {
     const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
     const limit  = Math.min(500, Math.max(1, Number(searchParams.get('limit') ?? 20)))
     const search = searchParams.get('search') ?? ''
+    const incluirProdutos = searchParams.get('incluirProdutos') === 'true'
     const offset = (page - 1) * limit
 
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
-      const conditions = ['active_flg = true']
-      const values: any[] = []
+      // Fonte base: insumos reais. Se pedido, UNION com produtos-insumo (id negativo).
+      const fonte = incluirProdutos
+        ? `(
+            SELECT insumo_id AS id, nome, descricao, codigo_barras, unidade, tipo,
+                   estoque_atual::numeric AS estoque_atual, estoque_minimo::numeric AS estoque_minimo,
+                   preco_custo, fornecedor_id, 'insumo'::text AS origem
+            FROM t_insumo WHERE active_flg = true
+            UNION ALL
+            SELECT (-produto_id) AS id, nome, descricao, codigo_barras, unidade, 'Produto'::varchar AS tipo,
+                   estoque_atual::numeric AS estoque_atual, estoque_minimo::numeric AS estoque_minimo,
+                   preco_custo, NULL::integer AS fornecedor_id, 'produto'::text AS origem
+            FROM t_produto WHERE active_flg = true AND insumo_flg = true
+          )`
+        : `(
+            SELECT insumo_id AS id, nome, descricao, codigo_barras, unidade, tipo,
+                   estoque_atual::numeric AS estoque_atual, estoque_minimo::numeric AS estoque_minimo,
+                   preco_custo, fornecedor_id, 'insumo'::text AS origem
+            FROM t_insumo WHERE active_flg = true
+          )`
+
+      const vals: any[] = []
       let idx = 1
-
-      if (search) {
-        conditions.push(`LOWER(nome) LIKE $${idx++}`)
-        values.push(`%${search.toLowerCase()}%`)
-      }
-
-      const where = `WHERE ${conditions.join(' AND ')}`
+      let searchClause = ''
+      if (search) { searchClause = `WHERE LOWER(nome) LIKE $${idx++}`; vals.push(`%${search.toLowerCase()}%`) }
 
       const [dataRes, countRes] = await Promise.all([
         client.query(`
-          SELECT insumo_id, nome, descricao, codigo_barras, unidade, tipo,
-                 estoque_atual, estoque_minimo, preco_custo, fornecedor_id,
-                 active_flg, modification_num, created_dt, updated_dt
-          FROM t_insumo ${where}
+          SELECT * FROM ${fonte} c
+          ${searchClause}
           ORDER BY nome ASC
           LIMIT $${idx++} OFFSET $${idx++}
-        `, [...values, limit, offset]),
-        client.query(`SELECT COUNT(*)::int as total FROM t_insumo ${where}`, values),
+        `, [...vals, limit, offset]),
+        client.query(`SELECT COUNT(*)::int AS total FROM ${fonte} c ${searchClause}`, vals),
       ])
 
       const total      = Number(countRes.rows[0]?.total ?? 0)
       const totalPages = Math.ceil(total / limit)
 
       const data = dataRes.rows.map(r => ({
-        insumoId:       r.insumo_id,
+        insumoId:       r.id,                                   // negativo = produto-insumo
+        produtoId:      r.origem === 'produto' ? -r.id : null,
+        origem:         r.origem,
         nome:           r.nome,
         descricao:      r.descricao,
         codigoBarras:   r.codigo_barras,
@@ -56,8 +78,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         estoqueMinimo:  Number(r.estoque_minimo ?? 0),
         precoCusto:     Number(r.preco_custo ?? 0),
         fornecedorId:   r.fornecedor_id,
-        activeFlag:     r.active_flg,
-        modificationNum: r.modification_num,
+        activeFlag:     true,
+        modificationNum: 0,
       }))
 
       return ok({ data, meta: { total, page, limit, totalPages } })

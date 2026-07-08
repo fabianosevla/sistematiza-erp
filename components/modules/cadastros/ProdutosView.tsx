@@ -52,6 +52,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [ativo, setAtivo]             = useState(true)
   const [revenda, setRevenda]         = useState(false)
+  const [insumoAtivo, setInsumoAtivo] = useState(false)
   const [fichaInsumoId, setFichaInsumoId] = useState('')
   const [fichaQtd, setFichaQtd]           = useState('')
   const [fichaUnidade, setFichaUnidade]   = useState('')
@@ -70,9 +71,11 @@ export default function ProdutosView({ tenantSlug }: Props) {
     },
   })
 
+  // incluirProdutos=true: além dos insumos reais, traz produtos marcados como
+  // insumo (insumoId negativo), pra poderem ser adicionados na ficha técnica.
   const { data: insumosRaw } = useQuery({
     queryKey: ['insumos-select', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=500`)).json(),
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=500&incluirProdutos=true`)).json(),
   })
 
   // ── FICHA TÉCNICA query ────────────────────────────────────────────────────
@@ -91,6 +94,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       const parseP = (v: string) => v ? Math.round(parseFloat(v.replace(',', '.')) * 100) : 0
       const payload = {
         nome, tipo: revenda ? 'Revenda' : tipo, unidade, activeFlag: ativo, revenda,
+        insumoFlg:     insumoAtivo,
         precoVarejo:   parseP(precoVarejo),
         precoAtacado:  parseP(atacados.A),
         precoAtacadoA: parseP(atacados.A),
@@ -214,6 +218,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setAtivo(item.activeFlag ?? true)
       setRevenda(item.tipo === 'Revenda' || item.revenda === true)
+      setInsumoAtivo(item.insumoFlg === true)
     } else {
       setEditando(null)
       setNome('')
@@ -225,6 +230,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setEstoqueAtual('0')
       setAtivo(true)
       setRevenda(false)
+      setInsumoAtivo(false)
     }
     setShowModal(true)
   }
@@ -251,7 +257,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
     const csv = [['ID','Nome','Tipo','Unidade','Preço Varejo','Est.Atual','Est.Mín','Status'], ...rows]
       .map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }))
     a.download = 'produtos.csv'
     a.click()
   }
@@ -264,6 +270,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
   const insumos = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
     : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
+
+  // Ficha não pode conter o próprio produto como insumo (evita loop)
+  const insumosFicha = insumos.filter((ins: any) => ins.insumoId !== -(showFicha?.produtoId ?? 0))
 
   // CORREÇÃO: rota GET /ficha retorna { data: { itens: [...], custoProdução: ... } }
   // fichaRaw.data é { itens, custoProdução }, não um array diretamente.
@@ -355,6 +364,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
                       onClick={() => !inativo && abrirModal(p)}>
                       {p.nome}
                     </span>
+                    {p.insumoFlg && !inativo && (
+                      <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5 align-middle">insumo</span>
+                    )}
                     {inativo && (
                       <p className="text-xs text-gray-400 mt-0.5">desativado — preservado no histórico</p>
                     )}
@@ -492,6 +504,16 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </p>
               )}
 
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={insumoAtivo} onChange={e => setInsumoAtivo(e.target.checked)} className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-700">Usar também como insumo em outros produtos</span>
+              </label>
+              {insumoAtivo && (
+                <p className="text-xs text-purple-700 bg-purple-50 rounded-lg px-3 py-2">
+                  Este produto passa a aparecer na tela de Insumos e nos dropdowns de Ficha Técnica. Ao produzir um produto que o usa como insumo, o estoque dele é baixado — os insumos que o compõem só baixam quando você produz este produto.
+                </p>
+              )}
+
               {editando && (
                 <AuditoriaInfo
                   criadoPor={editando.createdBy}
@@ -535,13 +557,15 @@ export default function ProdutosView({ tenantSlug }: Props) {
                       value={fichaInsumoId}
                       onChange={e => {
                         setFichaInsumoId(e.target.value)
-                        const ins = insumos.find((i: any) => i.insumoId === Number(e.target.value))
+                        const ins = insumosFicha.find((i: any) => i.insumoId === Number(e.target.value))
                         if (ins) setFichaUnidade(ins.unidade ?? 'kg')
                       }}
                       className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                       <option value="">Selecionar...</option>
-                      {insumos.map((ins: any) => (
-                        <option key={ins.insumoId} value={ins.insumoId}>{ins.nome}</option>
+                      {insumosFicha.map((ins: any) => (
+                        <option key={ins.insumoId} value={ins.insumoId}>
+                          {ins.nome}{ins.origem === 'produto' ? ' (produto-insumo)' : ''}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -588,6 +612,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                       <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50 group">
                         <td className="px-3 py-2.5 text-sm font-medium text-gray-900">
                           {item.nomeInsumo ?? item.insumo?.nome ?? `#${item.insumoId}`}
+                          {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
                         </td>
                         <td className="px-3 py-2.5 text-center text-sm text-gray-600">
                           {parseFloat(String(item.quantidade)).toFixed(3)}

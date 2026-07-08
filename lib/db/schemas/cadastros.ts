@@ -75,6 +75,8 @@ export const dbProduto = pgTable('t_produto', {
   estoqueMinimo:  integer('estoque_minimo').notNull().default(0),
   precoCusto:     integer('preco_custo').notNull().default(0),
   precoVarejo:    integer('preco_varejo').notNull().default(0),
+  // Produto que também é insumo de outros produtos (ver migrate-produto-insumo-flg.js)
+  insumoFlg:      boolean('insumo_flg').notNull().default(false),
   // Atacado legado (mantido para retrocompatibilidade)
   precoAtacado:   integer('preco_atacado').notNull().default(0),
   // Tabelas de preço atacado por canal B2B (A=mercados pequenos … E=grandes redes)

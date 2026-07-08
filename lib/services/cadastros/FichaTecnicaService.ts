@@ -1,35 +1,49 @@
-import { and, eq } from 'drizzle-orm'
+// @ts-nocheck
+import { and, eq, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbProdutoInsumo } from '@/lib/db/schemas/producao'
-import { dbInsumo } from '@/lib/db/schemas/cadastros'
 
 export class FichaTecnicaService {
   constructor(private db: AppDB) {}
 
+  // Resolve o componente da ficha: insumo_id > 0 = insumo real (t_insumo),
+  // insumo_id < 0 = produto usado como insumo (t_produto, produto_id = -insumo_id).
   async getByProduto(produtoId: number) {
-    const itens = await this.db
-      .select({
-        produtoInsumoId: dbProdutoInsumo.produtoInsumoId,
-        insumoId:        dbProdutoInsumo.insumoId,
-        quantidade:      dbProdutoInsumo.quantidade,
-        unidade:         dbProdutoInsumo.unidade,
-        observacao:      dbProdutoInsumo.observacao,
-        nomeInsumo:      dbInsumo.nome,
-        unidadeInsumo:   dbInsumo.unidade,
-        precoCusto:      dbInsumo.precoCusto,
-      })
-      .from(dbProdutoInsumo)
-      .leftJoin(dbInsumo, eq(dbProdutoInsumo.insumoId, dbInsumo.insumoId))
-      .where(and(
-        eq(dbProdutoInsumo.produtoId, produtoId),
-        eq(dbProdutoInsumo.activeFlag, true),
-      ))
-    return itens
+    const res = await this.db.execute(sql`
+      SELECT
+        pi.produto_insumo_id,
+        pi.insumo_id,
+        pi.quantidade,
+        pi.unidade,
+        pi.observacao,
+        COALESCE(i.nome, p.nome)                 AS nome_insumo,
+        COALESCE(i.unidade, p.unidade)           AS unidade_insumo,
+        COALESCE(i.preco_custo, p.preco_custo)   AS preco_custo,
+        (pi.insumo_id < 0)                       AS eh_produto
+      FROM t_produto_insumo pi
+      LEFT JOIN t_insumo  i ON pi.insumo_id = i.insumo_id  AND pi.insumo_id > 0
+      LEFT JOIN t_produto p ON (-pi.insumo_id) = p.produto_id AND pi.insumo_id < 0
+      WHERE pi.produto_id = ${produtoId}
+        AND pi.active_flg = true
+      ORDER BY nome_insumo ASC
+    `)
+
+    return (res.rows as any[]).map(r => ({
+      produtoInsumoId: r.produto_insumo_id,
+      insumoId:        r.insumo_id,
+      quantidade:      r.quantidade,
+      unidade:         r.unidade,
+      observacao:      r.observacao,
+      nomeInsumo:      r.nome_insumo,
+      unidadeInsumo:   r.unidade_insumo,
+      precoCusto:      Number(r.preco_custo ?? 0),
+      ehProduto:       r.eh_produto === true,
+    }))
   }
 
   async addItem({ produtoId, insumoId, quantidade, unidade, observacao, userId }: {
     produtoId:   number
-    insumoId:    number
+    insumoId:    number   // pode ser negativo (produto-insumo)
     quantidade:  number
     unidade:     string
     observacao?: string

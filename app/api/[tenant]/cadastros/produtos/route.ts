@@ -39,7 +39,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           SELECT produto_id, nome, descricao, codigo_barras, unidade, tipo, categoria,
                  estoque_atual, estoque_minimo, preco_custo, preco_varejo,
                  preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
-                 active_flg, modification_num, created_dt, updated_dt
+                 insumo_flg, active_flg, modification_num, created_dt, updated_dt
           FROM t_produto ${where}
           ORDER BY nome ASC
           LIMIT $${idx++} OFFSET $${idx++}
@@ -67,6 +67,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         precoAtacadoC:  Number(r.preco_atacado_c ?? 0),
         precoAtacadoD:  Number(r.preco_atacado_d ?? 0),
         precoAtacadoE:  Number(r.preco_atacado_e ?? 0),
+        insumoFlg:      r.insumo_flg === true,
         activeFlag:     r.active_flg,
         modificationNum: r.modification_num,
       }))
@@ -92,8 +93,8 @@ export async function POST(req: NextRequest, { params }: Params) {
           nome, descricao, codigo_barras, unidade, tipo, categoria,
           estoque_atual, estoque_minimo, preco_custo, preco_varejo,
           preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
-          active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,0,1,1,NOW(),NOW())
+          insumo_flg, active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,0,1,1,NOW(),NOW())
         RETURNING produto_id as "produtoId"
       `, [
         body.nome.trim(),
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         Number(body.precoAtacadoC ?? 0),
         Number(body.precoAtacadoD ?? 0),
         Number(body.precoAtacadoE ?? 0),
+        body.insumoFlg === true,
       ])
       return created(res.rows[0])
     } finally {

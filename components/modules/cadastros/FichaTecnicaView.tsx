@@ -38,9 +38,11 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=500`)).json(),
   })
 
+  // incluirProdutos=true: além dos insumos reais, traz produtos marcados como
+  // insumo (insumoId negativo), pra poderem ser adicionados na ficha técnica.
   const { data: insumosRaw } = useQuery({
     queryKey: ['insumos-select', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=500`)).json(),
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=500&incluirProdutos=true`)).json(),
   })
 
   const { data: fichaRaw, refetch } = useQuery({
@@ -51,6 +53,9 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
 
   const insumos: any[] = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
     : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
+
+  // Dropdown não pode conter o próprio produto como insumo (evita loop)
+  const insumosDropdown = insumos.filter((i: any) => i.insumoId !== -(selecionado?.produtoId ?? 0))
 
   // Quando seleciona o insumo: pré-seleciona a unidade do insumo
   function onInsumoChange(id: string) {
@@ -218,9 +223,9 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                       <select value={novoInsumoId} onChange={e => onInsumoChange(e.target.value)}
                         className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                         <option value="">Selecionar...</option>
-                        {insumos.map((ins: any) => (
+                        {insumosDropdown.map((ins: any) => (
                           <option key={ins.insumoId} value={ins.insumoId}>
-                            {ins.nome} ({ins.unidade}){ins.precoCusto ? ` — ${fmt(ins.precoCusto)}/${ins.unidade}` : ''}
+                            {ins.nome} ({ins.unidade}){ins.origem === 'produto' ? ' [produto-insumo]' : ''}{ins.precoCusto ? ` — ${fmt(ins.precoCusto)}/${ins.unidade}` : ''}
                           </option>
                         ))}
                       </select>
@@ -285,11 +290,14 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                       {fichaItens.map((item: any) => {
                         const ins = insumos.find((i: any) => i.insumoId === item.insumoId)
                         const qtd = parseFloat(String(item.quantidade))
-                        const precoCusto  = ins?.precoCusto ?? 0
+                        const precoCusto  = ins?.precoCusto ?? item.precoCusto ?? 0
                         const custoFracao = qtd * precoCusto
                         return (
                           <tr key={item.produtoInsumoId ?? item.itemId} className="group border-b border-gray-50 hover:bg-gray-50/50">
-                            <td className="px-5 py-3 text-sm font-medium text-gray-900">{item.nomeInsumo ?? ins?.nome ?? `#${item.insumoId}`}</td>
+                            <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                              {item.nomeInsumo ?? ins?.nome ?? `#${item.insumoId}`}
+                              {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
+                            </td>
                             <td className="px-4 py-3 text-right text-sm text-gray-600">{qtd.toFixed(3)} <span className="text-gray-400">{item.unidade}</span></td>
                             <td className="px-4 py-3 text-right text-sm text-gray-600">{precoCusto ? fmt(precoCusto) : <span className="text-gray-300">—</span>}</td>
                             <td className="px-4 py-3 text-right text-sm font-semibold">
