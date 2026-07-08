@@ -41,6 +41,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
     qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
     qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
     qc.invalidateQueries({ queryKey: ['estoque-ajuste', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['estoque-kpis', tenantSlug] })
   }
 
   const { data: configRaw } = useQuery({
@@ -49,6 +50,14 @@ export default function EstoqueView({ tenantSlug }: Props) {
     staleTime: 60000,
   })
   const config = configRaw?.data
+
+  // KPIs contam TODOS os registros (não só a página atual).
+  const { data: kpisRaw } = useQuery({
+    queryKey: ['estoque-kpis', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/kpis`)).json(),
+    staleTime: 15000,
+  })
+  const kpis = kpisRaw?.data
 
   const { data: produtosRaw, isLoading: prodLoad } = useQuery({
     queryKey: ['estoque-produtos', tenantSlug, page, limit, buscaProduto],
@@ -140,13 +149,14 @@ export default function EstoqueView({ tenantSlug }: Props) {
     a.click()
   }
 
+  // Usa os totais do endpoint de KPIs (conta tudo). Cai pro page-based só até carregar.
   const kpisProd = {
-    total:    produtos.length,
-    criticos: produtos.filter((p: any) => p.estoqueAtual <= p.estoqueMinimo).length,
+    total:    kpis?.produtos          ?? produtos.length,
+    criticos: kpis?.produtosCriticos  ?? produtos.filter((p: any) => p.estoqueAtual <= p.estoqueMinimo).length,
   }
   const kpisIns = {
-    total:    insumos.length,
-    criticos: insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length,
+    total:    kpis?.insumos           ?? insumos.length,
+    criticos: kpis?.insumosCriticos   ?? insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length,
   }
 
   const ABAS_BASE: { key: Aba; label: string }[] = [
