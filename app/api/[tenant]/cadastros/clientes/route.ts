@@ -18,15 +18,19 @@ export async function GET(req: NextRequest, { params }: Params) {
     const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
     const limit  = Math.min(1000, Math.max(1, Number(searchParams.get('limit') ?? 500)))
     const search = searchParams.get('search') ?? ''
+    const incluirInativos = searchParams.get('incluirInativos') === 'true'
     const offset = (page - 1) * limit
 
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
-      const conditions = ['active_flg = true']
+      const conditions: string[] = []
       const values: any[] = []
       let idx = 1
+
+      // Por padrão, só clientes ativos. ?incluirInativos=true traz todos.
+      if (!incluirInativos) conditions.push('active_flg = true')
 
       if (search) {
         // Busca por nome OU documento (CPF/CNPJ)
@@ -35,7 +39,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         idx++
       }
 
-      const where = `WHERE ${conditions.join(' AND ')}`
+      const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
       const [dataRes, countRes] = await Promise.all([
         client.query(`
@@ -142,4 +146,56 @@ export async function POST(req: NextRequest, { params }: Params) {
     if (err?.code === '23505') return badRequest('Cliente já existente')
     return serverError(err)
   }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { searchParams } = new URL(req.url)
+    const id = Number(searchParams.get('id'))
+    if (!id) return badRequest('ID do cliente é obrigatório')
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      // Está associado a alguma venda ou pedido? Se sim, só inativa (preserva histórico).
+      let associado = false
+      const vend = await client
+        .query(`SELECT 1 FROM t_venda WHERE cliente_id = $1 LIMIT 1`, [id])
+        .catch(() => ({ rows: [] as any[] }))
+      if (vend.rows.length > 0) associado = true
+      if (!associado) {
+        const ped = await client
+          .query(`SELECT 1 FROM t_pedido WHERE cliente_id = $1 LIMIT 1`, [id])
+          .catch(() => ({ rows: [] as any[] }))
+        if (ped.rows.length > 0) associado = true
+      }
+
+      if (associado) {
+        await client.query(
+          `UPDATE t_cliente SET active_flg = false, updated_dt = NOW() WHERE cliente_id = $1`,
+          [id]
+        )
+        return ok({ inativado: true, message: 'Cliente inativado — possui vendas associadas, histórico preservado.' })
+      }
+
+      // Sem vínculo: exclui de fato. Se ainda houver FK inesperada, cai no fallback de inativar.
+      try {
+        await client.query(`DELETE FROM t_cliente WHERE cliente_id = $1`, [id])
+        return ok({ deletado: true, message: 'Cliente excluído.' })
+      } catch (e: any) {
+        if (e?.code === '23503') {
+          await client.query(
+            `UPDATE t_cliente SET active_flg = false, updated_dt = NOW() WHERE cliente_id = $1`,
+            [id]
+          )
+          return ok({ inativado: true, message: 'Cliente inativado — possui registros associados.' })
+        }
+        throw e
+      }
+    } finally {
+      client.release()
+    }
+  } catch (err) { return serverError(err) }
 }
