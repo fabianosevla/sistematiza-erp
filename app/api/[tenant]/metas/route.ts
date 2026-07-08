@@ -50,12 +50,18 @@ export async function GET(req: NextRequest, { params }: Params) {
         `).catch(() => ({ rows: [] }))
         const pedidosPorProduto = {}
         for (const r of pedidosRes.rows) pedidosPorProduto[r.produto_id] = Number(r.qtd_pendente)
+        // Componente com insumo_id < 0 = produto-insumo: resolve em t_produto.
         const fichaRes = await client.query(`
           SELECT pi.produto_id, pi.insumo_id, pi.quantidade as qtd_ficha,
-                 i.nome as nome_insumo, i.unidade, i.estoque_atual, i.preco_custo
+                 COALESCE(i.nome, p.nome)                 as nome_insumo,
+                 COALESCE(i.unidade, p.unidade)           as unidade,
+                 COALESCE(i.estoque_atual, p.estoque_atual) as estoque_atual,
+                 COALESCE(i.preco_custo, p.preco_custo)   as preco_custo
           FROM t_produto_insumo pi
-          JOIN t_insumo i ON i.insumo_id = pi.insumo_id AND i.active_flg = true
+          LEFT JOIN t_insumo  i ON i.insumo_id = pi.insumo_id     AND pi.insumo_id > 0 AND i.active_flg = true
+          LEFT JOIN t_produto p ON (-pi.insumo_id) = p.produto_id AND pi.insumo_id < 0 AND p.active_flg = true
           WHERE pi.active_flg = true
+            AND (i.insumo_id IS NOT NULL OR p.produto_id IS NOT NULL)
         `).catch(() => ({ rows: [] }))
         const fichaPorProduto = {}
         for (const r of fichaRes.rows) {
@@ -110,7 +116,15 @@ export async function POST(req: NextRequest, { params }: Params) {
         for (const item of itens) {
           const prodRes = await db.execute(sql`SELECT preco_varejo FROM t_produto WHERE produto_id=${item.produtoId} AND active_flg=true`)
           receitaProjetada += item.quantidade * Number(prodRes.rows[0]?.preco_varejo ?? 0)
-          const fichaRes = await db.execute(sql`SELECT pi.quantidade, i.preco_custo FROM t_produto_insumo pi JOIN t_insumo i ON pi.insumo_id=i.insumo_id WHERE pi.produto_id=${item.produtoId} AND pi.active_flg=true AND i.active_flg=true`)
+          // Componente com insumo_id < 0 = produto-insumo: custo vem de t_produto.
+          const fichaRes = await db.execute(sql`
+            SELECT pi.quantidade, COALESCE(i.preco_custo, p.preco_custo) AS preco_custo
+            FROM t_produto_insumo pi
+            LEFT JOIN t_insumo  i ON pi.insumo_id = i.insumo_id     AND pi.insumo_id > 0 AND i.active_flg = true
+            LEFT JOIN t_produto p ON (-pi.insumo_id) = p.produto_id AND pi.insumo_id < 0 AND p.active_flg = true
+            WHERE pi.produto_id=${item.produtoId} AND pi.active_flg=true
+              AND (i.insumo_id IS NOT NULL OR p.produto_id IS NOT NULL)
+          `)
           for (const fi of fichaRes.rows) custoInsumos += parseFloat(fi.quantidade) * item.quantidade * Number(fi.preco_custo ?? 0)
         }
         const mesSim = body.mes ?? new Date().getMonth() + 1

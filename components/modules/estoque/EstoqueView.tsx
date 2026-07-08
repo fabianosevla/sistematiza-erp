@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Paginacao from '@/components/ui/Paginacao'
-import { Plus, X, Download, AlertTriangle, CheckCircle, Edit3, Warehouse, ClipboardCheck, FileSpreadsheet } from 'lucide-react'
+import { Plus, X, Download, AlertTriangle, CheckCircle, Edit3, Warehouse, ClipboardCheck, FileSpreadsheet, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,6 +28,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
   const [aba, setAba]               = useState<Aba>('produtos')
   const [buscaInsumo, setBuscaInsumo] = useState('')
   const [buscaProduto, setBuscaProduto] = useState('')
+  const [buscaAjuste, setBuscaAjuste]   = useState('')
   const [page, setPage]               = useState(1)
   const [limit, setLimit]             = useState(20)
   const [showModal, setShowModal]   = useState<'produto' | 'insumo' | null>(null)
@@ -68,14 +69,18 @@ export default function EstoqueView({ tenantSlug }: Props) {
   })
 
   const { data: ajusteRaw, isLoading: ajusteLoad } = useQuery({
-    queryKey: ['estoque-ajuste', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/ajustar`)).json(),
+    queryKey: ['estoque-ajuste', tenantSlug, page, limit, buscaAjuste],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (buscaAjuste) params.set('search', buscaAjuste)
+      return (await fetch(`/api/${tenantSlug}/estoque/ajustar?${params}`)).json()
+    },
     enabled: aba === 'ajuste',
   })
 
   const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data : Array.isArray(produtosRaw?.data) ? produtosRaw.data : Array.isArray(produtosRaw) ? produtosRaw : []
   const insumos  = Array.isArray(insumosRaw?.data?.data)  ? insumosRaw.data.data  : Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : Array.isArray(insumosRaw)  ? insumosRaw  : []
-  const ajuste   = Array.isArray(ajusteRaw?.data)   ? ajusteRaw.data   : Array.isArray(ajusteRaw)   ? ajusteRaw   : []
+  const ajuste   = Array.isArray(ajusteRaw?.data?.data)   ? ajusteRaw.data.data   : Array.isArray(ajusteRaw?.data)   ? ajusteRaw.data   : Array.isArray(ajusteRaw)   ? ajusteRaw   : []
 
   // CORRIGIDO: campos trocados — schema da rota espera "entidade" e "tipo",
   // não "tipo" para entidade e "tipoMovimento" para o tipo de operação.
@@ -130,7 +135,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
       ...dados.map((d: any) => [d.produtoId ?? d.insumoId, d.nome, d.estoqueAtual, d.estoqueMinimo]),
     ].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }))
     a.download = `${nome}.csv`
     a.click()
   }
@@ -157,6 +162,10 @@ export default function EstoqueView({ tenantSlug }: Props) {
   ]
 
   const mostrarKpisBase = aba === 'produtos' || aba === 'insumos' || aba === 'ajuste'
+
+  function trocarAba(nova: Aba) {
+    setAba(nova); setPage(1); setBuscaInsumo(''); setBuscaProduto(''); setBuscaAjuste('')
+  }
 
   return (
     <div>
@@ -196,7 +205,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
       <div className="border-b border-gray-100 mb-6 overflow-x-auto">
         <div className="flex gap-0 min-w-max">
           {ABAS_BASE.map(a => (
-            <button key={a.key} onClick={() => { setAba(a.key); setPage(1); setBuscaInsumo(''); setBuscaProduto('') }}
+            <button key={a.key} onClick={() => trocarAba(a.key)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}>
@@ -204,7 +213,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
             </button>
           ))}
           {ABAS_AVANCADAS.filter(a => a.check).map(a => (
-            <button key={a.key} onClick={() => { setAba(a.key); setPage(1); setBuscaInsumo(''); setBuscaProduto('') }}
+            <button key={a.key} onClick={() => trocarAba(a.key)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}>
@@ -302,6 +311,12 @@ export default function EstoqueView({ tenantSlug }: Props) {
               Esta aba permite atualizar o estoque de produtos <strong>sem dar baixa nos insumos</strong>. Use apenas para correções e inventário.
             </p>
           </div>
+
+          <div className="relative mb-4 max-w-xs">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Input value={buscaAjuste} onChange={e => { setBuscaAjuste(e.target.value); setPage(1) }} placeholder="Buscar produto..." className="pl-9 h-9 text-sm" />
+          </div>
+
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <table className="w-full">
               <thead>
@@ -348,6 +363,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
               </tbody>
             </table>
           </div>
+          <Paginacao page={page} totalPages={ajusteRaw?.data?.meta?.totalPages ?? 1} total={ajusteRaw?.data?.meta?.total ?? 0} limit={limit} onPage={setPage} onLimit={(l) => { setLimit(l); setPage(1) }} />
         </div>
       )}
 

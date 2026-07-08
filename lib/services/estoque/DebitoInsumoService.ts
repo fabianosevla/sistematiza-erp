@@ -24,12 +24,21 @@ export class DebitoInsumoService {
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${this.schemaName}", public`)
+      // Componentes com insumo_id < 0 são produtos usados como insumo (produto-insumo):
+      // resolve nome/unidade/estoque em t_produto em vez de t_insumo.
       const fichaRes = await client.query(
-        `SELECT pi.insumo_id, pi.quantidade AS qtd_por_unidade_ficha, pi.unidade AS unidade_ficha,
-                i.nome, i.unidade AS unidade_estoque, i.estoque_atual
+        `SELECT pi.insumo_id,
+                pi.quantidade AS qtd_por_unidade_ficha,
+                pi.unidade AS unidade_ficha,
+                COALESCE(i.nome, p.nome)                 AS nome,
+                COALESCE(i.unidade, p.unidade)           AS unidade_estoque,
+                COALESCE(i.estoque_atual, p.estoque_atual) AS estoque_atual,
+                (pi.insumo_id < 0)                       AS eh_produto
          FROM t_produto_insumo pi
-         JOIN t_insumo i ON i.insumo_id = pi.insumo_id AND i.active_flg = true
-         WHERE pi.produto_id = $1 AND pi.active_flg = true`,
+         LEFT JOIN t_insumo  i ON i.insumo_id = pi.insumo_id     AND pi.insumo_id > 0 AND i.active_flg = true
+         LEFT JOIN t_produto p ON (-pi.insumo_id) = p.produto_id AND pi.insumo_id < 0 AND p.active_flg = true
+         WHERE pi.produto_id = $1 AND pi.active_flg = true
+           AND (i.insumo_id IS NOT NULL OR p.produto_id IS NOT NULL)`,
         [produtoId]
       )
       return fichaRes.rows.map((item: any) => {
@@ -42,6 +51,7 @@ export class DebitoInsumoService {
         const estoqueRestante         = estoqueAtual - qtdTotalDebitar
         return {
           insumoId: item.insumo_id, nome: item.nome,
+          ehProduto: item.eh_produto === true,
           unidadeFicha, unidadeEstoque,
           qtdFichaPorUnidade, qtdPorUnidadeConvertida, qtdTotalDebitar,
           estoqueAtual, estoqueRestante,
@@ -62,10 +72,18 @@ export class DebitoInsumoService {
       const now = new Date()
       for (const item of simulacao) {
         const novoEstoque = Math.max(0, parseFloat(item.estoqueRestante.toFixed(4)))
-        await client.query(
-          `UPDATE t_insumo SET estoque_atual = $1, updated_dt = $2, updated_by = $3 WHERE insumo_id = $4`,
-          [novoEstoque, now, userId, item.insumoId]
-        )
+        if (item.ehProduto) {
+          // produto-insumo: debita em t_produto (produto_id = -insumo_id)
+          await client.query(
+            `UPDATE t_produto SET estoque_atual = $1, updated_dt = $2, updated_by = $3 WHERE produto_id = $4`,
+            [novoEstoque, now, userId, -item.insumoId]
+          )
+        } else {
+          await client.query(
+            `UPDATE t_insumo SET estoque_atual = $1, updated_dt = $2, updated_by = $3 WHERE insumo_id = $4`,
+            [novoEstoque, now, userId, item.insumoId]
+          )
+        }
       }
     } finally {
       client.release()

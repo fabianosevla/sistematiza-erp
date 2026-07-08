@@ -95,6 +95,21 @@ export async function POST(req: NextRequest, { params }: Params) {
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      // Impede cadastro duplicado: chave = documento (CPF/CNPJ), comparando só dígitos.
+      const doc = body.documento?.trim() || null
+      if (doc) {
+        const dup = await client.query(
+          `SELECT cliente_id FROM t_cliente
+           WHERE active_flg = true
+             AND REGEXP_REPLACE(COALESCE(documento,''), '[^0-9]', '', 'g') = REGEXP_REPLACE($1, '[^0-9]', '', 'g')
+             AND REGEXP_REPLACE($1, '[^0-9]', '', 'g') <> ''
+           LIMIT 1`,
+          [doc]
+        )
+        if (dup.rows.length > 0) return badRequest('Cliente já existente')
+      }
+
       const res = await client.query(`
         INSERT INTO t_cliente (
           tipo_pessoa, nome_completo, nome_fantasia, documento, email, telefone, celular,
@@ -124,7 +139,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       client.release()
     }
   } catch (err: any) {
-    if (err?.code === '23505') return serverError({ code: '23505' })
+    if (err?.code === '23505') return badRequest('Cliente já existente')
     return serverError(err)
   }
 }

@@ -88,6 +88,15 @@ export async function POST(req: NextRequest, { params }: Params) {
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      // Impede cadastro duplicado: chave = nome (produto ativo).
+      const dup = await client.query(
+        `SELECT produto_id FROM t_produto
+         WHERE active_flg = true AND LOWER(nome) = LOWER($1) LIMIT 1`,
+        [body.nome.trim()]
+      )
+      if (dup.rows.length > 0) return badRequest('Produto já existente')
+
       const res = await client.query(`
         INSERT INTO t_produto (
           nome, descricao, codigo_barras, unidade, tipo, categoria,
@@ -119,7 +128,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       client.release()
     }
   } catch (err: any) {
-    if (err?.code === '23505') return serverError({ code: '23505' })
+    if (err?.code === '23505') return badRequest('Produto já existente')
     return serverError(err)
   }
 }
