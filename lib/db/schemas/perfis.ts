@@ -34,6 +34,7 @@ export const dbPerfilAcesso = pgTable('t_perfil_acesso', {
   moduloFiscal:     boolean('modulo_fiscal').notNull().default(false),
   moduloPlanoAcao:  boolean('modulo_plano_acao').notNull().default(false),
   moduloMetas:      boolean('modulo_metas').notNull().default(false),
+  moduloFidelidade: boolean('modulo_fidelidade').notNull().default(false),
   moduloUsuarios:   boolean('modulo_usuarios').notNull().default(false),
 
   // Limites operacionais

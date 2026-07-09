@@ -16,6 +16,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       const result = await client.query(`SELECT * FROM t_configuracoes_tenant LIMIT 1`)
       const r = result.rows[0] ?? {}
       return ok({
+        // Módulos existentes
         comandasAtivo:   r.comandas_ativo   ?? false,
         producaoAtivo:   r.producao_ativo   ?? true,
         estoqueAtivo:    r.estoque_ativo    ?? true,
@@ -24,16 +25,16 @@ export async function GET(req: NextRequest, { params }: Params) {
         pedidosAtivo:    r.pedidos_ativo    ?? true,
         planoAcaoAtivo:  r.plano_acao_ativo ?? false,
         metasAtivo:      r.metas_ativo      ?? false,
+        // Fidelidade (cashback)
+        fidelidadeAtivo: r.fidelidade_ativo ?? true,
+        // Financeiro Completo
         contasPagarAtivo:         r.contas_pagar_ativo         ?? false,
         contasReceberAtivo:       r.contas_receber_ativo       ?? false,
         conciliacaoBancariaAtivo: r.conciliacao_bancaria_ativo ?? false,
-        comprasAtivo:             r.modulo_compras_ativo       ?? true,
-        entradaNfeAtivo:          r.entrada_nfe_ativo          ?? true,
-        perdaProdutoAtivo:        r.perda_produto_ativo        ?? true,
-        contagemInventarioAtivo:  r.contagem_inventario_ativo  ?? true,
-        multiplosLocaisAtivo:     r.multiplos_locais_ativo     ?? false,
+        // Aparência
         logoBase64: r.logo_base64 ?? null,
         darkMode:   r.dark_mode   ?? false,
+        // Dados do tenant
         nomeEmpresa:  r.nome_empresa  ?? '',
         nomeFantasia: r.nome_fantasia ?? '',
         cnpj:         r.cnpj          ?? '',
@@ -43,10 +44,6 @@ export async function GET(req: NextRequest, { params }: Params) {
         cidade:       r.cidade        ?? '',
         uf:           r.uf            ?? '',
         cep:          r.cep           ?? '',
-        ieEstadual:       r.ie_estadual        ?? '',
-        regimeTributario: r.regime_tributario  ?? '',
-        focusNfeToken:    r.focus_nfe_token    ?? '',
-        focusNfeAmbiente: r.focus_nfe_ambiente ?? 'homologacao',
       })
     } finally { client.release() }
   } catch (err) { return serverError(err) }
@@ -61,6 +58,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
+      // PADRÃO CRÍTICO: raw SQL UPDATE individual por campo
       const updates: [string, any][] = [
         ['comandas_ativo',           body.comandasAtivo],
         ['producao_ativo',           body.producaoAtivo],
@@ -70,16 +68,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['pedidos_ativo',            body.pedidosAtivo],
         ['plano_acao_ativo',         body.planoAcaoAtivo],
         ['metas_ativo',              body.metasAtivo],
+        // Fidelidade
+        ['fidelidade_ativo',         body.fidelidadeAtivo],
+        // Financeiro Completo
         ['contas_pagar_ativo',         body.contasPagarAtivo],
         ['contas_receber_ativo',       body.contasReceberAtivo],
         ['conciliacao_bancaria_ativo', body.conciliacaoBancariaAtivo],
-        ['modulo_compras_ativo',       body.comprasAtivo],
-        ['entrada_nfe_ativo',          body.entradaNfeAtivo],
-        ['perda_produto_ativo',        body.perdaProdutoAtivo],
-        ['contagem_inventario_ativo',  body.contagemInventarioAtivo],
-        ['multiplos_locais_ativo',     body.multiplosLocaisAtivo],
+        // Aparência
         ['logo_base64', body.logoBase64],
         ['dark_mode',   body.darkMode],
+        // Dados do tenant
         ['nome_empresa',  body.nomeEmpresa],
         ['nome_fantasia', body.nomeFantasia],
         ['cnpj',          body.cnpj],
@@ -89,10 +87,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['cidade',        body.cidade],
         ['uf',            body.uf],
         ['cep',           body.cep],
-        ['ie_estadual',        body.ieEstadual],
-        ['regime_tributario',  body.regimeTributario],
-        ['focus_nfe_token',    body.focusNfeToken],
-        ['focus_nfe_ambiente', body.focusNfeAmbiente],
       ]
 
       for (const [col, val] of updates) {

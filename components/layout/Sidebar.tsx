@@ -3,11 +3,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
-  ChevronRight, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target, Code2, ShoppingBag,
+  ChevronDown, ChevronRight, ClipboardList, Factory, CreditCard,
+  Search, ClipboardCheck, X, Target, Gift,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
+import { useState, useEffect } from 'react'
 import type { Config } from '@/components/layout/ClientShell'
 
 interface Props {
@@ -16,23 +16,25 @@ interface Props {
 }
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
-  const pathname = usePathname()
+  const pathname    = usePathname()
+  const [groupsOpen, setGroupsOpen] = useState<string[]>(['Cadastros'])
   const base     = `/${tenantSlug}`
+  const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
-  const { data: meuAcessoRaw } = useQuery({
-    queryKey: ['meu-acesso', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
-    staleTime: 60000,
-  })
-  const nomeUsuario = meuAcessoRaw?.data?.nome ?? tenantName
-  const initials    = nomeUsuario.split(' ').slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()
-  const isAdmin     = meuAcessoRaw?.data?.isAdmin ?? true
-  const modulos     = meuAcessoRaw?.data?.modulos ?? {}
-  // Helper: tem acesso ao módulo? Admin tem acesso a tudo
-  function temAcesso(modulo: string) { return isAdmin || modulos[modulo] === true }
+  // Flag do módulo Fidelidade: buscado direto da API (o config vindo do
+  // tenant-layout não carrega esse campo, e não devemos alterar aquele arquivo).
+  const [fidelidadeAtivo, setFidelidadeAtivo] = useState(false)
+  useEffect(() => {
+    let vivo = true
+    fetch(`/api/${tenantSlug}/configuracoes`)
+      .then(r => r.json())
+      .then(j => { if (vivo) setFidelidadeAtivo(j?.data?.fidelidadeAtivo === true) })
+      .catch(() => {})
+    return () => { vivo = false }
+  }, [tenantSlug])
 
   const fixos = [
-    ...(temAcesso('dashboard') ? [{ label: 'Dashboard', href: '', icon: BarChart3 }] : []),
+    { label: 'Dashboard', href: '', icon: BarChart3 },
     {
       label: 'Cadastros', icon: Users,
       children: [
@@ -49,38 +51,32 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     },
   ]
 
-  const estoqueLigado =
-    config.estoqueAtivo || config.entradaNfeAtivo || config.perdaProdutoAtivo || config.contagemInventarioAtivo || config.multiplosLocaisAtivo
-
   const modulares = [
-    ...(config.metasAtivo     && temAcesso('metas')      ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
-    ...(config.consultasAtivo && temAcesso('consultas')  ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
-    ...(config.pedidosAtivo   && temAcesso('pedidos')    ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
-    ...(config.comprasAtivo                              ? [{
-      label: 'Compras', icon: ShoppingBag,
-      children: [
-        { label: 'Compra Rápida',    href: '/compras/rapida' },
-        { label: 'Compras Avançado', href: '/compras' },
-      ],
-    }] : []),
-    ...(config.planoAcaoAtivo && temAcesso('planoAcao')  ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
-    ...(config.producaoAtivo  && temAcesso('producao')   ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
-    ...(estoqueLigado         && temAcesso('estoque')    ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
-    ...(config.comandasAtivo  && temAcesso('comandas')   ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
-    ...(config.fiscalAtivo    && temAcesso('fiscal')     ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
+    ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
+    ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
+    ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
+    ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
+    ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
+    ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
+    ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
+    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
+    ...(fidelidadeAtivo       ? [{ label: 'Fidelidade',        href: '/fidelidade', icon: Gift }]           : []),
   ]
 
   const finais = [
-    ...(temAcesso('vendas')     ? [{ label: 'Vendas',     href: '/vendas',     icon: ShoppingCart }] : []),
-    ...(temAcesso('financeiro') ? [{ label: 'Financeiro', href: '/financeiro', icon: DollarSign }]   : []),
+    { label: 'Vendas',     href: '/vendas',     icon: ShoppingCart },
+    { label: 'Financeiro', href: '/financeiro', icon: DollarSign },
   ]
 
   const allItems = [...fixos, ...modulares, ...finais]
 
   function isActive(href: string) {
-    const path = href.split('?')[0] // ignora query string na comparação
-    const full = `${base}${path}`
-    return path === '' ? pathname === base : pathname.startsWith(full)
+    const full = `${base}${href}`
+    return href === '' ? pathname === base : pathname.startsWith(full)
+  }
+
+  function toggleGroup(label: string) {
+    setGroupsOpen(prev => prev.includes(label) ? prev.filter(g => g !== label) : [...prev, label])
   }
 
   return (
@@ -93,13 +89,10 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
       style={{ backgroundColor: '#0F1117' }}>
 
       <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/5">
-        <Link href={base} onClick={onClose} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <Code2 size={18} style={{ color: '#2ecc71' }} />
-          <div className="flex items-baseline">
-            <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
-            <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
-          </div>
-        </Link>
+        <div className="flex items-baseline">
+          <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
+          <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
+        </div>
         <button onClick={onClose} className="lg:hidden text-white/30 hover:text-white/70 p-1 rounded">
           <X size={16} />
         </button>
@@ -108,29 +101,32 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
       <nav className="flex-1 px-2 py-3 overflow-y-auto space-y-0.5">
         {allItems.map(item => {
           if ('children' in item && item.children) {
+            const isOpen    = groupsOpen.includes(item.label)
             const anyActive = item.children.some(c => isActive(c.href))
             return (
-              <div key={item.label} className="group/menu relative">
-                <button
+              <div key={item.label}>
+                <button onClick={() => toggleGroup(item.label)}
                   className={cn('w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors',
-                    anyActive ? 'text-white' : 'text-white/50 group-hover/menu:text-white/80')}>
+                    anyActive ? 'text-white' : 'text-white/50 hover:text-white/80')}>
                   <span className="flex items-center gap-3"><item.icon size={15} />{item.label}</span>
-                  <ChevronRight size={12} className="transition-transform duration-200 group-hover/menu:rotate-90" />
+                  {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                 </button>
-                <div className="ml-7 mt-0.5 space-y-0.5 max-h-0 overflow-hidden group-hover/menu:max-h-96 transition-[max-height] duration-200 ease-in-out">
-                  {item.children.map((child: any) => {
-                    const active = isActive(child.href)
-                    return (
-                      <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
-                        className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
-                          active
-                            ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
-                            : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
-                        {child.label}
-                      </Link>
-                    )
-                  })}
-                </div>
+                {isOpen && (
+                  <div className="ml-7 mt-0.5 space-y-0.5">
+                    {item.children.map(child => {
+                      const active = isActive(child.href)
+                      return (
+                        <Link key={child.href} href={`${base}${child.href}`} onClick={onClose}
+                          className={cn('block px-3 py-1.5 rounded-md text-sm transition-all',
+                            active
+                              ? 'text-white font-medium bg-[#2ecc71]/10 border-l-2 border-[#2ecc71] pl-[10px]'
+                              : 'text-white/40 hover:text-white/70 hover:bg-white/5')}>
+                          {child.label}
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             )
           }
@@ -155,8 +151,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
             {initials}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-white/80 truncate">{nomeUsuario}</p>
-            <p className="text-[10px] text-white/30 truncate">{tenantName}</p>
+            <p className="text-xs font-semibold text-white/60 truncate">{tenantName}</p>
+            <p className="text-[10px] text-white/25">cliente ativo</p>
           </div>
         </div>
       </div>

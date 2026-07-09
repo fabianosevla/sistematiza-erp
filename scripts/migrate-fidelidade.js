@@ -113,6 +113,12 @@ async function migrarSchema(client, schema) {
   `)
   await client.query(`CREATE INDEX IF NOT EXISTS ix_fid_aviso_cliente ON t_fidelidade_aviso (cliente_id, enviado_em)`)
 
+  // ── Integração com o menu / configurações / perfis ────────────────────────
+  // Flag do módulo (liga/desliga o menu Fidelidade, como os outros módulos).
+  await client.query(`ALTER TABLE t_configuracoes_tenant ADD COLUMN IF NOT EXISTS fidelidade_ativo BOOLEAN NOT NULL DEFAULT TRUE`)
+  // Módulo atribuível por perfil de acesso.
+  await client.query(`ALTER TABLE t_perfil_acesso ADD COLUMN IF NOT EXISTS modulo_fidelidade BOOLEAN NOT NULL DEFAULT FALSE`)
+
   // Garante uma linha de config (defaults) por tenant.
   await client.query(`
     INSERT INTO t_fidelidade_config (config_id)
