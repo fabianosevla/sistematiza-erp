@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload } from 'lucide-react'
+import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store } from 'lucide-react'
 import { useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
@@ -134,6 +134,16 @@ export default function Header({
 
         {/* Ações */}
         <div className="flex items-center gap-1">
+          {/* Atalho PDV (ambiente separado) — disponível para todos. */}
+          <a
+            href={`/${tenantSlug}/pdv`}
+            className="flex items-center gap-1.5 px-3 py-1.5 mr-1 rounded-lg text-sm font-medium text-white transition-colors"
+            style={{ backgroundColor: '#2ecc71' }}
+            title="Abrir PDV"
+          >
+            <Store size={16} /> PDV
+          </a>
+
           {/* Dark mode */}
           <button
             onClick={onToggleDarkMode}
