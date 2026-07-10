@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Shield, Check } from 'lucide-react'
+import { Plus, X, Trash2, Shield, Check, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -198,9 +198,10 @@ export default function PerfisView({ tenantSlug }: Props) {
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => abrirModal(p)}
+                    title="Editar"
                     className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                   >
-                    <Shield size={13} />
+                    <Pencil size={13} />
                   </button>
                   <button
                     onClick={() => setConfirmDelete({ id: p.perfilId, nome: p.nome })}

@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload, Package2, ArrowUpDown, Clock } from 'lucide-react'
+import { Plus, X, Trash2, Download, Upload, Package2, ArrowUpDown, Clock, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -189,6 +189,7 @@ export default function InsumosView({ tenantSlug }: Props) {
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => setShowHistorico(ins)} title="Histórico" className="p-1 text-purple-400 hover:text-purple-600"><Clock size={14} /></button>
+                    <button onClick={() => abrirModal(ins)} title="Editar" className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
                     <button onClick={() => setConfirmDelete({ id: ins.insumoId, nome: ins.nome })} className="p-1 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </td>

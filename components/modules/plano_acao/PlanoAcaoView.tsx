@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Check, RefreshCw, Trash2 } from 'lucide-react'
+import { Plus, X, Check, RefreshCw, Trash2, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -113,7 +113,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Ação</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-32 hidden md:table-cell">Responsável</th>
               <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-24">Status</th>
-              <th className="px-4 py-3 w-28" />
+              <th className="px-4 py-3 w-32" />
             </tr>
           </thead>
           <tbody>
@@ -140,6 +140,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
                 </td>
                 <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
+                    <button onClick={() => abrirModal(item)} title="Editar" className="p-1 text-gray-300 hover:text-green-600"><Pencil size={14} /></button>
                     {item.status === 'pendente' ? (
                       <button onClick={() => concluirMut.mutate(item.acaoId)} className="p-1 text-green-500 hover:text-green-700"><Check size={14} /></button>
                     ) : (
