@@ -1,5 +1,5 @@
 ﻿'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Trash2, Download, Upload, Package2, ArrowUpDown, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import CsvImportModal from '@/components/ui/CsvImportModal'
+import Paginacao from '@/components/ui/Paginacao'
 import { useDominio } from '@/hooks/useDominio'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
@@ -31,6 +32,8 @@ export default function InsumosView({ tenantSlug }: Props) {
   const unidades = useDominio(tenantSlug, 'unidade_medida', ['kg', 'g', 'l', 'ml', 'un', 'cx', 'sc', 'fd'])
 
   const [busca, setBusca]                 = useState('')
+  const [page, setPage]                   = useState(1)
+  const [limit, setLimit]                 = useState(20)
   const [showModal, setShowModal]         = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [showHistorico, setShowHistorico] = useState<any>(null)
@@ -46,14 +49,19 @@ export default function InsumosView({ tenantSlug }: Props) {
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [precoCusto, setPrecoCusto]   = useState('')
 
+  // Volta pra página 1 sempre que a busca muda
+  useEffect(() => { setPage(1) }, [busca])
+
   const invalidate = () => qc.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
 
-  // CORREÇÃO: esta tela é "carrega tudo e filtra localmente" (não tem paginação).
-  // O endpoint passou a ter default de 20 registros; por isso o cadastro só
-  // mostrava 20. Pedimos um limite alto para trazer todos os insumos de volta.
+  // Paginação e busca no SERVIDOR (?page, ?limit, ?search).
   const { data: raw, isLoading } = useQuery({
-    queryKey: ['insumos', tenantSlug],
-    queryFn:  async () => (await fetch(`${api}?limit=1000`)).json(),
+    queryKey: ['insumos', tenantSlug, page, limit, busca],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (busca) params.set('search', busca)
+      return (await fetch(`${api}?${params}`)).json()
+    },
   })
 
   const salvarMut = useMutation({
@@ -106,33 +114,32 @@ export default function InsumosView({ tenantSlug }: Props) {
     return <span className="ml-1 text-green-500 text-[11px] inline">{sortDir === 'asc' ? '↑' : '↓'}</span>
   }
 
-  function exportCSV() {
-    const rows = todosInsumos.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
+  // Exporta TODOS os insumos (não só a página atual)
+  async function exportCSV() {
+    const res = await fetch(`${api}?limit=100000`)
+    const j   = await res.json()
+    const all = Array.isArray(j?.data?.data) ? j.data.data : Array.isArray(j?.data) ? j.data : []
+    const rows = all.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
     const csv  = [['ID','Nome','Tipo','Unidade','Estoque Atual','Estoque Mínimo','Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
   }
 
-  const todosInsumos = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+  const pagina = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+  const meta   = raw?.data?.meta
 
-  const insumos = [...todosInsumos]
-    .filter((i: any) => i.nome?.toLowerCase().includes(busca.toLowerCase()))
-    .sort((a: any, b: any) => {
-      const av = a[sortKey] ?? ''; const bv = b[sortKey] ?? ''
-      const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
-      return sortDir === 'asc' ? cmp : -cmp
-    })
-
-  const criticos = todosInsumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length
+  // Ordena apenas a página atual (a busca é feita no servidor)
+  const insumos = [...pagina].sort((a: any, b: any) => {
+    const av = a[sortKey] ?? ''; const bv = b[sortKey] ?? ''
+    const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
+    return sortDir === 'asc' ? cmp : -cmp
+  })
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Insumos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {todosInsumos.length} cadastrados
-            {criticos > 0 && <span className="ml-2 text-red-500 font-medium">· {criticos} críticos</span>}
-          </p>
+          <p className="text-sm text-gray-400 mt-0.5">{meta?.total ?? 0} cadastrados</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
@@ -163,7 +170,7 @@ export default function InsumosView({ tenantSlug }: Props) {
               <TableSkeleton rows={6} cols={7} />
             ) : insumos.length === 0 ? (
               <tr><td colSpan={7}>
-                <EmptyState icon={Package2} title="Nenhum insumo cadastrado"
+                <EmptyState icon={Package2} title="Nenhum insumo encontrado"
                   description="Cadastre os insumos utilizados na produção para controlar o estoque e a ficha técnica dos produtos."
                   action="Cadastrar primeiro insumo" onAction={() => abrirModal()} />
               </td></tr>
@@ -190,6 +197,15 @@ export default function InsumosView({ tenantSlug }: Props) {
           </tbody>
         </table>
       </div>
+
+      <Paginacao
+        page={page}
+        totalPages={meta?.totalPages ?? 1}
+        total={meta?.total ?? 0}
+        limit={limit}
+        onPage={setPage}
+        onLimit={(l) => { setLimit(l); setPage(1) }}
+      />
 
       {/* Modal Insumo */}
       {showModal && (

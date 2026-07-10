@@ -295,8 +295,10 @@ export default function VendasView({ tenantSlug }: Props) {
   }
 
   // ── Dados derivados ────────────────────────────────────────────────────────
-  const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
-    : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
+  // Exclui produtos marcados como insumo (produto-insumo): não são vendáveis.
+  const produtos = (Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
+    : Array.isArray(produtosRaw?.data) ? produtosRaw.data : [])
+    .filter((p: any) => !p.insumoFlg)
   const clientes = Array.isArray(clientesRaw?.data?.data) ? clientesRaw.data.data
     : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
   const formas     = Array.isArray(formasRaw?.data) ? formasRaw.data : []

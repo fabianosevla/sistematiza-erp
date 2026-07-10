@@ -217,8 +217,11 @@ export default function PdvBalcao({ tenantSlug }: Props) {
     if (exato) { addProduto(exato); setBusca('') }
   }
 
-  const todosProdutos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
-    : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
+  // Exclui produtos marcados como insumo (produto-insumo): eles NÃO são vendáveis,
+  // só existem para compor a ficha técnica de outros produtos.
+  const todosProdutos = (Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data
+    : Array.isArray(produtosRaw?.data) ? produtosRaw.data : [])
+    .filter((p: any) => !p.insumoFlg)
 
   const clientes  = Array.isArray(clientesRaw?.data?.data) ? clientesRaw.data.data
     : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
