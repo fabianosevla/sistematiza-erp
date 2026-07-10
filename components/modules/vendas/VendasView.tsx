@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Eye } from 'lucide-react'
+import { Plus, X, Trash2, Download, Eye, Gift } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -109,6 +109,7 @@ export default function VendasView({ tenantSlug }: Props) {
   const [vendedor, setVendedor]               = useState('')
   const [observacao, setObservacao]           = useState('')
   const [desconto, setDesconto]               = useState('0')
+  const [usarCashback, setUsarCashback]       = useState(false)
   const [itens, setItens]                     = useState<ItemVenda[]>([novoItem()])
   const [pagamentos, setPagamentos]           = useState<FormaPgto[]>([{ forma: 'PIX', valor: '' }])
 
@@ -155,31 +156,40 @@ export default function VendasView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/usuarios`)).json(),
   })
 
+  // Saldo de cashback do cliente selecionado no modal
+  const { data: cashbackRaw } = useQuery({
+    queryKey: ['vendas-cashback', tenantSlug, clienteId],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fidelidade/saldo?clienteId=${clienteId}`)).json(),
+    enabled:  !!clienteId,
+    staleTime: 5000,
+  })
+  const cashback = cashbackRaw?.data
+
   // ── Mutations ──────────────────────────────────────────────────────────────
   const criarMut = useMutation({
     mutationFn: async () => {
       const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
-
-  // Auto-preenche o valor do primeiro pagamento com o total da venda
-  // quando ainda há só um pagamento e o valor está vazio ou é 0
-  const totalVendaCalc = Math.max(0, subtotalTotal - Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100))
       const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
       const total         = subtotalTotal - descontoVal
-      // Se o usuário não preencheu o valor do pagamento, usa o total da venda automaticamente
+
+      // Cashback a resgatar
+      const saldoCash    = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
+      const elegivelCash = saldoCash > 0 && saldoCash >= (cashback?.saldoMinimoUsoCentavos ?? 0)
+      const limiteCash   = Math.floor(total * ((cashback?.limiteUsoPctBp ?? 10000) / 10000))
+      const cashUsar     = (usarCashback && elegivelCash) ? Math.max(0, Math.min(saldoCash, limiteCash, total)) : 0
+      const aPagarCash   = Math.max(0, total - cashUsar)
+
+      // Pagamentos informados (valor > 0). Se nenhum, auto-preenche com o que
+      // falta pagar (total menos o cashback usado).
       const pgtos = pagamentos
-        .map(p => {
-          const val = parseFloat(p.valor.replace(',', '.') || '0')
-          return { forma: p.forma, valor: Math.round(val * 100) }
-        })
+        .map(p => ({ forma: p.forma, valor: Math.round(parseFloat(p.valor.replace(',', '.') || '0') * 100) }))
         .filter(p => p.valor > 0)
 
-      // Se ainda vazio, injeta o total no primeiro pagamento
       const pgtosFinais = pgtos.length > 0
         ? pgtos
-        : [{ forma: pagamentos[0]?.forma ?? 'PIX', valor: Math.max(0, subtotalTotal - descontoVal) }]
+        : (aPagarCash > 0 ? [{ forma: pagamentos[0]?.forma ?? 'PIX', valor: aPagarCash }] : [])
 
-      // ✅ CORREÇÃO: envia tipoPrecao, NÃO envia precoUnitario
-      //    O servidor resolve o preço com base no tipoPrecao + dados do banco
+      // ✅ envia tipoPrecao, NÃO envia precoUnitario (o servidor resolve o preço)
       const payload = {
         clienteId:      clienteId ? Number(clienteId) : undefined,
         tipoEntrega:    tipoEntrega || tiposEntrega[0],
@@ -194,10 +204,10 @@ export default function VendasView({ tenantSlug }: Props) {
             produtoId:  i.produtoId,
             quantidade: i.quantidade,
             tipoPrecao: i.tipoPrecao,
-            // precoUnitario OMITIDO intencionalmente — servidor define
           })),
-        desconto: descontoVal,
-        pagamentos: pgtosFinais,
+        desconto:     descontoVal,
+        usarCashback: cashUsar > 0 ? cashUsar : undefined,
+        pagamentos:   pgtosFinais,
       }
 
       const res = await fetch(api, {
@@ -209,11 +219,18 @@ export default function VendasView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(d.message)
       return d
     },
-    onSuccess: () => {
+    onSuccess: (d) => {
       invalidate()
       qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['vendas-cashback', tenantSlug] })
       fecharModal()
-      toast('Venda registrada!')
+      const usado = d?.data?.cashbackUsado ?? 0
+      const ganho = d?.data?.cashbackCreditado ?? 0
+      if (usado > 0 || ganho > 0) {
+        toast(`Venda registrada! ${usado > 0 ? `Cashback usado: ${fmt(usado)}. ` : ''}${ganho > 0 ? `Ganhou ${fmt(ganho)}.` : ''}`)
+      } else {
+        toast('Venda registrada!')
+      }
     },
     onError: (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
   })
@@ -228,8 +245,9 @@ export default function VendasView({ tenantSlug }: Props) {
     setShowModal(false)
     setItens([novoItem()])
     setPagamentos([{ forma: formasNomes[0] ?? 'PIX', valor: '' }])
-    setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setTipoEntrega(''); setVendidaEm(new Date().toISOString().slice(0, 16))
-    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0'); setVendidaEm(localNow())
+    setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setTipoEntrega('')
+    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0')
+    setUsarCashback(false); setVendidaEm(localNow())
   }
 
   function updateItem(key: string, field: Partial<ItemVenda>) {
@@ -292,13 +310,18 @@ export default function VendasView({ tenantSlug }: Props) {
   const kpis = kpisData?.data
 
   const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
-
-  // Auto-preenche o valor do primeiro pagamento com o total da venda
-  // quando ainda há só um pagamento e o valor está vazio ou é 0
   const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
   const totalVenda    = subtotalTotal - descontoVal
+
+  // Cashback aplicável nesta venda (exibição)
+  const saldoCashback    = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
+  const cashbackElegivel = saldoCashback > 0 && saldoCashback >= (cashback?.saldoMinimoUsoCentavos ?? 0)
+  const limiteCashback   = Math.floor(totalVenda * ((cashback?.limiteUsoPctBp ?? 10000) / 10000))
+  const cashbackAplicar  = (usarCashback && cashbackElegivel) ? Math.max(0, Math.min(saldoCashback, limiteCashback, totalVenda)) : 0
+  const totalAPagar      = Math.max(0, totalVenda - cashbackAplicar)
+
   const totalPago     = pagamentos.reduce((a, p) => a + (parseFloat(p.valor.replace(',', '.') || '0') * 100), 0)
-  const troco         = totalPago > totalVenda ? totalPago - totalVenda : 0
+  const troco         = totalPago > totalAPagar ? totalPago - totalAPagar : 0
 
   // ── Badge de canal ─────────────────────────────────────────────────────────
   function CanalBadge({ tipo }: { tipo: string }) {
@@ -435,6 +458,7 @@ export default function VendasView({ tenantSlug }: Props) {
                     value={clienteId}
                     onChange={e => {
                       setClienteId(e.target.value)
+                      setUsarCashback(false)
                       // Auto-preenche endereço se disponível
                       const c = clientes.find((x: any) => String(x.clienteId) === e.target.value)
                       if (c?.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
@@ -532,7 +556,7 @@ export default function VendasView({ tenantSlug }: Props) {
                               </select>
                             </td>
 
-                            {/* Tabela de preço — ✅ CORREÇÃO: controla tipoPrecao */}
+                            {/* Tabela de preço — controla tipoPrecao */}
                             <td className="px-3 py-2">
                               {opts.length > 0 ? (
                                 <select
@@ -561,7 +585,7 @@ export default function VendasView({ tenantSlug }: Props) {
                               />
                             </td>
 
-                            {/* Preço unit. — somente exibição, não editável */}
+                            {/* Preço unit. — somente exibição */}
                             <td className="px-3 py-2 text-right text-sm text-gray-600">
                               {item.precoUnitario > 0 ? fmt(item.precoUnitario) : '—'}
                             </td>
@@ -648,9 +672,37 @@ export default function VendasView({ tenantSlug }: Props) {
                       className="h-7 text-sm w-24 text-right"
                     />
                   </div>
+
+                  {/* Cashback / Fidelidade */}
+                  {clienteId && cashback?.programaAtivo && saldoCashback > 0 && (
+                    <div className="rounded-lg border border-green-200 bg-green-50/60 p-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-green-700">
+                          <Gift size={13} /> Cashback disponível
+                        </span>
+                        <span className="text-sm font-bold text-green-700">{fmt(saldoCashback)}</span>
+                      </div>
+                      {cashbackElegivel ? (
+                        <label className="mt-1.5 flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={usarCashback} onChange={e => setUsarCashback(e.target.checked)} className="w-4 h-4 rounded" />
+                          <span className="text-xs text-gray-700">Usar {fmt(Math.min(saldoCashback, limiteCashback, totalVenda))} nesta venda</span>
+                        </label>
+                      ) : (
+                        <p className="text-[11px] text-gray-400 mt-1">Saldo mínimo p/ usar: {fmt(cashback?.saldoMinimoUsoCentavos ?? 0)}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {cashbackAplicar > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Cashback</span>
+                      <span className="font-medium text-green-600">-{fmt(cashbackAplicar)}</span>
+                    </div>
+                  )}
+
                   <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-base">
                     <span>Total</span>
-                    <span className="text-green-600">{fmt(totalVenda)}</span>
+                    <span className="text-green-600">{fmt(totalAPagar)}</span>
                   </div>
                   {troco > 0 && (
                     <div className="flex justify-between text-amber-600 font-semibold">
@@ -680,7 +732,7 @@ export default function VendasView({ tenantSlug }: Props) {
       {confirmDelete && (
         <ConfirmModal
           title="Excluir venda"
-          message="Esta ação não pode ser desfeita."
+          message="Esta ação não pode ser desfeita. O cashback gerado/usado por esta venda será estornado."
           confirmLabel="Excluir"
           danger
           onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}

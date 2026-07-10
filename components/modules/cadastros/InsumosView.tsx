@@ -48,9 +48,12 @@ export default function InsumosView({ tenantSlug }: Props) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
 
+  // CORREÇÃO: esta tela é "carrega tudo e filtra localmente" (não tem paginação).
+  // O endpoint passou a ter default de 20 registros; por isso o cadastro só
+  // mostrava 20. Pedimos um limite alto para trazer todos os insumos de volta.
   const { data: raw, isLoading } = useQuery({
     queryKey: ['insumos', tenantSlug],
-    queryFn:  async () => (await fetch(api)).json(),
+    queryFn:  async () => (await fetch(`${api}?limit=1000`)).json(),
   })
 
   const salvarMut = useMutation({
@@ -106,7 +109,7 @@ export default function InsumosView({ tenantSlug }: Props) {
   function exportCSV() {
     const rows = todosInsumos.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
     const csv  = [['ID','Nome','Tipo','Unidade','Estoque Atual','Estoque Mínimo','Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
   }
 
   const todosInsumos = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []

@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Gift, ChevronDown, ChevronRight, Save, MessageCircle, Percent, Clock,
-  Settings, Users, Receipt, Bell, ShieldCheck, Loader2,
+  Settings, Users, Receipt, Bell, ShieldCheck, Loader2, Send, Search,
+  CheckCircle, AlertTriangle, ArrowUpCircle, ArrowDownCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,10 +20,22 @@ const bpToPct  = (bp: number) => (Number(bp || 0) / 100)
 const pctToBp  = (p: any)     => Math.round(parseFloat(String(p).replace(',', '.') || '0') * 100)
 const centToBRL = (c: number) => (Number(c || 0) / 100).toFixed(2)
 const brlToCent = (v: any)    => Math.round(parseFloat(String(v).replace(',', '.') || '0') * 100)
+const fmt = (c: number) => (Number(c || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtData = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+const fmtDataCurta = (d: string | null) => d ? new Date(d).toLocaleDateString('pt-BR') : '—'
+
+const TIPO_CFG: Record<string, { label: string; cls: string; sinal: 1 | -1 }> = {
+  credito:         { label: 'Crédito',             cls: 'bg-green-100 text-green-700',  sinal: 1 },
+  uso:             { label: 'Uso',                 cls: 'bg-blue-100 text-blue-700',    sinal: -1 },
+  estorno:         { label: 'Estorno (devolução)', cls: 'bg-amber-100 text-amber-700',  sinal: 1 },
+  estorno_credito: { label: 'Estorno de crédito',  cls: 'bg-red-100 text-red-700',      sinal: -1 },
+  ajuste:          { label: 'Ajuste',              cls: 'bg-purple-100 text-purple-700',sinal: 1 },
+  expiracao:       { label: 'Expiração',           cls: 'bg-gray-100 text-gray-500',    sinal: -1 },
+}
 
 export default function FidelidadeView({ tenantSlug }: Props) {
   const qc = useQueryClient()
-  const [aba, setAba]     = useState<Aba>('config')
+  const [aba, setAba]     = useState<Aba>('visao')
   const [secao, setSecao] = useState<Secao | null>('cashback')
   const [form, setForm]   = useState<any>(null)
   const [novoToken, setNovoToken] = useState('')
@@ -106,11 +119,11 @@ export default function FidelidadeView({ tenantSlug }: Props) {
   })
 
   const ABAS: { key: Aba; label: string; icon: any }[] = [
-    { key: 'visao',          label: 'Visão Geral',     icon: Gift },
+    { key: 'visao',          label: 'Visão Geral',      icon: Gift },
     { key: 'clientes',       label: 'Clientes & Saldo', icon: Users },
-    { key: 'movimentacoes',  label: 'Movimentações',   icon: Receipt },
-    { key: 'reativacao',     label: 'Reativação',      icon: Bell },
-    { key: 'config',         label: 'Configuração',    icon: Settings },
+    { key: 'movimentacoes',  label: 'Movimentações',    icon: Receipt },
+    { key: 'reativacao',     label: 'Reativação',       icon: Bell },
+    { key: 'config',         label: 'Configuração',     icon: Settings },
   ]
 
   return (
@@ -135,6 +148,11 @@ export default function FidelidadeView({ tenantSlug }: Props) {
           ))}
         </div>
       </div>
+
+      {aba === 'visao'         && <VisaoTab tenantSlug={tenantSlug} programaAtivo={!!cfg?.programaAtivo} onIrConfig={() => setAba('config')} />}
+      {aba === 'clientes'      && <ClientesTab tenantSlug={tenantSlug} />}
+      {aba === 'movimentacoes' && <MovimentosTab tenantSlug={tenantSlug} />}
+      {aba === 'reativacao'    && <ReativacaoTab tenantSlug={tenantSlug} onIrConfig={() => setAba('config')} />}
 
       {/* ── Configuração ─────────────────────────────────────────────────── */}
       {aba === 'config' && (
@@ -202,6 +220,9 @@ export default function FidelidadeView({ tenantSlug }: Props) {
                   A chave <code>FIDELIDADE_ENC_KEY</code> não está configurada no servidor. Sem ela não é possível salvar o token com segurança.
                 </div>
               )}
+              <div className="mb-4 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-lg p-3">
+                O template aprovado na Meta deve ter <b>2 variáveis no corpo</b>, nesta ordem: <code>{'{{1}}'}</code> = nome do cliente, <code>{'{{2}}'}</code> = saldo (ex.: "R$ 12,50").
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Campo label="Phone Number ID"><Input value={form.waPhoneNumberId} onChange={e => set('waPhoneNumberId', e.target.value)} /></Campo>
                 <Campo label="WhatsApp Business Account ID"><Input value={form.waBusinessAccountId} onChange={e => set('waBusinessAccountId', e.target.value)} /></Campo>
@@ -242,19 +263,353 @@ export default function FidelidadeView({ tenantSlug }: Props) {
           </div>
         )
       )}
+    </div>
+  )
+}
 
-      {/* ── Abas ainda em construção (Fases 2-4) ──────────────────────────── */}
-      {aba !== 'config' && (
-        <div className="bg-white border border-gray-100 rounded-xl p-10 text-center">
-          <p className="text-sm text-gray-500">Esta seção entra nas próximas fases do módulo.</p>
-          <p className="text-xs text-gray-400 mt-1">A base (configuração) já está pronta.</p>
+// ── Aba Visão Geral ────────────────────────────────────────────────────────────
+function VisaoTab({ tenantSlug, programaAtivo, onIrConfig }: { tenantSlug: string; programaAtivo: boolean; onIrConfig: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['fidelidade-resumo', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fidelidade/resumo`)).json(),
+  })
+  const r = data?.data
+
+  if (isLoading) return <Carregando />
+
+  const kpis = [
+    { label: 'Saldo em circulação',   value: fmt(r?.saldoCirculante ?? 0), cor: 'text-green-600' },
+    { label: 'Clientes com saldo',    value: String(r?.clientesComSaldo ?? 0), cor: 'text-gray-900' },
+    { label: 'Creditado no mês',      value: fmt(r?.creditadoMes ?? 0), cor: 'text-green-600' },
+    { label: 'Usado no mês',          value: fmt(r?.usadoMes ?? 0), cor: 'text-blue-600' },
+    { label: 'Creditado (total)',     value: fmt(r?.creditadoTotal ?? 0), cor: 'text-gray-700' },
+    { label: 'Usado (total)',         value: fmt(r?.usadoTotal ?? 0), cor: 'text-gray-700' },
+    { label: 'Avisos WhatsApp (30d)', value: String(r?.avisos30d ?? 0), cor: 'text-gray-900' },
+    { label: 'Erros de envio (30d)',  value: String(r?.erros30d ?? 0), cor: (r?.erros30d ?? 0) > 0 ? 'text-red-600' : 'text-gray-400' },
+  ]
+
+  return (
+    <div className="space-y-4">
+      {!programaAtivo && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start justify-between gap-3">
+          <p className="text-sm text-amber-700">O programa de cashback está <b>desativado</b>. Nenhum cashback está sendo gerado nas vendas.</p>
+          <button onClick={onIrConfig} className="text-xs font-medium text-amber-700 underline whitespace-nowrap">Ativar</button>
         </div>
       )}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {kpis.map((k, i) => (
+          <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
+            <p className="text-xs text-gray-400">{k.label}</p>
+            <p className={`text-xl font-bold mt-1 ${k.cor}`}>{k.value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Aba Clientes & Saldo ───────────────────────────────────────────────────────
+function ClientesTab({ tenantSlug }: { tenantSlug: string }) {
+  const [busca, setBusca] = useState('')
+  const [page, setPage]   = useState(1)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['fidelidade-clientes', tenantSlug, busca, page],
+    queryFn:  async () => {
+      const p = new URLSearchParams({ page: String(page), limit: '20' })
+      if (busca) p.set('search', busca)
+      return (await fetch(`/api/${tenantSlug}/fidelidade/clientes?${p}`)).json()
+    },
+  })
+  const clientes = data?.data?.data ?? []
+  const meta     = data?.data?.meta
+
+  return (
+    <div className="space-y-4">
+      <div className="relative max-w-xs">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Input placeholder="Buscar cliente..." value={busca} onChange={e => { setBusca(e.target.value); setPage(1) }} className="pl-9 h-9 text-sm" />
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Cliente</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Telefone</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Saldo</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Ganho</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Usado</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Última compra</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+            ) : clientes.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum cliente com saldo de cashback.</td></tr>
+            ) : clientes.map((c: any) => (
+              <tr key={c.clienteId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.nome}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{c.telefone ?? '—'}</td>
+                <td className="px-4 py-3 text-right text-sm font-bold text-green-600">{fmt(c.saldo)}</td>
+                <td className="px-4 py-3 text-right text-sm text-gray-500 hidden lg:table-cell">{fmt(c.totalGanho)}</td>
+                <td className="px-4 py-3 text-right text-sm text-gray-500 hidden lg:table-cell">{fmt(c.totalUsado)}</td>
+                <td className="px-4 py-3 text-right text-sm text-gray-400 hidden md:table-cell">{fmtDataCurta(c.ultimaCompra)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {meta && meta.totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages} ({meta.total})</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(p => p + 1)}>Próximo</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Aba Movimentações ──────────────────────────────────────────────────────────
+function MovimentosTab({ tenantSlug }: { tenantSlug: string }) {
+  const [tipo, setTipo] = useState('')
+  const [page, setPage] = useState(1)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['fidelidade-movimentos', tenantSlug, tipo, page],
+    queryFn:  async () => {
+      const p = new URLSearchParams({ page: String(page), limit: '30' })
+      if (tipo) p.set('tipo', tipo)
+      return (await fetch(`/api/${tenantSlug}/fidelidade/movimentos?${p}`)).json()
+    },
+  })
+  const movs = data?.data?.data ?? []
+  const meta = data?.data?.meta
+
+  const FILTROS = [
+    { v: '', l: 'Todos' },
+    { v: 'credito', l: 'Créditos' },
+    { v: 'uso', l: 'Usos' },
+    { v: 'estorno', l: 'Estornos' },
+  ]
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
+        {FILTROS.map(f => (
+          <button key={f.v} onClick={() => { setTipo(f.v); setPage(1) }}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${tipo === f.v ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            {f.l}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Data</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Cliente</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Tipo</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Valor</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Obs.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+            ) : movs.length === 0 ? (
+              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma movimentação.</td></tr>
+            ) : movs.map((m: any) => {
+              const cfg = TIPO_CFG[m.tipo] ?? { label: m.tipo, cls: 'bg-gray-100 text-gray-500', sinal: 1 }
+              return (
+                <tr key={m.movimentoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <td className="px-4 py-3 text-sm text-gray-500">{fmtData(m.createdDt)}</td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{m.clienteNome}</td>
+                  <td className="px-4 py-3"><span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cfg.cls}`}>{cfg.label}</span></td>
+                  <td className={`px-4 py-3 text-right text-sm font-semibold ${cfg.sinal > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                    {cfg.sinal > 0 ? '+' : '-'}{fmt(m.valorCentavos)}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 hidden md:table-cell">{m.observacao ?? (m.vendaId ? `Venda #${m.vendaId}` : '—')}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {meta && meta.totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages} ({meta.total})</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(p => p + 1)}>Próximo</Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Aba Reativação ─────────────────────────────────────────────────────────────
+function ReativacaoTab({ tenantSlug, onIrConfig }: { tenantSlug: string; onIrConfig: () => void }) {
+  const qc = useQueryClient()
+  const [sel, setSel] = useState<Set<number>>(new Set())
+  const [msg, setMsg] = useState('')
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['fidelidade-reativacao', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fidelidade/reativacao`)).json(),
+  })
+  const candidatos = data?.data?.candidatos ?? []
+  const avisos     = data?.data?.ultimosAvisos ?? []
+  const conf       = data?.data?.config
+
+  const enviar = useMutation({
+    mutationFn: async (clienteIds?: number[]) => {
+      const res = await fetch(`/api/${tenantSlug}/fidelidade/reativacao`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clienteIds && clienteIds.length ? { clienteIds } : {}),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao enviar')
+      return d?.data
+    },
+    onSuccess: (d) => {
+      setMsg(`Enviados: ${d?.enviados ?? 0} · Erros: ${d?.erros ?? 0}`)
+      setSel(new Set())
+      qc.invalidateQueries({ queryKey: ['fidelidade-reativacao', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['fidelidade-resumo', tenantSlug] })
+      setTimeout(() => refetch(), 500)
+    },
+    onError: (e: any) => setMsg(e?.message ?? 'Erro ao enviar'),
+  })
+
+  function toggle(id: number) {
+    setSel(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  if (isLoading) return <Carregando />
+
+  return (
+    <div className="space-y-4">
+      {/* Status da config */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <StatusCard ok={conf?.programaAtivo} label="Programa" texto={conf?.programaAtivo ? 'Ativo' : 'Desativado'} onFix={!conf?.programaAtivo ? onIrConfig : undefined} />
+        <StatusCard ok={conf?.reativacaoAtiva} label="Reativação automática" texto={conf?.reativacaoAtiva ? 'Ativa (cron diário)' : 'Desativada'} onFix={!conf?.reativacaoAtiva ? onIrConfig : undefined} />
+        <StatusCard ok={conf?.waConfigurado} label="WhatsApp (Meta)" texto={conf?.waConfigurado ? 'Configurado' : 'Falta configurar'} onFix={!conf?.waConfigurado ? onIrConfig : undefined} />
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
+        Clientes inativos há {conf?.diasInatividade ?? 30}+ dias e com saldo de cashback. O envio automático roda diariamente entre {conf?.horarioInicio ?? 9}h e {conf?.horarioFim ?? 20}h. Aqui você pode disparar manualmente a qualquer hora.
+      </div>
+
+      {/* Candidatos */}
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <p className="text-sm font-semibold text-gray-700">Elegíveis agora ({candidatos.length})</p>
+          <div className="flex items-center gap-2">
+            {msg && <span className="text-xs text-gray-500">{msg}</span>}
+            <Button size="sm" variant="outline" disabled={sel.size === 0 || enviar.isPending}
+              onClick={() => enviar.mutate(Array.from(sel))}>
+              <Send size={13} className="mr-1.5" /> Enviar selecionados
+            </Button>
+            <Button size="sm" disabled={candidatos.length === 0 || enviar.isPending}
+              onClick={() => enviar.mutate(undefined)}>
+              {enviar.isPending ? <Loader2 size={13} className="mr-1.5 animate-spin" /> : <Send size={13} className="mr-1.5" />}
+              Enviar para todos
+            </Button>
+          </div>
+        </div>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="w-10 px-3 py-2"></th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-2">Cliente</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-2 hidden md:table-cell">Telefone</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2">Saldo</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2 hidden md:table-cell">Última compra</th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-2">Aviso nº</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidatos.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">Nenhum cliente elegível no momento.</td></tr>
+            ) : candidatos.map((c: any) => (
+              <tr key={c.clienteId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                <td className="px-3 py-2 text-center">
+                  <input type="checkbox" checked={sel.has(c.clienteId)} onChange={() => toggle(c.clienteId)} className="w-4 h-4 rounded" />
+                </td>
+                <td className="px-4 py-2 text-sm font-medium text-gray-900">{c.nome}</td>
+                <td className="px-4 py-2 text-sm text-gray-500 hidden md:table-cell">{c.telefone}</td>
+                <td className="px-4 py-2 text-right text-sm font-semibold text-green-600">{fmt(c.saldo)}</td>
+                <td className="px-4 py-2 text-right text-sm text-gray-400 hidden md:table-cell">{fmtDataCurta(c.ultimaCompra)}</td>
+                <td className="px-4 py-2 text-center text-xs text-gray-500">{c.sequencia}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Últimos avisos */}
+      <div>
+        <p className="text-sm font-semibold text-gray-700 mb-2">Últimos envios</p>
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          {avisos.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">Nenhum aviso enviado ainda.</p>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2">Data</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2">Cliente</th>
+                  <th className="text-right text-xs font-medium text-gray-400 px-4 py-2">Saldo no envio</th>
+                  <th className="text-center text-xs font-medium text-gray-400 px-4 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {avisos.map((a: any) => (
+                  <tr key={a.avisoId} className="border-b border-gray-50">
+                    <td className="px-4 py-2 text-sm text-gray-500">{fmtData(a.enviadoEm ?? a.createdDt)}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900">{a.clienteNome}</td>
+                    <td className="px-4 py-2 text-right text-sm text-gray-500">{fmt(a.saldo)}</td>
+                    <td className="px-4 py-2 text-center">
+                      {a.status === 'enviado'
+                        ? <span className="inline-flex items-center gap-1 text-xs text-green-600"><CheckCircle size={12} /> Enviado</span>
+                        : <span className="inline-flex items-center gap-1 text-xs text-red-500" title={a.erroMsg ?? ''}><AlertTriangle size={12} /> Erro</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
 // ── componentes auxiliares ─────────────────────────────────────────────────────
+function Carregando() {
+  return <div className="flex items-center gap-2 text-sm text-gray-400 py-12 justify-center"><Loader2 size={16} className="animate-spin" /> Carregando...</div>
+}
+
+function StatusCard({ ok, label, texto, onFix }: { ok?: boolean; label: string; texto: string; onFix?: () => void }) {
+  return (
+    <div className={`rounded-xl border p-4 ${ok ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">{label}</p>
+        {ok ? <ArrowUpCircle size={15} className="text-green-500" /> : <ArrowDownCircle size={15} className="text-gray-400" />}
+      </div>
+      <p className={`text-sm font-semibold mt-1 ${ok ? 'text-green-700' : 'text-gray-600'}`}>{texto}</p>
+      {onFix && <button onClick={onFix} className="text-xs text-blue-600 underline mt-1">Configurar</button>}
+    </div>
+  )
+}
+
 function Accordion({ aberto, onClick, icon: Icon, titulo, children }: any) {
   return (
     <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">

@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp, Gift } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -51,6 +51,8 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   const [observacao, setObservacao]           = useState('')
   const [dataEntrega, setDataEntrega]         = useState('')
   const [enderecoEntrega, setEnderecoEntrega] = useState('')
+  // Fidelidade / cashback
+  const [usarCashback, setUsarCashback]       = useState(false)
 
   useEffect(() => { searchRef.current?.focus() }, [])
 
@@ -79,6 +81,15 @@ export default function PdvBalcao({ tenantSlug }: Props) {
     staleTime: 60000,
   })
 
+  // Saldo de cashback do cliente selecionado
+  const { data: cashbackRaw } = useQuery({
+    queryKey: ['pdv-cashback', tenantSlug, clienteId],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fidelidade/saldo?clienteId=${clienteId}`)).json(),
+    enabled:  !!clienteId,
+    staleTime: 5000,
+  })
+  const cashback = cashbackRaw?.data
+
   const criarClienteMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/${tenantSlug}/cadastros/clientes`, {
@@ -106,6 +117,13 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       const descontoVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
       const totalVal    = Math.max(0, subtotal - descontoVal)
 
+      // Cashback a resgatar nesta venda
+      const saldoCash   = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
+      const elegivel    = saldoCash > 0 && saldoCash >= (cashback?.saldoMinimoUsoCentavos ?? 0)
+      const limiteCash  = Math.floor(totalVal * ((cashback?.limiteUsoPctBp ?? 10000) / 10000))
+      const cashUsar    = (usarCashback && elegivel) ? Math.max(0, Math.min(saldoCash, limiteCash, totalVal)) : 0
+      const totalPagar  = Math.max(0, totalVal - cashUsar)
+
       const res = await fetch(`/api/${tenantSlug}/vendas`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -118,14 +136,19 @@ export default function PdvBalcao({ tenantSlug }: Props) {
           observacao:     observacao || undefined,
           itens:      carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
           desconto:   descontoVal,
-          pagamentos: [{ forma: formaPgto || formasNomes[0] || 'PIX', valor: totalVal }],
+          usarCashback: cashUsar > 0 ? cashUsar : undefined,
+          pagamentos: totalPagar > 0
+            ? [{ forma: formaPgto || formasNomes[0] || 'PIX', valor: totalPagar }]
+            : [],
         }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.message)
       return d
     },
-    onSuccess: () => {
+    onSuccess: (d) => {
+      const usado = d?.data?.cashbackUsado ?? 0
+      const ganho = d?.data?.cashbackCreditado ?? 0
       setCarrinho([])
       setDesconto('0')
       setValorRecebido('')
@@ -137,6 +160,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       setObservacao('')
       setDataEntrega('')
       setEnderecoEntrega('')
+      setUsarCashback(false)
       setShowExtras(false)
       setVendaOk(true)
       setTimeout(() => { setVendaOk(false); searchRef.current?.focus() }, 2000)
@@ -144,7 +168,12 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
-      toast('Venda registrada!')
+      qc.invalidateQueries({ queryKey: ['pdv-cashback', tenantSlug] })
+      if (usado > 0 || ganho > 0) {
+        toast(`Venda registrada! ${usado > 0 ? `Cashback usado: ${fmt(usado)}. ` : ''}${ganho > 0 ? `Ganhou ${fmt(ganho)} de cashback.` : ''}`)
+      } else {
+        toast('Venda registrada!')
+      }
     },
     onError: (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
   })
@@ -176,6 +205,10 @@ export default function PdvBalcao({ tenantSlug }: Props) {
 
   function removerItem(produtoId: number) {
     setCarrinho(prev => prev.filter(i => i.produtoId !== produtoId))
+  }
+
+  function limparCliente() {
+    setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setUsarCashback(false)
   }
 
   function handleBuscaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -214,8 +247,16 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   const subtotal    = carrinho.reduce((a, i) => a + i.subtotal, 0)
   const descontoVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
   const total       = Math.max(0, subtotal - descontoVal)
+
+  // Cashback aplicável nesta venda (para exibição)
+  const saldoCashback   = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
+  const cashbackElegivel = saldoCashback > 0 && saldoCashback >= (cashback?.saldoMinimoUsoCentavos ?? 0)
+  const limiteCashback  = Math.floor(total * ((cashback?.limiteUsoPctBp ?? 10000) / 10000))
+  const cashbackAplicar = (usarCashback && cashbackElegivel) ? Math.max(0, Math.min(saldoCashback, limiteCashback, total)) : 0
+  const totalAPagar     = Math.max(0, total - cashbackAplicar)
+
   const troco       = (formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && valorRecebido
-    ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - total) : 0
+    ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - totalAPagar) : 0
 
   const podeVender = carrinho.length > 0 && !venderMut.isPending
 
@@ -325,9 +366,15 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                   <span className="font-medium text-red-500">-{fmt(descontoVal)}</span>
                 </div>
               )}
+              {cashbackAplicar > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Cashback</span>
+                  <span className="font-medium text-green-600">-{fmt(cashbackAplicar)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-base font-bold border-t border-gray-100 pt-2">
                 <span className="text-gray-900">Total</span>
-                <span style={{ color: '#2ecc71' }}>{fmt(total)}</span>
+                <span style={{ color: '#2ecc71' }}>{fmt(totalAPagar)}</span>
               </div>
             </div>
           )}
@@ -349,6 +396,30 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                 </button>
               ))}
             </div>
+
+            {/* Cashback / Fidelidade */}
+            {clienteId && cashback?.programaAtivo && saldoCashback > 0 && (
+              <div className="rounded-lg border border-green-200 bg-green-50/50 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-green-700">
+                    <Gift size={13} /> Cashback disponível
+                  </span>
+                  <span className="text-sm font-bold text-green-700">{fmt(saldoCashback)}</span>
+                </div>
+                {cashbackElegivel ? (
+                  <label className="mt-2 flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={usarCashback} onChange={e => setUsarCashback(e.target.checked)} className="w-4 h-4 rounded" />
+                    <span className="text-xs text-gray-700">
+                      Usar {fmt(Math.min(saldoCashback, limiteCashback, total))} nesta venda
+                    </span>
+                  </label>
+                ) : (
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    Saldo mínimo para usar: {fmt(cashback?.saldoMinimoUsoCentavos ?? 0)}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Forma de pagamento */}
             <div>
@@ -390,7 +461,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                   {clienteId && clienteNomeDisplay ? (
                     <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
                       <span className="text-xs font-medium text-green-800 truncate">{clienteNomeDisplay}</span>
-                      <button onClick={() => { setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente('') }} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
+                      <button onClick={limparCliente} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
                     </div>
                   ) : (
                     <div className="relative mt-1">
@@ -398,10 +469,6 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                         placeholder="Nome ou CPF..." className="h-9 text-xs" />
                       {buscaCliente.length > 1 && clientes.length > 0 && (
                         <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
-                          <button onClick={() => { setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente('') }}
-                            className="w-full px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 border-b border-gray-50">
-                            Consumidor Final
-                          </button>
                           {clientes.map((c: any) => (
                             <button key={c.clienteId} onClick={() => {
                               setClienteId(String(c.clienteId))
@@ -415,6 +482,11 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                           ))}
                         </div>
                       )}
+                      <button
+                        onClick={() => setShowCadastrarCliente(true)}
+                        className="mt-1.5 w-full text-xs text-green-600 hover:text-green-700 text-left flex items-center gap-1">
+                        <Plus size={11} /> Cadastrar novo cliente
+                      </button>
                     </div>
                   )}
                 </div>
@@ -457,7 +529,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
               <Button className="w-full h-11 text-base font-bold" onClick={() => venderMut.mutate()} disabled={!podeVender}>
                 {venderMut.isPending
                   ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
-                  : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(total)}</>
+                  : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(totalAPagar)}</>
                 }
               </Button>
             )}

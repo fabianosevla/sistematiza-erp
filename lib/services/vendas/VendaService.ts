@@ -5,6 +5,7 @@ import { dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
 import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
+import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
 
 function resolverPreco(produto: any, tipoPrecao: string): number {
   switch (tipoPrecao) {
@@ -150,7 +151,7 @@ export class VendaService {
     }
   }
 
-  async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, userId }: {
+  async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
     itens: { produtoId: number; quantidade: number; tipoPrecao?: string }[]
     clienteId?:         number
     desconto:           number
@@ -161,6 +162,7 @@ export class VendaService {
     observacao?:        string
     observacaoInterna?: string
     vendedor?:          string
+    usarCashback?:      number   // centavos que o cliente quer resgatar
     userId:             number
   }) {
     const now = new Date()
@@ -254,6 +256,31 @@ export class VendaService {
       // Não bloqueia a venda se o débito de insumos falhar
     }
 
+    // ── Fidelidade / Cashback ────────────────────────────────────────────────
+    // Nunca deixa o cashback quebrar a venda: tudo dentro de try/catch.
+    let cashbackUsado = 0
+    let cashbackCreditado = 0
+    try {
+      const cash = new CashbackService(this.db)
+      // 1. Resgate: usa saldo do cliente, se pedido. Registra como um pagamento
+      //    "Cashback (fidelidade)" pra reconciliar o total.
+      if (clienteId && usarCashback && usarCashback > 0) {
+        cashbackUsado = await cash.usar({ clienteId, vendaId: venda.vendaId, total, solicitado: usarCashback, userId })
+        if (cashbackUsado > 0) {
+          await this.db.insert(dbVendaPagamento).values({
+            vendaId: venda.vendaId, forma: 'Cashback (fidelidade)', valor: cashbackUsado,
+            createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+          })
+        }
+      }
+      // 2. Crédito: gera cashback pela venda (sobre o valor efetivamente pago).
+      cashbackCreditado = await cash.creditar({
+        clienteId, vendaId: venda.vendaId, subtotal, total, cashbackUsado, userId,
+      })
+    } catch (_) {
+      // fidelidade não configurada / tabelas ausentes — ignora
+    }
+
     // Gera rascunho fiscal se módulo ativo
     try {
       const cfg = await new ConfiguracoesService(this.db).get()
@@ -268,6 +295,6 @@ export class VendaService {
       }
     } catch (_) {}
 
-    return { vendaId: venda.vendaId }
+    return { vendaId: venda.vendaId, cashbackUsado, cashbackCreditado }
   }
 }

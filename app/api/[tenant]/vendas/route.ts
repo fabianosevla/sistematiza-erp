@@ -1,4 +1,5 @@
 // @ts-nocheck
+// ESTE ARQUIVO VAI EM: app/api/[tenant]/vendas/route.ts
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
@@ -54,6 +55,8 @@ const criarVendaSchema = z.object({
   vendedor:           z.string().optional().nullable(),
   observacao:         z.string().optional().nullable(),
   vendidaEm:          z.string().optional(),
+  // Fidelidade: quanto de cashback o cliente quer resgatar (centavos)
+  usarCashback:       z.number().int().min(0).optional(),
 })
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -70,9 +73,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         return badRequest('Dados inválidos: ' + JSON.stringify(zodErr.errors))
       }
 
-      // Garante pelo menos 1 pagamento com valor > 0
+      // Garante pelo menos 1 pagamento com valor > 0 — a menos que a venda
+      // esteja sendo quitada inteiramente com cashback.
       const pagamentosValidos = payload.pagamentos.filter(p => p.valor > 0)
-      if (pagamentosValidos.length === 0) {
+      const usaCashback = !!(payload.usarCashback && payload.usarCashback > 0)
+      if (pagamentosValidos.length === 0 && !usaCashback) {
         return badRequest('Informe pelo menos uma forma de pagamento com valor.')
       }
 
@@ -81,6 +86,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         ...payload,
         pagamentos: pagamentosValidos,
         clienteId:  payload.clienteId ?? undefined,
+        usarCashback: payload.usarCashback ?? undefined,
         userId: 1,
       })
       return created(result)
@@ -93,7 +99,6 @@ export async function POST(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params: routeParams }: Params) {
-  // Extrai o ID da URL: /api/[tenant]/vendas/[id]
   // Esta rota não tem [id] — o delete fica em /api/[tenant]/vendas/[id]/route.ts
   return serverError(new Error('Use DELETE /api/[tenant]/vendas/[id]'))
 }
