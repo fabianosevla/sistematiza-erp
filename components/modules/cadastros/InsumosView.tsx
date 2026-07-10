@@ -175,7 +175,7 @@ export default function InsumosView({ tenantSlug }: Props) {
                   action="Cadastrar primeiro insumo" onAction={() => abrirModal()} />
               </td></tr>
             ) : insumos.map((ins: any) => (
-              <tr key={ins.insumoId} className={`group border-b border-gray-50 hover:bg-gray-50/80 transition-colors ${ins.estoqueAtual <= ins.estoqueMinimo ? 'bg-red-50/20' : ''}`}>
+              <tr key={ins.insumoId} className="group border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
                 <td className="pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150">
                   <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700" onClick={() => abrirModal(ins)}>{ins.nome}</span>
                 </td>
