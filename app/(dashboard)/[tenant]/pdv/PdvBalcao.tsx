@@ -43,8 +43,9 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   const [clienteId, setClienteId]             = useState('')
   const [clienteNomeDisplay, setClienteNomeDisplay] = useState('')
   const [showCadastrarCliente, setShowCadastrarCliente] = useState(false)
-  const [novoClienteNome, setNovoClienteNome] = useState('')
-  const [novoClienteTel, setNovoClienteTel]   = useState('')
+  const CLI_VAZIO = { tipoPessoa: 'PF', documento: '', nomeCompleto: '', nomeFantasia: '', email: '', celular: '', cidade: '', uf: '', observacao: '' }
+  const [novoCli, setNovoCli] = useState(CLI_VAZIO)
+  const setCli = (k: string, v: string) => setNovoCli(p => ({ ...p, [k]: v }))
   const [buscaCliente, setBuscaCliente]         = useState('')
   const [vendedor, setVendedor]               = useState('')
   const [tipoEntrega, setTipoEntrega]         = useState('Retirada')
@@ -94,7 +95,17 @@ export default function PdvBalcao({ tenantSlug }: Props) {
     mutationFn: async () => {
       const res = await fetch(`/api/${tenantSlug}/cadastros/clientes`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nomeCompleto: novoClienteNome.trim(), telefone: novoClienteTel.trim() || undefined }),
+        body: JSON.stringify({
+          tipoPessoa:   novoCli.tipoPessoa,
+          documento:    novoCli.documento.trim() || undefined,
+          nomeCompleto: novoCli.nomeCompleto.trim(),
+          nomeFantasia: novoCli.nomeFantasia.trim() || undefined,
+          email:        novoCli.email.trim() || undefined,
+          celular:      novoCli.celular.trim() || undefined,
+          cidade:       novoCli.cidade.trim() || undefined,
+          uf:           novoCli.uf.trim().toUpperCase().slice(0, 2) || undefined,
+          observacao:   novoCli.observacao.trim() || undefined,
+        }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.message ?? 'Erro ao criar cliente')
@@ -104,12 +115,13 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       const cli = d?.data
       if (cli?.clienteId) {
         setClienteId(String(cli.clienteId))
-        setClienteNomeDisplay(novoClienteNome.trim())
+        setClienteNomeDisplay(novoCli.nomeCompleto.trim())
       }
       setShowCadastrarCliente(false)
-      setNovoClienteNome('')
-      setNovoClienteTel('')
+      setNovoCli(CLI_VAZIO)
+      qc.invalidateQueries({ queryKey: ['pdv-clientes', tenantSlug] })
     },
+    onError: (e: any) => toast(e.message || 'Erro ao criar cliente.', 'error'),
   })
 
   const venderMut = useMutation({
@@ -323,7 +335,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       </div>
 
       {/* Carrinho */}
-      <div className="w-80 xl:w-96 flex flex-col gap-4 flex-shrink-0">
+      <div className="w-96 xl:w-[32rem] flex flex-col gap-4 flex-shrink-0">
         <div className="bg-white rounded-xl border border-gray-100 flex flex-col flex-1 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
             <p className="text-sm font-semibold text-gray-700">
@@ -334,27 +346,31 @@ export default function PdvBalcao({ tenantSlug }: Props) {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
+          <div className="flex-1 overflow-y-auto p-2">
             {carrinho.length === 0 ? (
               <div className="flex items-center justify-center py-12">
                 <p className="text-sm text-gray-300">Adicione produtos à esquerda</p>
               </div>
-            ) : carrinho.map(item => (
-              <div key={item.produtoId} className="px-4 py-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-gray-900 flex-1 leading-tight">{item.nomeProduto}</p>
-                  <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-500 flex-shrink-0"><Trash2 size={13} /></button>
-                </div>
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={() => alterarQtd(item.produtoId, -1)} className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Minus size={11} /></button>
-                    <span className="text-sm font-bold text-gray-900 w-5 text-center">{item.quantidade}</span>
-                    <button onClick={() => alterarQtd(item.produtoId, 1)} className="w-6 h-6 rounded-md bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Plus size={11} /></button>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {carrinho.map(item => (
+                  <div key={item.produtoId} className="border border-gray-100 rounded-lg p-2 flex flex-col">
+                    <div className="flex items-start justify-between gap-1">
+                      <p className="text-xs font-medium text-gray-900 leading-tight flex-1">{item.nomeProduto}</p>
+                      <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-500 flex-shrink-0"><Trash2 size={12} /></button>
+                    </div>
+                    <div className="flex items-center justify-between mt-1.5">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => alterarQtd(item.produtoId, -1)} className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Minus size={10} /></button>
+                        <span className="text-sm font-bold text-gray-900 w-4 text-center">{item.quantidade}</span>
+                        <button onClick={() => alterarQtd(item.produtoId, 1)} className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Plus size={10} /></button>
+                      </div>
+                      <span className="text-xs font-bold" style={{ color: '#2ecc71' }}>{fmt(item.subtotal)}</span>
+                    </div>
                   </div>
-                  <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>{fmt(item.subtotal)}</span>
-                </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
 
           {carrinho.length > 0 && (
@@ -549,29 +565,70 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       )}
       {showCadastrarCliente && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <h3 className="text-base font-semibold">Cadastrar cliente</h3>
               <button onClick={() => setShowCadastrarCliente(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
             </div>
-            <div>
-              <Label className="text-xs">Nome completo *</Label>
-              <Input value={novoClienteNome} onChange={e => setNovoClienteNome(e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nome do cliente" autoFocus />
-            </div>
-            <div>
-              <Label className="text-xs">Telefone</Label>
-              <Input value={novoClienteTel} onChange={e => setNovoClienteTel(e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 00000-0000" />
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setShowCadastrarCliente(false)}
-                className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-                Cancelar
-              </button>
-              <button onClick={() => criarClienteMut.mutate()} disabled={!novoClienteNome.trim() || criarClienteMut.isPending}
-                className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
-                style={{ backgroundColor: '#2ecc71' }}>
-                {criarClienteMut.isPending ? 'Salvando...' : 'Salvar e usar'}
-              </button>
+            <div className="p-6 space-y-4">
+              <div>
+                <Label className="text-xs">Tipo de pessoa</Label>
+                <select value={novoCli.tipoPessoa} onChange={e => setCli('tipoPessoa', e.target.value)}
+                  className="mt-1 w-full h-9 text-sm rounded-md border border-gray-200 px-2 bg-white">
+                  <option value="PF">Pessoa Física</option>
+                  <option value="PJ">Pessoa Jurídica</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Nome completo *</Label>
+                  <Input value={novoCli.nomeCompleto} onChange={e => setCli('nomeCompleto', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nome do cliente" autoFocus />
+                </div>
+                <div>
+                  <Label className="text-xs">{novoCli.tipoPessoa === 'PJ' ? 'Nome fantasia' : 'Apelido'}</Label>
+                  <Input value={novoCli.nomeFantasia} onChange={e => setCli('nomeFantasia', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Opcional" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">{novoCli.tipoPessoa === 'PJ' ? 'CNPJ' : 'CPF'}</Label>
+                  <Input value={novoCli.documento} onChange={e => setCli('documento', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Somente números" />
+                </div>
+                <div>
+                  <Label className="text-xs">Celular</Label>
+                  <Input value={novoCli.celular} onChange={e => setCli('celular', e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 00000-0000" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">E-mail</Label>
+                <Input type="email" value={novoCli.email} onChange={e => setCli('email', e.target.value)} className="mt-1 h-9 text-sm" placeholder="email@exemplo.com" />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <Label className="text-xs">Cidade</Label>
+                  <Input value={novoCli.cidade} onChange={e => setCli('cidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Cidade" />
+                </div>
+                <div>
+                  <Label className="text-xs">UF</Label>
+                  <Input maxLength={2} value={novoCli.uf} onChange={e => setCli('uf', e.target.value.toUpperCase())} className="mt-1 h-9 text-sm" placeholder="UF" />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Observação</Label>
+                <textarea value={novoCli.observacao} onChange={e => setCli('observacao', e.target.value)}
+                  className="mt-1 w-full text-sm rounded-md border border-gray-200 px-2 py-1.5 resize-none" rows={2} placeholder="Opcional" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => setShowCadastrarCliente(false)}
+                  className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+                  Cancelar
+                </button>
+                <button onClick={() => criarClienteMut.mutate()} disabled={!novoCli.nomeCompleto.trim() || criarClienteMut.isPending}
+                  className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+                  style={{ backgroundColor: '#2ecc71' }}>
+                  {criarClienteMut.isPending ? 'Salvando...' : 'Salvar e usar'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
