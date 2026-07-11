@@ -308,13 +308,13 @@ export default function PdvBalcao({ tenantSlug }: Props) {
               <p className="text-sm text-gray-400">{busca ? `Nenhum produto para "${busca}"` : 'Nenhum produto nesta categoria'}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
               {produtosFiltrados.map((p: any) => (
                 <button key={p.produtoId} onClick={() => addProduto(p)}
-                  className="bg-white rounded-xl border border-gray-100 hover:border-green-300 hover:shadow-sm p-4 text-left transition-all active:scale-95 group">
-                  <p className="text-sm font-medium text-gray-900 truncate group-hover:text-green-700">{p.nome}</p>
-                  <p className="text-lg font-bold mt-2" style={{ color: '#2ecc71' }}>{p.precoVarejo ? fmt(p.precoVarejo) : '—'}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{p.unidade}</p>
+                  className="bg-white rounded-lg border border-gray-100 hover:border-green-300 hover:shadow-sm p-2.5 text-left transition-all active:scale-95 group">
+                  <p className="text-xs font-medium text-gray-900 truncate group-hover:text-green-700">{p.nome}</p>
+                  <p className="text-sm font-bold mt-1" style={{ color: '#2ecc71' }}>{p.precoVarejo ? fmt(p.precoVarejo) : '—'}</p>
+                  <p className="text-[10px] text-gray-400">{p.unidade}</p>
                 </button>
               ))}
             </div>
@@ -334,7 +334,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-64 divide-y divide-gray-50">
+          <div className="flex-1 overflow-y-auto divide-y divide-gray-50">
             {carrinho.length === 0 ? (
               <div className="flex items-center justify-center py-12">
                 <p className="text-sm text-gray-300">Adicione produtos à esquerda</p>
@@ -424,17 +424,16 @@ export default function PdvBalcao({ tenantSlug }: Props) {
               </div>
             )}
 
-            {/* Forma de pagamento */}
+            {/* Forma de pagamento — combobox (economiza espaço) */}
             <div>
               <Label className="text-xs">Forma de pagamento</Label>
-              <div className="grid grid-cols-2 gap-1.5 mt-1.5">
-                {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).slice(0, 6).map((f: string) => (
-                  <button key={f} onClick={() => setFormaPgto(f)}
-                    className={`py-2 rounded-lg text-sm font-medium border ${formaPgto === f ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-100 bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
-                    {f}
-                  </button>
+              <select value={formaPgto} onChange={e => setFormaPgto(e.target.value)}
+                className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                <option value="">Selecionar...</option>
+                {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).map((f: string) => (
+                  <option key={f} value={f}>{f}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
             {(formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && (
