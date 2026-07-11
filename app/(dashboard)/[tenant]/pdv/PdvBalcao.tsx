@@ -386,6 +386,42 @@ export default function PdvBalcao({ tenantSlug }: Props) {
         {carrinho.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
 
+            {/* Cliente — sempre visível (necessário para o cashback) */}
+            <div>
+              <Label className="text-xs">Cliente</Label>
+              {clienteId && clienteNomeDisplay ? (
+                <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+                  <span className="text-xs font-medium text-green-800 truncate">{clienteNomeDisplay}</span>
+                  <button onClick={limparCliente} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
+                </div>
+              ) : (
+                <div className="relative mt-1">
+                  <Input value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
+                    placeholder="Nome ou CPF..." className="h-9 text-xs" />
+                  {buscaCliente.length > 1 && clientes.length > 0 && (
+                    <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
+                      {clientes.map((c: any) => (
+                        <button key={c.clienteId} onClick={() => {
+                          setClienteId(String(c.clienteId))
+                          setClienteNomeDisplay(c.nomeCompleto)
+                          setBuscaCliente('')
+                          if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+                        }} className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                          <span className="text-xs font-medium text-gray-900">{c.nomeCompleto}</span>
+                          <span className="text-[10px] text-gray-400">{c.cpfCnpj ?? ''}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowCadastrarCliente(true)}
+                    className="mt-1.5 w-full text-xs text-green-600 hover:text-green-700 text-left flex items-center gap-1">
+                    <Plus size={11} /> Cadastrar novo cliente
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Desconto */}
             <div>
               <Label className="text-xs">Desconto (R$)</Label>
@@ -452,46 +488,12 @@ export default function PdvBalcao({ tenantSlug }: Props) {
             {/* Campos extras — recolhíveis */}
             <button onClick={() => setShowExtras(v => !v)}
               className="w-full flex items-center justify-between py-2 text-xs text-gray-400 hover:text-gray-600 border-t border-gray-100 pt-3">
-              <span>Dados adicionais (cliente, vendedor, entrega...)</span>
+              <span>Dados adicionais (vendedor, entrega...)</span>
               {showExtras ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
 
             {showExtras && (
               <div className="space-y-2 pt-1">
-                <div>
-                  <Label className="text-xs">Cliente</Label>
-                  {clienteId && clienteNomeDisplay ? (
-                    <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                      <span className="text-xs font-medium text-green-800 truncate">{clienteNomeDisplay}</span>
-                      <button onClick={limparCliente} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
-                    </div>
-                  ) : (
-                    <div className="relative mt-1">
-                      <Input value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
-                        placeholder="Nome ou CPF..." className="h-9 text-xs" />
-                      {buscaCliente.length > 1 && clientes.length > 0 && (
-                        <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
-                          {clientes.map((c: any) => (
-                            <button key={c.clienteId} onClick={() => {
-                              setClienteId(String(c.clienteId))
-                              setClienteNomeDisplay(c.nomeCompleto)
-                              setBuscaCliente('')
-                              if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
-                            }} className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                              <span className="text-xs font-medium text-gray-900">{c.nomeCompleto}</span>
-                              <span className="text-[10px] text-gray-400">{c.cpfCnpj ?? ''}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <button
-                        onClick={() => setShowCadastrarCliente(true)}
-                        className="mt-1.5 w-full text-xs text-green-600 hover:text-green-700 text-left flex items-center gap-1">
-                        <Plus size={11} /> Cadastrar novo cliente
-                      </button>
-                    </div>
-                  )}
-                </div>
                 <div>
                   <Label className="text-xs">Vendedor</Label>
                   <select value={vendedor} onChange={e => setVendedor(e.target.value)}
