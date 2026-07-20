@@ -85,7 +85,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const grade        = gradeData?.data ?? gradeData ?? {}
   const produtos     = Array.isArray(grade.produtos) ? grade.produtos : []
   const celulas      = grade.grade ?? {}         // grade[produtoId][data] = qtd produção
-  const celulasPed   = grade.pedidos ?? {}       // pedidos[produtoId][data] = qtd pedido
+  const celulasPed   = grade.pedidos ?? {}       // pedidos[produtoId][data] = qtd pedido (previsão de produção)
 
   const previsao = Array.isArray(previsaoData?.data) ? previsaoData.data
     : Array.isArray(previsaoData) ? previsaoData : []
@@ -132,6 +132,8 @@ export default function ProducaoView({ tenantSlug }: Props) {
     setPreviewBaixa(null); setResultadoBaixa(null)
   }
 
+  // Célula editável — usada APENAS para PP (previsão de produção).
+  // O PED é somente leitura (puxado dos Pedidos), renderizado direto na tabela.
   function CelulaEditavel({ produtoId, data, tipo, valor, cor }: { produtoId: number; data: string; tipo: 'producao' | 'pedido'; valor: number; cor: string }) {
     const isEdit = editandoCelula?.produtoId === produtoId && editandoCelula?.data === data && editandoCelula?.tipo === tipo
     if (isEdit) {
@@ -151,6 +153,15 @@ export default function ProducaoView({ tenantSlug }: Props) {
         className={`w-10 h-6 rounded text-xs font-medium transition-colors ${valor > 0 ? `${cor} hover:opacity-80` : 'text-gray-200 hover:bg-gray-100'}`}>
         {valor > 0 ? valor : '—'}
       </button>
+    )
+  }
+
+  // Célula somente leitura — PED (volume vindo dos Pedidos pela previsão de produção da semana)
+  function CelulaPedido({ valor, cor }: { valor: number; cor: string }) {
+    return (
+      <span className={`inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium ${valor > 0 ? cor : 'text-gray-200'}`}>
+        {valor > 0 ? valor : '—'}
+      </span>
     )
   }
 
@@ -235,7 +246,8 @@ export default function ProducaoView({ tenantSlug }: Props) {
                       return (
                         <>
                           <td key={`ped-${d}`} className="px-0.5 py-1 text-center">
-                            <CelulaEditavel produtoId={p.produtoId} data={d} tipo="pedido" valor={ped} cor="bg-blue-100 text-blue-700" />
+                            {/* PED — somente leitura: volume dos Pedidos (previsão de produção) */}
+                            <CelulaPedido valor={ped} cor="bg-blue-100 text-blue-700" />
                           </td>
                           <td key={`prev-${d}`} className="px-0.5 py-1 text-center">
                             <CelulaEditavel produtoId={p.produtoId} data={d} tipo="producao" valor={prev} cor="bg-green-100 text-green-700" />
@@ -293,7 +305,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
         </div>
         {/* Legenda */}
         <div className="px-4 py-2 border-t border-gray-100 flex gap-4 flex-wrap text-[10px] text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido — editável</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido (Ped) — puxado dos Pedidos pela previsão de produção (somente leitura)</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" /> Previsão de Produção (PP) — editável</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-100 inline-block" /> Prod. Necessária = média histórica ÷ 4 semanas</span>
           <span className="text-gray-300">Prev. Est. = Estoque + Produção − Pedidos</span>
