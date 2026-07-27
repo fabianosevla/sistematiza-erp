@@ -7,10 +7,11 @@
 // (continua só com insumos reais e editáveis); os dropdowns de Ficha Técnica
 // passam, pra deixar o produto-insumo selecionável.
 //
-// CORREÇÃO: para o produto-insumo, o preco_custo agora vem do CUSTO DE PRODUÇÃO
-// dele (soma da própria ficha técnica) quando ele não tem custo manual. Antes
-// vinha o preco_custo do cadastro do produto (geralmente 0), então a fração
-// dele em outra ficha ficava sem custo.
+// CORREÇÃO: para o produto-insumo, o preco_custo vem SEMPRE do custo de
+// produção dele (soma da própria ficha técnica) quando ele TEM ficha. O
+// preco_custo manual do cadastro só é usado se o produto não tiver ficha.
+// Antes o manual tinha prioridade — um valor antigo (ex.: molho a 20,77 no
+// cadastro) travava o custo, mesmo com a ficha calculando 26,27.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
@@ -33,8 +34,8 @@ export async function GET(req: NextRequest, { params }: Params) {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
       // Fonte base: insumos reais. Se pedido, UNION com produtos-insumo (id negativo).
-      // Para o produto-insumo, o custo é o custo de produção dele (ficha técnica)
-      // quando não há custo manual cadastrado.
+      // Para o produto-insumo, o custo é o custo de produção dele (ficha técnica,
+      // se existir); só cai no custo manual do cadastro se não houver ficha.
       const fonte = incluirProdutos
         ? `(
             SELECT insumo_id AS id, nome, descricao, codigo_barras, unidade, tipo,
@@ -44,16 +45,13 @@ export async function GET(req: NextRequest, { params }: Params) {
             UNION ALL
             SELECT (-p.produto_id) AS id, p.nome, p.descricao, p.codigo_barras, p.unidade, 'Produto'::varchar AS tipo,
                    p.estoque_atual::numeric AS estoque_atual, p.estoque_minimo::numeric AS estoque_minimo,
-                   CASE
-                     WHEN COALESCE(p.preco_custo, 0) > 0 THEN p.preco_custo
-                     ELSE COALESCE((
-                       SELECT ROUND(SUM(pi.quantidade * COALESCE(i2.preco_custo, p2.preco_custo, 0)))::integer
-                       FROM t_produto_insumo pi
-                       LEFT JOIN t_insumo  i2 ON i2.insumo_id = pi.insumo_id     AND pi.insumo_id > 0 AND i2.active_flg = true
-                       LEFT JOIN t_produto p2 ON (-pi.insumo_id) = p2.produto_id AND pi.insumo_id < 0 AND p2.active_flg = true
-                       WHERE pi.produto_id = p.produto_id AND pi.active_flg = true
-                     ), 0)
-                   END AS preco_custo,
+                   COALESCE((
+                     SELECT ROUND(SUM(pi.quantidade * COALESCE(i2.preco_custo, p2.preco_custo, 0)))::integer
+                     FROM t_produto_insumo pi
+                     LEFT JOIN t_insumo  i2 ON i2.insumo_id = pi.insumo_id     AND pi.insumo_id > 0 AND i2.active_flg = true
+                     LEFT JOIN t_produto p2 ON (-pi.insumo_id) = p2.produto_id AND pi.insumo_id < 0 AND p2.active_flg = true
+                     WHERE pi.produto_id = p.produto_id AND pi.active_flg = true
+                   ), p.preco_custo, 0) AS preco_custo,
                    NULL::integer AS fornecedor_id, 'produto'::text AS origem
             FROM t_produto p WHERE p.active_flg = true AND p.insumo_flg = true
           )`

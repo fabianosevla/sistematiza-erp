@@ -18,7 +18,20 @@ export class FichaTecnicaService {
         pi.observacao,
         COALESCE(i.nome, p.nome)                 AS nome_insumo,
         COALESCE(i.unidade, p.unidade)           AS unidade_insumo,
-        COALESCE(i.preco_custo, p.preco_custo)   AS preco_custo,
+        -- Custo do componente: insumo real usa o preco_custo dele; produto
+        -- usado como insumo usa o custo de produção da PRÓPRIA ficha técnica
+        -- (se existir) e só cai no preco_custo manual do cadastro sem ficha.
+        COALESCE(
+          i.preco_custo,
+          (
+            SELECT ROUND(SUM(pi2.quantidade * COALESCE(i3.preco_custo, p3.preco_custo, 0)))::integer
+            FROM t_produto_insumo pi2
+            LEFT JOIN t_insumo  i3 ON i3.insumo_id = pi2.insumo_id     AND pi2.insumo_id > 0 AND i3.active_flg = true
+            LEFT JOIN t_produto p3 ON (-pi2.insumo_id) = p3.produto_id AND pi2.insumo_id < 0 AND p3.active_flg = true
+            WHERE pi2.produto_id = p.produto_id AND pi2.active_flg = true
+          ),
+          p.preco_custo
+        )                                        AS preco_custo,
         (pi.insumo_id < 0)                       AS eh_produto
       FROM t_produto_insumo pi
       LEFT JOIN t_insumo  i ON pi.insumo_id = i.insumo_id  AND pi.insumo_id > 0
