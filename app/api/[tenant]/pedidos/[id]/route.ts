@@ -1,5 +1,6 @@
 // @ts-nocheck
 import type { NextRequest } from 'next/server'
+import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
@@ -15,6 +16,49 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       const result = await new PedidoService(db).findById(Number(params.id))
       if (!result) return notFound('Pedido não encontrado')
+      return ok(result)
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+// ── EDITAR PEDIDO ────────────────────────────────────────────────────────────
+// PUT atualiza cliente, tipo, data do pedido, previsão de produção, previsão
+// de entrega, endereço, observação e a lista de itens (aumentar/diminuir/
+// trocar produtos). Só permitido para status 'pendente' e 'producao' — a
+// partir de 'pronto' o estoque já foi movimentado pelo PATCH de status, e
+// editar itens depois disso dessincronizaria o estoque.
+const atualizarPedidoSchema = z.object({
+  clienteId:        z.number().int().optional(),
+  tipoVenda:        z.enum(['balcao', 'entrega']).default('entrega'),
+  dataPedido:       z.string(),
+  previsaoProducao: z.string().optional(),
+  previsaoEntrega:  z.string().optional(),
+  valorEntrega:     z.number().int().default(0),
+  enderecoEntrega:  z.string().max(300).optional(),
+  observacao:       z.string().max(500).optional(),
+  itens: z.array(z.object({
+    produtoId:     z.number().int(),
+    quantidade:    z.number().int().min(1),
+    precoUnitario: z.number().int().default(0),
+  })).min(1),
+})
+
+export async function PUT(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body    = await req.json()
+      const payload = atualizarPedidoSchema.parse(body)
+      const service = new PedidoService(db)
+
+      const pedido = await service.findById(Number(params.id))
+      if (!pedido) return notFound('Pedido não encontrado')
+      if (!['pendente', 'producao'].includes(pedido.status)) {
+        return badRequest(`Pedido com status "${pedido.status}" não pode ser editado — o estoque já foi movimentado ou o pedido foi encerrado.`)
+      }
+
+      const result = await service.atualizar(Number(params.id), { ...payload, userId: 1 })
       return ok(result)
     } finally { release() }
   } catch (err) { return serverError(err) }

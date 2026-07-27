@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, ChevronRight, Clock, CheckCircle, XCircle, Package, ArrowRight } from 'lucide-react'
+import { Plus, X, Trash2, ChevronRight, Clock, CheckCircle, XCircle, Package, ArrowRight, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +21,9 @@ const FLUXO: Record<string, { next: string; label: string; btnLabel: string; col
   cancelado: { next: '',         label: 'Cancelado',   btnLabel: '', color: 'bg-red-100 text-red-600' },
 }
 
+// Status em que o pedido ainda pode ser EDITADO (estoque ainda não movimentado)
+const STATUS_EDITAVEIS = ['pendente', 'producao']
+
 const PERIODOS = [
   { value: 'mes',      label: 'Este mês' },
   { value: 'trimestre',label: 'Trimestre' },
@@ -38,6 +41,7 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [periodo, setPeriodo]             = useState('mes')
   const [showNovo, setShowNovo]           = useState(false)
   const [showDetalhe, setShowDetalhe]     = useState<number | null>(null)
+  const [editandoPedidoId, setEditandoPedidoId] = useState<number | null>(null)
   const [buscaCliente, setBuscaCliente]   = useState('')
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
   const [buscaProduto, setBuscaProduto]   = useState('')
@@ -48,6 +52,7 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [previsaoEntrega, setPrevisaoEntrega]   = useState('')
   const [enderecoEntrega, setEnderecoEntrega]   = useState('')
   const [observacao, setObservacao]       = useState('')
+  const [valorEntregaEdit, setValorEntregaEdit] = useState(0)
   const [qtdProduto, setQtdProduto]       = useState(1)
   const [editandoItem, setEditandoItem]   = useState<number | null>(null)
 
@@ -107,6 +112,36 @@ export default function PedidosView({ tenantSlug }: Props) {
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
 
+  // EDITAR PEDIDO — PUT com o mesmo payload do criar
+  const editarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${apiBase}/${editandoPedidoId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteId:        clienteSelecionado?.clienteId,
+          tipoVenda, dataPedido,
+          previsaoProducao: previsaoProducao || undefined,
+          previsaoEntrega:  previsaoEntrega  || undefined,
+          valorEntrega:     valorEntregaEdit ?? 0,
+          enderecoEntrega:  enderecoEntrega  || undefined,
+          observacao:       observacao       || undefined,
+          itens: itens.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade, precoUnitario: i.precoUnitario })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message ?? 'Erro ao salvar alterações')
+      return d
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pedidos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['pedido', tenantSlug] })
+      setShowNovo(false)
+      resetForm()
+      toast('Pedido atualizado!')
+    },
+    onError: (e: any) => toast(e.message || 'Erro.', 'error'),
+  })
+
   const avancarMut = useMutation({
     mutationFn: async ({ id, status }: { id: number; status: string }) => {
       const res = await fetch(`${apiBase}/${id}`, {
@@ -139,6 +174,53 @@ export default function PedidosView({ tenantSlug }: Props) {
     setDataPedido(new Date().toISOString().slice(0, 10))
     setPrevisaoProducao(''); setPrevisaoEntrega('')
     setEnderecoEntrega(''); setObservacao(''); setQtdProduto(1)
+    setValorEntregaEdit(0)
+    setEditandoPedidoId(null)
+  }
+
+  // Abre o modal em modo edição, pré-preenchido com os dados do pedido
+  async function abrirEdicao(pedidoId: number) {
+    try {
+      const res = await fetch(`${apiBase}/${pedidoId}`)
+      const d   = await res.json()
+      const ped = d?.data
+      if (!res.ok || !ped) { toast(d?.message ?? 'Erro ao carregar pedido.', 'error'); return }
+      if (!STATUS_EDITAVEIS.includes(ped.status)) {
+        toast(`Pedido "${FLUXO[ped.status]?.label ?? ped.status}" não pode ser editado.`, 'error')
+        return
+      }
+
+      // Busca o nome do cliente para exibir no formulário
+      let clienteNome = ''
+      if (ped.clienteId) {
+        try {
+          const cr = await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=1000`)
+          const cd = await cr.json()
+          const lista = cd?.data?.data ?? cd?.data ?? []
+          clienteNome = lista.find((c: any) => c.clienteId === ped.clienteId)?.nomeCompleto ?? `Cliente #${ped.clienteId}`
+        } catch { clienteNome = `Cliente #${ped.clienteId}` }
+      }
+
+      setEditandoPedidoId(ped.pedidoId)
+      setClienteSelecionado(ped.clienteId ? { clienteId: ped.clienteId, nomeCompleto: clienteNome } : null)
+      setBuscaCliente('')
+      setTipoVenda(ped.tipoVenda ?? 'entrega')
+      setDataPedido(ped.dataPedido ? String(ped.dataPedido).slice(0, 10) : new Date().toISOString().slice(0, 10))
+      setPrevisaoProducao(ped.previsaoProducao ? String(ped.previsaoProducao).slice(0, 10) : '')
+      setPrevisaoEntrega(ped.previsaoEntrega ? String(ped.previsaoEntrega).slice(0, 10) : '')
+      setEnderecoEntrega(ped.enderecoEntrega ?? '')
+      setObservacao(ped.observacao ?? '')
+      setValorEntregaEdit(ped.valorEntrega ?? 0)
+      setItens((ped.itens ?? []).map((i: any) => ({
+        produtoId: i.produtoId, nomeProduto: i.nomeProduto,
+        quantidade: i.quantidade, precoUnitario: i.precoUnitario,
+      })))
+      setBuscaProduto(''); setQtdProduto(1)
+      setShowDetalhe(null)
+      setShowNovo(true)
+    } catch {
+      toast('Erro ao carregar pedido.', 'error')
+    }
   }
 
   function addItem(produto: any) {
@@ -160,6 +242,7 @@ export default function PedidosView({ tenantSlug }: Props) {
   const clientes = clientesData?.data?.data ?? clientesData?.data ?? []
   const produtos = produtosData?.data?.data ?? produtosData?.data ?? []
   const totalPedidos = itens.reduce((a, i) => a + i.quantidade * i.precoUnitario, 0)
+  const salvando = criarMut.isPending || editarMut.isPending
 
   return (
     <div>
@@ -233,6 +316,12 @@ export default function PedidosView({ tenantSlug }: Props) {
                       {cfg.btnLabel}
                     </Button>
                   )}
+                  {STATUS_EDITAVEIS.includes(p.status) && (
+                    <button onClick={() => abrirEdicao(p.pedidoId)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
+                      <Pencil size={12} /> Editar
+                    </button>
+                  )}
                   <button onClick={() => setShowDetalhe(p.pedidoId)}
                     className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 ml-1">
                     Ver <ChevronRight size={12} />
@@ -244,13 +333,13 @@ export default function PedidosView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Novo Pedido */}
+      {/* Modal Novo/Editar Pedido */}
       {showNovo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold">Novo pedido</h2>
-              <button onClick={() => setShowNovo(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <h2 className="text-lg font-semibold">{editandoPedidoId ? `Editar pedido #${editandoPedidoId}` : 'Novo pedido'}</h2>
+              <button onClick={() => { setShowNovo(false); resetForm() }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {/* Cliente */}
@@ -368,9 +457,9 @@ export default function PedidosView({ tenantSlug }: Props) {
               </div>
             </div>
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
-              <Button variant="outline" onClick={() => setShowNovo(false)}>Cancelar</Button>
-              <Button onClick={() => criarMut.mutate()} disabled={itens.length === 0 || criarMut.isPending}>
-                {criarMut.isPending ? 'Salvando...' : 'Criar pedido'}
+              <Button variant="outline" onClick={() => { setShowNovo(false); resetForm() }}>Cancelar</Button>
+              <Button onClick={() => (editandoPedidoId ? editarMut.mutate() : criarMut.mutate())} disabled={itens.length === 0 || salvando}>
+                {salvando ? 'Salvando...' : editandoPedidoId ? 'Salvar alterações' : 'Criar pedido'}
               </Button>
             </div>
           </div>
@@ -406,6 +495,10 @@ export default function PedidosView({ tenantSlug }: Props) {
                 {detalhe.clienteNome && <Badge variant="secondary">{detalhe.clienteNome}</Badge>}
               </div>
 
+              {detalhe.previsaoProducao && (
+                <div><p className="text-xs font-medium text-gray-400 mb-1">PREVISÃO PRODUÇÃO</p>
+                  <p className="text-sm text-gray-700">{fmtDate(detalhe.previsaoProducao)}</p></div>
+              )}
               {detalhe.previsaoEntrega && (
                 <div><p className="text-xs font-medium text-gray-400 mb-1">PREVISÃO ENTREGA</p>
                   <p className="text-sm text-gray-700">{fmtDate(detalhe.previsaoEntrega)}</p></div>
@@ -435,6 +528,11 @@ export default function PedidosView({ tenantSlug }: Props) {
 
               {/* Botões de ação */}
               <div className="pt-2 space-y-2">
+                {STATUS_EDITAVEIS.includes(detalhe.status) && (
+                  <Button variant="outline" className="w-full" onClick={() => abrirEdicao(detalhe.pedidoId)}>
+                    <Pencil size={14} className="mr-1.5" /> Editar pedido
+                  </Button>
+                )}
                 {FLUXO[detalhe.status]?.next && (
                   <Button className="w-full" onClick={() => avancarMut.mutate({ id: detalhe.pedidoId, status: FLUXO[detalhe.status].next })}
                     disabled={avancarMut.isPending}>

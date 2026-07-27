@@ -75,6 +75,64 @@ export class PedidoService {
     return { pedidoId: pedido.pedidoId }
   }
 
+  /**
+   * EDITAR PEDIDO — atualiza os dados do cabeçalho (cliente, tipo, datas de
+   * previsão de produção/entrega, endereço, observação) e SUBSTITUI os itens:
+   * inativa os atuais (soft delete, preserva histórico) e regrava a nova
+   * lista com subtotais recalculados. Não mexe em status nem em estoque —
+   * a rota só permite editar pedidos 'pendente'/'producao', onde o estoque
+   * ainda não foi movimentado.
+   */
+  async atualizar(id: number, { clienteId, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
+    clienteId?:        number
+    tipoVenda:         string
+    dataPedido:        string
+    previsaoProducao?: string
+    previsaoEntrega?:  string
+    valorEntrega:      number
+    enderecoEntrega?:  string
+    observacao?:       string
+    itens:             { produtoId: number; quantidade: number; precoUnitario: number }[]
+    userId:            number
+  }) {
+    const now = new Date()
+
+    await this.db.update(dbPedido).set({
+      clienteId:        clienteId ?? null,
+      tipoVenda,
+      dataPedido:       new Date(dataPedido),
+      previsaoProducao: previsaoProducao ? new Date(previsaoProducao) : null,
+      previsaoEntrega:  previsaoEntrega  ? new Date(previsaoEntrega)  : null,
+      valorEntrega,
+      enderecoEntrega:  enderecoEntrega ?? null,
+      observacao:       observacao ?? null,
+      updatedDt:        now,
+      updatedBy:        userId,
+    }).where(eq(dbPedido.pedidoId, id))
+
+    // Substitui os itens: inativa os atuais e regrava a nova lista
+    await this.db.update(dbPedidoItem).set({ activeFlag: false, updatedDt: now, updatedBy: userId })
+      .where(eq(dbPedidoItem.pedidoId, id))
+
+    for (const item of itens) {
+      const [produto] = await this.db.select().from(dbProduto).where(eq(dbProduto.produtoId, item.produtoId))
+      await this.db.insert(dbPedidoItem).values({
+        pedidoId:      id,
+        produtoId:     item.produtoId,
+        nomeProduto:   produto?.nome ?? '',
+        quantidade:    item.quantidade,
+        precoUnitario: item.precoUnitario,
+        subtotal:      item.quantidade * item.precoUnitario,
+        createdBy:     userId,
+        updatedBy:     userId,
+        createdDt:     now,
+        updatedDt:     now,
+      })
+    }
+
+    return { pedidoId: id, atualizado: true }
+  }
+
   async atualizarStatus(id: number, status: string, userId: number) {
     await this.db.update(dbPedido).set({
       status, updatedDt: new Date(), updatedBy: userId,
