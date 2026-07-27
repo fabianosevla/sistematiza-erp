@@ -50,13 +50,29 @@ export const produtoInsertSchema = z.object({
   codigoBarras:  z.string().max(50).optional().nullable(),
   unidade:       z.string().max(20).default('un'),
   categoria:     z.string().max(100).optional().nullable(),
+  // CORREÇÃO: 'tipo' não existia no schema, então o Zod DESCARTAVA o campo
+  // silenciosamente no PUT — editar o tipo do produto (ex.: mudar pra
+  // "Bebida") nunca salvava. Idem para os campos abaixo.
+  tipo:          z.string().max(100).optional().nullable(),
   estoqueAtual:  z.number().int().default(0),
   estoqueMinimo: z.number().int().default(0),
   precoCusto:    z.number().int().default(0),
   precoVarejo:   z.number().int().default(0),
   precoAtacado:  z.number().int().default(0),
+  // Tabelas de atacado A-E — a tela envia, mas o schema não tinha: o PUT
+  // descartava e a edição desses preços não salvava.
+  precoAtacadoA: z.number().int().default(0),
+  precoAtacadoB: z.number().int().default(0),
+  precoAtacadoC: z.number().int().default(0),
+  precoAtacadoD: z.number().int().default(0),
+  precoAtacadoE: z.number().int().default(0),
   // Produto que também é insumo de outros produtos
   insumoFlg:     z.boolean().default(false),
+  // Produto para revenda — flag PRÓPRIA, independente do tipo (um produto
+  // pode ser "Bebida" E revenda ao mesmo tempo). Ver migrate-produto-revenda.js
+  revenda:       z.boolean().default(false),
+  // Necessário para o botão "Reativar" da tela de produtos funcionar
+  activeFlag:    z.boolean().optional(),
 })
 export const produtoUpdateSchema = produtoInsertSchema.partial().extend({ modificationNum: z.number().int().optional() })
 export type ProdutoInsertInput = z.infer<typeof produtoInsertSchema>

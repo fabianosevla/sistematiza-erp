@@ -93,7 +93,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
     mutationFn: async () => {
       const parseP = (v: string) => v ? Math.round(parseFloat(v.replace(',', '.')) * 100) : 0
       const payload = {
-        nome, tipo: revenda ? 'Revenda' : tipo, unidade, activeFlag: ativo, revenda,
+        // CORREÇÃO: revenda agora é flag PRÓPRIA (coluna revenda no banco) —
+        // não sobrescreve mais o tipo. Um produto pode ser "Bebida" E revenda.
+        nome, tipo, unidade, activeFlag: ativo, revenda,
         insumoFlg:     insumoAtivo,
         precoVarejo:   parseP(precoVarejo),
         precoAtacado:  parseP(atacados.A),
@@ -289,6 +291,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
       return sortDir === 'asc' ? cmp : -cmp
     })
 
+  const inativos = todos.filter((p: any) => !p.activeFlag).length
+
   // ── RENDER ────────────────────────────────────────────────────────────────
 
   return (
@@ -297,7 +301,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Produtos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{raw?.data?.meta?.total ?? 0} produtos</p>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {todos.filter((p: any) => p.activeFlag !== false).length} ativos
+            {inativos > 0 && <span className="ml-2 text-gray-300">· {inativos} inativos</span>}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setShowInativos(v => !v)}
@@ -361,6 +368,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
                     </span>
                     {p.insumoFlg && !inativo && (
                       <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5 align-middle">insumo</span>
+                    )}
+                    {p.revenda && !inativo && (
+                      <span className="ml-2 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 align-middle">revenda</span>
                     )}
                     {inativo && (
                       <p className="text-xs text-gray-400 mt-0.5">desativado — preservado no histórico</p>
@@ -495,7 +505,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
               </div>
               {revenda && (
                 <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
-                  Produtos de revenda aparecem na seleção de Compra Rápida.
+                  Produtos de revenda aparecem na Compra Rápida e NÃO aparecem na grade de Produção (são comprados prontos). O tipo (ex.: Bebida) é mantido.
                 </p>
               )}
 

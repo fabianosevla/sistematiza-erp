@@ -8,7 +8,12 @@ import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
-interface Props { tenantSlug: string }
+// modo: 'balcao' = venda de balcão (retirada). 'delivery' = venda para entrega:
+// mesma tela do balcão, mas com endereço em destaque/obrigatório e tipo de
+// entrega já como "Entrega". O acréscimo (taxa de entrega) é o mesmo campo nos
+// dois modos e entra embutido no total via "desconto líquido" — sem linha de
+// frete separada e sem mexer no banco.
+interface Props { tenantSlug: string; modo?: 'balcao' | 'delivery' }
 
 interface ItemCarrinho {
   produtoId:     number
@@ -24,15 +29,18 @@ function fmt(c: number) {
 
 const TODAS = 'Todas'
 
-export default function PdvBalcao({ tenantSlug }: Props) {
+export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
   const searchRef = useRef<HTMLInputElement>(null)
+
+  const isDelivery = modo === 'delivery'
 
   const [busca, setBusca]                 = useState('')
   const [categoria, setCategoria]         = useState(TODAS)
   const [carrinho, setCarrinho]           = useState<ItemCarrinho[]>([])
   const [desconto, setDesconto]           = useState('0')
+  const [acrescimo, setAcrescimo]         = useState('0')
   const [formaPgto, setFormaPgto]         = useState('')
   const [valorRecebido, setValorRecebido] = useState('')
   const [confirmLimpar, setConfirmLimpar] = useState(false)
@@ -48,7 +56,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   const setCli = (k: string, v: string) => setNovoCli(p => ({ ...p, [k]: v }))
   const [buscaCliente, setBuscaCliente]         = useState('')
   const [vendedor, setVendedor]               = useState('')
-  const [tipoEntrega, setTipoEntrega]         = useState('Retirada')
+  const [tipoEntrega, setTipoEntrega]         = useState(isDelivery ? 'Entrega' : 'Retirada')
   const [observacao, setObservacao]           = useState('')
   const [dataEntrega, setDataEntrega]         = useState('')
   const [enderecoEntrega, setEnderecoEntrega] = useState('')
@@ -126,8 +134,9 @@ export default function PdvBalcao({ tenantSlug }: Props) {
 
   const venderMut = useMutation({
     mutationFn: async () => {
-      const descontoVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
-      const totalVal    = Math.max(0, subtotal - descontoVal)
+      const descontoVal  = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
+      const acrescimoVal = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
+      const totalVal     = Math.max(0, subtotal - descontoVal + acrescimoVal)
 
       // Cashback a resgatar nesta venda
       const saldoCash   = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
@@ -141,13 +150,16 @@ export default function PdvBalcao({ tenantSlug }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clienteId:      clienteId ? Number(clienteId) : undefined,
-          tipoEntrega:    tipoEntrega || 'Retirada',
+          tipoEntrega:    tipoEntrega || (isDelivery ? 'Entrega' : 'Retirada'),
           dataEntrega:    dataEntrega || undefined,
           enderecoEntrega: enderecoEntrega || undefined,
           vendedor:       vendedor || undefined,
           observacao:     observacao || undefined,
           itens:      carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
-          desconto:   descontoVal,
+          // Acréscimo embutido no total via "desconto líquido": o servidor faz
+          // total = subtotal - desconto, então enviamos (desconto - acréscimo).
+          // Assim não há linha de frete tributável e o banco não muda.
+          desconto:   descontoVal - acrescimoVal,
           usarCashback: cashUsar > 0 ? cashUsar : undefined,
           pagamentos: totalPagar > 0
             ? [{ forma: formaPgto || formasNomes[0] || 'PIX', valor: totalPagar }]
@@ -163,12 +175,13 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       const ganho = d?.data?.cashbackCreditado ?? 0
       setCarrinho([])
       setDesconto('0')
+      setAcrescimo('0')
       setValorRecebido('')
       setClienteId('')
       setClienteNomeDisplay('')
       setBuscaCliente('')
       setVendedor('')
-      setTipoEntrega('Retirada')
+      setTipoEntrega(isDelivery ? 'Entrega' : 'Retirada')
       setObservacao('')
       setDataEntrega('')
       setEnderecoEntrega('')
@@ -259,9 +272,10 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   const formas      = Array.isArray(formasRaw?.data) ? formasRaw.data : []
   const formasNomes = formas.map((f: any) => f.nome).filter(Boolean)
 
-  const subtotal    = carrinho.reduce((a, i) => a + i.subtotal, 0)
-  const descontoVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
-  const total       = Math.max(0, subtotal - descontoVal)
+  const subtotal     = carrinho.reduce((a, i) => a + i.subtotal, 0)
+  const descontoVal  = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
+  const acrescimoVal = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
+  const total        = Math.max(0, subtotal - descontoVal + acrescimoVal)
 
   // Cashback aplicável nesta venda (para exibição)
   const saldoCashback   = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
@@ -273,7 +287,8 @@ export default function PdvBalcao({ tenantSlug }: Props) {
   const troco       = (formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && valorRecebido
     ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - totalAPagar) : 0
 
-  const podeVender = carrinho.length > 0 && !venderMut.isPending
+  const enderecoOk = !isDelivery || enderecoEntrega.trim().length > 0
+  const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk
 
   return (
     <div className="flex gap-6 h-full max-w-[1400px] mx-auto">
@@ -281,8 +296,8 @@ export default function PdvBalcao({ tenantSlug }: Props) {
       {/* Catálogo */}
       <div className="flex-1 flex flex-col gap-3 min-w-0">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Pedido Balcão</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Selecione uma categoria ou busque o produto</p>
+          <h1 className="text-2xl font-semibold text-gray-900">{isDelivery ? 'Delivery' : 'Pedido Balcão'}</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{isDelivery ? 'Venda para entrega — informe o endereço do cliente' : 'Selecione uma categoria ou busque o produto'}</p>
         </div>
 
         <div className="relative">
@@ -385,6 +400,12 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                   <span className="font-medium text-red-500">-{fmt(descontoVal)}</span>
                 </div>
               )}
+              {acrescimoVal > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Acréscimo{isDelivery ? ' (entrega)' : ''}</span>
+                  <span className="font-medium text-gray-900">+{fmt(acrescimoVal)}</span>
+                </div>
+              )}
               {cashbackAplicar > 0 && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Cashback</span>
@@ -438,6 +459,21 @@ export default function PdvBalcao({ tenantSlug }: Props) {
               )}
             </div>
 
+            {/* Entrega — em destaque no modo delivery */}
+            {isDelivery && (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs">Endereço de entrega *</Label>
+                  <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)}
+                    className="mt-1 h-9 text-sm" placeholder="Rua, número, bairro, cidade" />
+                </div>
+                <div>
+                  <Label className="text-xs">Data de entrega</Label>
+                  <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
+              </div>
+            )}
+
             {/* Desconto */}
             <div>
               <Label className="text-xs">Desconto (R$)</Label>
@@ -450,6 +486,12 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                   {pct === 0 ? 'Sem' : `${pct}%`}
                 </button>
               ))}
+            </div>
+
+            {/* Acréscimo (R$) — taxa de entrega embutida no total, sem linha de frete */}
+            <div>
+              <Label className="text-xs">Acréscimo{isDelivery ? ' — taxa de entrega' : ''} (R$)</Label>
+              <Input type="number" min="0" step="0.01" value={acrescimo} onChange={e => setAcrescimo(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
             </div>
 
             {/* Cashback / Fidelidade */}
@@ -504,7 +546,7 @@ export default function PdvBalcao({ tenantSlug }: Props) {
             {/* Campos extras — recolhíveis */}
             <button onClick={() => setShowExtras(v => !v)}
               className="w-full flex items-center justify-between py-2 text-xs text-gray-400 hover:text-gray-600 border-t border-gray-100 pt-3">
-              <span>Dados adicionais (vendedor, entrega...)</span>
+              <span>Dados adicionais (vendedor{isDelivery ? '' : ', entrega'}...)</span>
               {showExtras ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
 
@@ -518,26 +560,35 @@ export default function PdvBalcao({ tenantSlug }: Props) {
                     {usuarios.map((u: any) => <option key={u.usuarioId} value={u.nome}>{u.nome}</option>)}
                   </select>
                 </div>
-                <div>
-                  <Label className="text-xs">Tipo de entrega</Label>
-                  <select value={tipoEntrega} onChange={e => setTipoEntrega(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {['Retirada', 'Entrega', 'Transportadora'].map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label className="text-xs">Data de entrega</Label>
-                  <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
-                </div>
-                <div>
-                  <Label className="text-xs">Endereço de entrega</Label>
-                  <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
-                </div>
+                {/* No modo delivery, tipo/data/endereço de entrega já aparecem em destaque acima. */}
+                {!isDelivery && (
+                  <>
+                    <div>
+                      <Label className="text-xs">Tipo de entrega</Label>
+                      <select value={tipoEntrega} onChange={e => setTipoEntrega(e.target.value)}
+                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                        {['Retirada', 'Entrega', 'Transportadora'].map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Data de entrega</Label>
+                      <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Endereço de entrega</Label>
+                      <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                    </div>
+                  </>
+                )}
                 <div>
                   <Label className="text-xs">Observação</Label>
                   <Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" />
                 </div>
               </div>
+            )}
+
+            {isDelivery && !enderecoOk && (
+              <p className="text-[11px] text-amber-600">Informe o endereço de entrega para finalizar.</p>
             )}
 
             {vendaOk ? (

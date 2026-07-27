@@ -109,6 +109,7 @@ export default function VendasView({ tenantSlug }: Props) {
   const [vendedor, setVendedor]               = useState('')
   const [observacao, setObservacao]           = useState('')
   const [desconto, setDesconto]               = useState('0')
+  const [acrescimo, setAcrescimo]             = useState('0')
   const [usarCashback, setUsarCashback]       = useState(false)
   const [itens, setItens]                     = useState<ItemVenda[]>([novoItem()])
   const [pagamentos, setPagamentos]           = useState<FormaPgto[]>([{ forma: 'PIX', valor: '' }])
@@ -170,7 +171,8 @@ export default function VendasView({ tenantSlug }: Props) {
     mutationFn: async () => {
       const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
       const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
-      const total         = subtotalTotal - descontoVal
+      const acrescimoVal  = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
+      const total         = subtotalTotal - descontoVal + acrescimoVal
 
       // Cashback a resgatar
       const saldoCash    = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
@@ -205,7 +207,10 @@ export default function VendasView({ tenantSlug }: Props) {
             quantidade: i.quantidade,
             tipoPrecao: i.tipoPrecao,
           })),
-        desconto:     descontoVal,
+        // Acréscimo embutido no total via "desconto líquido": o servidor faz
+        // total = subtotal - desconto, então enviamos (desconto - acréscimo).
+        // Não cria linha de frete tributável e o banco não muda.
+        desconto:     descontoVal - acrescimoVal,
         usarCashback: cashUsar > 0 ? cashUsar : undefined,
         pagamentos:   pgtosFinais,
       }
@@ -246,7 +251,7 @@ export default function VendasView({ tenantSlug }: Props) {
     setItens([novoItem()])
     setPagamentos([{ forma: formasNomes[0] ?? 'PIX', valor: '' }])
     setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setTipoEntrega('')
-    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0')
+    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0'); setAcrescimo('0')
     setUsarCashback(false); setVendidaEm(localNow())
   }
 
@@ -313,7 +318,8 @@ export default function VendasView({ tenantSlug }: Props) {
 
   const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
   const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
-  const totalVenda    = subtotalTotal - descontoVal
+  const acrescimoVal  = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
+  const totalVenda    = subtotalTotal - descontoVal + acrescimoVal
 
   // Cashback aplicável nesta venda (exibição)
   const saldoCashback    = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
@@ -671,6 +677,15 @@ export default function VendasView({ tenantSlug }: Props) {
                       type="number" min="0" step="0.01"
                       value={desconto}
                       onChange={e => setDesconto(e.target.value)}
+                      className="h-7 text-sm w-24 text-right"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Acréscimo (R$)</span>
+                    <Input
+                      type="number" min="0" step="0.01"
+                      value={acrescimo}
+                      onChange={e => setAcrescimo(e.target.value)}
                       className="h-7 text-sm w-24 text-right"
                     />
                   </div>

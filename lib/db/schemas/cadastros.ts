@@ -1,3 +1,4 @@
+// ESTE ARQUIVO VAI EM: lib/db/schemas/cadastros.ts
 import {
   pgTable, serial, integer, varchar, boolean, timestamp,
 } from 'drizzle-orm/pg-core'
@@ -77,6 +78,10 @@ export const dbProduto = pgTable('t_produto', {
   precoVarejo:    integer('preco_varejo').notNull().default(0),
   // Produto que também é insumo de outros produtos (ver migrate-produto-insumo-flg.js)
   insumoFlg:      boolean('insumo_flg').notNull().default(false),
+  // Produto para revenda — flag própria, independente do tipo. Um produto
+  // pode ser "Bebida" E revenda ao mesmo tempo. Produtos de revenda não
+  // aparecem na grade de Produção (ver migrate-produto-revenda.js).
+  revenda:        boolean('revenda').notNull().default(false),
   // Atacado legado (mantido para retrocompatibilidade)
   precoAtacado:   integer('preco_atacado').notNull().default(0),
   // Tabelas de preço atacado por canal B2B (A=mercados pequenos … E=grandes redes)

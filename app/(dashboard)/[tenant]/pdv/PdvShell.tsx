@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { useClerk } from '@clerk/nextjs'
 import { useQuery } from '@tanstack/react-query'
-import { ShoppingCart, LayoutGrid, ClipboardList, LogOut, Code2, Sun, Moon } from 'lucide-react'
+import { ShoppingCart, LayoutGrid, ClipboardList, Bike, LogOut, Code2, Sun, Moon } from 'lucide-react'
 import ComandasView from '@/components/modules/comandas/ComandasView'
 import PdvBalcao from './PdvBalcao'
 import PdvMesas from './PdvMesas'
@@ -15,12 +15,13 @@ interface Props {
   darkModeInicial?: boolean
 }
 
-type Aba = 'balcao' | 'mesas' | 'comanda'
+type Aba = 'balcao' | 'mesas' | 'comanda' | 'delivery'
 
 const ABAS = [
   { key: 'balcao' as Aba, label: 'Balcão', icon: ShoppingCart },
   { key: 'mesas' as Aba, label: 'Mesas', icon: LayoutGrid },
   { key: 'comanda' as Aba, label: 'Comanda', icon: ClipboardList },
+  { key: 'delivery' as Aba, label: 'Delivery', icon: Bike },
 ]
 
 // Elemento de link referenciado por variavel em vez da tag JSX literal de
@@ -103,7 +104,7 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
       <main className="flex-1 overflow-hidden">
         <div className={`h-full ${aba === 'balcao' ? 'block' : 'hidden'}`}>
           <div className="h-full overflow-y-auto p-6">
-            <PdvBalcao tenantSlug={tenantSlug} />
+            <PdvBalcao tenantSlug={tenantSlug} modo="balcao" />
           </div>
         </div>
 
@@ -116,6 +117,12 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
         <div className={`h-full ${aba === 'comanda' ? 'block' : 'hidden'}`}>
           <div className="h-full overflow-y-auto p-6">
             <ComandasView tenantSlug={tenantSlug} />
+          </div>
+        </div>
+
+        <div className={`h-full ${aba === 'delivery' ? 'block' : 'hidden'}`}>
+          <div className="h-full overflow-y-auto p-6">
+            <PdvBalcao tenantSlug={tenantSlug} modo="delivery" />
           </div>
         </div>
       </main>

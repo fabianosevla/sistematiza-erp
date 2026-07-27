@@ -1,4 +1,5 @@
 // @ts-nocheck
+// ESTE ARQUIVO VAI EM: app/api/[tenant]/producao/grade/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
@@ -18,11 +19,16 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
-      // Produtos ativos
+      // Produtos ativos — EXCLUI produtos de revenda: eles não são produzidos
+      // (são comprados prontos), então não fazem sentido na grade de Produção.
+      // COALESCE cobre bancos onde a migration ainda não rodou; o fallback
+      // tipo='Revenda' cobre dados anteriores à coluna própria.
       const produtosRes = await client.query(`
         SELECT produto_id, nome, estoque_atual, estoque_minimo, unidade
         FROM t_produto
         WHERE active_flg = true
+          AND COALESCE(revenda, false) = false
+          AND COALESCE(tipo, '') <> 'Revenda'
         ORDER BY nome
       `)
 
@@ -54,7 +60,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 
       // Pedidos da semana (por produto e data de previsão de produção)
       const pedidosRes = await client.query(`
-        SELECT pi.produto_id, 
+        SELECT pi.produto_id,
                COALESCE(p.previsao_producao, p.data_pedido)::date as data_ref,
                SUM(pi.quantidade) as qtd
         FROM t_pedido_item pi

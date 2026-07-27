@@ -90,8 +90,12 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const previsao = Array.isArray(previsaoData?.data) ? previsaoData.data
     : Array.isArray(previsaoData) ? previsaoData : []
 
-  const todosProdutos = Array.isArray(produtosData?.data?.data) ? produtosData.data.data
-    : Array.isArray(produtosData?.data) ? produtosData.data : []
+  // Exclui produtos de revenda: eles não são produzidos (são comprados
+  // prontos), então não aparecem no "Registrar Produção". A grade em si já
+  // vem filtrada pela rota /producao/grade.
+  const todosProdutos = (Array.isArray(produtosData?.data?.data) ? produtosData.data.data
+    : Array.isArray(produtosData?.data) ? produtosData.data : [])
+    .filter((p: any) => !p.revenda)
 
   // Mapa de previsão semanal por produto (média histórica ÷ 4)
   const prevSemanal: Record<number, number> = {}
