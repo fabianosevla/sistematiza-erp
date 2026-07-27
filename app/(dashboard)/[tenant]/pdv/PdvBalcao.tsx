@@ -45,6 +45,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [valorRecebido, setValorRecebido] = useState('')
   const [confirmLimpar, setConfirmLimpar] = useState(false)
   const [vendaOk, setVendaOk]             = useState(false)
+  // Fluxo de finalização: "Finalizar" abre "Deseja confirmar a venda?" (Sim/Não).
+  // Após registrar, abre "Deseja imprimir cupom?" (Sim/Não) com os dados da
+  // venda congelados em cupomVenda (o carrinho já foi resetado nesse ponto).
+  const [confirmVenda, setConfirmVenda]   = useState(false)
+  const [cupomVenda, setCupomVenda]       = useState<any>(null)
   const [showExtras, setShowExtras]       = useState(false)
 
   // Campos extras — iguais ao modal Nova Venda do gerencial
@@ -173,6 +178,23 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     onSuccess: (d) => {
       const usado = d?.data?.cashbackUsado ?? 0
       const ganho = d?.data?.cashbackCreditado ?? 0
+      // Congela os dados da venda ANTES do reset, para o cupom
+      const dVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
+      const aVal = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
+      const tot  = Math.max(0, Math.max(0, subtotal - dVal + aVal) - usado)
+      const trocoVal = (formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && valorRecebido
+        ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - tot) : 0
+      setCupomVenda({
+        vendaId:   d?.data?.vendaId ?? d?.data?.id ?? null,
+        itens:     [...carrinho],
+        subtotal, desconto: dVal, acrescimo: aVal,
+        cashbackUsado: usado, total: tot,
+        forma:     formaPgto || formasNomes[0] || 'PIX',
+        troco:     trocoVal,
+        cliente:   clienteNomeDisplay,
+        enderecoEntrega: isDelivery ? enderecoEntrega : '',
+        dataHora:  new Date().toLocaleString('pt-BR'),
+      })
       setCarrinho([])
       setDesconto('0')
       setAcrescimo('0')
@@ -289,6 +311,50 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
   const enderecoOk = !isDelivery || enderecoEntrega.trim().length > 0
   const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk
+
+  // Cupom (não fiscal) — abre janela de impressão formatada para bobina 80mm
+  function imprimirCupom(v: any) {
+    const win = window.open('', '_blank', 'width=380,height=600')
+    if (!win) { toast('Habilite pop-ups para imprimir o cupom.', 'error'); return }
+    const nomeLoja = tenantSlug.replace(/-/g, ' ').toUpperCase()
+    const linhas = v.itens.map((i: any) =>
+      `<tr><td>${i.quantidade}x ${i.nomeProduto}</td><td class="r">${fmt(i.subtotal)}</td></tr>`).join('')
+    win.document.write(`<!doctype html><html><head><title>Cupom</title><style>
+      * { font-family: 'Courier New', monospace; font-size: 12px; color: #000; }
+      body { width: 72mm; margin: 0; padding: 8px; }
+      h1 { font-size: 14px; text-align: center; margin: 0 0 2px; }
+      p { margin: 2px 0; }
+      .c { text-align: center; } .r { text-align: right; }
+      table { width: 100%; border-collapse: collapse; }
+      td { padding: 1px 0; vertical-align: top; }
+      hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
+      .tot { font-weight: bold; font-size: 13px; }
+    </style></head><body>
+      <h1>${nomeLoja}</h1>
+      <p class="c">CUPOM NÃO FISCAL</p>
+      <p class="c">${v.dataHora}</p>
+      ${v.vendaId ? `<p class="c">Venda nº ${v.vendaId}</p>` : ''}
+      <hr/>
+      <table>${linhas}</table>
+      <hr/>
+      <table>
+        <tr><td>Subtotal</td><td class="r">${fmt(v.subtotal)}</td></tr>
+        ${v.desconto > 0 ? `<tr><td>Desconto</td><td class="r">-${fmt(v.desconto)}</td></tr>` : ''}
+        ${v.acrescimo > 0 ? `<tr><td>Acréscimo</td><td class="r">+${fmt(v.acrescimo)}</td></tr>` : ''}
+        ${v.cashbackUsado > 0 ? `<tr><td>Cashback</td><td class="r">-${fmt(v.cashbackUsado)}</td></tr>` : ''}
+        <tr><td class="tot">TOTAL</td><td class="r tot">${fmt(v.total)}</td></tr>
+        <tr><td>Pagamento</td><td class="r">${v.forma}</td></tr>
+        ${v.troco > 0 ? `<tr><td>Troco</td><td class="r">${fmt(v.troco)}</td></tr>` : ''}
+      </table>
+      ${v.cliente ? `<hr/><p>Cliente: ${v.cliente}</p>` : ''}
+      ${v.enderecoEntrega ? `<p>Entrega: ${v.enderecoEntrega}</p>` : ''}
+      <hr/>
+      <p class="c">Obrigado pela preferência!</p>
+    </body></html>`)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
 
   return (
     <div className="flex gap-6 h-full max-w-[1400px] mx-auto">
@@ -597,7 +663,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <span className="text-sm font-semibold text-green-700">Venda registrada!</span>
               </div>
             ) : (
-              <Button className="w-full h-11 text-base font-bold" onClick={() => venderMut.mutate()} disabled={!podeVender}>
+              <Button className="w-full h-11 text-base font-bold" onClick={() => setConfirmVenda(true)} disabled={!podeVender}>
                 {venderMut.isPending
                   ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
                   : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(totalAPagar)}</>
@@ -614,6 +680,36 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           onConfirm={() => { setCarrinho([]); setConfirmLimpar(false) }}
           onCancel={() => setConfirmLimpar(false)} />
       )}
+
+      {/* Confirmação da venda (Sim/Não) */}
+      {confirmVenda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+            <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
+            <p className="text-sm text-gray-500 mb-5">Total: <span className="font-bold text-gray-900">{fmt(totalAPagar)}</span></p>
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
+              <Button className="w-24" onClick={() => { setConfirmVenda(false); venderMut.mutate() }}>Sim</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Impressão do cupom (Sim/Não) — aparece depois que a venda foi registrada */}
+      {cupomVenda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+            <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
+            <p className="text-base font-semibold text-gray-900 mb-1">Venda registrada!</p>
+            <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
+              <Button className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCadastrarCliente && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">

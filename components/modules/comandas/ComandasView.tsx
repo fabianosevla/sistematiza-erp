@@ -1,4 +1,5 @@
 'use client'
+// ESTE ARQUIVO VAI EM: components/modules/comandas/ComandasView.tsx
 import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Search, Trash2, CheckCircle, Clock, ChevronRight } from 'lucide-react'
@@ -29,6 +30,11 @@ export default function ComandasView({ tenantSlug }: Props) {
   const [quantidade, setQuantidade]       = useState(1)
   const [desconto, setDesconto]           = useState(0)
   const [pagamentos, setPagamentos]       = useState<{ forma: string; valor: number }[]>([{ forma: 'Dinheiro', valor: 0 }])
+  // Fluxo de finalização (igual ao PDV): "Confirmar fechamento" abre
+  // "Deseja confirmar a venda?" (Sim/Não). Após fechar, abre
+  // "Deseja imprimir cupom?" (Sim/Não) com os dados congelados em cupomVenda.
+  const [confirmFechar, setConfirmFechar] = useState(false)
+  const [cupomVenda, setCupomVenda]       = useState<any>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
 
   const { data: listData, isLoading: listLoading } = useQuery({
@@ -120,15 +126,35 @@ export default function ComandasView({ tenantSlug }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ desconto: Math.round(desconto * 100), pagamentos }),
       })
-      return res.json()
+      // CORREÇÃO: checar res.ok — sem isso, um erro do servidor caía no
+      // onSuccess, fechava a comanda na tela e ofereceria cupom de uma venda
+      // que NÃO foi registrada.
+      const d = await res.json()
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao fechar comanda')
+      return d
     },
-    onSuccess: () => {
+    onSuccess: (d) => {
+      // Congela os dados ANTES dos resets, para o cupom
+      setCupomVenda({
+        vendaId:       d?.data?.vendaId ?? d?.data?.id ?? null,
+        comandaIdent:  comandaAtiva?.identificacao ?? '',
+        itens:         (comanda?.itens ?? []).map((i: any) => ({ quantidade: i.quantidade, nomeProduto: i.nomeProduto, subtotal: i.subtotal })),
+        subtotal:      totalComanda,
+        desconto:      totalDesconto,
+        acrescimo:     0,
+        cashbackUsado: 0,
+        total:         totalFinal,
+        forma:         pagamentos.filter(p => p.valor > 0).map(p => p.forma).join(' + ') || pagamentos[0]?.forma || 'Dinheiro',
+        troco,
+        dataHora:      new Date().toLocaleString('pt-BR'),
+      })
       queryClient.invalidateQueries({ queryKey: ['comandas', tenantSlug] })
       setShowFechar(false)
       setView('lista')
       setComandaAtiva(null)
       setDesconto(0)
     },
+    onError: (e: any) => alert(e?.message ?? 'Erro ao fechar comanda.'),
   })
 
   function abrirComanda(c: any) {
@@ -178,6 +204,64 @@ export default function ComandasView({ tenantSlug }: Props) {
   const totalFinal    = Math.max(0, totalComanda - totalDesconto)
   const totalPago     = pagamentos.reduce((a, p) => a + p.valor, 0)
   const troco         = Math.max(0, totalPago - totalFinal)
+
+  // Cupom (não fiscal) — abre janela de impressão formatada para bobina 80mm.
+  // Mesmo formato do PDV (PdvBalcao.tsx) e do gerencial (VendasView.tsx).
+  function imprimirCupom(v: any) {
+    const win = window.open('', '_blank', 'width=380,height=600')
+    if (!win) { alert('Habilite pop-ups para imprimir o cupom.'); return }
+    const nomeLoja = tenantSlug.replace(/-/g, ' ').toUpperCase()
+    const linhas = v.itens.map((i: any) =>
+      `<tr><td>${i.quantidade}x ${i.nomeProduto}</td><td class="r">${formatCents(i.subtotal)}</td></tr>`).join('')
+    win.document.write(`<!doctype html><html><head><title>Cupom</title><style>
+      * { font-family: 'Courier New', monospace; font-size: 12px; color: #000; }
+      body { width: 72mm; margin: 0; padding: 8px; }
+      h1 { font-size: 14px; text-align: center; margin: 0 0 2px; }
+      p { margin: 2px 0; }
+      .c { text-align: center; } .r { text-align: right; }
+      table { width: 100%; border-collapse: collapse; }
+      td { padding: 1px 0; vertical-align: top; }
+      hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
+      .tot { font-weight: bold; font-size: 13px; }
+    </style></head><body>
+      <h1>${nomeLoja}</h1>
+      <p class="c">CUPOM NÃO FISCAL</p>
+      <p class="c">${v.dataHora}</p>
+      ${v.vendaId ? `<p class="c">Venda nº ${v.vendaId}</p>` : ''}
+      <hr/>
+      <table>${linhas}</table>
+      <hr/>
+      <table>
+        <tr><td>Subtotal</td><td class="r">${formatCents(v.subtotal)}</td></tr>
+        ${v.desconto > 0 ? `<tr><td>Desconto</td><td class="r">-${formatCents(v.desconto)}</td></tr>` : ''}
+        <tr><td class="tot">TOTAL</td><td class="r tot">${formatCents(v.total)}</td></tr>
+        <tr><td>Pagamento</td><td class="r">${v.forma}</td></tr>
+        ${v.troco > 0 ? `<tr><td>Troco</td><td class="r">${formatCents(v.troco)}</td></tr>` : ''}
+      </table>
+      ${v.comandaIdent ? `<hr/><p>Comanda: ${v.comandaIdent}</p>` : ''}
+      <hr/>
+      <p class="c">Obrigado pela preferência!</p>
+    </body></html>`)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
+
+  // Modal "Deseja imprimir cupom?" — renderizado nas duas vistas (a comanda
+  // sai da tela após fechar, então o modal precisa existir também na lista)
+  const cupomModal = cupomVenda && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+        <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
+        <p className="text-base font-semibold text-gray-900 mb-1">Comanda fechada — venda registrada!</p>
+        <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
+        <div className="flex justify-center gap-3">
+          <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
+          <Button className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
+        </div>
+      </div>
+    </div>
+  )
 
   // ── Vista comanda ativa ────────────────────────────────────────────────────
   if (view === 'comanda' && comandaAtiva) {
@@ -408,7 +492,7 @@ export default function ComandasView({ tenantSlug }: Props) {
                 <div className="flex justify-end gap-3 pt-2">
                   <Button type="button" variant="outline" onClick={() => setShowFechar(false)}>Cancelar</Button>
                   <Button
-                    onClick={() => fecharMutation.mutate()}
+                    onClick={() => setConfirmFechar(true)}
                     disabled={fecharMutation.isPending || totalPago < totalFinal}
                   >
                     {fecharMutation.isPending ? 'Finalizando...' : 'Confirmar fechamento'}
@@ -418,6 +502,22 @@ export default function ComandasView({ tenantSlug }: Props) {
             </div>
           </div>
         )}
+
+        {/* Confirmação da venda (Sim/Não) — sobrepõe o modal de fechamento */}
+        {confirmFechar && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+              <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
+              <p className="text-sm text-gray-500 mb-5">Total: <span className="font-bold text-gray-900">{formatCents(totalFinal)}</span></p>
+              <div className="flex justify-center gap-3">
+                <Button variant="outline" className="w-24" onClick={() => setConfirmFechar(false)}>Não</Button>
+                <Button className="w-24" onClick={() => { setConfirmFechar(false); fecharMutation.mutate() }}>Sim</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cupomModal}
       </div>
     )
   }
@@ -518,6 +618,8 @@ export default function ComandasView({ tenantSlug }: Props) {
           </div>
         </div>
       )}
+
+      {cupomModal}
     </div>
   )
 }

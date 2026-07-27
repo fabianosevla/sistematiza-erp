@@ -90,6 +90,10 @@ export default function VendasView({ tenantSlug }: Props) {
 
   const [showModal, setShowModal]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<{ id: number } | null>(null)
+  // Fluxo de finalização: "Registrar Venda" abre "Deseja confirmar a venda?"
+  // (Sim/Não). Após registrar, abre "Deseja imprimir cupom?" (Sim/Não).
+  const [confirmVenda, setConfirmVenda]   = useState(false)
+  const [cupomVenda, setCupomVenda]       = useState<any>(null)
   const [busca, setBusca]                 = useState('')
   const [pageNum, setPageNum]             = useState(1)
 
@@ -228,9 +232,26 @@ export default function VendasView({ tenantSlug }: Props) {
       invalidate()
       qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['vendas-cashback', tenantSlug] })
-      fecharModal()
       const usado = d?.data?.cashbackUsado ?? 0
       const ganho = d?.data?.cashbackCreditado ?? 0
+      // Congela os dados da venda ANTES do fecharModal (que reseta tudo), para o cupom
+      const sub  = itens.reduce((a, i) => a + i.subtotal, 0)
+      const dVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
+      const aVal = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
+      const tot  = Math.max(0, Math.max(0, sub - dVal + aVal) - usado)
+      const pagoVal = pagamentos.reduce((a, p) => a + Math.round(parseFloat(p.valor.replace(',', '.') || '0') * 100), 0)
+      setCupomVenda({
+        vendaId:   d?.data?.vendaId ?? d?.data?.id ?? null,
+        itens:     itens.filter(i => i.produtoId > 0).map(i => ({ quantidade: i.quantidade, nomeProduto: i.nomeProduto, subtotal: i.subtotal })),
+        subtotal: sub, desconto: dVal, acrescimo: aVal,
+        cashbackUsado: usado, total: tot,
+        forma:     pagamentos.filter(p => parseFloat(p.valor.replace(',', '.') || '0') > 0).map(p => p.forma).join(' + ') || pagamentos[0]?.forma || 'PIX',
+        troco:     pagoVal > 0 ? Math.max(0, pagoVal - tot) : 0,
+        cliente:   clienteNomeDisplay,
+        enderecoEntrega: enderecoEntrega,
+        dataHora:  new Date().toLocaleString('pt-BR'),
+      })
+      fecharModal()
       if (usado > 0 || ganho > 0) {
         toast(`Venda registrada! ${usado > 0 ? `Cashback usado: ${fmt(usado)}. ` : ''}${ganho > 0 ? `Ganhou ${fmt(ganho)}.` : ''}`)
       } else {
@@ -330,6 +351,51 @@ export default function VendasView({ tenantSlug }: Props) {
 
   const totalPago     = pagamentos.reduce((a, p) => a + (parseFloat(p.valor.replace(',', '.') || '0') * 100), 0)
   const troco         = totalPago > totalAPagar ? totalPago - totalAPagar : 0
+
+  // Cupom (não fiscal) — abre janela de impressão formatada para bobina 80mm.
+  // Mesmo formato do PDV (PdvBalcao.tsx).
+  function imprimirCupom(v: any) {
+    const win = window.open('', '_blank', 'width=380,height=600')
+    if (!win) { toast('Habilite pop-ups para imprimir o cupom.', 'error'); return }
+    const nomeLoja = tenantSlug.replace(/-/g, ' ').toUpperCase()
+    const linhas = v.itens.map((i: any) =>
+      `<tr><td>${i.quantidade}x ${i.nomeProduto}</td><td class="r">${fmt(i.subtotal)}</td></tr>`).join('')
+    win.document.write(`<!doctype html><html><head><title>Cupom</title><style>
+      * { font-family: 'Courier New', monospace; font-size: 12px; color: #000; }
+      body { width: 72mm; margin: 0; padding: 8px; }
+      h1 { font-size: 14px; text-align: center; margin: 0 0 2px; }
+      p { margin: 2px 0; }
+      .c { text-align: center; } .r { text-align: right; }
+      table { width: 100%; border-collapse: collapse; }
+      td { padding: 1px 0; vertical-align: top; }
+      hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
+      .tot { font-weight: bold; font-size: 13px; }
+    </style></head><body>
+      <h1>${nomeLoja}</h1>
+      <p class="c">CUPOM NÃO FISCAL</p>
+      <p class="c">${v.dataHora}</p>
+      ${v.vendaId ? `<p class="c">Venda nº ${v.vendaId}</p>` : ''}
+      <hr/>
+      <table>${linhas}</table>
+      <hr/>
+      <table>
+        <tr><td>Subtotal</td><td class="r">${fmt(v.subtotal)}</td></tr>
+        ${v.desconto > 0 ? `<tr><td>Desconto</td><td class="r">-${fmt(v.desconto)}</td></tr>` : ''}
+        ${v.acrescimo > 0 ? `<tr><td>Acréscimo</td><td class="r">+${fmt(v.acrescimo)}</td></tr>` : ''}
+        ${v.cashbackUsado > 0 ? `<tr><td>Cashback</td><td class="r">-${fmt(v.cashbackUsado)}</td></tr>` : ''}
+        <tr><td class="tot">TOTAL</td><td class="r tot">${fmt(v.total)}</td></tr>
+        <tr><td>Pagamento</td><td class="r">${v.forma}</td></tr>
+        ${v.troco > 0 ? `<tr><td>Troco</td><td class="r">${fmt(v.troco)}</td></tr>` : ''}
+      </table>
+      ${v.cliente ? `<hr/><p>Cliente: ${v.cliente}</p>` : ''}
+      ${v.enderecoEntrega ? `<p>Entrega: ${v.enderecoEntrega}</p>` : ''}
+      <hr/>
+      <p class="c">Obrigado pela preferência!</p>
+    </body></html>`)
+    win.document.close()
+    win.focus()
+    setTimeout(() => { win.print(); win.close() }, 300)
+  }
 
   // ── Badge de canal ─────────────────────────────────────────────────────────
   function CanalBadge({ tipo }: { tipo: string }) {
@@ -735,11 +801,39 @@ export default function VendasView({ tenantSlug }: Props) {
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
               <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
               <Button
-                onClick={() => criarMut.mutate()}
+                onClick={() => setConfirmVenda(true)}
                 disabled={itens.every(i => !i.produtoId) || criarMut.isPending}
               >
                 {criarMut.isPending ? 'Registrando...' : 'Registrar Venda'}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmação da venda (Sim/Não) ───────────────────────────────── */}
+      {confirmVenda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+            <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
+            <p className="text-sm text-gray-500 mb-5">Total: <span className="font-bold text-gray-900">{fmt(totalAPagar)}</span></p>
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
+              <Button className="w-24" onClick={() => { setConfirmVenda(false); criarMut.mutate() }}>Sim</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Impressão do cupom (Sim/Não) — após a venda registrada ───────── */}
+      {cupomVenda && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+            <p className="text-base font-semibold text-gray-900 mb-1">Venda registrada!</p>
+            <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
+            <div className="flex justify-center gap-3">
+              <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
+              <Button className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
             </div>
           </div>
         </div>
