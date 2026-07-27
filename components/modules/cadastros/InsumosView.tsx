@@ -48,6 +48,11 @@ export default function InsumosView({ tenantSlug }: Props) {
   const [estoqueMin, setEstoqueMin]   = useState('0')
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [precoCusto, setPrecoCusto]   = useState('')
+  // CORREÇÃO (dados ocultos): descricao, codigoBarras e fornecedorId existiam
+  // no banco mas não apareciam em lugar nenhum da tela.
+  const [descricao, setDescricao]       = useState('')
+  const [codigoBarras, setCodigoBarras] = useState('')
+  const [fornecedorId, setFornecedorId] = useState('')
 
   // Volta pra página 1 sempre que a busca muda
   useEffect(() => { setPage(1) }, [busca])
@@ -64,10 +69,21 @@ export default function InsumosView({ tenantSlug }: Props) {
     },
   })
 
+  // Fornecedores para o dropdown do campo fornecedorId
+  const { data: fornecedoresRaw } = useQuery({
+    queryKey: ['fornecedores-select', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/fornecedores?limit=500`)).json(),
+  })
+  const fornecedores: any[] = Array.isArray(fornecedoresRaw?.data?.data) ? fornecedoresRaw.data.data
+    : Array.isArray(fornecedoresRaw?.data) ? fornecedoresRaw.data : []
+
   const salvarMut = useMutation({
     mutationFn: async () => {
       const payload = {
         nome, tipo, unidade,
+        descricao:    descricao.trim() || null,
+        codigoBarras: codigoBarras.trim() || null,
+        fornecedorId: fornecedorId ? Number(fornecedorId) : null,
         estoqueMinimo: Number(estoqueMin), estoqueAtual: Number(estoqueAtual),
         precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : 0,
       }
@@ -95,9 +111,13 @@ export default function InsumosView({ tenantSlug }: Props) {
       setTipo(item.tipo ?? tipos[0] ?? ''); setUnidade(item.unidade ?? unidades[0] ?? '')
       setEstoqueMin(String(item.estoqueMinimo ?? 0)); setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setPrecoCusto(item.precoCusto ? (item.precoCusto / 100).toFixed(2) : '')
+      setDescricao(item.descricao ?? '')
+      setCodigoBarras(item.codigoBarras ?? '')
+      setFornecedorId(item.fornecedorId ? String(item.fornecedorId) : '')
     } else {
       setEditando(null); setNome(''); setTipo(tipos[0] ?? ''); setUnidade(unidades[0] ?? '')
       setEstoqueMin('0'); setEstoqueAtual('0'); setPrecoCusto('')
+      setDescricao(''); setCodigoBarras(''); setFornecedorId('')
     }
     setShowModal(true)
   }
@@ -234,6 +254,17 @@ export default function InsumosView({ tenantSlug }: Props) {
                   <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Código de Barras</Label><Input value={codigoBarras} onChange={e => setCodigoBarras(e.target.value)} className="mt-1" placeholder="EAN" /></div>
+                <div>
+                  <Label>Fornecedor</Label>
+                  <select value={fornecedorId} onChange={e => setFornecedorId(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="">— Sem fornecedor —</option>
+                    {fornecedores.map((f: any) => <option key={f.fornecedorId} value={f.fornecedorId}>{f.nomeFantasia || f.nomeCompleto}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div><Label>Descrição</Label><Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do insumo (opcional)" /></div>
               <div className="grid grid-cols-3 gap-3">
                 <div><Label>Est. Atual</Label><Input type="number" min="0" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
                 <div><Label>Est. Mínimo</Label><Input type="number" min="0" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>

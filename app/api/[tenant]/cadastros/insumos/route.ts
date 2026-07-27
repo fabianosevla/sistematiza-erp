@@ -125,9 +125,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       const res = await client.query(`
         INSERT INTO t_insumo (
           nome, descricao, codigo_barras, unidade, tipo,
-          estoque_atual, estoque_minimo, preco_custo,
+          estoque_atual, estoque_minimo, preco_custo, fornecedor_id,
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,0,1,1,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,0,1,1,NOW(),NOW())
         RETURNING insumo_id as "insumoId"
       `, [
         body.nome.trim(),
@@ -138,6 +138,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         Number(body.estoqueAtual ?? 0),
         Number(body.estoqueMinimo ?? 0),
         Number(body.precoCusto ?? 0),
+        body.fornecedorId ? Number(body.fornecedorId) : null,
       ])
       return created(res.rows[0])
     } finally {

@@ -46,6 +46,12 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [nome, setNome]               = useState('')
   const [tipo, setTipo]               = useState('')
   const [unidade, setUnidade]         = useState('')
+  // CORREÇÃO (dados ocultos): descricao, codigoBarras, categoria e precoCusto
+  // existiam no banco mas não apareciam em lugar nenhum da tela.
+  const [descricao, setDescricao]       = useState('')
+  const [codigoBarras, setCodigoBarras] = useState('')
+  const [categoria, setCategoria]       = useState('')
+  const [precoCusto, setPrecoCusto]     = useState('')
   const [precoVarejo, setPrecoVarejo] = useState('')
   const [atacados, setAtacados]       = useState({ A: '', B: '', C: '', D: '', E: '' })
   const [estoqueMin, setEstoqueMin]   = useState('0')
@@ -96,7 +102,11 @@ export default function ProdutosView({ tenantSlug }: Props) {
         // CORREÇÃO: revenda agora é flag PRÓPRIA (coluna revenda no banco) —
         // não sobrescreve mais o tipo. Um produto pode ser "Bebida" E revenda.
         nome, tipo, unidade, activeFlag: ativo, revenda,
+        descricao:     descricao.trim() || null,
+        codigoBarras:  codigoBarras.trim() || null,
+        categoria:     categoria.trim() || null,
         insumoFlg:     insumoAtivo,
+        precoCusto:    parseP(precoCusto),
         precoVarejo:   parseP(precoVarejo),
         precoAtacado:  parseP(atacados.A),
         precoAtacadoA: parseP(atacados.A),
@@ -208,6 +218,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setNome(item.nome)
       setTipo(item.tipo ?? tipos[0] ?? '')
       setUnidade(item.unidade ?? unidades[0] ?? '')
+      setDescricao(item.descricao ?? '')
+      setCodigoBarras(item.codigoBarras ?? '')
+      setCategoria(item.categoria ?? '')
+      setPrecoCusto(item.precoCusto ? fmtInput(item.precoCusto) : '')
       setPrecoVarejo(fmtInput(item.precoVarejo))
       setAtacados({
         A: fmtInput(item.precoAtacadoA ?? item.precoAtacado ?? 0),
@@ -226,6 +240,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setNome('')
       setTipo(tipos[0] ?? '')
       setUnidade(unidades[0] ?? '')
+      setDescricao('')
+      setCodigoBarras('')
+      setCategoria('')
+      setPrecoCusto('')
       setPrecoVarejo('')
       setAtacados({ A: '', B: '', C: '', D: '', E: '' })
       setEstoqueMin('0')
@@ -451,13 +469,36 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Categoria</Label>
+                  <Input value={categoria} onChange={e => setCategoria(e.target.value)} className="mt-1" placeholder="Ex.: Massas, Bebidas…" />
+                </div>
+                <div>
+                  <Label>Código de Barras</Label>
+                  <Input value={codigoBarras} onChange={e => setCodigoBarras(e.target.value)} className="mt-1" placeholder="EAN" />
+                </div>
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do produto (opcional)" />
+              </div>
+
               <div>
                 <p className="text-sm font-semibold text-gray-700 mb-3">Preços</p>
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <div>
-                    <Label className="text-xs text-green-700 font-semibold">Varejo (R$)</Label>
-                    <Input type="number" min="0" step="0.01" value={precoVarejo}
-                      onChange={e => setPrecoVarejo(e.target.value)} className="mt-1 h-9" placeholder="0,00" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs text-orange-700 font-semibold">Custo (R$)</Label>
+                      <Input type="number" min="0" step="0.01" value={precoCusto}
+                        onChange={e => setPrecoCusto(e.target.value)} className="mt-1 h-9" placeholder="0,00" />
+                      <p className="text-[11px] text-gray-400 mt-1">Se o produto tem ficha técnica, o custo calculado dela prevalece — este campo é usado só como fallback.</p>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-green-700 font-semibold">Varejo (R$)</Label>
+                      <Input type="number" min="0" step="0.01" value={precoVarejo}
+                        onChange={e => setPrecoVarejo(e.target.value)} className="mt-1 h-9" placeholder="0,00" />
+                    </div>
                   </div>
                   <div className="border-t border-gray-200 pt-3">
                     <p className="text-xs text-gray-500 font-medium mb-2">Atacado — deixe em branco os que não usar</p>

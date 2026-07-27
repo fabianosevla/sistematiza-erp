@@ -223,9 +223,20 @@ export default function ClientesView({ tenantSlug }: Props) {
                 {form.formState.errors.nomeCompleto && <p className="text-xs text-red-500 mt-1">{form.formState.errors.nomeCompleto.message}</p>}
               </div>
               <div><Label>Nome fantasia</Label><Input {...form.register('nomeFantasia')} className="mt-1" /></div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div><Label>E-mail</Label><Input {...form.register('email')} type="email" className="mt-1" /></div>
                 <div><Label>Celular</Label><Input {...form.register('celular')} className="mt-1" placeholder="(35) 99999-9999" /></div>
+                <div><Label>Telefone</Label><Input {...form.register('telefone')} className="mt-1" placeholder="(35) 3333-3333" /></div>
+              </div>
+              {/* CORREÇÃO (dados ocultos): endereço completo existia no banco mas não aparecia no formulário */}
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label>CEP</Label><Input {...form.register('cep')} className="mt-1" placeholder="00000-000" /></div>
+                <div className="col-span-2"><Label>Endereço</Label><Input {...form.register('endereco')} className="mt-1" placeholder="Rua, avenida…" /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label>Número</Label><Input {...form.register('numero')} className="mt-1" /></div>
+                <div><Label>Complemento</Label><Input {...form.register('complemento')} className="mt-1" /></div>
+                <div><Label>Bairro</Label><Input {...form.register('bairro')} className="mt-1" /></div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-2"><Label>Cidade</Label><Input {...form.register('cidade')} className="mt-1" /></div>

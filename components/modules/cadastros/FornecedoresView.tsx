@@ -44,9 +44,13 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       const res = await fetch(apiBase, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
-      return res.json()
+      const json = await res.json()
+      // Sem esse check, um 400 "Registro já existente" caía em onSuccess e fechava o form.
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar fornecedor')
+      return json
     },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] }); setShowForm(false) },
+    onError: (e: any) => toast(e?.message ?? 'Erro ao salvar.', 'error'),
   })
 
   const updateMutation = useMutation({
@@ -54,12 +58,15 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       const res = await fetch(`${apiBase}/${id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
-      return res.json()
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar fornecedor')
+      return json
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] })
       setShowForm(false); setEditItem(null)
     },
+    onError: (e: any) => toast(e?.message ?? 'Erro ao salvar.', 'error'),
   })
 
   const deleteMutation = useMutation({
@@ -200,6 +207,16 @@ export default function FornecedoresView({ tenantSlug }: Props) {
               <div className="grid grid-cols-2 gap-4">
                 <div><Label>Contato</Label><Input {...form.register('contato')} className="mt-1" /></div>
                 <div><Label>Telefone</Label><Input {...form.register('telefone')} className="mt-1" /></div>
+              </div>
+              {/* CORREÇÃO (dados ocultos): endereço completo existia no banco mas não aparecia no formulário */}
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label>CEP</Label><Input {...form.register('cep')} className="mt-1" placeholder="00000-000" /></div>
+                <div className="col-span-2"><Label>Endereço</Label><Input {...form.register('endereco')} className="mt-1" placeholder="Rua, avenida…" /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label>Número</Label><Input {...form.register('numero')} className="mt-1" /></div>
+                <div><Label>Complemento</Label><Input {...form.register('complemento')} className="mt-1" /></div>
+                <div><Label>Bairro</Label><Input {...form.register('bairro')} className="mt-1" /></div>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-2"><Label>Cidade</Label><Input {...form.register('cidade')} className="mt-1" /></div>
