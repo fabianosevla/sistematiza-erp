@@ -152,9 +152,9 @@ export class VendaService {
   }
 
   async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
-    itens: { produtoId: number; quantidade: number; tipoPrecao?: string }[]
+    itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
     clienteId?:         number
-    desconto:           number
+    desconto:           number   // desconto geral da venda (no PDV já vem líquido do acréscimo)
     pagamentos:         { forma: string; valor: number }[]
     tipoEntrega?:       string
     dataEntrega?:       string
@@ -166,7 +166,8 @@ export class VendaService {
     userId:             number
   }) {
     const now = new Date()
-    let subtotal = 0
+    let subtotal = 0          // bruto (soma de preço x quantidade, sem descontos)
+    let descontoItens = 0     // soma dos descontos aplicados linha a linha
     const itemsDetalhados: any[] = []
 
     for (const item of itens) {
@@ -176,8 +177,13 @@ export class VendaService {
 
       const tipoPrecao    = item.tipoPrecao ?? 'varejo'
       const precoUnitario = resolverPreco(produto, tipoPrecao)
-      const itemSubtotal  = precoUnitario * item.quantidade
-      subtotal += itemSubtotal
+      const itemBruto     = precoUnitario * item.quantidade
+      // Desconto do item nunca passa do valor do próprio item
+      const descontoItem  = Math.max(0, Math.min(item.desconto ?? 0, itemBruto))
+      const itemSubtotal  = itemBruto - descontoItem
+
+      subtotal      += itemBruto
+      descontoItens += descontoItem
 
       const labelTipo: Record<string, string> = {
         varejo: 'Varejo', atacado_a: 'Atacado A', atacado_b: 'Atacado B',
@@ -188,11 +194,14 @@ export class VendaService {
         produtoId: produto.produtoId, nomeProduto: produto.nome,
         quantidade: item.quantidade, tipoPrecao,
         nomeTipoPrecao: labelTipo[tipoPrecao] ?? 'Varejo',
-        precoUnitario, subtotal: itemSubtotal,
+        precoUnitario, desconto: descontoItem, subtotal: itemSubtotal,
       })
     }
 
-    const total = Math.max(0, subtotal - desconto)
+    // O desconto gravado na venda soma os descontos de item com o desconto geral,
+    // pra que subtotal - desconto = total continue verdadeiro nos relatórios.
+    const descontoTotal = descontoItens + desconto
+    const total = Math.max(0, subtotal - descontoTotal)
 
     const [venda] = await this.db.insert(dbVenda).values({
       origem:            'direta',
@@ -201,7 +210,7 @@ export class VendaService {
       tipoEntrega:       tipoEntrega || 'Retirada',
       dataEntrega:       dataEntrega ? new Date(dataEntrega) : null,
       enderecoEntrega:   enderecoEntrega || null,
-      subtotal, desconto, total,
+      subtotal, desconto: descontoTotal, total,
       observacao:        observacao || null,
       observacaoInterna: observacaoInterna || null,
       vendedor:          vendedor || null,
@@ -214,18 +223,19 @@ export class VendaService {
         await this.db.execute(sql`
           INSERT INTO t_venda_item (
             venda_id, produto_id, nome_produto, quantidade,
-            tipo_precao, nome_tipo_precao, preco_unitario, subtotal,
+            tipo_precao, nome_tipo_precao, preco_unitario, desconto, subtotal,
             created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
           ) VALUES (
             ${venda.vendaId}, ${item.produtoId}, ${item.nomeProduto}, ${item.quantidade},
-            ${item.tipoPrecao}, ${item.nomeTipoPrecao}, ${item.precoUnitario}, ${item.subtotal},
+            ${item.tipoPrecao}, ${item.nomeTipoPrecao}, ${item.precoUnitario}, ${item.desconto}, ${item.subtotal},
             ${userId}, ${userId}, ${now.toISOString()}, ${now.toISOString()}, true, 0
           )
         `)
       } catch {
         await this.db.insert(dbVendaItem).values({
           vendaId: venda.vendaId, produtoId: item.produtoId, nomeProduto: item.nomeProduto,
-          quantidade: item.quantidade, precoUnitario: item.precoUnitario, subtotal: item.subtotal,
+          quantidade: item.quantidade, precoUnitario: item.precoUnitario,
+          desconto: item.desconto, subtotal: item.subtotal,
           createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
         })
       }

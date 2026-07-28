@@ -24,6 +24,7 @@ export const dbConfiguracoesTenant = pgTable('t_configuracoes_tenant', {
   consultasAtivo:    boolean('consultas_ativo').notNull().default(true),
   pedidosAtivo:      boolean('pedidos_ativo').notNull().default(true),
   planoAcaoAtivo:    boolean('plano_acao_ativo').notNull().default(true),
+  metasAtivo:        boolean('metas_ativo').notNull().default(true),
   // Dados da empresa
   nomeEmpresa:       varchar('nome_empresa', { length: 200 }),
   cnpj:              varchar('cnpj', { length: 20 }),
@@ -88,6 +89,7 @@ export const dbVendaItem = pgTable('t_venda_item', {
   vendaId:       integer('venda_id').notNull(),
   produtoId:     integer('produto_id').notNull(),
   nomeProduto:   varchar('nome_produto', { length: 200 }).notNull(),
+  desconto:      integer('desconto').notNull().default(0),
   quantidade:    integer('quantidade').notNull().default(1),
   precoUnitario: integer('preco_unitario').notNull(),
   subtotal:      integer('subtotal').notNull(),

@@ -41,6 +41,7 @@ const criarVendaSchema = z.object({
     produtoId:   z.number().int(),
     quantidade:  z.number().int().min(1),
     tipoPrecao:  z.string().optional(),
+    desconto:    z.number().int().min(0).optional(),   // desconto do item, em centavos
   })).min(1),
   clienteId:       z.number().int().optional().nullable(),
   desconto:        z.number().int().default(0),
