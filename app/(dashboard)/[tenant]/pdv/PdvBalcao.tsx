@@ -5,6 +5,7 @@ import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, Che
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
@@ -18,24 +19,50 @@ interface Props { tenantSlug: string; modo?: 'balcao' | 'delivery' }
 interface ItemCarrinho {
   produtoId:     number
   nomeProduto:   string
+  codigoBarras:  string
+  unidade:       string
   quantidade:    number
   precoUnitario: number
-  subtotal:      number
+  desconto:      number   // desconto do item em centavos
+  subtotal:      number   // já líquido do desconto do item
 }
 
 function fmt(c: number) {
   return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// Preço do produto em centavos.
+// A listagem pode chegar mapeada (precoVarejo), crua do Postgres (preco_varejo)
+// ou com o número em texto — aqui os três casos caem no mesmo lugar.
+function precoDoProduto(p: any): number {
+  const v = p?.precoVarejo ?? p?.preco_varejo ?? p?.precoVenda ?? p?.preco_venda ?? 0
+  const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v)
+  return Number.isFinite(n) ? Math.round(n) : 0
+}
+
 const TODAS = 'Todas'
+
+// Densidade da tela: a mesma tela abre em notebooks diferentes e com escalas de
+// Windows diferentes. Em vez de tamanho fixo, o operador escolhe aqui e a
+// escolha fica salva naquele computador.
+const DENSIDADES = {
+  compacto: { card: 140, titulo: 'text-xs',   preco: 'text-sm',   tabela: 'text-xs' },
+  normal:   { card: 180, titulo: 'text-sm',   preco: 'text-base', tabela: 'text-sm' },
+  grande:   { card: 230, titulo: 'text-base', preco: 'text-lg',   tabela: 'text-base' },
+} as const
+type Densidade = keyof typeof DENSIDADES
 
 export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
-  const searchRef = useRef<HTMLInputElement>(null)
+  const searchRef   = useRef<HTMLInputElement>(null)
+  const clienteRef  = useRef<HTMLInputElement>(null)
+  const descontoRef = useRef<HTMLInputElement>(null)
+  const pgtoRef     = useRef<HTMLSelectElement>(null)
 
   const isDelivery = modo === 'delivery'
 
+  const [densidade, setDensidade]         = useState<Densidade>('normal')
   const [busca, setBusca]                 = useState('')
   const [categoria, setCategoria]         = useState(TODAS)
   const [carrinho, setCarrinho]           = useState<ItemCarrinho[]>([])
@@ -59,7 +86,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const CLI_VAZIO = { tipoPessoa: 'PF', documento: '', nomeCompleto: '', nomeFantasia: '', email: '', celular: '', cidade: '', uf: '', observacao: '' }
   const [novoCli, setNovoCli] = useState(CLI_VAZIO)
   const setCli = (k: string, v: string) => setNovoCli(p => ({ ...p, [k]: v }))
-  const [buscaCliente, setBuscaCliente]         = useState('')
+  const [buscaCliente, setBuscaCliente]       = useState('')
   const [vendedor, setVendedor]               = useState('')
   const [tipoEntrega, setTipoEntrega]         = useState(isDelivery ? 'Entrega' : 'Retirada')
   const [observacao, setObservacao]           = useState('')
@@ -68,7 +95,21 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   // Fidelidade / cashback
   const [usarCashback, setUsarCashback]       = useState(false)
 
+  const dens = DENSIDADES[densidade]
+
   useEffect(() => { searchRef.current?.focus() }, [])
+
+  // Densidade salva por computador
+  useEffect(() => {
+    try {
+      const salvo = window.localStorage.getItem('pdv-densidade') as Densidade | null
+      if (salvo && salvo in DENSIDADES) setDensidade(salvo)
+    } catch {}
+  }, [])
+  function mudarDensidade(d: Densidade) {
+    setDensidade(d)
+    try { window.localStorage.setItem('pdv-densidade', d) } catch {}
+  }
 
   const { data: produtosRaw, isLoading: loadingProd } = useQuery({
     queryKey: ['pdv-balcao-catalogo', tenantSlug],
@@ -160,7 +201,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           enderecoEntrega: enderecoEntrega || undefined,
           vendedor:       vendedor || undefined,
           observacao:     observacao || undefined,
-          itens:      carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
+          // O desconto de cada linha vai no próprio item; o servidor soma tudo
+          // no desconto da venda. Se a coluna ainda não existir no banco, o
+          // campo é simplesmente ignorado.
+          itens:      carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade, desconto: i.desconto })),
           // Acréscimo embutido no total via "desconto líquido": o servidor faz
           // total = subtotal - desconto, então enviamos (desconto - acréscimo).
           // Assim não há linha de frete tributável e o banco não muda.
@@ -187,7 +231,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       setCupomVenda({
         vendaId:   d?.data?.vendaId ?? d?.data?.id ?? null,
         itens:     [...carrinho],
-        subtotal, desconto: dVal, acrescimo: aVal,
+        subtotal:  subtotalBruto, desconto: dVal + descontoItens, acrescimo: aVal,
         cashbackUsado: usado, total: tot,
         forma:     formaPgto || formasNomes[0] || 'PIX',
         troco:     trocoVal,
@@ -225,29 +269,50 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     onError: (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
   })
 
+  // Recalcula o subtotal da linha respeitando o desconto do item
+  function recalc(i: ItemCarrinho): ItemCarrinho {
+    const bruto = i.quantidade * i.precoUnitario
+    const desc  = Math.max(0, Math.min(i.desconto, bruto))
+    return { ...i, desconto: desc, subtotal: bruto - desc }
+  }
+
   function addProduto(produto: any) {
-    const preco = produto.precoVarejo ?? 0
+    const preco = precoDoProduto(produto)
     setCarrinho(prev => {
       const existing = prev.find(i => i.produtoId === produto.produtoId)
       if (existing) {
         return prev.map(i => i.produtoId === produto.produtoId
-          ? { ...i, quantidade: i.quantidade + 1, subtotal: (i.quantidade + 1) * i.precoUnitario }
+          ? recalc({ ...i, quantidade: i.quantidade + 1 })
           : i
         )
       }
-      return [...prev, { produtoId: produto.produtoId, nomeProduto: produto.nome, quantidade: 1, precoUnitario: preco, subtotal: preco }]
+      return [...prev, {
+        produtoId: produto.produtoId, nomeProduto: produto.nome,
+        codigoBarras: produto.codigoBarras ?? '', unidade: produto.unidade ?? 'un',
+        quantidade: 1, precoUnitario: preco, desconto: 0, subtotal: preco,
+      }]
     })
     setTimeout(() => searchRef.current?.focus(), 50)
   }
 
   function alterarQtd(produtoId: number, delta: number) {
     setCarrinho(prev => prev
-      .map(i => i.produtoId === produtoId
-        ? { ...i, quantidade: i.quantidade + delta, subtotal: (i.quantidade + delta) * i.precoUnitario }
-        : i
-      )
+      .map(i => i.produtoId === produtoId ? recalc({ ...i, quantidade: i.quantidade + delta }) : i)
       .filter(i => i.quantidade > 0)
     )
+  }
+
+  function definirQtd(produtoId: number, valor: string) {
+    const q = Math.max(0, Math.floor(Number(valor) || 0))
+    setCarrinho(prev => prev
+      .map(i => i.produtoId === produtoId ? recalc({ ...i, quantidade: q }) : i)
+      .filter(i => i.quantidade > 0)
+    )
+  }
+
+  function definirDescontoItem(produtoId: number, valor: string) {
+    const d = Math.max(0, Math.round(parseFloat(String(valor).replace(',', '.') || '0') * 100))
+    setCarrinho(prev => prev.map(i => i.produtoId === produtoId ? recalc({ ...i, desconto: d }) : i))
   }
 
   function removerItem(produtoId: number) {
@@ -294,10 +359,16 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const formas      = Array.isArray(formasRaw?.data) ? formasRaw.data : []
   const formasNomes = formas.map((f: any) => f.nome).filter(Boolean)
 
-  const subtotal     = carrinho.reduce((a, i) => a + i.subtotal, 0)
-  const descontoVal  = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
-  const acrescimoVal = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
-  const total        = Math.max(0, subtotal - descontoVal + acrescimoVal)
+  // subtotal continua sendo a soma das linhas JÁ líquidas do desconto de item —
+  // as contas de total, cashback e troco seguem exatamente como antes.
+  const subtotal      = carrinho.reduce((a, i) => a + i.subtotal, 0)
+  const subtotalBruto = carrinho.reduce((a, i) => a + i.quantidade * i.precoUnitario, 0)
+  const descontoItens = carrinho.reduce((a, i) => a + i.desconto, 0)
+  const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
+  const acrescimoVal  = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
+  const total         = Math.max(0, subtotal - descontoVal + acrescimoVal)
+  const descontoGeralExibido = descontoItens + descontoVal
+  const descontoPct   = subtotalBruto > 0 ? (descontoGeralExibido / subtotalBruto) * 100 : 0
 
   // Cashback aplicável nesta venda (para exibição)
   const saldoCashback   = cashback?.programaAtivo ? (cashback?.saldoCentavos ?? 0) : 0
@@ -312,13 +383,39 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const enderecoOk = !isDelivery || enderecoEntrega.trim().length > 0
   const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk
 
+  const qtdItens = carrinho.reduce((a, i) => a + i.quantidade, 0)
+
+  // Atalhos: F2 busca · F3 cliente · F6 desconto · F8 pagamento · F10 finalizar
+  // Ctrl+Delete limpa o carrinho · Esc fecha o que estiver aberto.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const algumModal = confirmVenda || !!cupomVenda || confirmLimpar || showCadastrarCliente
+      if (e.key === 'Escape') {
+        if (confirmVenda) setConfirmVenda(false)
+        else if (cupomVenda) setCupomVenda(null)
+        else if (confirmLimpar) setConfirmLimpar(false)
+        else if (showCadastrarCliente) setShowCadastrarCliente(false)
+        return
+      }
+      if (algumModal) return
+      if (e.key === 'F2')  { e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select() }
+      if (e.key === 'F3')  { e.preventDefault(); clienteRef.current?.focus() }
+      if (e.key === 'F6')  { e.preventDefault(); descontoRef.current?.focus(); descontoRef.current?.select() }
+      if (e.key === 'F8')  { e.preventDefault(); pgtoRef.current?.focus() }
+      if (e.key === 'F10') { e.preventDefault(); if (podeVender) setConfirmVenda(true) }
+      if (e.key === 'Delete' && e.ctrlKey) { e.preventDefault(); if (carrinho.length > 0) setConfirmLimpar(true) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, showCadastrarCliente])
+
   // Cupom (não fiscal) — abre janela de impressão formatada para bobina 80mm
   function imprimirCupom(v: any) {
     const win = window.open('', '_blank', 'width=380,height=600')
     if (!win) { toast('Habilite pop-ups para imprimir o cupom.', 'error'); return }
     const nomeLoja = tenantSlug.replace(/-/g, ' ').toUpperCase()
     const linhas = v.itens.map((i: any) =>
-      `<tr><td>${i.quantidade}x ${i.nomeProduto}</td><td class="r">${fmt(i.subtotal)}</td></tr>`).join('')
+      `<tr><td>${i.quantidade}x ${i.nomeProduto}${i.desconto > 0 ? ` (-${fmt(i.desconto)})` : ''}</td><td class="r">${fmt(i.subtotal)}</td></tr>`).join('')
     win.document.write(`<!doctype html><html><head><title>Cupom</title><style>
       * { font-family: 'Courier New', monospace; font-size: 12px; color: #000; }
       body { width: 72mm; margin: 0; padding: 8px; }
@@ -357,20 +454,49 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   }
 
   return (
-    <div className="flex gap-6 h-full max-w-[1400px] mx-auto">
+    <div className="flex flex-col lg:flex-row gap-4 h-full min-h-0">
 
       {/* Catálogo */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">{isDelivery ? 'Delivery' : 'Pedido Balcão'}</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{isDelivery ? 'Venda para entrega — informe o endereço do cliente' : 'Selecione uma categoria ou busque o produto'}</p>
+      <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">{isDelivery ? 'Delivery' : 'Pedido Balcão'}</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{isDelivery ? 'Venda para entrega — informe o endereço do cliente' : 'Selecione uma categoria ou busque o produto'}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Tamanho da tela neste computador */}
+            <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+              {([
+                { k: 'compacto', l: 'A−' },
+                { k: 'normal',   l: 'A'  },
+                { k: 'grande',   l: 'A+' },
+              ] as const).map(o => (
+                <button key={o.k} onClick={() => mudarDensidade(o.k)}
+                  title="Tamanho da tela neste computador"
+                  className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                    densidade === o.k ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}>
+                  {o.l}
+                </button>
+              ))}
+            </div>
+            <InfoTip titulo="Atalhos" ariaLabel="Atalhos de teclado">
+              <span className="block">F2 — buscar produto</span>
+              <span className="block">F3 — cliente</span>
+              <span className="block">F6 — desconto</span>
+              <span className="block">F8 — forma de pagamento</span>
+              <span className="block">F10 — finalizar venda</span>
+              <span className="block">Ctrl + Delete — limpar carrinho</span>
+              <span className="block">Esc — fechar</span>
+            </InfoTip>
+          </div>
         </div>
 
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <Input ref={searchRef} value={busca} onChange={e => setBusca(e.target.value)}
-            onKeyDown={handleBuscaKeyDown} placeholder="Digite o nome ou bipe o código de barras..."
-            className="pl-9 pr-9 h-11 text-sm" />
+            onKeyDown={handleBuscaKeyDown} placeholder="Digite o nome ou bipe o código de barras…   (F2)"
+            className="pl-9 pr-9 h-12 text-base" />
           {busca && (
             <button onClick={() => { setBusca(''); searchRef.current?.focus() }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -380,10 +506,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         </div>
 
         {categorias.length > 1 && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 flex-shrink-0">
             {categorias.map(cat => (
               <button key={cat} onClick={() => setCategoria(cat)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors border ${
+                className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors border ${
                   categoria === cat ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
                 }`}>
                 {cat}
@@ -392,7 +518,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           {loadingProd ? (
             <div className="flex items-center justify-center h-32"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
           ) : produtosFiltrados.length === 0 ? (
@@ -401,69 +527,110 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               <p className="text-sm text-gray-400">{busca ? `Nenhum produto para "${busca}"` : 'Nenhum produto nesta categoria'}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-              {produtosFiltrados.map((p: any) => (
-                <button key={p.produtoId} onClick={() => addProduto(p)}
-                  className="bg-white rounded-lg border border-gray-100 hover:border-green-300 hover:shadow-sm p-2.5 text-left transition-all active:scale-95 group">
-                  <p className="text-xs font-medium text-gray-900 truncate group-hover:text-green-700">{p.nome}</p>
-                  <p className="text-sm font-bold mt-1" style={{ color: '#2ecc71' }}>{p.precoVarejo ? fmt(p.precoVarejo) : '—'}</p>
-                  <p className="text-[10px] text-gray-400">{p.unidade}</p>
-                </button>
-              ))}
+            // Colunas calculadas pela largura real da tela (auto-fill), não por
+            // breakpoint fixo: o card nunca fica menor que o mínimo legível,
+            // seja qual for o notebook ou a escala do Windows.
+            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${dens.card}px, 1fr))` }}>
+              {produtosFiltrados.map((p: any) => {
+                const precoCard = precoDoProduto(p)
+                return (
+                  <button key={p.produtoId} onClick={() => addProduto(p)}
+                    className="bg-white rounded-lg border border-gray-100 hover:border-green-300 hover:shadow-sm p-3 text-left transition-all active:scale-95 group">
+                    <p className={`${dens.titulo} font-medium text-gray-900 leading-tight group-hover:text-green-700 line-clamp-2`}>{p.nome}</p>
+                    <p className={`${dens.preco} font-bold mt-1`} style={{ color: '#2ecc71' }}>{precoCard ? fmt(precoCard) : '—'}</p>
+                    <p className="text-xs text-gray-400">{p.unidade}{p.codigoBarras ? ` · ${p.codigoBarras}` : ''}</p>
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
       </div>
 
       {/* Carrinho */}
-      <div className="w-96 xl:w-[32rem] flex flex-col gap-4 flex-shrink-0">
-        <div className="bg-white rounded-xl border border-gray-100 flex flex-col flex-1 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+      {/* A coluna inteira rola; a tabela de itens tem altura mínima garantida
+          para nunca ser espremida a zero pelos campos de pagamento. */}
+      <div className="flex flex-col gap-3 flex-shrink-0 min-h-0 overflow-y-auto" style={{ width: 'clamp(360px, 34vw, 620px)' }}>
+        <div className="bg-white rounded-xl border border-gray-100 flex flex-col overflow-hidden flex-shrink-0" style={{ minHeight: 280 }}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <p className="text-sm font-semibold text-gray-700">
-              {carrinho.length === 0 ? 'Nenhum item' : `${carrinho.reduce((a, i) => a + i.quantidade, 0)} item(s)`}
+              {carrinho.length === 0 ? 'Nenhum item' : `${carrinho.length} produto(s) · ${qtdItens} un`}
             </p>
             {carrinho.length > 0 && (
               <button onClick={() => setConfirmLimpar(true)} className="text-xs text-red-400 hover:text-red-600">Limpar</button>
             )}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="flex-1 overflow-auto min-h-0" style={{ maxHeight: '45vh' }}>
             {carrinho.length === 0 ? (
               <div className="flex items-center justify-center py-12">
                 <p className="text-sm text-gray-300">Adicione produtos à esquerda</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {carrinho.map(item => (
-                  <div key={item.produtoId} className="border border-gray-100 rounded-lg p-2 flex flex-col">
-                    <div className="flex items-start justify-between gap-1">
-                      <p className="text-xs font-medium text-gray-900 leading-tight flex-1">{item.nomeProduto}</p>
-                      <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-500 flex-shrink-0"><Trash2 size={12} /></button>
-                    </div>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => alterarQtd(item.produtoId, -1)} className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Minus size={10} /></button>
-                        <span className="text-sm font-bold text-gray-900 w-4 text-center">{item.quantidade}</span>
-                        <button onClick={() => alterarQtd(item.produtoId, 1)} className="w-5 h-5 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center"><Plus size={10} /></button>
-                      </div>
-                      <span className="text-xs font-bold" style={{ color: '#2ecc71' }}>{fmt(item.subtotal)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <table className={`w-full ${dens.tabela}`}>
+                <thead className="sticky top-0 bg-gray-50 z-10">
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left   text-xs font-medium text-gray-400 px-2 py-2 w-7">#</th>
+                    <th className="text-left   text-xs font-medium text-gray-400 px-1 py-2">Descrição</th>
+                    <th className="text-center text-xs font-medium text-gray-400 px-1 py-2 w-24">Qtde</th>
+                    <th className="text-right  text-xs font-medium text-gray-400 px-1 py-2 w-20">Unit.</th>
+                    <th className="text-right  text-xs font-medium text-gray-400 px-1 py-2 w-20">Desconto</th>
+                    <th className="text-right  text-xs font-medium text-gray-400 px-2 py-2 w-24">Total</th>
+                    <th className="w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {carrinho.map((item, idx) => (
+                    <tr key={item.produtoId} className="border-b border-gray-50 hover:bg-gray-50/60">
+                      <td className="px-2 py-2 text-xs text-gray-300 align-top">{idx + 1}</td>
+                      <td className="px-1 py-2">
+                        <p className="font-medium text-gray-900 leading-tight">{item.nomeProduto}</p>
+                        <p className="text-[11px] text-gray-400">
+                          {item.unidade}{item.codigoBarras ? ` · cód. ${item.codigoBarras}` : ''}
+                        </p>
+                      </td>
+                      <td className="px-1 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => alterarQtd(item.produtoId, -1)}
+                            className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Minus size={10} /></button>
+                          <input type="number" min="1" value={item.quantidade}
+                            onChange={e => definirQtd(item.produtoId, e.target.value)}
+                            className="w-10 h-6 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-green-400" />
+                          <button onClick={() => alterarQtd(item.produtoId, 1)}
+                            className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Plus size={10} /></button>
+                        </div>
+                      </td>
+                      <td className="px-1 py-2 text-right text-gray-600 whitespace-nowrap">{fmt(item.precoUnitario)}</td>
+                      <td className="px-1 py-2">
+                        <input type="number" min="0" step="0.01"
+                          value={item.desconto ? (item.desconto / 100).toFixed(2) : ''}
+                          onChange={e => definirDescontoItem(item.produtoId, e.target.value)}
+                          placeholder="0,00"
+                          className="w-16 h-6 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-green-400" />
+                      </td>
+                      <td className="px-2 py-2 text-right font-bold whitespace-nowrap" style={{ color: '#2ecc71' }}>{fmt(item.subtotal)}</td>
+                      <td className="px-1 py-2 text-center align-top">
+                        <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
 
           {carrinho.length > 0 && (
-            <div className="border-t border-gray-100 px-4 py-3 space-y-1.5">
+            <div className="border-t border-gray-100 px-4 py-3 space-y-1.5 flex-shrink-0">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Subtotal</span>
-                <span className="font-medium text-gray-900">{fmt(subtotal)}</span>
+                <span className="text-gray-500">Sub-total</span>
+                <span className="font-medium text-gray-900">{fmt(subtotalBruto)}</span>
               </div>
-              {descontoVal > 0 && (
+              {descontoGeralExibido > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Desconto</span>
-                  <span className="font-medium text-red-500">-{fmt(descontoVal)}</span>
+                  <span className="text-gray-500">
+                    Descontos <span className="text-xs text-gray-400">({descontoPct.toFixed(2)}%)</span>
+                  </span>
+                  <span className="font-medium text-red-500">-{fmt(descontoGeralExibido)}</span>
                 </div>
               )}
               {acrescimoVal > 0 && (
@@ -478,29 +645,29 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   <span className="font-medium text-green-600">-{fmt(cashbackAplicar)}</span>
                 </div>
               )}
-              <div className="flex justify-between text-base font-bold border-t border-gray-100 pt-2">
-                <span className="text-gray-900">Total</span>
-                <span style={{ color: '#2ecc71' }}>{fmt(totalAPagar)}</span>
+              <div className="flex justify-between items-baseline border-t border-gray-100 pt-2">
+                <span className="text-sm font-bold text-gray-900">Total da venda</span>
+                <span className="text-2xl font-bold" style={{ color: '#2ecc71' }}>{fmt(totalAPagar)}</span>
               </div>
             </div>
           )}
         </div>
 
         {carrinho.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
+          <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3 flex-shrink-0">
 
             {/* Cliente — sempre visível (necessário para o cashback) */}
             <div>
-              <Label className="text-xs">Cliente</Label>
+              <Label className="text-xs">Cliente <span className="text-gray-300">(F3)</span></Label>
               {clienteId && clienteNomeDisplay ? (
                 <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                  <span className="text-xs font-medium text-green-800 truncate">{clienteNomeDisplay}</span>
+                  <span className="text-sm font-medium text-green-800 truncate">{clienteNomeDisplay}</span>
                   <button onClick={limparCliente} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
                 </div>
               ) : (
                 <div className="relative mt-1">
-                  <Input value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
-                    placeholder="Nome ou CPF..." className="h-9 text-xs" />
+                  <Input ref={clienteRef} value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
+                    placeholder="Nome ou CPF..." className="h-9 text-sm" />
                   {buscaCliente.length > 1 && clientes.length > 0 && (
                     <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
                       {clientes.map((c: any) => (
@@ -510,7 +677,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                           setBuscaCliente('')
                           if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
                         }} className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                          <span className="text-xs font-medium text-gray-900">{c.nomeCompleto}</span>
+                          <span className="text-sm font-medium text-gray-900">{c.nomeCompleto}</span>
                           <span className="text-[10px] text-gray-400">{c.cpfCnpj ?? ''}</span>
                         </button>
                       ))}
@@ -542,8 +709,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
             {/* Desconto */}
             <div>
-              <Label className="text-xs">Desconto (R$)</Label>
-              <Input type="number" min="0" step="0.01" value={desconto} onChange={e => setDesconto(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
+              <Label className="text-xs">Desconto geral (R$) <span className="text-gray-300">(F6)</span></Label>
+              <Input ref={descontoRef} type="number" min="0" step="0.01" value={desconto} onChange={e => setDesconto(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
             </div>
             <div className="flex gap-1.5">
               {[0, 5, 10, 15].map(pct => (
@@ -586,8 +753,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
             {/* Forma de pagamento — combobox (economiza espaço) */}
             <div>
-              <Label className="text-xs">Forma de pagamento</Label>
-              <select value={formaPgto} onChange={e => setFormaPgto(e.target.value)}
+              <Label className="text-xs">Forma de pagamento <span className="text-gray-300">(F8)</span></Label>
+              <select ref={pgtoRef} value={formaPgto} onChange={e => setFormaPgto(e.target.value)}
                 className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                 <option value="">Selecionar...</option>
                 {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).map((f: string) => (
@@ -663,13 +830,19 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <span className="text-sm font-semibold text-green-700">Venda registrada!</span>
               </div>
             ) : (
-              <Button className="w-full h-11 text-base font-bold" onClick={() => setConfirmVenda(true)} disabled={!podeVender}>
+              <Button className="w-full h-12 text-base font-bold" onClick={() => setConfirmVenda(true)} disabled={!podeVender}>
                 {venderMut.isPending
                   ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
-                  : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(totalAPagar)}</>
+                  : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(totalAPagar)} <span className="ml-2 text-xs font-normal opacity-70">(F10)</span></>
                 }
               </Button>
             )}
+
+            {/* Contexto da venda */}
+            <div className="flex items-center justify-between pt-1 text-[11px] text-gray-400 border-t border-gray-100 mt-1">
+              <span>{isDelivery ? 'Delivery' : 'Balcão'} · {new Date().toLocaleDateString('pt-BR')}</span>
+              <span>{qtdItens} item(s)</span>
+            </div>
           </div>
         )}
       </div>
