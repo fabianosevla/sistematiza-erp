@@ -76,7 +76,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
     enabled:  !!selecionado && aba === 'composicao',
   })
   const composicao      = composicaoRaw?.data
-  const itensComposicao = Array.isArray(composicao?.itens) ? composicao.itens : []
+  const itensComposicao: any[] = Array.isArray(composicao?.itens) ? composicao.itens : []
 
   const insumos: any[] = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
     : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
@@ -168,14 +168,19 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
   const margem      = precoVarejo > 0 ? (lucroUnit / precoVarejo) * 100 : null
 
   // ── Exportação da composição ───────────────────────────────────────────────
-  function linhasComposicao() {
-    return itensComposicao.map((i: any) => [i.nome, fmtQtd(i.quantidade), i.unidade, (i.custo / 100).toFixed(2)])
+  function linhasComposicao(): string[][] {
+    return itensComposicao.map((i: any) => [
+      String(i.nome),
+      fmtQtd(i.quantidade),
+      String(i.unidade ?? ''),
+      (i.custo / 100).toFixed(2),
+    ])
   }
 
   function copiarComposicao() {
     const txt = [
       ['Insumo', 'Quantidade', 'Unidade', 'Valor (R$)'].join('\t'),
-      ...linhasComposicao().map(l => l.join('\t')),
+      ...linhasComposicao().map((l: string[]) => l.join('\t')),
     ].join('\n')
     navigator.clipboard.writeText(txt)
       .then(() => toast('Composição copiada — cole na planilha.'))
@@ -186,7 +191,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
     const csv = [
       ['Insumo', 'Quantidade', 'Unidade', 'Valor (R$)'],
       ...linhasComposicao(),
-    ].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    ].map((r: string[]) => r.map(c => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
     a.download = `composicao-${(selecionado?.nome ?? 'produto').replace(/\s+/g, '-').toLowerCase()}.csv`
