@@ -20,6 +20,14 @@ interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
+// Estoque de insumo é fracionado (ex.: 0,250 kg). Mostra até 4 casas,
+// cortando zeros à direita — 2 continua "2", 0,25 aparece "0,25".
+function fmtEstoque(v: any) {
+  const n = parseFloat(String(v ?? 0))
+  if (!isFinite(n)) return '0'
+  return String(Number(n.toFixed(4)))
+}
+
 type SortKey = 'nome' | 'tipo' | 'estoqueAtual' | 'precoCusto'
 type SortDir  = 'asc' | 'desc'
 
@@ -84,7 +92,10 @@ export default function InsumosView({ tenantSlug }: Props) {
         descricao:    descricao.trim() || null,
         codigoBarras: codigoBarras.trim() || null,
         fornecedorId: fornecedorId ? Number(fornecedorId) : null,
-        estoqueMinimo: Number(estoqueMin), estoqueAtual: Number(estoqueAtual),
+        // Estoque de insumo aceita fração (ex.: 0,250 kg) — colunas
+        // migradas para NUMERIC(14,4) e Zod sem .int()
+        estoqueMinimo: parseFloat(String(estoqueMin).replace(',', '.')) || 0,
+        estoqueAtual:  parseFloat(String(estoqueAtual).replace(',', '.')) || 0,
         precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : 0,
       }
       const url    = editando ? `${api}/${editando.insumoId}` : api
@@ -141,7 +152,7 @@ export default function InsumosView({ tenantSlug }: Props) {
     const all = Array.isArray(j?.data?.data) ? j.data.data : Array.isArray(j?.data) ? j.data : []
     const rows = all.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
     const csv  = [['ID','Nome','Tipo','Unidade','Estoque Atual','Estoque Mínimo','Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
   }
 
   const pagina = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
@@ -202,9 +213,9 @@ export default function InsumosView({ tenantSlug }: Props) {
                 <td className="px-4 py-3 text-center"><Badge variant="secondary">{ins.tipo ?? '—'}</Badge></td>
                 <td className="px-4 py-3 text-center text-sm text-gray-500">{ins.unidade ?? '—'}</td>
                 <td className="px-4 py-3 text-center">
-                  <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{ins.estoqueAtual}</span>
+                  <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{fmtEstoque(ins.estoqueAtual)}</span>
                 </td>
-                <td className="px-4 py-3 text-center text-sm text-gray-500">{ins.estoqueMinimo}</td>
+                <td className="px-4 py-3 text-center text-sm text-gray-500">{fmtEstoque(ins.estoqueMinimo)}</td>
                 <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -266,10 +277,12 @@ export default function InsumosView({ tenantSlug }: Props) {
               </div>
               <div><Label>Descrição</Label><Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do insumo (opcional)" /></div>
               <div className="grid grid-cols-3 gap-3">
-                <div><Label>Est. Atual</Label><Input type="number" min="0" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
-                <div><Label>Est. Mínimo</Label><Input type="number" min="0" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
+                {/* step="any": estoque de insumo é fracionado (ex.: 0,250 kg) */}
+                <div><Label>Est. Atual</Label><Input type="number" min="0" step="any" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
+                <div><Label>Est. Mínimo</Label><Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
                 <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
               </div>
+              <p className="text-[10px] text-gray-400 -mt-2">Estoque aceita valores fracionados (ex.: 0,250)</p>
 
               {editando && (
                 <AuditoriaInfo

@@ -85,8 +85,12 @@ export const insumoInsertSchema = z.object({
   unidade:       z.string().max(20).default('kg'),
   // tipo pode vir de um domínio customizado; damos folga no tamanho
   tipo:          z.string().max(100).default('MP'),
-  estoqueAtual:  z.number().int().default(0),
-  estoqueMinimo: z.number().int().default(0),
+  // CORREÇÃO: estoque de insumo é FRACIONADO (ex.: 0,250 kg de orégano).
+  // Com .int() o Zod rejeitava qualquer valor com casa decimal e o PUT
+  // devolvia "Dados inválidos". Colunas migradas para NUMERIC(14,4) em
+  // scripts/migrate-insumo-estoque-minimo.js
+  estoqueAtual:  z.number().default(0),
+  estoqueMinimo: z.number().default(0),
   precoCusto:    z.number().int().default(0),
   fornecedorId:  z.number().int().optional().nullable(),
 })
