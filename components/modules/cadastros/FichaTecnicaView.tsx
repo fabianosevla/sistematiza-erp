@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Plus, X, Trash2, BookOpen, ChevronRight, AlertTriangle } from 'lucide-react'
+import { Plus, X, Trash2, BookOpen, ChevronRight, ChevronDown, AlertTriangle, Layers, Download, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,10 +13,9 @@ interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
-// Quantidade da ficha: agora com até 6 casas decimais (insumos usados em
-// quantidade mínima, ex.: orégano a 0,00027 kg por bandeja). Mostra no mínimo
-// 3 casas e corta zeros à direita além disso — 0.120 continua "0.120",
-// 0.00027 aparece inteiro em vez de virar "0.000".
+// Quantidade da ficha: até 6 casas decimais (insumos usados em quantidade
+// mínima, ex.: orégano a 0,00027 kg por bandeja). Mostra no mínimo 3 casas e
+// corta zeros à direita além disso.
 function fmtQtd(v: any) {
   const n = parseFloat(String(v ?? 0))
   if (!isFinite(n)) return '0.000'
@@ -33,15 +32,21 @@ function unidadesCompativeis(unidadeInsumo: string): string[] {
   return [unidadeInsumo] // demais unidades: só a mesma
 }
 
+type Aba = 'ficha' | 'composicao'
+
 export default function FichaTecnicaView({ tenantSlug }: Props) {
   const { toast } = useToast()
 
   const [selecionado, setSelecionado]     = useState<any>(null)
+  const [aba, setAba]                     = useState<Aba>('ficha')
   const [busca, setBusca]                 = useState('')
   const [novoInsumoId, setNovoInsumoId]   = useState('')
   const [novaQtd, setNovaQtd]             = useState('')
   const [novaUnidade, setNovaUnidade]     = useState('')
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
+  // Composição total
+  const [lote, setLote]                   = useState('1')
+  const [expandido, setExpandido]         = useState<number | null>(null)
 
   const api = (id: number) => `/api/${tenantSlug}/cadastros/produtos/${id}/ficha`
 
@@ -62,6 +67,16 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(api(selecionado.produtoId))).json(),
     enabled:  !!selecionado,
   })
+
+  // Composição total (ficha explodida) — só busca quando a aba está aberta
+  const multiplicador = Math.max(1, parseFloat(String(lote).replace(',', '.')) || 1)
+  const { data: composicaoRaw, isLoading: loadingComp } = useQuery({
+    queryKey: ['composicao', tenantSlug, selecionado?.produtoId, multiplicador],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos/${selecionado.produtoId}/composicao?multiplicador=${multiplicador}`)).json(),
+    enabled:  !!selecionado && aba === 'composicao',
+  })
+  const composicao      = composicaoRaw?.data
+  const itensComposicao = Array.isArray(composicao?.itens) ? composicao.itens : []
 
   const insumos: any[] = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
     : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
@@ -152,6 +167,32 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
   const lucroUnit   = precoVarejo - custoTotal
   const margem      = precoVarejo > 0 ? (lucroUnit / precoVarejo) * 100 : null
 
+  // ── Exportação da composição ───────────────────────────────────────────────
+  function linhasComposicao() {
+    return itensComposicao.map((i: any) => [i.nome, fmtQtd(i.quantidade), i.unidade, (i.custo / 100).toFixed(2)])
+  }
+
+  function copiarComposicao() {
+    const txt = [
+      ['Insumo', 'Quantidade', 'Unidade', 'Valor (R$)'].join('\t'),
+      ...linhasComposicao().map(l => l.join('\t')),
+    ].join('\n')
+    navigator.clipboard.writeText(txt)
+      .then(() => toast('Composição copiada — cole na planilha.'))
+      .catch(() => toast('Não foi possível copiar.', 'error'))
+  }
+
+  function exportarComposicaoCSV() {
+    const csv = [
+      ['Insumo', 'Quantidade', 'Unidade', 'Valor (R$)'],
+      ...linhasComposicao(),
+    ].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.download = `composicao-${(selecionado?.nome ?? 'produto').replace(/\s+/g, '-').toLowerCase()}.csv`
+    a.click()
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -171,7 +212,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
           </div>
           <div className="divide-y divide-gray-50 max-h-[65vh] overflow-y-auto">
             {produtos.map((p: any) => (
-              <button key={p.produtoId} onClick={() => setSelecionado(p)}
+              <button key={p.produtoId} onClick={() => { setSelecionado(p); setExpandido(null) }}
                 className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
                   selecionado?.produtoId === p.produtoId
                     ? 'bg-green-50 border-l-2 border-green-500 pl-[14px]'
@@ -223,7 +264,26 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                 </div>
               </div>
 
-              {/* Ficha */}
+              {/* Abas */}
+              <div className="border-b border-gray-100">
+                <div className="flex gap-0">
+                  {([
+                    { key: 'ficha',      label: 'Ficha Técnica',    icon: BookOpen },
+                    { key: 'composicao', label: 'Composição Total', icon: Layers },
+                  ] as const).map(a => (
+                    <button key={a.key} onClick={() => setAba(a.key)}
+                      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                        aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}>
+                      <a.icon size={14} />
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── ABA: FICHA TÉCNICA ─────────────────────────────────────── */}
+              {aba === 'ficha' && (
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
 
                 {/* Formulário adicionar */}
@@ -347,6 +407,127 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                   </table>
                 )}
               </div>
+              )}
+
+              {/* ── ABA: COMPOSIÇÃO TOTAL ──────────────────────────────────── */}
+              {aba === 'composicao' && (
+              <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+
+                <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">
+                      Insumos puros consolidados — produtos-insumo são abertos e as quantidades repetidas somadas
+                    </p>
+                    <div className="flex items-end gap-2">
+                      <div>
+                        <Label className="text-xs">Calcular para</Label>
+                        <Input type="number" min="1" step="any" value={lote}
+                          onChange={e => setLote(e.target.value)}
+                          className="mt-1 h-9 text-sm w-28" />
+                      </div>
+                      <span className="text-sm text-gray-500 pb-2">unidade(s)</span>
+                    </div>
+                  </div>
+                  {itensComposicao.length > 0 && (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={copiarComposicao}>
+                        <Copy size={13} className="mr-1.5" /> Copiar
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={exportarComposicaoCSV}>
+                        <Download size={13} className="mr-1.5" /> CSV
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {composicao?.produtosExpandidos?.length > 0 && (
+                  <div className="px-5 py-2.5 bg-purple-50/50 border-b border-purple-100">
+                    <p className="text-xs text-purple-700">
+                      Produtos-insumo abertos nesta composição: <strong>{composicao.produtosExpandidos.join(', ')}</strong>
+                    </p>
+                  </div>
+                )}
+
+                {loadingComp ? (
+                  <p className="px-5 py-10 text-center text-sm text-gray-400">Calculando...</p>
+                ) : itensComposicao.length === 0 ? (
+                  <div className="px-5 py-10 text-center">
+                    <AlertTriangle size={20} className="text-amber-400 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-gray-600">Nada a compor</p>
+                    <p className="text-xs text-gray-400 mt-1">Cadastre a ficha técnica deste produto (e dos produtos-insumo usados nela).</p>
+                  </div>
+                ) : (
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-gray-100 bg-gray-50/30">
+                        <th className="text-left  text-xs font-medium text-gray-400 px-5 py-3">Insumo</th>
+                        <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Quantidade Total</th>
+                        <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Unidade</th>
+                        <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Valor</th>
+                        <th className="w-10" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itensComposicao.map((item: any) => {
+                        const aberto   = expandido === item.insumoId
+                        const multiplo = (item.origens?.length ?? 0) > 1
+                        return (
+                          <>
+                            <tr key={item.insumoId}
+                              className={`border-b border-gray-50 hover:bg-gray-50/50 ${multiplo ? 'cursor-pointer' : ''}`}
+                              onClick={() => multiplo && setExpandido(aberto ? null : item.insumoId)}>
+                              <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {multiplo && (aberto ? <ChevronDown size={13} className="text-gray-400" /> : <ChevronRight size={13} className="text-gray-400" />)}
+                                  {item.nome}
+                                  {multiplo && (
+                                    <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-1.5 py-0.5">
+                                      {item.origens.length} origens
+                                    </span>
+                                  )}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800">{fmtQtd(item.quantidade)}</td>
+                              <td className="px-4 py-3 text-center text-sm text-gray-500">{item.unidade}</td>
+                              <td className="px-4 py-3 text-right text-sm font-semibold">
+                                {item.custo > 0 ? <span className="text-orange-600">{fmt(item.custo)}</span> : <span className="text-gray-300">—</span>}
+                              </td>
+                              <td />
+                            </tr>
+                            {aberto && item.origens.map((o: any, idx: number) => (
+                              <tr key={`${item.insumoId}-o${idx}`} className="bg-gray-50/60 border-b border-gray-50">
+                                <td className="pl-12 pr-5 py-2 text-xs text-gray-500">via {o.origem}</td>
+                                <td className="px-4 py-2 text-right text-xs text-gray-500">{fmtQtd(o.quantidade)}</td>
+                                <td className="px-4 py-2 text-center text-xs text-gray-400">{item.unidade}</td>
+                                <td className="px-4 py-2 text-right text-xs text-gray-400">{fmt(Math.round(o.quantidade * item.precoCusto))}</td>
+                                <td />
+                              </tr>
+                            ))}
+                          </>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+                      <tr>
+                        <td colSpan={3} className="px-5 py-3 text-sm font-bold text-gray-700 text-right">
+                          Custo total dos insumos {multiplicador > 1 ? `(${fmtQtd(multiplicador)} unidades)` : '(1 unidade)'}
+                        </td>
+                        <td className="px-4 py-3 text-right text-base font-bold text-orange-600">{fmt(composicao?.custoTotal ?? 0)}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+
+                {composicao?.truncou && (
+                  <div className="px-5 py-2.5 bg-amber-50 border-t border-amber-200">
+                    <p className="text-xs text-amber-700">
+                      Atenção: há referência circular ou aninhamento muito profundo entre produtos-insumo — parte da composição pode não ter sido expandida.
+                    </p>
+                  </div>
+                )}
+              </div>
+              )}
             </div>
           )}
         </div>
