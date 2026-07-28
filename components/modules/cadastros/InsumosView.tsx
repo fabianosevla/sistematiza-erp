@@ -282,7 +282,7 @@ export default function InsumosView({ tenantSlug }: Props) {
                 <div><Label>Est. Mínimo</Label><Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
                 <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
               </div>
-              <p className="text-[10px] text-gray-400 -mt-2">Estoque aceita valores fracionados (ex.: 0,250)</p>
+              <p className="text-[10px] text-gray-400 -mt-2">Estoque aceita valores fracionados (ex.: 0.250)</p>
 
               {editando && (
                 <AuditoriaInfo

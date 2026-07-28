@@ -14,7 +14,7 @@ interface Props { tenantSlug: string }
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
 // Quantidade da ficha: até 6 casas decimais (insumos usados em quantidade
-// mínima, ex.: orégano a 0,00027 kg por bandeja). Mostra no mínimo 3 casas e
+// mínima, ex.: orégano a 0.00027 kg por bandeja). Mostra no mínimo 3 casas e
 // corta zeros à direita além disso.
 function fmtQtd(v: any) {
   const n = parseFloat(String(v ?? 0))
@@ -47,6 +47,8 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
   // Composição total
   const [lote, setLote]                   = useState('1')
   const [expandido, setExpandido]         = useState<number | null>(null)
+  // ⚠ DIAGNÓSTICO TEMPORÁRIO — remover depois que a composição estiver OK
+  const [debugComp, setDebugComp]         = useState('')
 
   const api = (id: number) => `/api/${tenantSlug}/cadastros/produtos/${id}/ficha`
 
@@ -68,12 +70,22 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
     enabled:  !!selecionado,
   })
 
-  // Composição total (ficha explodida) — só busca quando a aba está aberta
+  // Composição total (ficha explodida) — só busca quando a aba está aberta.
+  // ⚠ DIAGNÓSTICO TEMPORÁRIO: a queryFn guarda URL, status HTTP e corpo da
+  // resposta em debugComp para exibir na tela. Depois de resolvido, voltar a
+  // queryFn simples: `(await fetch(url)).json()`.
   const multiplicador = Math.max(1, parseFloat(String(lote).replace(',', '.')) || 1)
   const { data: composicaoRaw, isLoading: loadingComp } = useQuery({
     queryKey: ['composicao', tenantSlug, selecionado?.produtoId, multiplicador],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos/${selecionado.produtoId}/composicao?multiplicador=${multiplicador}`)).json(),
-    enabled:  !!selecionado && aba === 'composicao',
+    queryFn:  async () => {
+      const url = `/api/${tenantSlug}/cadastros/produtos/${selecionado.produtoId}/composicao?multiplicador=${multiplicador}`
+      const res = await fetch(url)
+      const txt = await res.text()
+      setDebugComp(`GET ${url}\nHTTP ${res.status} ${res.statusText}\n\n${txt.slice(0, 800)}`)
+      try { return JSON.parse(txt) } catch { return null }
+    },
+    enabled: !!selecionado && aba === 'composicao',
+    retry:   false,
   })
   const composicao      = composicaoRaw?.data
   const itensComposicao: any[] = Array.isArray(composicao?.itens) ? composicao.itens : []
@@ -309,11 +321,11 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                     </div>
                     <div>
                       <Label className="text-xs">Quantidade *</Label>
-                      {/* step="any" + até 6 casas: aceita valores mínimos como 0,00027 */}
+                      {/* step="any" + até 6 casas: aceita valores mínimos como 0.00027 */}
                       <Input type="number" min="0" step="any" value={novaQtd}
                         onChange={e => setNovaQtd(e.target.value)}
                         className="mt-1 h-9 text-sm" placeholder="0.000000" />
-                      <p className="text-[10px] text-gray-400 mt-1">Até 6 casas decimais (ex.: 0,00027)</p>
+                      <p className="text-[10px] text-gray-400 mt-1">Até 6 casas decimais — use ponto (ex.: 0.00027)</p>
                     </div>
                     <div>
                       <Label className="text-xs">
@@ -460,6 +472,10 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                     <AlertTriangle size={20} className="text-amber-400 mx-auto mb-2" />
                     <p className="text-sm font-medium text-gray-600">Nada a compor</p>
                     <p className="text-xs text-gray-400 mt-1">Cadastre a ficha técnica deste produto (e dos produtos-insumo usados nela).</p>
+                    {/* ⚠ DIAGNÓSTICO TEMPORÁRIO — remover depois */}
+                    {debugComp && (
+                      <pre className="mt-4 text-[10px] text-left bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{debugComp}</pre>
+                    )}
                   </div>
                 ) : (
                   <table className="w-full">
