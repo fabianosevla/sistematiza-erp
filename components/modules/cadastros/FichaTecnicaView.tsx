@@ -78,7 +78,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
   })
   const composicao      = composicaoRaw?.data
   const itensComposicao: any[] = Array.isArray(composicao?.itens) ? composicao.itens : []
-  const produtosAbertos: string[] = Array.isArray(composicao?.produtosExpandidos) ? composicao.produtosExpandidos : []
 
   const insumos: any[] = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
     : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
@@ -271,21 +270,34 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                 </div>
               </div>
 
-              {/* Abas */}
+              {/* Abas — o ícone de ajuda fica ao lado do rótulo "Composição Total" */}
               <div className="border-b border-gray-100">
-                <div className="flex gap-0">
-                  {([
-                    { key: 'ficha',      label: 'Ficha Técnica',    icon: BookOpen },
-                    { key: 'composicao', label: 'Composição Total', icon: Layers },
-                  ] as const).map(a => (
-                    <button key={a.key} onClick={() => setAba(a.key)}
-                      className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                        aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                <div className="flex items-stretch">
+                  <button
+                    onClick={() => setAba('ficha')}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                      aba === 'ficha' ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}>
+                    <BookOpen size={14} />
+                    Ficha Técnica
+                  </button>
+
+                  <div className={`flex items-center gap-1.5 pr-4 border-b-2 transition-colors ${
+                    aba === 'composicao' ? 'border-green-500' : 'border-transparent'
+                  }`}>
+                    <button
+                      onClick={() => setAba('composicao')}
+                      className={`flex items-center gap-1.5 pl-4 py-2.5 text-sm font-medium transition-colors ${
+                        aba === 'composicao' ? 'text-green-600' : 'text-gray-500 hover:text-gray-700'
                       }`}>
-                      <a.icon size={14} />
-                      {a.label}
+                      <Layers size={14} />
+                      Composição Total
                     </button>
-                  ))}
+                    <InfoTip titulo="Composição total">
+                      Lista os insumos puros: os produtos-insumo são abertos e as quantidades
+                      que aparecem em mais de um caminho são somadas.
+                    </InfoTip>
+                  </div>
                 </div>
               </div>
 
@@ -425,18 +437,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                 <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-end justify-between gap-3">
                   <div className="flex items-end gap-2">
                     <div>
-                      <Label className="text-xs inline-flex items-center gap-1">
-                        Calcular para
-                        <InfoTip titulo="Composição total">
-                          Lista os insumos puros: os produtos-insumo são abertos e as quantidades
-                          que aparecem em mais de um caminho são somadas.
-                          {produtosAbertos.length > 0 && (
-                            <span className="mt-1.5 block text-zinc-300">
-                              Abertos aqui: {produtosAbertos.join(', ')}.
-                            </span>
-                          )}
-                        </InfoTip>
-                      </Label>
+                      <Label className="text-xs">Calcular para</Label>
                       <Input type="number" min="1" step="any" value={lote}
                         onChange={e => setLote(e.target.value)}
                         className="mt-1 h-9 text-sm w-28" />
@@ -503,7 +504,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                             </tr>
                             {aberto && item.origens.map((o: any, idx: number) => (
                               <tr key={`${item.insumoId}-o${idx}`} className="bg-gray-50/60 border-b border-gray-50">
-                                <td className="pl-12 pr-5 py-2 text-xs text-gray-500">via {o.origem}</td>
+                                <td className="pl-12 pr-5 py-2 text-xs text-gray-500">{o.origem}</td>
                                 <td className="px-4 py-2 text-right text-xs text-gray-500">{fmtQtd(o.quantidade)}</td>
                                 <td className="px-4 py-2 text-center text-xs text-gray-400">{item.unidade}</td>
                                 <td className="px-4 py-2 text-right text-xs text-gray-400">{fmt(Math.round(o.quantidade * item.precoCusto))}</td>
