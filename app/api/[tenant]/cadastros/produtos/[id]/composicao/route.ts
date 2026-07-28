@@ -4,10 +4,11 @@
 // Composição total (ficha explodida) do produto — apoio à tabela nutricional.
 // ?multiplicador=12 calcula para um lote de 12 unidades.
 import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ComposicaoService } from '@/lib/services/cadastros/ComposicaoService'
-import { ok, serverError } from '@/lib/api/responses'
+import { ok } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
 
@@ -24,5 +25,15 @@ export async function GET(req: NextRequest, { params }: Params) {
     } finally {
       release()
     }
-  } catch (err) { return serverError(err) }
+  } catch (err: any) {
+    // ⚠ DIAGNÓSTICO TEMPORÁRIO — devolve o erro real em vez da mensagem genérica.
+    // Voltar para `return serverError(err)` depois de resolvido.
+    return NextResponse.json({
+      status:  'error',
+      message: err?.message ?? String(err),
+      name:    err?.name,
+      code:    err?.code,
+      stack:   String(err?.stack ?? '').split('\n').slice(0, 6).join(' | '),
+    }, { status: 500 })
+  }
 }
