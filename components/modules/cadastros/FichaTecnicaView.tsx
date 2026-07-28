@@ -13,6 +13,18 @@ interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
+// Quantidade da ficha: agora com até 6 casas decimais (insumos usados em
+// quantidade mínima, ex.: orégano a 0,00027 kg por bandeja). Mostra no mínimo
+// 3 casas e corta zeros à direita além disso — 0.120 continua "0.120",
+// 0.00027 aparece inteiro em vez de virar "0.000".
+function fmtQtd(v: any) {
+  const n = parseFloat(String(v ?? 0))
+  if (!isFinite(n)) return '0.000'
+  const s = n.toFixed(6).replace(/0+$/, '')
+  const [inteiro, dec = ''] = s.split('.')
+  return `${inteiro}.${dec.padEnd(3, '0')}`
+}
+
 // Unidades compatíveis entre si (podem ser convertidas pelo DebitoInsumoService)
 function unidadesCompativeis(unidadeInsumo: string): string[] {
   const u = unidadeInsumo.toLowerCase()
@@ -232,9 +244,11 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                     </div>
                     <div>
                       <Label className="text-xs">Quantidade *</Label>
-                      <Input type="number" min="0" step="0.001" value={novaQtd}
+                      {/* step="any" + até 6 casas: aceita valores mínimos como 0,00027 */}
+                      <Input type="number" min="0" step="any" value={novaQtd}
                         onChange={e => setNovaQtd(e.target.value)}
-                        className="mt-1 h-9 text-sm" placeholder="0.000" />
+                        className="mt-1 h-9 text-sm" placeholder="0.000000" />
+                      <p className="text-[10px] text-gray-400 mt-1">Até 6 casas decimais (ex.: 0,00027)</p>
                     </div>
                     <div>
                       <Label className="text-xs">
@@ -298,7 +312,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                               {item.nomeInsumo ?? ins?.nome ?? `#${item.insumoId}`}
                               {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
                             </td>
-                            <td className="px-4 py-3 text-right text-sm text-gray-600">{qtd.toFixed(3)} <span className="text-gray-400">{item.unidade}</span></td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-600">{fmtQtd(item.quantidade)} <span className="text-gray-400">{item.unidade}</span></td>
                             <td className="px-4 py-3 text-right text-sm text-gray-600">{precoCusto ? fmt(precoCusto) : <span className="text-gray-300">—</span>}</td>
                             <td className="px-4 py-3 text-right text-sm font-semibold">
                               {custoFracao > 0 ? <span className="text-orange-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}

@@ -19,6 +19,13 @@ interface Props { tenantSlug: string }
 
 function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 function fmtInput(c: number) { return c > 0 ? (c / 100).toFixed(2) : '' }
+function fmtQtd(v: any) {
+  const n = parseFloat(String(v ?? 0))
+  if (!isFinite(n)) return '0.000'
+  const s = n.toFixed(6).replace(/0+$/, '')
+  const [inteiro, dec = ''] = s.split('.')
+  return `${inteiro}.${dec.padEnd(3, '0')}`
+}
 
 type SortKey = 'nome' | 'tipo' | 'precoVarejo' | 'estoqueAtual'
 type SortDir  = 'asc' | 'desc'
@@ -582,7 +589,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                             {item.nomeInsumo ?? item.insumo?.nome ?? `#${item.insumoId}`}
                             {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-right text-sm text-gray-600">{qtd.toFixed(3)}</td>
+                          <td className="px-3 py-2.5 text-right text-sm text-gray-600">{fmtQtd(item.quantidade)}</td>
                           <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
                           <td className="px-3 py-2.5 text-right text-sm text-gray-600">
                             {precoCustoI ? fmt(precoCustoI) : <span className="text-gray-300">—</span>}

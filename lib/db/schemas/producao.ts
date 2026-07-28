@@ -17,7 +17,11 @@ export const dbProdutoInsumo = pgTable('t_produto_insumo', {
   ...auditFields,
   produtoId:       integer('produto_id').notNull(),
   insumoId:        integer('insumo_id').notNull(),
-  quantidade:      numeric('quantidade', { precision: 10, scale: 3 }).notNull(),
+  // 6 casas decimais: insumos usados em quantidade mínima por unidade
+  // (ex.: orégano a 0,00027 kg/bandeja) precisam de precisão maior que 3
+  // casas, senão viram 0,000 e distorcem custo e baixa de estoque.
+  // Ver scripts/migrate-ficha-decimais.js
+  quantidade:      numeric('quantidade', { precision: 12, scale: 6 }).notNull(),
   unidade:         varchar('unidade', { length: 20 }).notNull().default('kg'),
   observacao:      varchar('observacao', { length: 200 }),
 })

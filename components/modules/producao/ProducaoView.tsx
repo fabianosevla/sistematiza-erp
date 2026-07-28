@@ -22,6 +22,18 @@ function fmtDate(d: Date) { return d.toLocaleDateString('pt-BR', { day: '2-digit
 function isoDate(d: Date) { return d.toISOString().slice(0, 10) }
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
+// Quantidades de insumo: exibe até 6 casas decimais, mínimo 3, cortando zeros
+// à direita. Necessário porque a ficha técnica agora aceita quantidades
+// mínimas (ex.: orégano a 0,00027 kg por unidade) — com 3 casas fixas o
+// consumo de poucas unidades aparecia como "0.000".
+function fmtQtd(v: any) {
+  const n = parseFloat(String(v ?? 0))
+  if (!isFinite(n)) return '0.000'
+  const s = n.toFixed(6).replace(/0+$/, '')
+  const [inteiro, dec = ''] = s.split('.')
+  return `${inteiro}.${dec.padEnd(3, '0')}`
+}
+
 type CelulaKey = { produtoId: number; data: string; tipo: 'producao' | 'pedido' }
 
 export default function ProducaoView({ tenantSlug }: Props) {
@@ -337,7 +349,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 {previsao.map((item: any, i: number) => (
                   <tr key={i} className={`border-b border-gray-50 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
                     <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{item.nomeInsumo ?? item.nome}</td>
-                    <td className="px-4 py-2.5 text-center text-sm text-gray-600">{parseFloat(String(item.totalNecessario ?? item.necessario ?? 0)).toFixed(3)} {item.unidade}</td>
+                    <td className="px-4 py-2.5 text-center text-sm text-gray-600">{fmtQtd(item.totalNecessario ?? item.necessario ?? 0)} {item.unidade}</td>
                     <td className="px-4 py-2.5 text-center text-sm">
                       <span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{item.estoqueAtual}</span>
                     </td>
@@ -402,9 +414,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
                               {previewBaixa.itens?.map((item: any, i: number) => (
                                 <tr key={i} className={`border-t border-gray-50 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
                                   <td className="px-3 py-2 text-sm font-medium text-gray-900">{item.nomeInsumo}</td>
-                                  <td className="px-3 py-2 text-center text-sm">{item.qtdNecessaria.toFixed(3)} {item.unidade}</td>
-                                  <td className="px-3 py-2 text-center text-sm">{item.estoqueAtual.toFixed(3)}</td>
-                                  <td className="px-3 py-2 text-center text-sm"><span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{Math.max(0, item.estoqueRestante).toFixed(3)}</span></td>
+                                  <td className="px-3 py-2 text-center text-sm">{fmtQtd(item.qtdNecessaria)} {item.unidade}</td>
+                                  <td className="px-3 py-2 text-center text-sm">{fmtQtd(item.estoqueAtual)}</td>
+                                  <td className="px-3 py-2 text-center text-sm"><span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{fmtQtd(Math.max(0, item.estoqueRestante))}</span></td>
                                 </tr>
                               ))}
                             </tbody>
