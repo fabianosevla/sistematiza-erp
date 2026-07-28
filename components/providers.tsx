@@ -10,6 +10,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       queries: {
         staleTime: 1000 * 60,
         retry: 1,
+        // CORREÇÃO (F5 global): sempre que uma tela é aberta/navegada
+        // (mount) ou quando o usuário volta para a aba do navegador (focus),
+        // TODAS as queries refazem a busca no servidor — mesmo dentro do
+        // staleTime. A tela abre instantânea com o cache e atualiza em
+        // seguida com os dados frescos. Sem isso, trocar de página dentro
+        // da janela de cache mostrava dados antigos e só F5 resolvia.
+        refetchOnMount: 'always',
+        refetchOnWindowFocus: 'always',
       },
     },
   }))
