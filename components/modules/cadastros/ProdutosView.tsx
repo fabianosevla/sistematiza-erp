@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, EyeOff, Pencil } from 'lucide-react'
+import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, EyeOff, Pencil, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -59,9 +59,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [ativo, setAtivo]             = useState(true)
   const [revenda, setRevenda]         = useState(false)
   const [insumoAtivo, setInsumoAtivo] = useState(false)
-  const [fichaInsumoId, setFichaInsumoId] = useState('')
-  const [fichaQtd, setFichaQtd]           = useState('')
-  const [fichaUnidade, setFichaUnidade]   = useState('')
 
   useEffect(() => { setPage(1) }, [busca])
 
@@ -77,17 +74,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
     },
   })
 
-  // incluirProdutos=true: além dos insumos reais, traz produtos marcados como
-  // insumo (insumoId negativo), pra poderem ser adicionados na ficha técnica.
-  const { data: insumosRaw } = useQuery({
-    queryKey: ['insumos-select', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=500&incluirProdutos=true`)).json(),
-  })
-
-  // ── FICHA TÉCNICA query ────────────────────────────────────────────────────
-  // CORREÇÃO: a rota GET retorna { data: { itens: [...], custoProdução: ... } }
+  // ── FICHA TÉCNICA query (somente leitura) ─────────────────────────────────
+  // A rota GET retorna { data: { itens: [...], custoProdução: ... } }
   // então precisamos de fichaRaw?.data?.itens, não fichaRaw?.data diretamente.
-  const { data: fichaRaw, refetch: refetchFicha } = useQuery({
+  const { data: fichaRaw } = useQuery({
     queryKey: ['ficha', tenantSlug, showFicha?.produtoId],
     queryFn:  async () => (await fetch(`${api}/${showFicha.produtoId}/ficha`)).json(),
     enabled:  !!showFicha,
@@ -154,45 +144,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
     },
     onSuccess: () => { invalidate(); toast('Produto desativado. Histórico de vendas preservado.') },
     onError:   (err: any) => toast(err?.message ?? 'Erro ao excluir.', 'error'),
-  })
-
-  const addFichaMut = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`${api}/${showFicha.produtoId}/ficha`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          insumoId:   Number(fichaInsumoId),
-          quantidade: parseFloat(fichaQtd),
-          unidade:    fichaUnidade,
-        }),
-      })
-      const data = await res.json()
-      // CORREÇÃO: checar res.ok para não mostrar "Insumo adicionado!" em erro
-      if (!res.ok) {
-        const msg = data?.message ?? data?.error ?? `Erro ${res.status} ao adicionar insumo`
-        throw new Error(msg)
-      }
-      return data
-    },
-    onSuccess: () => {
-      refetchFicha()
-      setFichaInsumoId('')
-      setFichaQtd('')
-      toast('Insumo adicionado!')
-    },
-    onError: (err: any) => toast(err?.message ?? 'Erro ao adicionar insumo.', 'error'),
-  })
-
-  const removeFichaMut = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`${api}/${showFicha.produtoId}/ficha/${id}`, { method: 'DELETE' })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.message ?? 'Erro ao remover')
-      return data
-    },
-    onSuccess: () => refetchFicha(),
-    onError:   (err: any) => toast(err?.message ?? 'Erro ao remover insumo.', 'error'),
   })
 
   const reativarMut = useMutation({
@@ -277,7 +228,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
     const csv = [['ID','Nome','Tipo','Unidade','Preço Varejo','Est.Atual','Est.Mín','Status'], ...rows]
       .map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
     a.download = 'produtos.csv'
     a.click()
   }
@@ -288,18 +239,17 @@ export default function ProdutosView({ tenantSlug }: Props) {
     : Array.isArray(raw?.data) ? raw.data
     : Array.isArray(raw) ? raw : []
 
-  const insumos = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
-    : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
-
-  // Ficha não pode conter o próprio produto como insumo (evita loop)
-  const insumosFicha = insumos.filter((ins: any) => ins.insumoId !== -(showFicha?.produtoId ?? 0))
-
   // CORREÇÃO: rota GET /ficha retorna { data: { itens: [...], custoProdução: ... } }
-  // fichaRaw.data é { itens, custoProdução }, não um array diretamente.
   const fichaItens = Array.isArray(fichaRaw?.data?.itens) ? fichaRaw.data.itens
     : Array.isArray(fichaRaw?.itens) ? fichaRaw.itens
     : Array.isArray(fichaRaw?.data) ? fichaRaw.data
     : Array.isArray(fichaRaw) ? fichaRaw : []
+
+  // Custo de produção calculado pela própria rota; fallback soma local
+  const custoFicha = Number(
+    fichaRaw?.data?.['custoProdução'] ??
+    fichaItens.reduce((acc: number, i: any) => acc + parseFloat(String(i.quantidade ?? 0)) * Number(i.precoCusto ?? 0), 0)
+  )
 
   const produtos = [...todos]
     .sort((a: any, b: any) => {
@@ -411,7 +361,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!inativo && (<><button onClick={() => abrirModal(p)} title="Editar" className="p-1 text-green-400 hover:text-green-600"><Pencil size={14} /></button><button onClick={() => setShowFicha(p)} title="Ficha técnica" className="p-1 text-blue-400 hover:text-blue-600"><BookOpen size={14} /></button></>)}
+                      {!inativo && (<><button onClick={() => abrirModal(p)} title="Editar" className="p-1 text-green-400 hover:text-green-600"><Pencil size={14} /></button><button onClick={() => setShowFicha(p)} title="Ver ficha técnica (somente leitura)" className="p-1 text-blue-400 hover:text-blue-600"><BookOpen size={14} /></button></>)}
                       {inativo ? (
                         <button onClick={() => reativarMut.mutate(p.produtoId)} title="Reativar"
                           className="p-1 text-green-400 hover:text-green-600 text-xs font-medium">↺</button>
@@ -581,62 +531,31 @@ export default function ProdutosView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Ficha Técnica */}
+      {/* Modal Ficha Técnica — SOMENTE LEITURA.
+          A edição (adicionar/remover insumos) fica exclusivamente em
+          Cadastros → Fichas Técnicas. */}
       {showFicha && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <div>
-                <h2 className="text-lg font-semibold">Ficha Técnica</h2>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  Ficha Técnica
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200 rounded-full px-2 py-0.5">
+                    <Lock size={9} /> somente leitura
+                  </span>
+                </h2>
                 <p className="text-sm text-gray-400 mt-0.5">{showFicha.nome} — insumos por unidade produzida</p>
               </div>
               <button onClick={() => setShowFicha(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="p-6">
-              {/* Formulário para adicionar insumo */}
-              <div className="bg-gray-50 rounded-lg p-4 mb-4">
-                <p className="text-sm font-medium text-gray-700 mb-3">Adicionar Insumo</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs">Insumo *</Label>
-                    <select
-                      value={fichaInsumoId}
-                      onChange={e => {
-                        setFichaInsumoId(e.target.value)
-                        const ins = insumosFicha.find((i: any) => i.insumoId === Number(e.target.value))
-                        if (ins) setFichaUnidade(ins.unidade ?? 'kg')
-                      }}
-                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                      <option value="">Selecionar...</option>
-                      {insumosFicha.map((ins: any) => (
-                        <option key={ins.insumoId} value={ins.insumoId}>
-                          {ins.nome}{ins.origem === 'produto' ? ' (produto-insumo)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Quantidade *</Label>
-                    <Input type="number" min="0" step="0.001" value={fichaQtd}
-                      onChange={e => setFichaQtd(e.target.value)} className="mt-1 h-9 text-sm" />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Unidade</Label>
-                    <select value={fichaUnidade} onChange={e => setFichaUnidade(e.target.value)}
-                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                      {unidades.map(u => <option key={u} value={u}>{u}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <Button size="sm" className="mt-3"
-                  onClick={() => addFichaMut.mutate()}
-                  disabled={!fichaInsumoId || !fichaQtd || addFichaMut.isPending}>
-                  <Plus size={13} className="mr-1" />
-                  {addFichaMut.isPending ? 'Adicionando...' : 'Adicionar'}
-                </Button>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-4">
+                <p className="text-xs text-blue-700">
+                  Para adicionar, alterar ou remover insumos desta ficha, acesse <strong>Cadastros → Fichas Técnicas</strong>.
+                </p>
               </div>
 
-              {/* Lista de insumos da ficha */}
               {fichaItens.length === 0 ? (
                 <p className="text-sm text-gray-400 text-center py-8">
                   Nenhum insumo na ficha técnica.
@@ -645,37 +564,50 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {['Insumo','Qtd / unidade','Unidade',''].map((h, i) => (
-                        <th key={i}
-                          className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-3 py-2`}>
-                          {h}
-                        </th>
-                      ))}
+                      <th className="text-left  text-xs font-medium text-gray-400 px-3 py-2">Insumo</th>
+                      <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Qtd / unidade</th>
+                      <th className="text-center text-xs font-medium text-gray-400 px-3 py-2">Unidade</th>
+                      <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Preço Custo</th>
+                      <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Custo da Fração</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {fichaItens.map((item: any) => (
-                      <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50 group">
-                        <td className="px-3 py-2.5 text-sm font-medium text-gray-900">
-                          {item.nomeInsumo ?? item.insumo?.nome ?? `#${item.insumoId}`}
-                          {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-center text-sm text-gray-600">
-                          {parseFloat(String(item.quantidade)).toFixed(3)}
-                        </td>
-                        <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
-                        <td className="px-3 py-2.5 text-center">
-                          <button
-                            onClick={() => removeFichaMut.mutate(item.produtoInsumoId ?? item.itemId)}
-                            className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {fichaItens.map((item: any) => {
+                      const qtd         = parseFloat(String(item.quantidade ?? 0))
+                      const precoCustoI = Number(item.precoCusto ?? 0)
+                      const custoFracao = qtd * precoCustoI
+                      return (
+                        <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50">
+                          <td className="px-3 py-2.5 text-sm font-medium text-gray-900">
+                            {item.nomeInsumo ?? item.insumo?.nome ?? `#${item.insumoId}`}
+                            {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-sm text-gray-600">{qtd.toFixed(3)}</td>
+                          <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
+                          <td className="px-3 py-2.5 text-right text-sm text-gray-600">
+                            {precoCustoI ? fmt(precoCustoI) : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-sm font-semibold">
+                            {custoFracao > 0 ? <span className="text-orange-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
+                  {custoFicha > 0 && (
+                    <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+                      <tr>
+                        <td colSpan={4} className="px-3 py-3 text-sm font-bold text-gray-700 text-right">Custo total / unidade produzida</td>
+                        <td className="px-3 py-3 text-right text-base font-bold text-orange-600">{fmt(custoFicha)}</td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               )}
+
+              <div className="flex justify-end pt-6">
+                <Button variant="outline" onClick={() => setShowFicha(null)}>Fechar</Button>
+              </div>
             </div>
           </div>
         </div>

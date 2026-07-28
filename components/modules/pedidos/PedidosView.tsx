@@ -11,7 +11,28 @@ import { useToast } from '@/components/ui/Toast'
 interface Props { tenantSlug: string }
 
 function fmt(cents: number) { return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-function fmtDate(date: string) { return new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') }
+
+// CORREÇÃO ("Invalid Date"): a API devolve timestamp completo
+// ("2026-07-30T00:00:00.000Z"), e a versão anterior concatenava 'T12:00:00'
+// nesse texto — gerando data inválida. Agora extraímos direto o trecho
+// AAAA-MM-DD do ISO, sem conversão de fuso (evita também mostrar um dia a
+// menos no Brasil). Se vier em outro formato, cai no parse normal.
+function fmtDate(date: any) {
+  if (!date) return '—'
+  const s = String(date)
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR')
+}
+
+// Valor para <input type="date"> — precisa ser AAAA-MM-DD
+function toInputDate(date: any) {
+  if (!date) return ''
+  const s = String(date)
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m ? m[1] : ''
+}
 
 const FLUXO: Record<string, { next: string; label: string; btnLabel: string; color: string }> = {
   pendente:  { next: 'producao', label: 'Pendente',    btnLabel: 'Iniciar Produção →', color: 'bg-amber-100 text-amber-700' },
@@ -205,9 +226,9 @@ export default function PedidosView({ tenantSlug }: Props) {
       setClienteSelecionado(ped.clienteId ? { clienteId: ped.clienteId, nomeCompleto: clienteNome } : null)
       setBuscaCliente('')
       setTipoVenda(ped.tipoVenda ?? 'entrega')
-      setDataPedido(ped.dataPedido ? String(ped.dataPedido).slice(0, 10) : new Date().toISOString().slice(0, 10))
-      setPrevisaoProducao(ped.previsaoProducao ? String(ped.previsaoProducao).slice(0, 10) : '')
-      setPrevisaoEntrega(ped.previsaoEntrega ? String(ped.previsaoEntrega).slice(0, 10) : '')
+      setDataPedido(toInputDate(ped.dataPedido) || new Date().toISOString().slice(0, 10))
+      setPrevisaoProducao(toInputDate(ped.previsaoProducao))
+      setPrevisaoEntrega(toInputDate(ped.previsaoEntrega))
       setEnderecoEntrega(ped.enderecoEntrega ?? '')
       setObservacao(ped.observacao ?? '')
       setValorEntregaEdit(ped.valorEntrega ?? 0)
@@ -305,6 +326,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Pedido: {fmtDate(p.dataPedido)}
+                    {p.previsaoProducao && ` · Produção: ${fmtDate(p.previsaoProducao)}`}
                     {p.previsaoEntrega && ` · Entrega: ${fmtDate(p.previsaoEntrega)}`}
                   </p>
                 </div>
@@ -495,14 +517,17 @@ export default function PedidosView({ tenantSlug }: Props) {
                 {detalhe.clienteNome && <Badge variant="secondary">{detalhe.clienteNome}</Badge>}
               </div>
 
-              {detalhe.previsaoProducao && (
-                <div><p className="text-xs font-medium text-gray-400 mb-1">PREVISÃO PRODUÇÃO</p>
-                  <p className="text-sm text-gray-700">{fmtDate(detalhe.previsaoProducao)}</p></div>
-              )}
-              {detalhe.previsaoEntrega && (
-                <div><p className="text-xs font-medium text-gray-400 mb-1">PREVISÃO ENTREGA</p>
-                  <p className="text-sm text-gray-700">{fmtDate(detalhe.previsaoEntrega)}</p></div>
-              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">PREVISÃO PRODUÇÃO</p>
+                  <p className="text-sm text-gray-700">{fmtDate(detalhe.previsaoProducao)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-400 mb-1">PREVISÃO ENTREGA</p>
+                  <p className="text-sm text-gray-700">{fmtDate(detalhe.previsaoEntrega)}</p>
+                </div>
+              </div>
+
               {detalhe.enderecoEntrega && (
                 <div><p className="text-xs font-medium text-gray-400 mb-1">ENDEREÇO</p>
                   <p className="text-sm text-gray-700">{detalhe.enderecoEntrega}</p></div>
