@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 
@@ -47,8 +48,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
   // Composição total
   const [lote, setLote]                   = useState('1')
   const [expandido, setExpandido]         = useState<number | null>(null)
-  // ⚠ DIAGNÓSTICO TEMPORÁRIO — remover depois que a composição estiver OK
-  const [debugComp, setDebugComp]         = useState('')
 
   const api = (id: number) => `/api/${tenantSlug}/cadastros/produtos/${id}/ficha`
 
@@ -70,25 +69,16 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
     enabled:  !!selecionado,
   })
 
-  // Composição total (ficha explodida) — só busca quando a aba está aberta.
-  // ⚠ DIAGNÓSTICO TEMPORÁRIO: a queryFn guarda URL, status HTTP e corpo da
-  // resposta em debugComp para exibir na tela. Depois de resolvido, voltar a
-  // queryFn simples: `(await fetch(url)).json()`.
+  // Composição total (ficha explodida) — só busca quando a aba está aberta
   const multiplicador = Math.max(1, parseFloat(String(lote).replace(',', '.')) || 1)
   const { data: composicaoRaw, isLoading: loadingComp } = useQuery({
     queryKey: ['composicao', tenantSlug, selecionado?.produtoId, multiplicador],
-    queryFn:  async () => {
-      const url = `/api/${tenantSlug}/cadastros/produtos/${selecionado.produtoId}/composicao?multiplicador=${multiplicador}`
-      const res = await fetch(url)
-      const txt = await res.text()
-      setDebugComp(`GET ${url}\nHTTP ${res.status} ${res.statusText}\n\n${txt.slice(0, 800)}`)
-      try { return JSON.parse(txt) } catch { return null }
-    },
-    enabled: !!selecionado && aba === 'composicao',
-    retry:   false,
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos/${selecionado.produtoId}/composicao?multiplicador=${multiplicador}`)).json(),
+    enabled:  !!selecionado && aba === 'composicao',
   })
   const composicao      = composicaoRaw?.data
   const itensComposicao: any[] = Array.isArray(composicao?.itens) ? composicao.itens : []
+  const produtosAbertos: string[] = Array.isArray(composicao?.produtosExpandidos) ? composicao.produtosExpandidos : []
 
   const insumos: any[] = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
     : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
@@ -320,18 +310,25 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-xs">Quantidade *</Label>
-                      {/* step="any" + até 6 casas: aceita valores mínimos como 0.00027 */}
+                      <Label className="text-xs inline-flex items-center gap-1">
+                        Quantidade *
+                        <InfoTip titulo="Quantidade por unidade">
+                          Quanto deste insumo entra em <strong>1 unidade</strong> do produto.
+                          Aceita até 6 casas decimais — use ponto como separador (ex.: 0.00027).
+                        </InfoTip>
+                      </Label>
                       <Input type="number" min="0" step="any" value={novaQtd}
                         onChange={e => setNovaQtd(e.target.value)}
                         className="mt-1 h-9 text-sm" placeholder="0.000000" />
-                      <p className="text-[10px] text-gray-400 mt-1">Até 6 casas decimais — use ponto (ex.: 0.00027)</p>
                     </div>
                     <div>
-                      <Label className="text-xs">
+                      <Label className="text-xs inline-flex items-center gap-1">
                         Unidade
-                        {insumoSelecionado && unidadesPermitidas.length > 1 && (
-                          <span className="text-gray-400 font-normal ml-1">(aceita: {unidadesPermitidas.join(', ')})</span>
+                        {insumoSelecionado && (
+                          <InfoTip titulo="Unidade">
+                            O estoque deste insumo é controlado em <strong>{insumoSelecionado.unidade}</strong>.
+                            {unidadesPermitidas.length > 1 && <> Você pode informar em {unidadesPermitidas.join(' ou ')} — o sistema converte automaticamente.</>}
+                          </InfoTip>
                         )}
                       </Label>
                       {unidadesPermitidas.length <= 1 ? (
@@ -344,11 +341,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                           className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                           {unidadesPermitidas.map(u => <option key={u} value={u}>{u}</option>)}
                         </select>
-                      )}
-                      {insumoSelecionado && (
-                        <p className="text-[10px] text-gray-400 mt-1">
-                          Estoque em <strong>{insumoSelecionado.unidade}</strong> — o sistema converte automaticamente.
-                        </p>
                       )}
                     </div>
                   </div>
@@ -431,19 +423,25 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
 
                 <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-wrap items-end justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-medium text-gray-500 mb-2">
-                      Insumos puros consolidados — produtos-insumo são abertos e as quantidades repetidas somadas
-                    </p>
-                    <div className="flex items-end gap-2">
-                      <div>
-                        <Label className="text-xs">Calcular para</Label>
-                        <Input type="number" min="1" step="any" value={lote}
-                          onChange={e => setLote(e.target.value)}
-                          className="mt-1 h-9 text-sm w-28" />
-                      </div>
-                      <span className="text-sm text-gray-500 pb-2">unidade(s)</span>
+                  <div className="flex items-end gap-2">
+                    <div>
+                      <Label className="text-xs inline-flex items-center gap-1">
+                        Calcular para
+                        <InfoTip titulo="Composição total">
+                          Lista os insumos puros: os produtos-insumo são abertos e as quantidades
+                          que aparecem em mais de um caminho são somadas.
+                          {produtosAbertos.length > 0 && (
+                            <span className="mt-1.5 block text-zinc-300">
+                              Abertos aqui: {produtosAbertos.join(', ')}.
+                            </span>
+                          )}
+                        </InfoTip>
+                      </Label>
+                      <Input type="number" min="1" step="any" value={lote}
+                        onChange={e => setLote(e.target.value)}
+                        className="mt-1 h-9 text-sm w-28" />
                     </div>
+                    <span className="text-sm text-gray-500 pb-2">unidade(s)</span>
                   </div>
                   {itensComposicao.length > 0 && (
                     <div className="flex gap-2">
@@ -457,14 +455,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                   )}
                 </div>
 
-                {composicao?.produtosExpandidos?.length > 0 && (
-                  <div className="px-5 py-2.5 bg-purple-50/50 border-b border-purple-100">
-                    <p className="text-xs text-purple-700">
-                      Produtos-insumo abertos nesta composição: <strong>{composicao.produtosExpandidos.join(', ')}</strong>
-                    </p>
-                  </div>
-                )}
-
                 {loadingComp ? (
                   <p className="px-5 py-10 text-center text-sm text-gray-400">Calculando...</p>
                 ) : itensComposicao.length === 0 ? (
@@ -472,10 +462,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                     <AlertTriangle size={20} className="text-amber-400 mx-auto mb-2" />
                     <p className="text-sm font-medium text-gray-600">Nada a compor</p>
                     <p className="text-xs text-gray-400 mt-1">Cadastre a ficha técnica deste produto (e dos produtos-insumo usados nela).</p>
-                    {/* ⚠ DIAGNÓSTICO TEMPORÁRIO — remover depois */}
-                    {debugComp && (
-                      <pre className="mt-4 text-[10px] text-left bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{debugComp}</pre>
-                    )}
                   </div>
                 ) : (
                   <table className="w-full">
@@ -543,7 +529,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                 {composicao?.truncou && (
                   <div className="px-5 py-2.5 bg-amber-50 border-t border-amber-200">
                     <p className="text-xs text-amber-700">
-                      Atenção: há referência circular ou aninhamento muito profundo entre produtos-insumo — parte da composição pode não ter sido expandida.
+                      Referência circular ou aninhamento muito profundo entre produtos-insumo — parte da composição não foi expandida.
                     </p>
                   </div>
                 )}
