@@ -19,6 +19,28 @@ interface Props { tenantSlug: string }
 
 type Aba = 'ficha' | 'composicao'
 
+/**
+ * CUSTO DE UM COMPONENTE DA FICHA — de onde vem o número.
+ *
+ * A rota GET /produtos/:id/ficha devolve `precoCusto` calculado pelo
+ * FichaTecnicaService, que desce a ficha inteira: para um produto-insumo, o
+ * custo é a soma da ficha DELE, recursivamente, com conversão de unidade.
+ *
+ * A lista do dropdown (/cadastros/insumos?incluirProdutos=true) devolve, para
+ * produto-insumo, o preco_custo manual do cadastro — que costuma ser zero.
+ *
+ * Por isso `item.precoCusto` vem PRIMEIRO. A versão anterior consultava o
+ * dropdown antes, e com isso todo produto-insumo entrava valendo nada: o
+ * Molho Bolonhesa aparecia a 26,27 na tela dele e a 20,77 dentro da Lasanha,
+ * porque o Molho ao Sugo que ele contém sumia da conta.
+ */
+function custoDoItem(item: any, insumos: any[]): number {
+  const doServidor = Number(item?.precoCusto ?? 0)
+  if (doServidor > 0) return doServidor
+  const ins = insumos.find((i: any) => i.insumoId === item.insumoId)
+  return Number(ins?.precoCusto ?? 0)
+}
+
 export default function FichaTecnicaView({ tenantSlug }: Props) {
   const { toast } = useToast()
 
@@ -142,10 +164,12 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
     : Array.isArray(fichaRaw?.data)      ? fichaRaw.data
     : Array.isArray(fichaRaw)            ? fichaRaw : []
 
+  // Usa o mesmo custoDoItem de cada linha, então o rodapé nunca discorda da
+  // soma que está visível na tabela.
   const custoTotal = fichaItens.reduce((acc: number, item: any) => {
-    const ins = insumos.find((i: any) => i.insumoId === item.insumoId)
-    if (!ins?.precoCusto) return acc
-    return acc + parseFloat(String(item.quantidade)) * ins.precoCusto
+    const custo = custoDoItem(item, insumos)
+    if (!custo) return acc
+    return acc + parseFloat(String(item.quantidade)) * custo
   }, 0)
 
   const precoVarejo = selecionado?.precoVarejo ?? 0
@@ -368,7 +392,9 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                       {fichaItens.map((item: any) => {
                         const ins = insumos.find((i: any) => i.insumoId === item.insumoId)
                         const qtd = parseFloat(String(item.quantidade))
-                        const precoCusto  = ins?.precoCusto ?? item.precoCusto ?? 0
+                        // item.precoCusto vem do servidor com a ficha do
+                        // produto-insumo já explodida — ver custoDoItem() no topo.
+                        const precoCusto  = custoDoItem(item, insumos)
                         const custoFracao = qtd * precoCusto
                         return (
                           <tr key={item.produtoInsumoId ?? item.itemId} className="group border-b border-gray-50 hover:bg-gray-50/50">
