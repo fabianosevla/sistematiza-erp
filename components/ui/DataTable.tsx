@@ -68,6 +68,8 @@ interface Props {
   colunas:        Coluna[]
   itens:          any[]
   chave:          (item: any) => string | number
+  /** barra fina acima da tabela: filtros, ordenação, exportar */
+  ferramentas?:   ReactNode
   carregando?:    boolean
   /** usa TableSkeleton no lugar do texto "Carregando..." */
   usarSkeleton?:  boolean
@@ -90,6 +92,7 @@ const ALINHAMENTO = { left: 'text-left', center: 'text-center', right: 'text-rig
 
 export function DataTable({
   colunas, itens, chave,
+  ferramentas,
   carregando = false,
   usarSkeleton = false,
   vazio = 'Nenhum registro encontrado.',
@@ -113,18 +116,25 @@ export function DataTable({
   }
 
   return (
-    <div className={`bg-white rounded-xl border border-gray-100 overflow-hidden ${className}`}>
+    <div className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${className}`}>
+      {/* Barra fina de ferramentas — filtros e ordenação ficam aqui, acima da grade */}
+      {ferramentas && (
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-100">
+          {ferramentas}
+        </div>
+      )}
+
       <table className="w-full">
         <thead>
-          <tr className="border-b border-gray-100">
+          <tr className="border-b border-gray-200 bg-gray-50/70">
             {colunas.map(col => {
               const podeOrdenar = col.ordenavel && onOrdenar
               return (
                 <th
                   key={col.chave}
                   onClick={podeOrdenar ? () => onOrdenar!(col.chave) : undefined}
-                  className={`${ALINHAMENTO[col.alinhamento ?? 'left']} text-xs font-medium text-gray-400 px-4 py-3 ${visibilidade(col)} ${col.largura ?? ''} ${
-                    podeOrdenar ? 'cursor-pointer select-none hover:text-gray-600' : ''
+                  className={`${ALINHAMENTO[col.alinhamento ?? 'left']} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5 ${visibilidade(col)} ${col.largura ?? ''} ${
+                    podeOrdenar ? 'cursor-pointer select-none hover:text-gray-700' : ''
                   } ${col.classeCabecalho ?? ''}`}
                 >
                   {col.titulo}
@@ -132,7 +142,7 @@ export function DataTable({
                 </th>
               )
             })}
-            {acoes && <th className="px-4 py-3 w-24" />}
+            {acoes && <th className="px-4 py-2.5 w-24" />}
           </tr>
         </thead>
 

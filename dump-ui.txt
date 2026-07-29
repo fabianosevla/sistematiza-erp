@@ -1,3 +1,120 @@
+
+===== components\ui\button.tsx =====
+
+import * as React from 'react'
+import { Slot } from '@radix-ui/react-slot'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { cn } from '@/lib/utils'
+
+const buttonVariants = cva(
+  'inline-flex items-center justify-center whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 disabled:pointer-events-none disabled:opacity-50',
+  {
+    variants: {
+      variant: {
+        default:     'bg-green-400 text-gray-900 hover:bg-green-500 font-semibold',
+        destructive: 'bg-red-500 text-white hover:bg-red-600',
+        outline:     'border border-gray-200 bg-white hover:bg-gray-50 text-gray-700',
+        secondary:   'bg-gray-100 text-gray-700 hover:bg-gray-200',
+        ghost:       'hover:bg-gray-100 text-gray-700',
+        link:        'text-green-600 underline-offset-4 hover:underline',
+      },
+      size: {
+        default: 'h-9 px-4 py-2',
+        sm:      'h-8 rounded-md px-3 text-xs',
+        lg:      'h-10 rounded-lg px-6',
+        icon:    'h-9 w-9',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  }
+)
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : 'button'
+    return (
+      <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
+    )
+  }
+)
+Button.displayName = 'Button'
+
+export { Button, buttonVariants }
+
+
+===== components\ui\input.tsx =====
+
+import * as React from 'react'
+import { cn } from '@/lib/utils'
+
+export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
+
+const Input = React.forwardRef<HTMLInputElement, InputProps>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        type={type}
+        className={cn(
+          'flex h-9 w-full rounded-lg border border-gray-200 bg-white px-3 py-1 text-sm text-gray-900 placeholder:text-gray-400',
+          'focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent',
+          'disabled:cursor-not-allowed disabled:opacity-50',
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Input.displayName = 'Input'
+
+export { Input }
+
+
+===== components\ui\badge.tsx =====
+
+import * as React from 'react'
+import { cva, type VariantProps } from 'class-variance-authority'
+import { cn } from '@/lib/utils'
+
+const badgeVariants = cva(
+  'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
+  {
+    variants: {
+      variant: {
+        default:     'bg-green-100 text-green-800',
+        secondary:   'bg-gray-100 text-gray-700',
+        destructive: 'bg-red-100 text-red-700',
+        warning:     'bg-yellow-100 text-yellow-800',
+        outline:     'border border-gray-200 text-gray-600',
+      },
+    },
+    defaultVariants: { variant: 'default' },
+  }
+)
+
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof badgeVariants> {}
+
+function Badge({ className, variant, ...props }: BadgeProps) {
+  return <div className={cn(badgeVariants({ variant }), className)} {...props} />
+}
+
+export { Badge, badgeVariants }
+
+
+===== components\ui\InfoTip.tsx =====
+
 'use client'
 // components/ui/InfoTip.tsx
 //
@@ -13,11 +130,9 @@
 // fecha ao sair, no Esc ou em novo clique. Renderizado em portal no <body>, então
 // nunca é cortado por tabelas, cards ou modais. Reposiciona no scroll/resize e
 // inverte para baixo quando não há espaço acima.
-//
-// O gatilho é um disco preenchido com "i" — mais visível em tela clara que o
-// contorno fino que usávamos antes.
 import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { Info } from 'lucide-react'
 
 interface Props {
   children:   ReactNode
@@ -28,17 +143,6 @@ interface Props {
 }
 
 const LARGURA = 280
-
-/** Disco com "i" — desenhado à mão para ficar nítido em 14px. */
-function IconeInfo({ size = 14 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden>
-      <circle cx="8" cy="8" r="7" fill="currentColor" />
-      <circle cx="8" cy="5.1" r="0.95" fill="white" />
-      <rect x="7.15" y="6.9" width="1.7" height="4.6" rx="0.85" fill="white" />
-    </svg>
-  )
-}
 
 export function InfoTip({ children, titulo, ariaLabel = 'Mais informações', size = 14, className = '' }: Props) {
   const [aberto, setAberto]   = useState(false)
@@ -97,9 +201,9 @@ export function InfoTip({ children, titulo, ariaLabel = 'Mais informações', si
         onFocus={() => abrir(0)}
         onBlur={fechar}
         onClick={() => (aberto ? fechar() : abrir(0))}
-        className={`inline-flex items-center justify-center align-middle text-gray-300 transition-colors hover:text-gray-500 focus:text-gray-500 focus:outline-none ${className}`}
+        className={`inline-flex items-center justify-center align-middle text-zinc-300 transition-colors hover:text-zinc-500 focus:text-zinc-500 focus:outline-none ${className}`}
       >
-        <IconeInfo size={size} />
+        <Info size={size} strokeWidth={2} />
       </button>
 
       {montado && aberto && pos && createPortal(

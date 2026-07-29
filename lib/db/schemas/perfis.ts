@@ -36,6 +36,8 @@ export const dbPerfilAcesso = pgTable('t_perfil_acesso', {
   moduloMetas:      boolean('modulo_metas').notNull().default(false),
   moduloFidelidade: boolean('modulo_fidelidade').notNull().default(false),
   moduloUsuarios:   boolean('modulo_usuarios').notNull().default(false),
+  // Compras — o módulo já existia em código, mas não tinha permissão própria
+  moduloCompras:    boolean('modulo_compras').notNull().default(false),
 
   // Limites operacionais
   percDescontoMax:  numeric('perc_desconto_max', { precision: 5, scale: 2 }).notNull().default('0'),

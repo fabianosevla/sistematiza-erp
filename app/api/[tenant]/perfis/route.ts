@@ -41,6 +41,8 @@ const schema = z.object({
   moduloMetas:      z.boolean().default(false),
   moduloFidelidade: z.boolean().default(false),
   moduloUsuarios:   z.boolean().default(false),
+  // Compras
+  moduloCompras:    z.boolean().default(false),
 
   percDescontoMax:  z.number().min(0).max(100).default(0),
   valorDescontoMax: z.number().int().min(0).default(0),

@@ -4,32 +4,41 @@ import type { ReactNode } from 'react'
 /**
  * components/ui/PageHeader.tsx
  *
- * Cabeçalho padrão de tela: título, linha de apoio e botões de ação.
- * A marcação foi extraída do FornecedoresView — nenhuma classe foi alterada.
+ * Cabeçalho de tela. Formato inspirado no padrão que estudamos: título em
+ * peso médio, sem subtítulo explicativo, etiqueta opcional ao lado e ações
+ * alinhadas à direita em botões pequenos.
  *
  *   <PageHeader
  *     titulo="Fornecedores"
- *     subtitulo={meta ? `${meta.total} registros` : ''}
- *     acoes={<Button onClick={handleNew}>Novo</Button>}
+ *     tag={<Tag>46</Tag>}
+ *     acoes={<Button size="sm">Novo</Button>}
  *   />
+ *
+ * A prop `subtitulo` continua existindo para casos em que ela carrega
+ * controle (o navegador de mês do Metas, por exemplo) — não para texto
+ * explicativo, que agora vive em InfoTip.
  */
 interface Props {
   titulo:     string
+  tag?:       ReactNode
   subtitulo?: ReactNode
   acoes?:     ReactNode
   className?: string
 }
 
-export function PageHeader({ titulo, subtitulo, acoes, className = '' }: Props) {
+export function PageHeader({ titulo, tag, subtitulo, acoes, className = '' }: Props) {
   return (
-    <div className={`flex items-center justify-between mb-6 ${className}`}>
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">{titulo}</h1>
+    <div className={`flex items-start justify-between gap-4 mb-5 ${className}`}>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-gray-900 tracking-tight">{titulo}</h1>
+          {tag}
+        </div>
         {subtitulo !== undefined && subtitulo !== null && subtitulo !== '' && (
-          <p className="text-sm text-gray-400 mt-0.5">{subtitulo}</p>
+          <div className="mt-1">{subtitulo}</div>
         )}
       </div>
-      {acoes && <div className="flex gap-2">{acoes}</div>}
+      {acoes && <div className="flex items-center gap-2 flex-shrink-0">{acoes}</div>}
     </div>
   )
 }

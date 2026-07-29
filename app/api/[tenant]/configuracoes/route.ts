@@ -25,6 +25,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         pedidosAtivo:    r.pedidos_ativo    ?? true,
         planoAcaoAtivo:  r.plano_acao_ativo ?? false,
         metasAtivo:      r.metas_ativo      ?? false,
+        // Compras — módulo existia em código mas não era registrado aqui
+        comprasAtivo:    r.compras_ativo    ?? true,
         // Fidelidade (cashback)
         fidelidadeAtivo: r.fidelidade_ativo ?? true,
         // Financeiro Completo
@@ -68,6 +70,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['pedidos_ativo',            body.pedidosAtivo],
         ['plano_acao_ativo',         body.planoAcaoAtivo],
         ['metas_ativo',              body.metasAtivo],
+        // Compras
+        ['compras_ativo',            body.comprasAtivo],
         // Fidelidade
         ['fidelidade_ativo',         body.fidelidadeAtivo],
         // Financeiro Completo
