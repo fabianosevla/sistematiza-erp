@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Download, Plus, X, Trash2, Pencil } from 'lucide-react'
 import {
+import { fmtMoeda as fmt } from '@/lib/format'
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts'
@@ -14,7 +15,6 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import ConciliacaoView   from './ConciliacaoView'
-import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
