@@ -1,17 +1,20 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, ShoppingCart, Package, Layers } from 'lucide-react'
+import { Plus, Trash2, ShoppingCart, Package, Layers } from 'lucide-react'
 import { Button }       from '@/components/ui/button'
 import { Input }        from '@/components/ui/input'
 import { Label }        from '@/components/ui/label'
 import { useToast }     from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { InfoTip }      from '@/components/ui/InfoTip'
+import { Aviso }        from '@/components/ui/Aviso'
+import { PageHeader }   from '@/components/ui/PageHeader'
+import { FormModal }    from '@/components/ui/FormModal'
+import { BotaoIcone }   from '@/components/ui/BotaoIcone'
+import { fmtMoeda as fmt, fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string }
-
-
 
 type TipoItem = 'insumo' | 'produto'
 
@@ -119,15 +122,21 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Compra Rápida</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Registre compras diretas — estoque e despesa atualizados automaticamente</p>
-        </div>
-        <Button onClick={() => { resetForm(); setShowModal(true) }}>
-          <Plus size={15} className="mr-1.5" /> Registrar Compra
-        </Button>
-      </div>
+      <PageHeader
+        titulo="Compra Rápida"
+        acoes={
+          <>
+            <InfoTip titulo="O que acontece ao registrar">
+              Compra de <strong>insumo</strong> aumenta o estoque do insumo.
+              Compra de <strong>produto para revenda</strong> aumenta o estoque do produto.
+              Nos dois casos, uma despesa é lançada automaticamente no financeiro.
+            </InfoTip>
+            <Button onClick={() => { resetForm(); setShowModal(true) }}>
+              <Plus size={15} className="mr-1.5" /> Registrar Compra
+            </Button>
+          </>
+        }
+      />
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
@@ -139,14 +148,6 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
           <p className="text-xs text-gray-400">Total gasto</p>
           <p className="text-2xl font-bold text-red-600 mt-1">{fmt(totalGasto)}</p>
         </div>
-      </div>
-
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-        <p className="text-sm text-blue-700">
-          Ao registrar uma compra de <strong>insumo</strong>, o estoque do insumo é aumentado automaticamente.
-          Ao registrar um <strong>produto para revenda</strong>, o estoque do produto é aumentado.
-          Em ambos os casos, uma despesa é lançada no financeiro automaticamente.
-        </p>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -172,9 +173,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
               const tot  = Math.round(unit * qtd)
               return (
                 <tr key={c.compraId} className="group border-b border-gray-50 hover:bg-gray-50/80">
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {c.dataEntrada ? new Date(c.dataEntrada + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
-                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{fmtData(c.dataEntrada)}</td>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.nomeInsumo}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {c.tipoItem === 'produto' ? (
@@ -188,10 +187,11 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
                   <td className="px-4 py-3 text-right text-sm text-gray-700">{fmt(unit)}</td>
                   <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(tot)}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setConfirmDel(c)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500">
-                      <Trash2 size={13} />
-                    </button>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                      <BotaoIcone titulo="Excluir compra" variante="perigo" onClick={() => setConfirmDel(c)}>
+                        <Trash2 size={13} />
+                      </BotaoIcone>
+                    </div>
                   </td>
                 </tr>
               )
@@ -211,123 +211,118 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold">Registrar Compra</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Estoque e despesa atualizados automaticamente</p>
+        <FormModal titulo="Registrar Compra" onClose={() => setShowModal(false)} largura="max-w-lg">
+          <div className="p-6 space-y-4">
+
+            {/* Tipo do item */}
+            <div>
+              <Label>Tipo de item *</Label>
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                {[
+                  { key: 'insumo',  label: 'Insumo de produção', icon: Layers },
+                  { key: 'produto', label: 'Produto para revenda', icon: Package },
+                ].map(t => (
+                  <button key={t.key} onClick={() => { setTipoItem(t.key as TipoItem); setF('insumoId', ''); setF('produtoId', ''); setF('nomeItem', '') }}
+                    className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium transition-colors ${
+                      tipoItem === t.key ? 'bg-green-50 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                    }`}>
+                    <t.icon size={14} /> {t.label}
+                  </button>
+                ))}
               </div>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
-            <div className="p-6 space-y-4">
 
-              {/* Tipo do item */}
-              <div>
-                <Label>Tipo de item *</Label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  {[
-                    { key: 'insumo',  label: 'Insumo de produção', icon: Layers },
-                    { key: 'produto', label: 'Produto para revenda', icon: Package },
-                  ].map(t => (
-                    <button key={t.key} onClick={() => { setTipoItem(t.key as TipoItem); setF('insumoId', ''); setF('produtoId', ''); setF('nomeItem', '') }}
-                      className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium transition-colors ${
-                        tipoItem === t.key ? 'bg-green-50 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
-                      }`}>
-                      <t.icon size={14} /> {t.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Seleção do item */}
-              <div>
-                <Label>{tipoItem === 'insumo' ? 'Insumo' : 'Produto para Revenda'} *</Label>
-                {tipoItem === 'insumo' ? (
-                  <>
-                    <select value={form.insumoId} onChange={e => {
-                      const ins = insumos.find((i: any) => String(i.insumoId) === e.target.value)
-                      setF('insumoId', e.target.value)
-                      if (ins) setF('nomeItem', ins.nome)
-                    }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                      <option value="">Selecionar insumo cadastrado...</option>
-                      {insumos.map((i: any) => <option key={i.insumoId} value={i.insumoId}>{i.nome} ({i.unidade})</option>)}
-                    </select>
-                    {!form.insumoId && (
-                      <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
-                        placeholder="Ou digite o nome do insumo..." className="mt-2 h-8 text-sm" />
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <select value={form.produtoId} onChange={e => {
-                      const p = produtosRevenda.find((x: any) => String(x.produtoId) === e.target.value)
-                      setF('produtoId', e.target.value)
-                      if (p) setF('nomeItem', p.nome)
-                    }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                      <option value="">Selecionar produto para revenda...</option>
-                      {produtosRevenda.map((p: any) => <option key={p.produtoId} value={p.produtoId}>{p.nome}</option>)}
-                    </select>
-                    {produtosRevenda.length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1">Nenhum produto marcado como Revenda. Configure o tipo do produto em Cadastros → Produtos.</p>
-                    )}
-                    {!form.produtoId && (
-                      <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
-                        placeholder="Ou digite o nome do produto..." className="mt-2 h-8 text-sm" />
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Fornecedor */}
-              <div>
-                <Label>Fornecedor</Label>
-                <select value={form.nomeFornecedor} onChange={e => setF('nomeFornecedor', e.target.value)}
-                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                  <option value="">Selecionar...</option>
-                  {fornecedores.map((f: any) => (
-                    <option key={f.fornecedorId} value={f.nomeFantasia ?? f.razaoSocial}>{f.nomeFantasia ?? f.razaoSocial}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Data, Qtd, Valor */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <Label>Data *</Label>
-                  <Input type="date" value={form.dataEntrada} onChange={e => setF('dataEntrada', e.target.value)} className="mt-1 h-9 text-sm" />
-                </div>
-                <div>
-                  <Label>Quantidade *</Label>
-                  <Input type="number" min="0" step="1" value={form.quantidade}
-                    onChange={e => setF('quantidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0" />
-                </div>
-                <div>
-                  <Label>Valor unitário (R$) *</Label>
-                  <Input type="number" min="0" step="0.01" value={form.valorUnitario}
-                    onChange={e => setF('valorUnitario', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
-                </div>
-              </div>
-
-              {/* Total calculado */}
-              {form.quantidade && form.valorUnitario && (
-                <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center">
-                  <span className="text-sm text-gray-500">Total da compra</span>
-                  <span className="text-base font-bold text-red-600">
-                    {fmt(Math.round(
-                      parseFloat(form.valorUnitario.replace(',', '.') || '0') * 100 *
-                      parseFloat(form.quantidade.replace(',', '.') || '0')
-                    ))}
-                  </span>
-                </div>
+            {/* Seleção do item */}
+            <div>
+              <Label>{tipoItem === 'insumo' ? 'Insumo' : 'Produto para Revenda'} *</Label>
+              {tipoItem === 'insumo' ? (
+                <>
+                  <select value={form.insumoId} onChange={e => {
+                    const ins = insumos.find((i: any) => String(i.insumoId) === e.target.value)
+                    setF('insumoId', e.target.value)
+                    if (ins) setF('nomeItem', ins.nome)
+                  }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="">Selecionar insumo cadastrado...</option>
+                    {insumos.map((i: any) => <option key={i.insumoId} value={i.insumoId}>{i.nome} ({i.unidade})</option>)}
+                  </select>
+                  {!form.insumoId && (
+                    <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
+                      placeholder="Ou digite o nome do insumo..." className="mt-2 h-8 text-sm" />
+                  )}
+                </>
+              ) : (
+                <>
+                  <select value={form.produtoId} onChange={e => {
+                    const p = produtosRevenda.find((x: any) => String(x.produtoId) === e.target.value)
+                    setF('produtoId', e.target.value)
+                    if (p) setF('nomeItem', p.nome)
+                  }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="">Selecionar produto para revenda...</option>
+                    {produtosRevenda.map((p: any) => <option key={p.produtoId} value={p.produtoId}>{p.nome}</option>)}
+                  </select>
+                  {/* Condição real do sistema — nenhum produto configurado como revenda */}
+                  {produtosRevenda.length === 0 && (
+                    <Aviso tom="atencao" className="mt-2">
+                      Nenhum produto marcado como Revenda. Configure em Cadastros → Produtos.
+                    </Aviso>
+                  )}
+                  {!form.produtoId && (
+                    <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
+                      placeholder="Ou digite o nome do produto..." className="mt-2 h-8 text-sm" />
+                  )}
+                </>
               )}
+            </div>
 
+            {/* Fornecedor */}
+            <div>
+              <Label>Fornecedor</Label>
+              <select value={form.nomeFornecedor} onChange={e => setF('nomeFornecedor', e.target.value)}
+                className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                <option value="">Selecionar...</option>
+                {fornecedores.map((f: any) => (
+                  <option key={f.fornecedorId} value={f.nomeFantasia ?? f.razaoSocial}>{f.nomeFantasia ?? f.razaoSocial}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Data, Qtd, Valor */}
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label>Observação</Label>
-                <Input value={form.observacao} onChange={e => setF('observacao', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Opcional" />
+                <Label>Data *</Label>
+                <Input type="date" value={form.dataEntrada} onChange={e => setF('dataEntrada', e.target.value)} className="mt-1 h-9 text-sm" />
+              </div>
+              <div>
+                <Label>Quantidade *</Label>
+                <Input type="number" min="0" step="1" value={form.quantidade}
+                  onChange={e => setF('quantidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0" />
+              </div>
+              <div>
+                <Label>Valor unitário (R$) *</Label>
+                <Input type="number" min="0" step="0.01" value={form.valorUnitario}
+                  onChange={e => setF('valorUnitario', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+
+            {/* Total calculado */}
+            {form.quantidade && form.valorUnitario && (
+              <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center">
+                <span className="text-sm text-gray-500">Total da compra</span>
+                <span className="text-base font-bold text-red-600">
+                  {fmt(Math.round(
+                    parseFloat(form.valorUnitario.replace(',', '.') || '0') * 100 *
+                    parseFloat(form.quantidade.replace(',', '.') || '0')
+                  ))}
+                </span>
+              </div>
+            )}
+
+            <div>
+              <Label>Observação</Label>
+              <Input value={form.observacao} onChange={e => setF('observacao', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Opcional" />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
               <Button variant="outline" onClick={() => setShowModal(false)}>Cancelar</Button>
               <Button onClick={() => salvarMut.mutate()}
                 disabled={!form.nomeItem || !form.quantidade || !form.valorUnitario || salvarMut.isPending}>
@@ -335,7 +330,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
               </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {confirmDel && (

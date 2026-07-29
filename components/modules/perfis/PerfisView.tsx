@@ -3,13 +3,16 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Shield, Check, Pencil } from 'lucide-react'
+import { Plus, Trash2, Shield, Check, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { FormModal } from '@/components/ui/FormModal'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -150,18 +153,14 @@ export default function PerfisView({ tenantSlug }: Props) {
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Perfis de Acesso</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            Defina quais ambientes e módulos cada tipo de usuário pode acessar
-          </p>
-        </div>
-        <Button onClick={() => abrirModal()}>
-          <Plus size={15} className="mr-1.5" /> Novo perfil
-        </Button>
-      </div>
+      <PageHeader
+        titulo="Perfis de Acesso"
+        acoes={
+          <Button onClick={() => abrirModal()}>
+            <Plus size={15} className="mr-1.5" /> Novo perfil
+          </Button>
+        }
+      />
 
       {/* Lista */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -169,7 +168,7 @@ export default function PerfisView({ tenantSlug }: Props) {
           <p className="text-sm text-gray-400 col-span-3 text-center py-12">Carregando...</p>
         ) : perfis.length === 0 ? (
           <p className="text-sm text-gray-400 col-span-3 text-center py-12">
-            Nenhum perfil cadastrado. Execute a migration primeiro.
+            Nenhum perfil cadastrado.
           </p>
         ) : perfis.map((p: any) => {
           const ambientesAtivos = AMBIENTES.filter(a => p[a.key])
@@ -193,19 +192,12 @@ export default function PerfisView({ tenantSlug }: Props) {
                   </div>
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => abrirModal(p)}
-                    title="Editar"
-                    className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                  >
+                  <BotaoIcone titulo="Editar" variante="info" tamanho="md" onClick={() => abrirModal(p)}>
                     <Pencil size={13} />
-                  </button>
-                  <button
-                    onClick={() => setConfirmDelete({ id: p.perfilId, nome: p.nome })}
-                    className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                  >
+                  </BotaoIcone>
+                  <BotaoIcone titulo="Excluir" variante="perigo" tamanho="md" onClick={() => setConfirmDelete({ id: p.perfilId, nome: p.nome })}>
                     <Trash2 size={13} />
-                  </button>
+                  </BotaoIcone>
                 </div>
               </div>
 
@@ -233,7 +225,7 @@ export default function PerfisView({ tenantSlug }: Props) {
               {!p.isAdmin && (
                 <div className="mb-3">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-                    Módulos no Gerencial
+                    Módulos
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {modulosAtivos.length === 0 ? (
@@ -267,156 +259,166 @@ export default function PerfisView({ tenantSlug }: Props) {
 
       {/* ── Modal criar/editar ─────────────────────────────────────────────── */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl mx-4 max-h-[90vh] flex flex-col">
+        <FormModal
+          titulo={editando ? 'Editar perfil' : 'Novo perfil'}
+          onClose={fecharModal}
+          largura="max-w-xl"
+        >
+          <div className="p-6 space-y-5">
 
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <div>
-                <h2 className="text-lg font-semibold">{editando ? 'Editar perfil' : 'Novo perfil'}</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Configure os acessos deste perfil</p>
+            {/* Nome */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <Label>Nome do perfil *</Label>
+                <Input
+                  value={form.nome}
+                  onChange={e => setForm(prev => ({ ...prev, nome: e.target.value }))}
+                  className="mt-1" placeholder="Ex: Operador de Caixa" autoFocus
+                />
               </div>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600">
-                <X size={18} />
-              </button>
+              <div className="col-span-2">
+                <Label>Descrição</Label>
+                <Input
+                  value={form.descricao}
+                  onChange={e => setForm(prev => ({ ...prev, descricao: e.target.value }))}
+                  className="mt-1" placeholder="Descreva o perfil..."
+                />
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-
-              {/* Nome */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <Label>Nome do perfil *</Label>
-                  <Input
-                    value={form.nome}
-                    onChange={e => setForm(prev => ({ ...prev, nome: e.target.value }))}
-                    className="mt-1" placeholder="Ex: Operador de Caixa" autoFocus
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label>Descrição</Label>
-                  <Input
-                    value={form.descricao}
-                    onChange={e => setForm(prev => ({ ...prev, descricao: e.target.value }))}
-                    className="mt-1" placeholder="Descreva o perfil..."
-                  />
-                </div>
+            {/* Admin toggle */}
+            <div
+              onClick={toggleAdmin}
+              className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-colors ${
+                form.isAdmin ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100 hover:border-gray-200'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Shield size={18} className={form.isAdmin ? 'text-green-600' : 'text-gray-400'} />
+                <p className={`text-sm font-semibold inline-flex items-center gap-1 ${form.isAdmin ? 'text-green-700' : 'text-gray-700'}`}>
+                  Acesso total
+                  <InfoTip titulo="Acesso total">
+                    Libera todos os ambientes e todos os módulos automaticamente, inclusive
+                    os que forem criados no futuro. O limite de desconto vai para 100%.
+                  </InfoTip>
+                </p>
               </div>
+              <div className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${form.isAdmin ? 'bg-green-500' : 'bg-gray-300'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${form.isAdmin ? 'translate-x-4' : 'translate-x-0'}`} />
+              </div>
+            </div>
 
-              {/* Admin toggle */}
-              <div
-                onClick={toggleAdmin}
-                className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-colors ${
-                  form.isAdmin ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100 hover:border-gray-200'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Shield size={18} className={form.isAdmin ? 'text-green-600' : 'text-gray-400'} />
-                  <div>
-                    <p className={`text-sm font-semibold ${form.isAdmin ? 'text-green-700' : 'text-gray-700'}`}>
-                      Acesso total (Gerencial completo)
-                    </p>
-                    <p className="text-xs text-gray-400">Libera todos os ambientes e módulos automaticamente</p>
+            {!form.isAdmin && (
+              <>
+                {/* Ambientes */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 inline-flex items-center gap-1">
+                    Ambientes
+                    <InfoTip titulo="Ambientes">
+                      São as opções que aparecem para o usuário na tela de seleção depois do login:
+                      Gerencial (ERP completo), PDV, Comanda e Delivery.
+                    </InfoTip>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {AMBIENTES.map(a => (
+                      <div
+                        key={a.key}
+                        onClick={() => toggle(a.key)}
+                        className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                          (form as any)[a.key]
+                            ? 'bg-green-50 border-green-200'
+                            : 'bg-gray-50 border-gray-100 hover:border-gray-200'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${
+                          (form as any)[a.key] ? 'bg-green-500' : 'bg-gray-200'
+                        }`}>
+                          {(form as any)[a.key] && <Check size={10} className="text-white" />}
+                        </div>
+                        <p className="text-sm font-medium text-gray-800 inline-flex items-center gap-1">
+                          {a.label}
+                          <InfoTip titulo={a.label}>{a.desc}</InfoTip>
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                <div className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${form.isAdmin ? 'bg-green-500' : 'bg-gray-300'}`}>
-                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${form.isAdmin ? 'translate-x-4' : 'translate-x-0'}`} />
-                </div>
-              </div>
 
-              {!form.isAdmin && (
-                <>
-                  {/* Ambientes */}
+                {/* Módulos no Gerencial */}
+                {form.acessoGerencial && (
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                      Ambientes disponíveis na tela de seleção
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 inline-flex items-center gap-1">
+                      Módulos
+                      <InfoTip titulo="Módulos">
+                        Definem o que aparece no menu do ambiente Gerencial. Módulo desmarcado
+                        some do menu e a rota fica bloqueada para o usuário.
+                      </InfoTip>
                     </p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {AMBIENTES.map(a => (
+                    <div className="grid grid-cols-3 gap-2">
+                      {MODULOS.map(m => (
                         <div
-                          key={a.key}
-                          onClick={() => toggle(a.key)}
-                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                            (form as any)[a.key]
-                              ? 'bg-green-50 border-green-200'
-                              : 'bg-gray-50 border-gray-100 hover:border-gray-200'
+                          key={m.key}
+                          onClick={() => toggle(m.key)}
+                          className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors text-sm ${
+                            (form as any)[m.key]
+                              ? 'bg-blue-50 border-blue-200 text-blue-700 font-medium'
+                              : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-200'
                           }`}
                         >
-                          <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${
-                            (form as any)[a.key] ? 'bg-green-500' : 'bg-gray-200'
+                          <div className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 ${
+                            (form as any)[m.key] ? 'bg-blue-500' : 'bg-gray-200'
                           }`}>
-                            {(form as any)[a.key] && <Check size={10} className="text-white" />}
+                            {(form as any)[m.key] && <Check size={9} className="text-white" />}
                           </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-800">{a.label}</p>
-                            <p className="text-xs text-gray-400">{a.desc}</p>
-                          </div>
+                          {m.label}
                         </div>
                       ))}
                     </div>
                   </div>
+                )}
 
-                  {/* Módulos no Gerencial */}
-                  {form.acessoGerencial && (
+                {/* Limites de desconto */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Limites operacionais
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                        Módulos visíveis no Gerencial
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {MODULOS.map(m => (
-                          <div
-                            key={m.key}
-                            onClick={() => toggle(m.key)}
-                            className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors text-sm ${
-                              (form as any)[m.key]
-                                ? 'bg-blue-50 border-blue-200 text-blue-700 font-medium'
-                                : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-200'
-                            }`}
-                          >
-                            <div className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 ${
-                              (form as any)[m.key] ? 'bg-blue-500' : 'bg-gray-200'
-                            }`}>
-                              {(form as any)[m.key] && <Check size={9} className="text-white" />}
-                            </div>
-                            {m.label}
-                          </div>
-                        ))}
-                      </div>
+                      <Label className="inline-flex items-center gap-1">
+                        Desconto máximo (%)
+                        <InfoTip titulo="Desconto máximo em percentual">
+                          Maior desconto que este perfil pode aplicar numa venda.
+                          Zero significa que o perfil não pode dar desconto.
+                        </InfoTip>
+                      </Label>
+                      <Input
+                        type="number" min="0" max="100" step="0.5"
+                        value={form.percDescontoMax}
+                        onChange={e => setForm(prev => ({ ...prev, percDescontoMax: parseFloat(e.target.value) || 0 }))}
+                        className="mt-1"
+                      />
                     </div>
-                  )}
-
-                  {/* Limites de desconto */}
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                      Limites operacionais
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <Label>Desconto máximo (%)</Label>
-                        <Input
-                          type="number" min="0" max="100" step="0.5"
-                          value={form.percDescontoMax}
-                          onChange={e => setForm(prev => ({ ...prev, percDescontoMax: parseFloat(e.target.value) || 0 }))}
-                          className="mt-1"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">0 = sem desconto permitido</p>
-                      </div>
-                      <div>
-                        <Label>Desconto máximo (R$)</Label>
-                        <Input
-                          type="number" min="0" step="0.01"
-                          value={form.valorDescontoMax > 0 ? (form.valorDescontoMax / 100).toFixed(2) : ''}
-                          onChange={e => setForm(prev => ({ ...prev, valorDescontoMax: Math.round(parseFloat(e.target.value || '0') * 100) }))}
-                          className="mt-1" placeholder="0,00"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">0 = sem limite por valor</p>
-                      </div>
+                    <div>
+                      <Label className="inline-flex items-center gap-1">
+                        Desconto máximo (R$)
+                        <InfoTip titulo="Desconto máximo em valor">
+                          Teto em reais por venda. Zero significa sem limite por valor —
+                          nesse caso vale apenas o limite percentual.
+                        </InfoTip>
+                      </Label>
+                      <Input
+                        type="number" min="0" step="0.01"
+                        value={form.valorDescontoMax > 0 ? (form.valorDescontoMax / 100).toFixed(2) : ''}
+                        onChange={e => setForm(prev => ({ ...prev, valorDescontoMax: Math.round(parseFloat(e.target.value || '0') * 100) }))}
+                        className="mt-1" placeholder="0,00"
+                      />
                     </div>
                   </div>
-                </>
-              )}
-            </div>
+                </div>
+              </>
+            )}
 
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
               <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
               <Button
                 onClick={() => salvarMut.mutate()}
@@ -426,7 +428,7 @@ export default function PerfisView({ tenantSlug }: Props) {
               </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {confirmDelete && (

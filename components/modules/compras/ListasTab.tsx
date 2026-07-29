@@ -6,6 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Scale, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { fmtData as fmtDate } from '@/lib/format'
 
 interface Props {
@@ -71,11 +73,11 @@ export default function ListasTab({ tenantSlug, onIniciarCotacao }: Props) {
             {STATUS_CFG[s]?.label ?? 'Todas'}
           </button>
         ))}
+        <InfoTip titulo="De onde vêm as listas">
+          São geradas pelo MRP, na aba MRP, pelo botão &quot;Gerar Lista de Compras&quot;.
+          Depois de gerada, a lista pode ir para cotação.
+        </InfoTip>
       </div>
-
-      <p className="text-xs text-gray-400">
-        Listas são geradas automaticamente pelo MRP (aba MRP → "Gerar Lista de Compras")
-      </p>
 
       <div className="space-y-3">
         {isLoading ? (
@@ -99,16 +101,16 @@ export default function ListasTab({ tenantSlug, onIniciarCotacao }: Props) {
                     <p className="text-xs text-gray-400 mt-0.5">{fmtDate(l.dataGeracao)} · {l.totalItens} item(ns)</p>
                   </div>
                 </button>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   {l.status === 'aberta' && (
                     <Button size="sm" variant="outline" onClick={() => iniciarCotacaoMut.mutate(l.listaId)}>
                       <Scale size={13} className="mr-1.5" /> Iniciar Cotação
                     </Button>
                   )}
                   {l.status === 'aberta' && (
-                    <button onClick={() => excluirMut.mutate(l.listaId)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                    <BotaoIcone titulo="Excluir lista" variante="perigo" tamanho="md" onClick={() => excluirMut.mutate(l.listaId)}>
                       <Trash2 size={14} />
-                    </button>
+                    </BotaoIcone>
                   )}
                 </div>
               </div>

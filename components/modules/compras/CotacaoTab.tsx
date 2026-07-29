@@ -7,6 +7,8 @@ import { Plus, Check, Trash2, Scale, Loader2, ShoppingBag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props {
@@ -14,7 +16,6 @@ interface Props {
   listaIdInicial:   number | null
   onPedidosGerados: () => void
 }
-
 
 
 export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerados }: Props) {
@@ -98,7 +99,13 @@ export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerado
   if (!listaId) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-gray-400">Selecione uma lista com cotação em andamento (inicie pela aba Listas, botão "Iniciar Cotação"):</p>
+        <p className="text-sm font-medium text-gray-600 inline-flex items-center gap-1">
+          Selecione uma lista em cotação
+          <InfoTip titulo="Como uma lista entra em cotação">
+            Na aba Listas, use o botão &quot;Iniciar Cotação&quot; em uma lista aberta.
+            Ela passa a aparecer aqui para você lançar os preços.
+          </InfoTip>
+        </p>
         {listas.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-sm text-gray-400">
             Nenhuma lista em cotação no momento.
@@ -129,10 +136,14 @@ export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerado
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-gray-900">{listaDetail.descricao || `Lista #${listaDetail.listaId}`}</p>
-          <p className="text-xs text-gray-400">Lance os preços de cada fornecedor e marque o melhor pra cada insumo</p>
-        </div>
+        <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1">
+          {listaDetail.descricao || `Lista #${listaDetail.listaId}`}
+          <InfoTip titulo="Como cotar">
+            Lance o preço de cada fornecedor no insumo correspondente e marque o escolhido
+            no círculo à esquerda. Com todos escolhidos, o botão de gerar pedidos libera —
+            um pedido por fornecedor.
+          </InfoTip>
+        </p>
         {listaId !== listaIdInicial && (
           <button onClick={() => setListaId(null)} className="text-xs text-gray-400 hover:text-gray-600">← trocar lista</button>
         )}
@@ -155,6 +166,7 @@ export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerado
                     <div key={p.itemId} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${p.selecionado ? 'border-green-300 bg-green-50' : 'border-gray-100'}`}>
                       <div className="flex items-center gap-2">
                         <button onClick={() => selecionarMut.mutate({ insumoId: li.insumoId, itemId: p.itemId })}
+                          title="Marcar como melhor preço"
                           className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${p.selecionado ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'}`}>
                           {p.selecionado && <Check size={11} className="text-white" />}
                         </button>
@@ -162,9 +174,9 @@ export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerado
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-sm font-semibold text-gray-900">{fmt(p.precoUnitario)}</span>
-                        <button onClick={() => removerMut.mutate(p.itemId)} className="text-gray-300 hover:text-red-500">
+                        <BotaoIcone titulo="Remover preço" variante="perigo" onClick={() => removerMut.mutate(p.itemId)}>
                           <Trash2 size={12} />
-                        </button>
+                        </BotaoIcone>
                       </div>
                     </div>
                   ))}
@@ -204,6 +216,7 @@ export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerado
           }
         </Button>
       </div>
+      {/* Condição que bloqueia o botão — continua visível */}
       {!todosTemSelecionado && (
         <p className="text-xs text-amber-500 text-right">Marque o melhor preço de cada insumo antes de gerar os pedidos.</p>
       )}

@@ -3,11 +3,13 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, PackageCheck, Ban } from 'lucide-react'
+import { Plus, Trash2, PackageCheck, Ban } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
+import { FormModal } from '@/components/ui/FormModal'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
 
 interface Props {
@@ -21,7 +23,6 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   recebido:          { label: 'Recebido',          cls: 'bg-green-100 text-green-700' },
   cancelado:         { label: 'Cancelado',         cls: 'bg-gray-100 text-gray-500' },
 }
-
 
 
 interface ItemForm { _key: string; insumoId?: number; nomeInsumo: string; quantidade: string; precoUnitario: string }
@@ -164,64 +165,59 @@ export default function PedidosTab({ tenantSlug, onIniciarConferencia }: Props) 
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold">Pedido de compra manual</h2>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Pedido de compra manual" onClose={fecharModal} largura="max-w-lg">
+          <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Fornecedor</Label><Input value={nomeFornecedor} onChange={e => setNomeFornecedor(e.target.value)} className="mt-1" placeholder="Nome do fornecedor" /></div>
+              <div><Label>Previsão de entrega</Label><Input type="date" value={previsaoEntrega} onChange={e => setPrevisaoEntrega(e.target.value)} className="mt-1" /></div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Fornecedor</Label><Input value={nomeFornecedor} onChange={e => setNomeFornecedor(e.target.value)} className="mt-1" placeholder="Nome do fornecedor" /></div>
-                <div><Label>Previsão de entrega</Label><Input type="date" value={previsaoEntrega} onChange={e => setPrevisaoEntrega(e.target.value)} className="mt-1" /></div>
-              </div>
 
-              <div>
-                <Label>Adicionar insumo</Label>
-                <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)} className="mt-1" placeholder="Buscar insumo..." />
-                {buscaInsumo && insumos.length > 0 && (
-                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
-                    {insumos.map((ins: any) => (
-                      <button key={ins.insumoId} onClick={() => addInsumo(ins)} className="w-full flex justify-between px-3 py-2 hover:bg-gray-50 text-left">
-                        <span className="text-sm">{ins.nome}</span>
-                        <span className="text-xs text-gray-400">{ins.unidade}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {itens.length > 0 && (
-                <div className="border border-gray-100 rounded-lg overflow-hidden">
-                  {itens.map(item => (
-                    <div key={item._key} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 last:border-0">
-                      <span className="text-sm flex-1 truncate">{item.nomeInsumo}</span>
-                      <Input type="number" min="0" step="0.001" value={item.quantidade}
-                        onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, quantidade: e.target.value } : i))}
-                        className="w-20 h-8 text-sm" placeholder="Qtd" />
-                      <Input type="number" min="0" step="0.01" value={item.precoUnitario}
-                        onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, precoUnitario: e.target.value } : i))}
-                        className="w-24 h-8 text-sm" placeholder="R$" />
-                      <button onClick={() => setItens(prev => prev.filter(i => i._key !== item._key))} className="text-gray-300 hover:text-red-500">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
+            <div>
+              <Label>Adicionar insumo</Label>
+              <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)} className="mt-1" placeholder="Buscar insumo..." />
+              {buscaInsumo && insumos.length > 0 && (
+                <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                  {insumos.map((ins: any) => (
+                    <button key={ins.insumoId} onClick={() => addInsumo(ins)} className="w-full flex justify-between px-3 py-2 hover:bg-gray-50 text-left">
+                      <span className="text-sm">{ins.nome}</span>
+                      <span className="text-xs text-gray-400">{ins.unidade}</span>
+                    </button>
                   ))}
-                  <div className="flex justify-between px-3 py-2 bg-gray-50">
-                    <span className="text-xs text-gray-500">Total</span>
-                    <span className="text-sm font-bold text-gray-900">{fmt(Math.round(totalForm * 100))}</span>
-                  </div>
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
+
+            {itens.length > 0 && (
+              <div className="border border-gray-100 rounded-lg overflow-hidden">
+                {itens.map(item => (
+                  <div key={item._key} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 last:border-0">
+                    <span className="text-sm flex-1 truncate">{item.nomeInsumo}</span>
+                    <Input type="number" min="0" step="0.001" value={item.quantidade}
+                      onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, quantidade: e.target.value } : i))}
+                      className="w-20 h-8 text-sm" placeholder="Qtd" />
+                    <Input type="number" min="0" step="0.01" value={item.precoUnitario}
+                      onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, precoUnitario: e.target.value } : i))}
+                      className="w-24 h-8 text-sm" placeholder="R$" />
+                    <BotaoIcone titulo="Remover item" variante="perigo" onClick={() => setItens(prev => prev.filter(i => i._key !== item._key))}>
+                      <Trash2 size={13} />
+                    </BotaoIcone>
+                  </div>
+                ))}
+                <div className="flex justify-between px-3 py-2 bg-gray-50">
+                  <span className="text-xs text-gray-500">Total</span>
+                  <span className="text-sm font-bold text-gray-900">{fmt(Math.round(totalForm * 100))}</span>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
               <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
               <Button onClick={() => criarMut.mutate()} disabled={!nomeFornecedor || itens.length === 0 || criarMut.isPending}>
                 {criarMut.isPending ? 'Salvando...' : 'Criar pedido'}
               </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )

@@ -10,13 +10,13 @@ import { CheckCircle, PackageCheck, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props {
   tenantSlug:      string
   pedidoIdInicial: number | null
 }
-
 
 
 export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
@@ -113,12 +113,12 @@ export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-gray-500">Estoque de insumos</span>
-            <span className="font-medium text-green-600">Atualizado automaticamente</span>
+            <span className="font-medium text-green-600">Atualizado</span>
           </div>
           {resultado.contaPagarId && (
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Conta a pagar</span>
-              <span className="font-medium text-blue-600">Gerada (#{resultado.contaPagarId})</span>
+              <span className="font-medium text-blue-600">#{resultado.contaPagarId}</span>
             </div>
           )}
         </div>
@@ -131,7 +131,13 @@ export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
   if (!pedidoId) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-gray-400">Selecione um pedido em aberto pra iniciar a conferência (ou use o botão "Iniciar Conferência" na aba Pedidos):</p>
+        <p className="text-sm font-medium text-gray-600 inline-flex items-center gap-1">
+          Selecione um pedido em aberto
+          <InfoTip titulo="O que a conferência faz">
+            Você lança quanto chegou de cada item. Ao finalizar, o estoque dos insumos é
+            atualizado e uma conta a pagar é gerada para o fornecedor.
+          </InfoTip>
+        </p>
         {pedidosAbertos.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-sm text-gray-400">
             Nenhum pedido em aberto no momento.
@@ -164,10 +170,13 @@ export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-gray-900">Conferência do Pedido #{conferencia.pedidoId}</p>
-          <p className="text-xs text-gray-400">Lance a quantidade que realmente chegou de cada item</p>
-        </div>
+        <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1">
+          Conferência do Pedido #{conferencia.pedidoId}
+          <InfoTip titulo="Como lançar">
+            Informe a quantidade que realmente chegou de cada item. O ícone à direita
+            compara com o que foi pedido: verde quando bate, âmbar quando veio menos.
+          </InfoTip>
+        </p>
         {pedidoId !== pedidoIdInicial && (
           <button onClick={voltarParaSelecao} className="text-xs text-gray-400 hover:text-gray-600">← trocar pedido</button>
         )}
@@ -223,6 +232,7 @@ export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
           }
         </Button>
       </div>
+      {/* Condição que bloqueia o botão — continua visível */}
       {!todosLancados && (
         <p className="text-xs text-amber-500 text-right">Lance a quantidade recebida de todos os itens antes de finalizar.</p>
       )}

@@ -7,6 +7,8 @@ import { Plus, X, Trash2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FormModal } from '@/components/ui/FormModal'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { fmtData as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -135,13 +137,14 @@ export default function RequisicoesTab({ tenantSlug }: Props) {
                 </div>
                 {r.status === 'pendente' && (
                   <div className="flex gap-1">
-                    <button onClick={() => statusMut.mutate({ id: r.requisicaoId, status: 'atendida' })}
-                      className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="Marcar como atendida">
+                    <BotaoIcone titulo="Marcar como atendida" variante="sucesso" tamanho="md"
+                      onClick={() => statusMut.mutate({ id: r.requisicaoId, status: 'atendida' })}>
                       <Check size={14} />
-                    </button>
-                    <button onClick={() => excluirMut.mutate(r.requisicaoId)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                    </BotaoIcone>
+                    <BotaoIcone titulo="Excluir requisição" variante="perigo" tamanho="md"
+                      onClick={() => excluirMut.mutate(r.requisicaoId)}>
                       <Trash2 size={14} />
-                    </button>
+                    </BotaoIcone>
                   </div>
                 )}
               </div>
@@ -159,66 +162,61 @@ export default function RequisicoesTab({ tenantSlug }: Props) {
 
       {/* Modal nova requisição */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold">Nova requisição de material</h2>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div><Label>Motivo</Label><Input value={motivo} onChange={e => setMotivo(e.target.value)} className="mt-1" placeholder="Ex: Reposição semanal" /></div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <Label>Prioridade</Label>
-                  <select value={prioridade} onChange={e => setPrioridade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="baixa">Baixa</option><option value="normal">Normal</option>
-                    <option value="alta">Alta</option><option value="urgente">Urgente</option>
-                  </select>
-                </div>
-                <div><Label>Entrega prevista</Label><Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1" /></div>
-                <div><Label>Departamento</Label><Input value={departamento} onChange={e => setDepartamento(e.target.value)} className="mt-1" placeholder="Produção" /></div>
-              </div>
-
+        <FormModal titulo="Nova requisição de material" onClose={fecharModal} largura="max-w-lg">
+          <div className="p-6 space-y-4">
+            <div><Label>Motivo</Label><Input value={motivo} onChange={e => setMotivo(e.target.value)} className="mt-1" placeholder="Ex: Reposição semanal" /></div>
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label>Adicionar insumo</Label>
-                <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)} className="mt-1" placeholder="Buscar insumo..." />
-                {buscaInsumo && insumos.length > 0 && (
-                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
-                    {insumos.map((ins: any) => (
-                      <button key={ins.insumoId} onClick={() => addInsumo(ins)} className="w-full flex justify-between px-3 py-2 hover:bg-gray-50 text-left">
-                        <span className="text-sm">{ins.nome}</span>
-                        <span className="text-xs text-gray-400">{ins.unidade}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <Label>Prioridade</Label>
+                <select value={prioridade} onChange={e => setPrioridade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="baixa">Baixa</option><option value="normal">Normal</option>
+                  <option value="alta">Alta</option><option value="urgente">Urgente</option>
+                </select>
               </div>
+              <div><Label>Entrega prevista</Label><Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1" /></div>
+              <div><Label>Departamento</Label><Input value={departamento} onChange={e => setDepartamento(e.target.value)} className="mt-1" placeholder="Produção" /></div>
+            </div>
 
-              {itens.length > 0 && (
-                <div className="border border-gray-100 rounded-lg overflow-hidden">
-                  {itens.map(item => (
-                    <div key={item._key} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 last:border-0">
-                      <span className="text-sm flex-1">{item.nomeInsumo}</span>
-                      <Input type="number" min="0" step="0.001" value={item.quantidade}
-                        onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, quantidade: e.target.value } : i))}
-                        className="w-24 h-8 text-sm" />
-                      <span className="text-xs text-gray-400 w-10">{item.unidade}</span>
-                      <button onClick={() => setItens(prev => prev.filter(i => i._key !== item._key))} className="text-gray-300 hover:text-red-500">
-                        <X size={14} />
-                      </button>
-                    </div>
+            <div>
+              <Label>Adicionar insumo</Label>
+              <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)} className="mt-1" placeholder="Buscar insumo..." />
+              {buscaInsumo && insumos.length > 0 && (
+                <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                  {insumos.map((ins: any) => (
+                    <button key={ins.insumoId} onClick={() => addInsumo(ins)} className="w-full flex justify-between px-3 py-2 hover:bg-gray-50 text-left">
+                      <span className="text-sm">{ins.nome}</span>
+                      <span className="text-xs text-gray-400">{ins.unidade}</span>
+                    </button>
                   ))}
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
+
+            {itens.length > 0 && (
+              <div className="border border-gray-100 rounded-lg overflow-hidden">
+                {itens.map(item => (
+                  <div key={item._key} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 last:border-0">
+                    <span className="text-sm flex-1">{item.nomeInsumo}</span>
+                    <Input type="number" min="0" step="0.001" value={item.quantidade}
+                      onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, quantidade: e.target.value } : i))}
+                      className="w-24 h-8 text-sm" />
+                    <span className="text-xs text-gray-400 w-10">{item.unidade}</span>
+                    <BotaoIcone titulo="Remover item" variante="perigo" onClick={() => setItens(prev => prev.filter(i => i._key !== item._key))}>
+                      <X size={14} />
+                    </BotaoIcone>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
               <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
               <Button onClick={() => criarMut.mutate()} disabled={itens.length === 0 || criarMut.isPending}>
                 {criarMut.isPending ? 'Salvando...' : 'Criar requisição'}
               </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )

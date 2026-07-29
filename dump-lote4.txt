@@ -1,0 +1,1849 @@
+
+===== components\modules\perfis\PerfisView.tsx =====
+
+'use client'
+// components/modules/perfis/PerfisView.tsx
+
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Trash2, Shield, Check, Pencil } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+// ── Configurações dos campos ──────────────────────────────────────────────────
+
+const AMBIENTES = [
+  { key: 'acessoGerencial', label: 'Gerencial',   desc: 'Acesso ao ERP completo' },
+  { key: 'acessoPdv',       label: 'PDV',          desc: 'Ponto de venda' },
+  { key: 'acessoComanda',   label: 'Comanda',      desc: 'Comanda eletrônica mobile' },
+  { key: 'acessoDelivery',  label: 'Delivery',     desc: 'Gestão de entregas' },
+] as const
+
+const MODULOS = [
+  { key: 'moduloDashboard',  label: 'Dashboard' },
+  { key: 'moduloCadastros',  label: 'Cadastros' },
+  { key: 'moduloVendas',     label: 'Vendas' },
+  { key: 'moduloFinanceiro', label: 'Financeiro' },
+  { key: 'moduloEstoque',    label: 'Estoque' },
+  { key: 'moduloProducao',   label: 'Produção' },
+  { key: 'moduloPedidos',    label: 'Pedidos' },
+  { key: 'moduloComandas',   label: 'Comandas' },
+  { key: 'moduloConsultas',  label: 'Consultas' },
+  { key: 'moduloFiscal',     label: 'Fiscal' },
+  { key: 'moduloPlanoAcao',  label: 'Plano de Ação' },
+  { key: 'moduloMetas',      label: 'Metas' },
+  { key: 'moduloFidelidade', label: 'Fidelidade' },
+  { key: 'moduloUsuarios',   label: 'Usuários' },
+] as const
+
+// ── Estado inicial do form ────────────────────────────────────────────────────
+
+function estadoInicial() {
+  return {
+    nome: '', descricao: '',
+    isAdmin: false,
+    acessoGerencial: false, acessoPdv: false, acessoComanda: false, acessoDelivery: false,
+    moduloDashboard: true, moduloCadastros: true, moduloVendas: true,
+    moduloFinanceiro: false, moduloEstoque: false, moduloProducao: false,
+    moduloPedidos: false, moduloComandas: false, moduloConsultas: false,
+    moduloFiscal: false, moduloPlanoAcao: false, moduloMetas: false, moduloFidelidade: false, moduloUsuarios: false,
+    percDescontoMax: 0, valorDescontoMax: 0,
+  }
+}
+
+// ── Componente ────────────────────────────────────────────────────────────────
+
+export default function PerfisView({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/perfis`
+
+  const [showModal, setShowModal]         = useState(false)
+  const [editando, setEditando]           = useState<any>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
+  const [form, setForm]                   = useState(estadoInicial())
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['perfis', tenantSlug] })
+
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['perfis', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
+  })
+
+  const salvarMut = useMutation({
+    mutationFn: async () => {
+      const url    = editando ? `${api}/${editando.perfilId}` : api
+      const method = editando ? 'PUT' : 'POST'
+      const res = await fetch(url, {
+        method, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: () => { invalidate(); fecharModal(); toast(editando ? 'Perfil atualizado!' : 'Perfil criado!') },
+    onError:   (e: any) => toast(e.message || 'Erro ao salvar.', 'error'),
+  })
+
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { invalidate(); toast('Perfil excluído.') },
+    onError:   (e: any) => toast(e.message || 'Erro ao excluir.', 'error'),
+  })
+
+  function abrirModal(item?: any) {
+    if (item) {
+      setEditando(item)
+      setForm({
+        nome: item.nome, descricao: item.descricao ?? '',
+        isAdmin: item.isAdmin,
+        acessoGerencial: item.acessoGerencial, acessoPdv: item.acessoPdv,
+        acessoComanda: item.acessoComanda, acessoDelivery: item.acessoDelivery,
+        moduloDashboard: item.moduloDashboard, moduloCadastros: item.moduloCadastros,
+        moduloVendas: item.moduloVendas, moduloFinanceiro: item.moduloFinanceiro,
+        moduloEstoque: item.moduloEstoque, moduloProducao: item.moduloProducao,
+        moduloPedidos: item.moduloPedidos, moduloComandas: item.moduloComandas,
+        moduloConsultas: item.moduloConsultas, moduloFiscal: item.moduloFiscal,
+        moduloPlanoAcao: item.moduloPlanoAcao, moduloMetas: item.moduloMetas,
+        moduloFidelidade: item.moduloFidelidade,
+        moduloUsuarios: item.moduloUsuarios,
+        percDescontoMax: parseFloat(item.percDescontoMax ?? '0'),
+        valorDescontoMax: item.valorDescontoMax ?? 0,
+      })
+    } else {
+      setEditando(null)
+      setForm(estadoInicial())
+    }
+    setShowModal(true)
+  }
+
+  function fecharModal() { setShowModal(false); setEditando(null); setForm(estadoInicial()) }
+
+  function toggle(key: string) {
+    setForm(prev => ({ ...prev, [key]: !(prev as any)[key] }))
+  }
+
+  // Quando isAdmin muda, sincroniza tudo
+  function toggleAdmin() {
+    const novoAdmin = !form.isAdmin
+    if (novoAdmin) {
+      setForm(prev => ({
+        ...prev, isAdmin: true,
+        acessoGerencial: true, acessoPdv: true, acessoComanda: true, acessoDelivery: true,
+        moduloDashboard: true, moduloCadastros: true, moduloVendas: true,
+        moduloFinanceiro: true, moduloEstoque: true, moduloProducao: true,
+        moduloPedidos: true, moduloComandas: true, moduloConsultas: true,
+        moduloFiscal: true, moduloPlanoAcao: true, moduloMetas: true, moduloFidelidade: true, moduloUsuarios: true,
+        percDescontoMax: 100,
+      }))
+    } else {
+      setForm(prev => ({ ...prev, isAdmin: false }))
+    }
+  }
+
+  const perfis = Array.isArray(raw?.data) ? raw.data : []
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Perfis de Acesso</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            Defina quais ambientes e módulos cada tipo de usuário pode acessar
+          </p>
+        </div>
+        <Button onClick={() => abrirModal()}>
+          <Plus size={15} className="mr-1.5" /> Novo perfil
+        </Button>
+      </div>
+
+      {/* Lista */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {isLoading ? (
+          <p className="text-sm text-gray-400 col-span-3 text-center py-12">Carregando...</p>
+        ) : perfis.length === 0 ? (
+          <p className="text-sm text-gray-400 col-span-3 text-center py-12">
+            Nenhum perfil cadastrado. Execute a migration primeiro.
+          </p>
+        ) : perfis.map((p: any) => {
+          const ambientesAtivos = AMBIENTES.filter(a => p[a.key])
+          const modulosAtivos   = MODULOS.filter(m => p[m.key])
+          return (
+            <div
+              key={p.perfilId}
+              className="bg-white rounded-xl border border-gray-100 p-5 hover:border-green-200 transition-colors group"
+            >
+              {/* Nome + badges */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${p.isAdmin ? 'bg-green-100' : 'bg-gray-100'}`}>
+                    <Shield size={14} className={p.isAdmin ? 'text-green-600' : 'text-gray-400'} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{p.nome}</p>
+                    {p.isAdmin && (
+                      <span className="text-[10px] text-green-600 font-medium">Acesso completo</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => abrirModal(p)}
+                    title="Editar"
+                    className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete({ id: p.perfilId, nome: p.nome })}
+                    className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {p.descricao && (
+                <p className="text-xs text-gray-400 mb-3">{p.descricao}</p>
+              )}
+
+              {/* Ambientes */}
+              <div className="mb-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                  Ambientes
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {ambientesAtivos.length === 0 ? (
+                    <span className="text-xs text-gray-300">Nenhum</span>
+                  ) : ambientesAtivos.map(a => (
+                    <span key={a.key} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-xs font-medium rounded-full">
+                      <Check size={9} /> {a.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Módulos */}
+              {!p.isAdmin && (
+                <div className="mb-3">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                    Módulos no Gerencial
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {modulosAtivos.length === 0 ? (
+                      <span className="text-xs text-gray-300">Nenhum</span>
+                    ) : modulosAtivos.map(m => (
+                      <span key={m.key} className="px-1.5 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded">
+                        {m.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Limites */}
+              {(parseFloat(p.percDescontoMax) > 0 || p.valorDescontoMax > 0) && (
+                <div className="pt-3 border-t border-gray-50">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                    Limite de desconto
+                  </p>
+                  <p className="text-xs text-gray-600">
+                    {parseFloat(p.percDescontoMax) > 0 && `${p.percDescontoMax}%`}
+                    {parseFloat(p.percDescontoMax) > 0 && p.valorDescontoMax > 0 && ' · '}
+                    {p.valorDescontoMax > 0 && fmt(p.valorDescontoMax)}
+                  </p>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── Modal criar/editar ─────────────────────────────────────────────── */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl mx-4 max-h-[90vh] flex flex-col">
+
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h2 className="text-lg font-semibold">{editando ? 'Editar perfil' : 'Novo perfil'}</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Configure os acessos deste perfil</p>
+              </div>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+              {/* Nome */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Label>Nome do perfil *</Label>
+                  <Input
+                    value={form.nome}
+                    onChange={e => setForm(prev => ({ ...prev, nome: e.target.value }))}
+                    className="mt-1" placeholder="Ex: Operador de Caixa" autoFocus
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Descrição</Label>
+                  <Input
+                    value={form.descricao}
+                    onChange={e => setForm(prev => ({ ...prev, descricao: e.target.value }))}
+                    className="mt-1" placeholder="Descreva o perfil..."
+                  />
+                </div>
+              </div>
+
+              {/* Admin toggle */}
+              <div
+                onClick={toggleAdmin}
+                className={`flex items-center justify-between p-4 rounded-xl border cursor-pointer transition-colors ${
+                  form.isAdmin ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-100 hover:border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Shield size={18} className={form.isAdmin ? 'text-green-600' : 'text-gray-400'} />
+                  <div>
+                    <p className={`text-sm font-semibold ${form.isAdmin ? 'text-green-700' : 'text-gray-700'}`}>
+                      Acesso total (Gerencial completo)
+                    </p>
+                    <p className="text-xs text-gray-400">Libera todos os ambientes e módulos automaticamente</p>
+                  </div>
+                </div>
+                <div className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${form.isAdmin ? 'bg-green-500' : 'bg-gray-300'}`}>
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform ${form.isAdmin ? 'translate-x-4' : 'translate-x-0'}`} />
+                </div>
+              </div>
+
+              {!form.isAdmin && (
+                <>
+                  {/* Ambientes */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                      Ambientes disponíveis na tela de seleção
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {AMBIENTES.map(a => (
+                        <div
+                          key={a.key}
+                          onClick={() => toggle(a.key)}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            (form as any)[a.key]
+                              ? 'bg-green-50 border-green-200'
+                              : 'bg-gray-50 border-gray-100 hover:border-gray-200'
+                          }`}
+                        >
+                          <div className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 ${
+                            (form as any)[a.key] ? 'bg-green-500' : 'bg-gray-200'
+                          }`}>
+                            {(form as any)[a.key] && <Check size={10} className="text-white" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{a.label}</p>
+                            <p className="text-xs text-gray-400">{a.desc}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Módulos no Gerencial */}
+                  {form.acessoGerencial && (
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                        Módulos visíveis no Gerencial
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {MODULOS.map(m => (
+                          <div
+                            key={m.key}
+                            onClick={() => toggle(m.key)}
+                            className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors text-sm ${
+                              (form as any)[m.key]
+                                ? 'bg-blue-50 border-blue-200 text-blue-700 font-medium'
+                                : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-200'
+                            }`}
+                          >
+                            <div className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 ${
+                              (form as any)[m.key] ? 'bg-blue-500' : 'bg-gray-200'
+                            }`}>
+                              {(form as any)[m.key] && <Check size={9} className="text-white" />}
+                            </div>
+                            {m.label}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Limites de desconto */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                      Limites operacionais
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Desconto máximo (%)</Label>
+                        <Input
+                          type="number" min="0" max="100" step="0.5"
+                          value={form.percDescontoMax}
+                          onChange={e => setForm(prev => ({ ...prev, percDescontoMax: parseFloat(e.target.value) || 0 }))}
+                          className="mt-1"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">0 = sem desconto permitido</p>
+                      </div>
+                      <div>
+                        <Label>Desconto máximo (R$)</Label>
+                        <Input
+                          type="number" min="0" step="0.01"
+                          value={form.valorDescontoMax > 0 ? (form.valorDescontoMax / 100).toFixed(2) : ''}
+                          onChange={e => setForm(prev => ({ ...prev, valorDescontoMax: Math.round(parseFloat(e.target.value || '0') * 100) }))}
+                          className="mt-1" placeholder="0,00"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">0 = sem limite por valor</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button
+                onClick={() => salvarMut.mutate()}
+                disabled={!form.nome || salvarMut.isPending}
+              >
+                {salvarMut.isPending ? 'Salvando...' : editando ? 'Salvar alterações' : 'Criar perfil'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Excluir perfil"
+          message={`Excluir "${confirmDelete.nome}"? Usuários vinculados a este perfil perderão o acesso.`}
+          confirmLabel="Excluir" danger
+          onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+===== components\modules\compras\CompraRapidaView.tsx =====
+
+'use client'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Trash2, ShoppingCart, Package, Layers } from 'lucide-react'
+import { Button }       from '@/components/ui/button'
+import { Input }        from '@/components/ui/input'
+import { Label }        from '@/components/ui/label'
+import { useToast }     from '@/components/ui/Toast'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+
+
+type TipoItem = 'insumo' | 'produto'
+
+export default function CompraRapidaView({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/compras`
+
+  const [showModal, setShowModal]   = useState(false)
+  const [confirmDel, setConfirmDel] = useState<any>(null)
+  const [tipoItem, setTipoItem]     = useState<TipoItem>('insumo')
+  const [form, setForm] = useState({
+    insumoId:       '',
+    produtoId:      '',
+    nomeItem:       '',
+    nomeFornecedor: '',
+    dataEntrada:    new Date().toISOString().slice(0, 10),
+    valorUnitario:  '',
+    quantidade:     '',
+    observacao:     '',
+  })
+  const setF = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  const { data: comprasRaw, isLoading } = useQuery({
+    queryKey: ['compras-rapidas', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
+  })
+
+  const { data: insumosRaw } = useQuery({
+    queryKey: ['insumos-compras', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=500`)).json(),
+  })
+
+  const { data: produtosRaw } = useQuery({
+    queryKey: ['produtos-compras', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=500`)).json(),
+  })
+
+  const { data: fornecedoresRaw } = useQuery({
+    queryKey: ['fornecedores-compras', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/fornecedores?limit=500`)).json(),
+  })
+
+  const salvarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          insumoId:       tipoItem === 'insumo' && form.insumoId ? Number(form.insumoId) : undefined,
+          produtoId:      tipoItem === 'produto' && form.produtoId ? Number(form.produtoId) : undefined,
+          nomeInsumo:     form.nomeItem,
+          tipItem:        tipoItem,
+          nomeFornecedor: form.nomeFornecedor || undefined,
+          dataEntrada:    form.dataEntrada,
+          valorUnitario:  Math.round(parseFloat(form.valorUnitario.replace(',', '.') || '0') * 100),
+          quantidade:     parseFloat(form.quantidade.replace(',', '.') || '0'),
+          observacao:     form.observacao || undefined,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message ?? 'Erro ao registrar compra')
+      return d
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['compras-rapidas', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['fin-despesas', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['fin-kpis', tenantSlug] })
+      setShowModal(false)
+      resetForm()
+      toast('Compra registrada! Estoque e despesa atualizados.')
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao registrar.', 'error'),
+  })
+
+  const excluirMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${api}/${id}`, { method: 'DELETE' })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir')
+      return d
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['compras-rapidas', tenantSlug] }); toast('Compra excluída.') },
+    onError: (e: any) => toast(e.message || 'Erro.', 'error'),
+  })
+
+  function resetForm() {
+    setForm({ insumoId: '', produtoId: '', nomeItem: '', nomeFornecedor: '', dataEntrada: new Date().toISOString().slice(0, 10), valorUnitario: '', quantidade: '', observacao: '' })
+    setTipoItem('insumo')
+  }
+
+  const compras      = Array.isArray(comprasRaw?.data) ? comprasRaw.data : []
+  const insumos      = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
+  const todosProdutos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
+  // Mostra na combobox apenas produtos marcados como revenda
+  const produtosRevenda = todosProdutos.filter((p: any) => p.tipo === 'Revenda' || p.revenda === true)
+  const fornecedores  = Array.isArray(fornecedoresRaw?.data?.data) ? fornecedoresRaw.data.data : Array.isArray(fornecedoresRaw?.data) ? fornecedoresRaw.data : []
+
+  const totalGasto = compras.reduce((a: number, c: any) => {
+    const qtd = parseFloat(c.qtdTotal ?? c.quantidade ?? '0')
+    return a + Math.round((c.valorUnitario ?? 0) * qtd)
+  }, 0)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Compra Rápida</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Registre compras diretas — estoque e despesa atualizados automaticamente</p>
+        </div>
+        <Button onClick={() => { resetForm(); setShowModal(true) }}>
+          <Plus size={15} className="mr-1.5" /> Registrar Compra
+        </Button>
+      </div>
+
+      {/* KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <p className="text-xs text-gray-400">Total de compras</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{compras.length}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <p className="text-xs text-gray-400">Total gasto</p>
+          <p className="text-2xl font-bold text-red-600 mt-1">{fmt(totalGasto)}</p>
+        </div>
+      </div>
+
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+        <p className="text-sm text-blue-700">
+          Ao registrar uma compra de <strong>insumo</strong>, o estoque do insumo é aumentado automaticamente.
+          Ao registrar um <strong>produto para revenda</strong>, o estoque do produto é aumentado.
+          Em ambos os casos, uma despesa é lançada no financeiro automaticamente.
+        </p>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              {['Data', 'Item', 'Tipo', 'Fornecedor', 'Qtd', 'Valor Unit.', 'Total', ''].map((h, i) => (
+                <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i >= 4 ? 'text-right' : ''}`}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={8} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
+            ) : compras.length === 0 ? (
+              <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">
+                <ShoppingCart size={28} className="text-gray-200 mx-auto mb-2" />
+                Nenhuma compra registrada ainda.
+              </td></tr>
+            ) : compras.map((c: any) => {
+              const qtd  = parseFloat(c.qtdTotal ?? c.quantidade ?? '0')
+              const unit = c.valorUnitario ?? 0
+              const tot  = Math.round(unit * qtd)
+              return (
+                <tr key={c.compraId} className="group border-b border-gray-50 hover:bg-gray-50/80">
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {c.dataEntrada ? new Date(c.dataEntrada + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.nomeInsumo}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500">
+                    {c.tipoItem === 'produto' ? (
+                      <span className="flex items-center gap-1 text-blue-600"><Package size={12} /> Revenda</span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-gray-500"><Layers size={12} /> Insumo</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500">{c.nomeFornecedor || '—'}</td>
+                  <td className="px-4 py-3 text-right text-sm text-gray-700">{qtd.toLocaleString('pt-BR')}</td>
+                  <td className="px-4 py-3 text-right text-sm text-gray-700">{fmt(unit)}</td>
+                  <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(tot)}</td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => setConfirmDel(c)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-gray-300 hover:text-red-500">
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+          {compras.length > 0 && (
+            <tfoot>
+              <tr className="border-t border-gray-100 bg-gray-50">
+                <td colSpan={6} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
+                <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">{fmt(totalGasto)}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-semibold">Registrar Compra</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Estoque e despesa atualizados automaticamente</p>
+              </div>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+
+              {/* Tipo do item */}
+              <div>
+                <Label>Tipo de item *</Label>
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  {[
+                    { key: 'insumo',  label: 'Insumo de produção', icon: Layers },
+                    { key: 'produto', label: 'Produto para revenda', icon: Package },
+                  ].map(t => (
+                    <button key={t.key} onClick={() => { setTipoItem(t.key as TipoItem); setF('insumoId', ''); setF('produtoId', ''); setF('nomeItem', '') }}
+                      className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium transition-colors ${
+                        tipoItem === t.key ? 'bg-green-50 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                      }`}>
+                      <t.icon size={14} /> {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Seleção do item */}
+              <div>
+                <Label>{tipoItem === 'insumo' ? 'Insumo' : 'Produto para Revenda'} *</Label>
+                {tipoItem === 'insumo' ? (
+                  <>
+                    <select value={form.insumoId} onChange={e => {
+                      const ins = insumos.find((i: any) => String(i.insumoId) === e.target.value)
+                      setF('insumoId', e.target.value)
+                      if (ins) setF('nomeItem', ins.nome)
+                    }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      <option value="">Selecionar insumo cadastrado...</option>
+                      {insumos.map((i: any) => <option key={i.insumoId} value={i.insumoId}>{i.nome} ({i.unidade})</option>)}
+                    </select>
+                    {!form.insumoId && (
+                      <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
+                        placeholder="Ou digite o nome do insumo..." className="mt-2 h-8 text-sm" />
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <select value={form.produtoId} onChange={e => {
+                      const p = produtosRevenda.find((x: any) => String(x.produtoId) === e.target.value)
+                      setF('produtoId', e.target.value)
+                      if (p) setF('nomeItem', p.nome)
+                    }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      <option value="">Selecionar produto para revenda...</option>
+                      {produtosRevenda.map((p: any) => <option key={p.produtoId} value={p.produtoId}>{p.nome}</option>)}
+                    </select>
+                    {produtosRevenda.length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">Nenhum produto marcado como Revenda. Configure o tipo do produto em Cadastros → Produtos.</p>
+                    )}
+                    {!form.produtoId && (
+                      <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
+                        placeholder="Ou digite o nome do produto..." className="mt-2 h-8 text-sm" />
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Fornecedor */}
+              <div>
+                <Label>Fornecedor</Label>
+                <select value={form.nomeFornecedor} onChange={e => setF('nomeFornecedor', e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="">Selecionar...</option>
+                  {fornecedores.map((f: any) => (
+                    <option key={f.fornecedorId} value={f.nomeFantasia ?? f.razaoSocial}>{f.nomeFantasia ?? f.razaoSocial}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Data, Qtd, Valor */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label>Data *</Label>
+                  <Input type="date" value={form.dataEntrada} onChange={e => setF('dataEntrada', e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
+                <div>
+                  <Label>Quantidade *</Label>
+                  <Input type="number" min="0" step="1" value={form.quantidade}
+                    onChange={e => setF('quantidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0" />
+                </div>
+                <div>
+                  <Label>Valor unitário (R$) *</Label>
+                  <Input type="number" min="0" step="0.01" value={form.valorUnitario}
+                    onChange={e => setF('valorUnitario', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
+                </div>
+              </div>
+
+              {/* Total calculado */}
+              {form.quantidade && form.valorUnitario && (
+                <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Total da compra</span>
+                  <span className="text-base font-bold text-red-600">
+                    {fmt(Math.round(
+                      parseFloat(form.valorUnitario.replace(',', '.') || '0') * 100 *
+                      parseFloat(form.quantidade.replace(',', '.') || '0')
+                    ))}
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <Label>Observação</Label>
+                <Input value={form.observacao} onChange={e => setF('observacao', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Opcional" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+              <Button variant="outline" onClick={() => setShowModal(false)}>Cancelar</Button>
+              <Button onClick={() => salvarMut.mutate()}
+                disabled={!form.nomeItem || !form.quantidade || !form.valorUnitario || salvarMut.isPending}>
+                {salvarMut.isPending ? 'Registrando...' : 'Registrar Compra'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDel && (
+        <ConfirmModal title="Excluir compra"
+          message={`Excluir a compra de "${confirmDel.nomeInsumo}"? O estoque e a despesa não serão revertidos automaticamente.`}
+          confirmLabel="Excluir" danger
+          onConfirm={() => { excluirMut.mutate(confirmDel.compraId); setConfirmDel(null) }}
+          onCancel={() => setConfirmDel(null)} />
+      )}
+    </div>
+  )
+}
+
+===== components\modules\compras\ListasTab.tsx =====
+
+'use client'
+// components/modules/compras/ListasTab.tsx
+
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ChevronDown, ChevronRight, Scale, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useToast } from '@/components/ui/Toast'
+import { fmtData as fmtDate } from '@/lib/format'
+
+interface Props {
+  tenantSlug:       string
+  onIniciarCotacao: (listaId: number) => void
+}
+
+const ORIGEM_CFG: Record<string, string> = { mrp: 'MRP', manual: 'Manual', requisicao: 'Requisição' }
+const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  aberta:     { label: 'Aberta',      cls: 'bg-blue-100 text-blue-700' },
+  em_cotacao: { label: 'Em cotação',  cls: 'bg-amber-100 text-amber-700' },
+  finalizada: { label: 'Finalizada',  cls: 'bg-green-100 text-green-700' },
+  cancelada:  { label: 'Cancelada',   cls: 'bg-gray-100 text-gray-500' },
+}
+
+
+export default function ListasTab({ tenantSlug, onIniciarCotacao }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/compras/listas`
+
+  const [filtroStatus, setFiltroStatus] = useState('aberta')
+  const [expandida, setExpandida]       = useState<number | null>(null)
+
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['compras-listas', tenantSlug, filtroStatus],
+    queryFn:  async () => {
+      const p = new URLSearchParams({ status: filtroStatus })
+      return (await fetch(`${api}?${p}`)).json()
+    },
+  })
+
+  const inv = () => qc.invalidateQueries({ queryKey: ['compras-listas', tenantSlug] })
+
+  const iniciarCotacaoMut = useMutation({
+    mutationFn: async (listaId: number) => {
+      const res = await fetch(`/api/${tenantSlug}/compras/cotacoes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listaId }),
+      })
+      return res.json()
+    },
+    onSuccess: (_, listaId) => {
+      qc.invalidateQueries({ queryKey: ['compras-listas', tenantSlug] })
+      toast('Cotação iniciada!')
+      onIniciarCotacao(listaId)
+    },
+  })
+
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: inv,
+  })
+
+  const listas = Array.isArray(raw?.data) ? raw.data : []
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        {['aberta', 'em_cotacao', 'finalizada', 'cancelada', 'todas'].map(s => (
+          <button key={s} onClick={() => setFiltroStatus(s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filtroStatus === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+            {STATUS_CFG[s]?.label ?? 'Todas'}
+          </button>
+        ))}
+      </div>
+
+      <p className="text-xs text-gray-400">
+        Listas são geradas automaticamente pelo MRP (aba MRP → "Gerar Lista de Compras")
+      </p>
+
+      <div className="space-y-3">
+        {isLoading ? (
+          <p className="text-sm text-gray-400 text-center py-10">Carregando...</p>
+        ) : listas.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-10 bg-white rounded-xl border border-gray-100">Nenhuma lista encontrada.</p>
+        ) : listas.map((l: any) => {
+          const sCfg = STATUS_CFG[l.status] ?? STATUS_CFG.aberta
+          const aberta = expandida === l.listaId
+          return (
+            <div key={l.listaId} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="flex items-center justify-between p-4">
+                <button onClick={() => setExpandida(aberta ? null : l.listaId)} className="flex items-center gap-3 flex-1 text-left">
+                  {aberta ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-900">{l.descricao || `Lista #${l.listaId}`}</p>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500">{ORIGEM_CFG[l.origem] ?? l.origem}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${sCfg.cls}`}>{sCfg.label}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">{fmtDate(l.dataGeracao)} · {l.totalItens} item(ns)</p>
+                  </div>
+                </button>
+                <div className="flex gap-2">
+                  {l.status === 'aberta' && (
+                    <Button size="sm" variant="outline" onClick={() => iniciarCotacaoMut.mutate(l.listaId)}>
+                      <Scale size={13} className="mr-1.5" /> Iniciar Cotação
+                    </Button>
+                  )}
+                  {l.status === 'aberta' && (
+                    <button onClick={() => excluirMut.mutate(l.listaId)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              {aberta && (
+                <div className="border-t border-gray-50 px-4 py-3 bg-gray-50/50">
+                  <table className="w-full">
+                    <thead>
+                      <tr><th className="text-left text-xs font-medium text-gray-400 pb-2">Insumo</th><th className="text-right text-xs font-medium text-gray-400 pb-2">Sugestão</th><th className="text-right text-xs font-medium text-gray-400 pb-2">Estoque no momento</th></tr>
+                    </thead>
+                    <tbody>
+                      {(l.itens ?? []).map((item: any) => (
+                        <tr key={item.itemId} className="border-t border-gray-100">
+                          <td className="py-1.5 text-sm text-gray-700">{item.nomeInsumo}</td>
+                          <td className="py-1.5 text-right text-sm font-medium text-orange-600">{parseFloat(item.quantidadeSugerida).toFixed(2)}</td>
+                          <td className="py-1.5 text-right text-sm text-gray-400">{parseFloat(item.estoqueNoMomento).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+===== components\modules\compras\PedidosTab.tsx =====
+
+'use client'
+// components/modules/compras/PedidosTab.tsx
+
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Trash2, PackageCheck, Ban } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
+
+interface Props {
+  tenantSlug:           string
+  onIniciarConferencia: (pedidoId: number) => void
+}
+
+const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  aberto:            { label: 'Aberto',            cls: 'bg-blue-100 text-blue-700' },
+  recebido_parcial:  { label: 'Recebido parcial',  cls: 'bg-amber-100 text-amber-700' },
+  recebido:          { label: 'Recebido',          cls: 'bg-green-100 text-green-700' },
+  cancelado:         { label: 'Cancelado',         cls: 'bg-gray-100 text-gray-500' },
+}
+
+
+
+interface ItemForm { _key: string; insumoId?: number; nomeInsumo: string; quantidade: string; precoUnitario: string }
+
+export default function PedidosTab({ tenantSlug, onIniciarConferencia }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/compras/pedidos`
+
+  const [filtroStatus, setFiltroStatus] = useState('aberto')
+  const [showModal, setShowModal]       = useState(false)
+  const [nomeFornecedor, setNomeFornecedor] = useState('')
+  const [previsaoEntrega, setPrevisaoEntrega] = useState('')
+  const [itens, setItens]               = useState<ItemForm[]>([])
+  const [buscaInsumo, setBuscaInsumo]   = useState('')
+
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['compras-pedidos', tenantSlug, filtroStatus],
+    queryFn:  async () => {
+      const p = new URLSearchParams({ status: filtroStatus })
+      return (await fetch(`${api}?${p}`)).json()
+    },
+  })
+
+  const { data: insumosRaw } = useQuery({
+    queryKey: ['insumos-pedido', tenantSlug, buscaInsumo],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?search=${buscaInsumo}&limit=8`)).json(),
+    enabled:  buscaInsumo.length > 0,
+  })
+
+  const inv = () => qc.invalidateQueries({ queryKey: ['compras-pedidos', tenantSlug] })
+
+  const criarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nomeFornecedor, previsaoEntrega: previsaoEntrega || undefined,
+          itens: itens.map(i => ({
+            insumoId: i.insumoId, nomeInsumo: i.nomeInsumo,
+            quantidade: parseFloat(i.quantidade), precoUnitario: parseFloat(i.precoUnitario),
+          })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: () => { inv(); fecharModal(); toast('Pedido criado!') },
+    onError: (e: any) => toast(e.message || 'Erro ao criar pedido.', 'error'),
+  })
+
+  const cancelarMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acao: 'cancelar' }),
+    }).then(r => r.json()),
+    onSuccess: inv,
+  })
+
+  const iniciarConferenciaMut = useMutation({
+    mutationFn: async (pedidoId: number) => {
+      const res = await fetch(`/api/${tenantSlug}/compras/conferencias`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidoId }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return { pedidoId, ...d }
+    },
+    onSuccess: (d) => { onIniciarConferencia(d.pedidoId) },
+    onError: (e: any) => toast(e.message || 'Erro ao iniciar conferência.', 'error'),
+  })
+
+  function fecharModal() {
+    setShowModal(false); setNomeFornecedor(''); setPrevisaoEntrega(''); setItens([])
+  }
+
+  function addInsumo(ins: any) {
+    setItens(prev => [...prev, { _key: Math.random().toString(36), insumoId: ins.insumoId, nomeInsumo: ins.nome, quantidade: '1', precoUnitario: ins.precoCusto ? (ins.precoCusto / 100).toFixed(2) : '' }])
+    setBuscaInsumo('')
+  }
+
+  const pedidos  = Array.isArray(raw?.data) ? raw.data : []
+  const insumos  = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
+  const totalForm = itens.reduce((a, i) => a + (parseFloat(i.quantidade) || 0) * (parseFloat(i.precoUnitario) || 0), 0)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {['aberto', 'recebido_parcial', 'recebido', 'cancelado', 'todas'].map(s => (
+            <button key={s} onClick={() => setFiltroStatus(s)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filtroStatus === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+              {STATUS_CFG[s]?.label ?? 'Todas'}
+            </button>
+          ))}
+        </div>
+        <Button size="sm" onClick={() => setShowModal(true)}>
+          <Plus size={14} className="mr-1.5" /> Pedido manual
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {isLoading ? (
+          <p className="text-sm text-gray-400 text-center py-10">Carregando...</p>
+        ) : pedidos.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-10 bg-white rounded-xl border border-gray-100">Nenhum pedido encontrado.</p>
+        ) : pedidos.map((p: any) => {
+          const sCfg = STATUS_CFG[p.status] ?? STATUS_CFG.aberto
+          return (
+            <div key={p.pedidoId} className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-900">{p.nomeFornecedor}</p>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${sCfg.cls}`}>{sCfg.label}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Pedido #{p.pedidoId} · {fmtDate(p.dataPedido)} · {p.totalItens} item(ns)
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold" style={{ color: '#2ecc71' }}>{fmt(p.valorTotal)}</p>
+                </div>
+              </div>
+              {p.status === 'aberto' && (
+                <div className="flex gap-2 mt-3 pt-3 border-t border-gray-50">
+                  <Button size="sm" variant="outline" onClick={() => iniciarConferenciaMut.mutate(p.pedidoId)}>
+                    <PackageCheck size={13} className="mr-1.5" /> Iniciar Conferência
+                  </Button>
+                  <button onClick={() => cancelarMut.mutate(p.pedidoId)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                    <Ban size={13} /> Cancelar
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-lg font-semibold">Pedido de compra manual</h2>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Fornecedor</Label><Input value={nomeFornecedor} onChange={e => setNomeFornecedor(e.target.value)} className="mt-1" placeholder="Nome do fornecedor" /></div>
+                <div><Label>Previsão de entrega</Label><Input type="date" value={previsaoEntrega} onChange={e => setPrevisaoEntrega(e.target.value)} className="mt-1" /></div>
+              </div>
+
+              <div>
+                <Label>Adicionar insumo</Label>
+                <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)} className="mt-1" placeholder="Buscar insumo..." />
+                {buscaInsumo && insumos.length > 0 && (
+                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                    {insumos.map((ins: any) => (
+                      <button key={ins.insumoId} onClick={() => addInsumo(ins)} className="w-full flex justify-between px-3 py-2 hover:bg-gray-50 text-left">
+                        <span className="text-sm">{ins.nome}</span>
+                        <span className="text-xs text-gray-400">{ins.unidade}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {itens.length > 0 && (
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  {itens.map(item => (
+                    <div key={item._key} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 last:border-0">
+                      <span className="text-sm flex-1 truncate">{item.nomeInsumo}</span>
+                      <Input type="number" min="0" step="0.001" value={item.quantidade}
+                        onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, quantidade: e.target.value } : i))}
+                        className="w-20 h-8 text-sm" placeholder="Qtd" />
+                      <Input type="number" min="0" step="0.01" value={item.precoUnitario}
+                        onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, precoUnitario: e.target.value } : i))}
+                        className="w-24 h-8 text-sm" placeholder="R$" />
+                      <button onClick={() => setItens(prev => prev.filter(i => i._key !== item._key))} className="text-gray-300 hover:text-red-500">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex justify-between px-3 py-2 bg-gray-50">
+                    <span className="text-xs text-gray-500">Total</span>
+                    <span className="text-sm font-bold text-gray-900">{fmt(Math.round(totalForm * 100))}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button onClick={() => criarMut.mutate()} disabled={!nomeFornecedor || itens.length === 0 || criarMut.isPending}>
+                {criarMut.isPending ? 'Salvando...' : 'Criar pedido'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+===== components\modules\compras\RequisicoesTab.tsx =====
+
+'use client'
+// components/modules/compras/RequisicoesTab.tsx
+
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Trash2, Check } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { fmtData as fmtDate } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+const PRIORIDADE_CFG: Record<string, { label: string; cls: string }> = {
+  baixa:   { label: 'Baixa',   cls: 'bg-gray-100 text-gray-600' },
+  normal:  { label: 'Normal',  cls: 'bg-blue-100 text-blue-700' },
+  alta:    { label: 'Alta',    cls: 'bg-amber-100 text-amber-700' },
+  urgente: { label: 'Urgente', cls: 'bg-red-100 text-red-700' },
+}
+const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  pendente: { label: 'Pendente', cls: 'bg-amber-100 text-amber-700' },
+  atendida: { label: 'Atendida', cls: 'bg-green-100 text-green-700' },
+  cancelada:{ label: 'Cancelada',cls: 'bg-gray-100 text-gray-500' },
+}
+
+
+interface ItemForm { _key: string; insumoId: number; nomeInsumo: string; quantidade: string; unidade: string }
+
+export default function RequisicoesTab({ tenantSlug }: Props) {
+  const qc  = useQueryClient()
+  const api = `/api/${tenantSlug}/compras/requisicoes`
+
+  const [filtroStatus, setFiltroStatus] = useState('pendente')
+  const [showModal, setShowModal]       = useState(false)
+  const [motivo, setMotivo]             = useState('')
+  const [prioridade, setPrioridade]     = useState('normal')
+  const [dataEntrega, setDataEntrega]   = useState('')
+  const [departamento, setDepartamento] = useState('')
+  const [itens, setItens]               = useState<ItemForm[]>([])
+  const [buscaInsumo, setBuscaInsumo]   = useState('')
+
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['compras-requisicoes', tenantSlug, filtroStatus],
+    queryFn:  async () => {
+      const p = new URLSearchParams({ status: filtroStatus })
+      return (await fetch(`${api}?${p}`)).json()
+    },
+  })
+
+  const { data: insumosRaw } = useQuery({
+    queryKey: ['insumos-requisicao', tenantSlug, buscaInsumo],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?search=${buscaInsumo}&limit=8`)).json(),
+    enabled:  buscaInsumo.length > 0,
+  })
+
+  const inv = () => qc.invalidateQueries({ queryKey: ['compras-requisicoes', tenantSlug] })
+
+  const criarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          motivo, prioridade, dataEntrega: dataEntrega || undefined, departamento,
+          itens: itens.map(i => ({ insumoId: i.insumoId, nomeInsumo: i.nomeInsumo, quantidade: parseFloat(i.quantidade), unidade: i.unidade })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: () => { inv(); fecharModal() },
+  })
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }: { id: number; status: string }) =>
+      fetch(`${api}/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }).then(r => r.json()),
+    onSuccess: inv,
+  })
+
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: inv,
+  })
+
+  function fecharModal() {
+    setShowModal(false); setMotivo(''); setPrioridade('normal'); setDataEntrega(''); setDepartamento(''); setItens([])
+  }
+
+  function addInsumo(ins: any) {
+    setItens(prev => [...prev, { _key: Math.random().toString(36), insumoId: ins.insumoId, nomeInsumo: ins.nome, quantidade: '1', unidade: ins.unidade }])
+    setBuscaInsumo('')
+  }
+
+  const requisicoes = Array.isArray(raw?.data) ? raw.data : []
+  const insumos     = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          {['pendente', 'atendida', 'cancelada', 'todas'].map(s => (
+            <button key={s} onClick={() => setFiltroStatus(s)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-colors ${filtroStatus === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <Button size="sm" onClick={() => setShowModal(true)}>
+          <Plus size={14} className="mr-1.5" /> Nova requisição
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {isLoading ? (
+          <p className="text-sm text-gray-400 text-center py-10">Carregando...</p>
+        ) : requisicoes.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-10 bg-white rounded-xl border border-gray-100">Nenhuma requisição encontrada.</p>
+        ) : requisicoes.map((r: any) => {
+          const pCfg = PRIORIDADE_CFG[r.prioridade] ?? PRIORIDADE_CFG.normal
+          const sCfg = STATUS_CFG[r.status] ?? STATUS_CFG.pendente
+          return (
+            <div key={r.requisicaoId} className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="flex items-start justify-between mb-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold text-gray-900">{r.motivo || `Requisição #${r.requisicaoId}`}</p>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${pCfg.cls}`}>{pCfg.label}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${sCfg.cls}`}>{sCfg.label}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Solicitado em {fmtDate(r.dataSolicitacao)}
+                    {r.dataEntrega && ` · Entrega prevista ${fmtDate(r.dataEntrega)}`}
+                    {r.departamento && ` · ${r.departamento}`}
+                  </p>
+                </div>
+                {r.status === 'pendente' && (
+                  <div className="flex gap-1">
+                    <button onClick={() => statusMut.mutate({ id: r.requisicaoId, status: 'atendida' })}
+                      className="p-1.5 text-green-500 hover:text-green-700 hover:bg-green-50 rounded-lg" title="Marcar como atendida">
+                      <Check size={14} />
+                    </button>
+                    <button onClick={() => excluirMut.mutate(r.requisicaoId)} className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(r.itens ?? []).map((item: any) => (
+                  <span key={item.itemId} className="px-2 py-1 bg-gray-50 text-gray-600 text-xs rounded-lg">
+                    {item.nomeInsumo} — {parseFloat(item.quantidade)} {item.unidade}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Modal nova requisição */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
+              <h2 className="text-lg font-semibold">Nova requisição de material</h2>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div><Label>Motivo</Label><Input value={motivo} onChange={e => setMotivo(e.target.value)} className="mt-1" placeholder="Ex: Reposição semanal" /></div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label>Prioridade</Label>
+                  <select value={prioridade} onChange={e => setPrioridade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="baixa">Baixa</option><option value="normal">Normal</option>
+                    <option value="alta">Alta</option><option value="urgente">Urgente</option>
+                  </select>
+                </div>
+                <div><Label>Entrega prevista</Label><Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1" /></div>
+                <div><Label>Departamento</Label><Input value={departamento} onChange={e => setDepartamento(e.target.value)} className="mt-1" placeholder="Produção" /></div>
+              </div>
+
+              <div>
+                <Label>Adicionar insumo</Label>
+                <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)} className="mt-1" placeholder="Buscar insumo..." />
+                {buscaInsumo && insumos.length > 0 && (
+                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                    {insumos.map((ins: any) => (
+                      <button key={ins.insumoId} onClick={() => addInsumo(ins)} className="w-full flex justify-between px-3 py-2 hover:bg-gray-50 text-left">
+                        <span className="text-sm">{ins.nome}</span>
+                        <span className="text-xs text-gray-400">{ins.unidade}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {itens.length > 0 && (
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  {itens.map(item => (
+                    <div key={item._key} className="flex items-center gap-2 px-3 py-2 border-b border-gray-50 last:border-0">
+                      <span className="text-sm flex-1">{item.nomeInsumo}</span>
+                      <Input type="number" min="0" step="0.001" value={item.quantidade}
+                        onChange={e => setItens(prev => prev.map(i => i._key === item._key ? { ...i, quantidade: e.target.value } : i))}
+                        className="w-24 h-8 text-sm" />
+                      <span className="text-xs text-gray-400 w-10">{item.unidade}</span>
+                      <button onClick={() => setItens(prev => prev.filter(i => i._key !== item._key))} className="text-gray-300 hover:text-red-500">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button onClick={() => criarMut.mutate()} disabled={itens.length === 0 || criarMut.isPending}>
+                {criarMut.isPending ? 'Salvando...' : 'Criar requisição'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+===== components\modules\compras\CotacaoTab.tsx =====
+
+'use client'
+// components/modules/compras/CotacaoTab.tsx
+
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Check, Trash2, Scale, Loader2, ShoppingBag } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props {
+  tenantSlug:       string
+  listaIdInicial:   number | null
+  onPedidosGerados: () => void
+}
+
+
+
+export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerados }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+
+  const [listaId, setListaId] = useState<number | null>(listaIdInicial)
+  const [novoPreco, setNovoPreco] = useState<Record<number, { fornecedor: string; preco: string }>>({})
+
+  useEffect(() => { if (listaIdInicial) setListaId(listaIdInicial) }, [listaIdInicial])
+
+  // Listas com cotação em andamento, pra escolher se não veio de "Iniciar Cotação"
+  const { data: listasRaw } = useQuery({
+    queryKey: ['compras-listas-cotacao', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/compras/listas?status=em_cotacao`)).json(),
+    enabled:  !listaId,
+  })
+
+  const { data: listaDetailRaw } = useQuery({
+    queryKey: ['compras-lista-detail', tenantSlug, listaId],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/compras/listas/${listaId}`)).json(),
+    enabled:  !!listaId,
+  })
+
+  const { data: cotacaoRaw, refetch: refetchCotacao } = useQuery({
+    queryKey: ['compras-cotacao', tenantSlug, listaId],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/compras/cotacoes?listaId=${listaId}`)).json(),
+    enabled:  !!listaId,
+  })
+
+  const addPrecoMut = useMutation({
+    mutationFn: async ({ insumoId, nomeInsumo, nomeFornecedor, precoUnitario, quantidade }: any) => {
+      const res = await fetch(`/api/${tenantSlug}/compras/cotacoes/${cotacao.cotacaoId}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'add-preco', insumoId, nomeInsumo, nomeFornecedor, precoUnitario, quantidade }),
+      })
+      return res.json()
+    },
+    onSuccess: () => refetchCotacao(),
+  })
+
+  const selecionarMut = useMutation({
+    mutationFn: async ({ insumoId, itemId }: { insumoId: number; itemId: number }) => {
+      const res = await fetch(`/api/${tenantSlug}/compras/cotacoes/${cotacao.cotacaoId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'selecionar', insumoId, itemId }),
+      })
+      return res.json()
+    },
+    onSuccess: () => refetchCotacao(),
+  })
+
+  const removerMut = useMutation({
+    mutationFn: async (itemId: number) =>
+      fetch(`/api/${tenantSlug}/compras/cotacoes/${cotacao.cotacaoId}?itemId=${itemId}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => refetchCotacao(),
+  })
+
+  const gerarPedidosMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/compras/cotacoes/${cotacao.cotacaoId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'gerar-pedidos' }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: (d) => {
+      toast(`${d.data.totalPedidos} pedido(s) de compra gerado(s)!`)
+      qc.invalidateQueries({ queryKey: ['compras-listas', tenantSlug] })
+      onPedidosGerados()
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao gerar pedidos.', 'error'),
+  })
+
+  const listas      = Array.isArray(listasRaw?.data) ? listasRaw.data : []
+  const listaDetail = listaDetailRaw?.data
+  const cotacao     = cotacaoRaw?.data
+
+  if (!listaId) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-400">Selecione uma lista com cotação em andamento (inicie pela aba Listas, botão "Iniciar Cotação"):</p>
+        {listas.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-sm text-gray-400">
+            Nenhuma lista em cotação no momento.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {listas.map((l: any) => (
+              <button key={l.listaId} onClick={() => setListaId(l.listaId)}
+                className="w-full flex items-center justify-between bg-white rounded-xl border border-gray-100 hover:border-green-300 p-4 text-left transition-colors">
+                <span className="text-sm font-medium text-gray-900">{l.descricao || `Lista #${l.listaId}`}</span>
+                <Scale size={14} className="text-gray-300" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (!cotacao || !listaDetail) {
+    return <div className="flex justify-center py-12"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
+  }
+
+  const itensLista = listaDetail.itens ?? []
+  const itensPorInsumo = (insumoId: number) => cotacao.itens.filter((i: any) => i.insumoId === insumoId)
+  const todosTemSelecionado = itensLista.every((li: any) => itensPorInsumo(li.insumoId).some((c: any) => c.selecionado))
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{listaDetail.descricao || `Lista #${listaDetail.listaId}`}</p>
+          <p className="text-xs text-gray-400">Lance os preços de cada fornecedor e marque o melhor pra cada insumo</p>
+        </div>
+        {listaId !== listaIdInicial && (
+          <button onClick={() => setListaId(null)} className="text-xs text-gray-400 hover:text-gray-600">← trocar lista</button>
+        )}
+      </div>
+
+      <div className="space-y-3">
+        {itensLista.map((li: any) => {
+          const precos = itensPorInsumo(li.insumoId)
+          const form   = novoPreco[li.insumoId] ?? { fornecedor: '', preco: '' }
+          return (
+            <div key={li.itemId} className="bg-white rounded-xl border border-gray-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-900">{li.nomeInsumo}</p>
+                <p className="text-xs text-gray-400">Qtd: {parseFloat(li.quantidadeSugerida).toFixed(2)}</p>
+              </div>
+
+              {precos.length > 0 && (
+                <div className="space-y-1.5 mb-3">
+                  {precos.map((p: any) => (
+                    <div key={p.itemId} className={`flex items-center justify-between px-3 py-2 rounded-lg border ${p.selecionado ? 'border-green-300 bg-green-50' : 'border-gray-100'}`}>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => selecionarMut.mutate({ insumoId: li.insumoId, itemId: p.itemId })}
+                          className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${p.selecionado ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'}`}>
+                          {p.selecionado && <Check size={11} className="text-white" />}
+                        </button>
+                        <span className="text-sm text-gray-700">{p.nomeFornecedor}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-semibold text-gray-900">{fmt(p.precoUnitario)}</span>
+                        <button onClick={() => removerMut.mutate(p.itemId)} className="text-gray-300 hover:text-red-500">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Input placeholder="Fornecedor" value={form.fornecedor}
+                  onChange={e => setNovoPreco(prev => ({ ...prev, [li.insumoId]: { ...form, fornecedor: e.target.value } }))}
+                  className="h-8 text-sm flex-1" />
+                <Input placeholder="Preço (R$)" type="number" min="0" step="0.01" value={form.preco}
+                  onChange={e => setNovoPreco(prev => ({ ...prev, [li.insumoId]: { ...form, preco: e.target.value } }))}
+                  className="h-8 text-sm w-28" />
+                <Button size="sm" variant="outline" className="h-8 px-3"
+                  disabled={!form.fornecedor || !form.preco}
+                  onClick={() => {
+                    addPrecoMut.mutate({
+                      insumoId: li.insumoId, nomeInsumo: li.nomeInsumo,
+                      nomeFornecedor: form.fornecedor, precoUnitario: parseFloat(form.preco),
+                      quantidade: parseFloat(li.quantidadeSugerida),
+                    })
+                    setNovoPreco(prev => ({ ...prev, [li.insumoId]: { fornecedor: '', preco: '' } }))
+                  }}>
+                  <Plus size={13} />
+                </Button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="flex justify-end pt-2">
+        <Button disabled={!todosTemSelecionado || gerarPedidosMut.isPending} onClick={() => gerarPedidosMut.mutate()}>
+          {gerarPedidosMut.isPending
+            ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Gerando...</>
+            : <><ShoppingBag size={14} className="mr-1.5" /> Gerar Pedidos de Compra</>
+          }
+        </Button>
+      </div>
+      {!todosTemSelecionado && (
+        <p className="text-xs text-amber-500 text-right">Marque o melhor preço de cada insumo antes de gerar os pedidos.</p>
+      )}
+    </div>
+  )
+}
+
+===== components\modules\compras\ConferenciaTab.tsx =====
+
+'use client'
+// components/modules/compras/ConferenciaTab.tsx
+//
+// Ao finalizar: dá entrada automática no estoque dos insumos recebidos
+// e gera uma Conta a Pagar pro fornecedor (lógica no ConferenciaService).
+
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { CheckCircle, PackageCheck, Loader2, AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props {
+  tenantSlug:      string
+  pedidoIdInicial: number | null
+}
+
+
+
+export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+
+  const [pedidoId, setPedidoId]   = useState<number | null>(pedidoIdInicial)
+  const [quantidades, setQuantidades] = useState<Record<number, string>>({})
+  const [resultado, setResultado] = useState<any>(null)
+
+  useEffect(() => { if (pedidoIdInicial) setPedidoId(pedidoIdInicial) }, [pedidoIdInicial])
+
+  const { data: pedidosRaw } = useQuery({
+    queryKey: ['compras-pedidos-abertos', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/compras/pedidos?status=aberto`)).json(),
+    enabled:  !pedidoId,
+  })
+
+  const { data: confRaw, refetch: refetchConf, isLoading: loadingConf } = useQuery({
+    queryKey: ['compras-conferencia', tenantSlug, pedidoId],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/compras/conferencias?pedidoId=${pedidoId}`)).json(),
+    enabled:  !!pedidoId,
+  })
+
+  const iniciarMut = useMutation({
+    mutationFn: async (pId: number) => {
+      const res = await fetch(`/api/${tenantSlug}/compras/conferencias`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pedidoId: pId }),
+      })
+      return res.json()
+    },
+    onSuccess: () => refetchConf(),
+  })
+
+  const lancarMut = useMutation({
+    mutationFn: async ({ itemId, quantidadeRecebida }: { itemId: number; quantidadeRecebida: number }) => {
+      const res = await fetch(`/api/${tenantSlug}/compras/conferencias/${conferencia.conferenciaId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'lancar-item', itemId, quantidadeRecebida }),
+      })
+      return res.json()
+    },
+    onSuccess: () => refetchConf(),
+  })
+
+  const finalizarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/compras/conferencias/${conferencia.conferenciaId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'finalizar', gerarContaPagar: true }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: (d) => {
+      setResultado(d.data)
+      qc.invalidateQueries({ queryKey: ['compras-pedidos', tenantSlug] })
+      toast('Conferência finalizada! Estoque atualizado e conta a pagar gerada.')
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao finalizar.', 'error'),
+  })
+
+  const pedidosAbertos = Array.isArray(pedidosRaw?.data) ? pedidosRaw.data : []
+  const conferencia     = confRaw?.data
+
+  function handleQtdChange(itemId: number, value: string) {
+    setQuantidades(prev => ({ ...prev, [itemId]: value }))
+  }
+
+  function handleQtdBlur(itemId: number) {
+    const val = parseFloat(quantidades[itemId])
+    if (!isNaN(val)) lancarMut.mutate({ itemId, quantidadeRecebida: val })
+  }
+
+  function voltarParaSelecao() {
+    setPedidoId(null); setResultado(null); setQuantidades({})
+  }
+
+  // ── Tela de sucesso pós-finalização ──────────────────────────────────────
+  if (resultado) {
+    return (
+      <div className="bg-white rounded-xl border border-green-200 p-8 text-center max-w-md mx-auto">
+        <CheckCircle size={32} className="text-green-500 mx-auto mb-3" />
+        <p className="text-lg font-semibold text-gray-900">Conferência concluída!</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {resultado.totalmenteRecebido ? 'Pedido totalmente recebido.' : 'Pedido recebido parcialmente.'}
+        </p>
+        <div className="mt-4 space-y-2 text-left bg-gray-50 rounded-lg p-4">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Valor recebido</span>
+            <span className="font-semibold text-gray-900">{fmt(resultado.valorRecebidoTotal)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Estoque de insumos</span>
+            <span className="font-medium text-green-600">Atualizado automaticamente</span>
+          </div>
+          {resultado.contaPagarId && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Conta a pagar</span>
+              <span className="font-medium text-blue-600">Gerada (#{resultado.contaPagarId})</span>
+            </div>
+          )}
+        </div>
+        <Button className="mt-5 w-full" onClick={voltarParaSelecao}>Conferir outro pedido</Button>
+      </div>
+    )
+  }
+
+  // ── Seleção de pedido (sem pedidoId ainda) ──────────────────────────────
+  if (!pedidoId) {
+    return (
+      <div className="space-y-4">
+        <p className="text-sm text-gray-400">Selecione um pedido em aberto pra iniciar a conferência (ou use o botão "Iniciar Conferência" na aba Pedidos):</p>
+        {pedidosAbertos.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-sm text-gray-400">
+            Nenhum pedido em aberto no momento.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {pedidosAbertos.map((p: any) => (
+              <button key={p.pedidoId} onClick={() => { setPedidoId(p.pedidoId); iniciarMut.mutate(p.pedidoId) }}
+                className="w-full flex items-center justify-between bg-white rounded-xl border border-gray-100 hover:border-green-300 p-4 text-left transition-colors">
+                <div>
+                  <span className="text-sm font-medium text-gray-900">{p.nomeFornecedor}</span>
+                  <span className="text-xs text-gray-400 ml-2">Pedido #{p.pedidoId} · {p.totalItens} item(ns)</span>
+                </div>
+                <PackageCheck size={14} className="text-gray-300" />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (loadingConf || iniciarMut.isPending || !conferencia) {
+    return <div className="flex justify-center py-12"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
+  }
+
+  const itens = conferencia.itens ?? []
+  const todosLancados = itens.every((i: any) => parseFloat(i.quantidadeRecebida) > 0 || quantidades[i.itemId])
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">Conferência do Pedido #{conferencia.pedidoId}</p>
+          <p className="text-xs text-gray-400">Lance a quantidade que realmente chegou de cada item</p>
+        </div>
+        {pedidoId !== pedidoIdInicial && (
+          <button onClick={voltarParaSelecao} className="text-xs text-gray-400 hover:text-gray-600">← trocar pedido</button>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Insumo</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Pedido</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Recebido</th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itens.map((item: any) => {
+              const recebidoAtual = quantidades[item.itemId] ?? String(item.quantidadeRecebida ?? '')
+              const qtdPedida      = parseFloat(item.quantidadePedida)
+              const qtdRecebida    = parseFloat(recebidoAtual || '0')
+              const conforme       = qtdRecebida >= qtdPedida && recebidoAtual !== ''
+              return (
+                <tr key={item.itemId} className="border-b border-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900">{item.nomeInsumo}</td>
+                  <td className="px-4 py-3 text-right text-sm text-gray-500">{qtdPedida.toFixed(2)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <Input type="number" min="0" step="0.001" value={recebidoAtual}
+                      onChange={e => handleQtdChange(item.itemId, e.target.value)}
+                      onBlur={() => handleQtdBlur(item.itemId)}
+                      className="w-24 h-8 text-sm text-right ml-auto" />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {recebidoAtual === '' ? (
+                      <span className="text-xs text-gray-300">—</span>
+                    ) : conforme ? (
+                      <CheckCircle size={15} className="text-green-500 mx-auto" />
+                    ) : (
+                      <AlertTriangle size={15} className="text-amber-500 mx-auto" />
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex justify-end">
+        <Button disabled={!todosLancados || finalizarMut.isPending} onClick={() => finalizarMut.mutate()}>
+          {finalizarMut.isPending
+            ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Finalizando...</>
+            : <><CheckCircle size={14} className="mr-1.5" /> Finalizar Conferência</>
+          }
+        </Button>
+      </div>
+      {!todosLancados && (
+        <p className="text-xs text-amber-500 text-right">Lance a quantidade recebida de todos os itens antes de finalizar.</p>
+      )}
+    </div>
+  )
+}
