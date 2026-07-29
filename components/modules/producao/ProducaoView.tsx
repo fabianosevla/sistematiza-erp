@@ -1,10 +1,12 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Factory, AlertTriangle, CheckCircle, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Factory, AlertTriangle, CheckCircle, X, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { useToast } from '@/components/ui/Toast'
+import { FormModal } from '@/components/ui/FormModal'
+import { fmtQtd, fmtDataCurta as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -18,50 +20,51 @@ function getWeekDates(offset = 0) {
   })
 }
 
-function fmtDate(d: Date) { return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }
 function isoDate(d: Date) { return d.toISOString().slice(0, 10) }
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const HOJE = new Date().toISOString().slice(0, 10)
 
 type CelulaKey = { produtoId: number; data: string; tipo: 'producao' | 'pedido' }
 
 export default function ProducaoView({ tenantSlug }: Props) {
-  const qc = useQueryClient()
-  const [weekOffset, setWeekOffset] = useState(0)
-  const [editandoCelula, setEditandoCelula] = useState<CelulaKey | null>(null)
-  const [valorCelula, setValorCelula] = useState('')
-  const [showPrevisao, setShowPrevisao] = useState(false)
-  const [showBaixa, setShowBaixa] = useState(false)
-  const [produtoBaixa, setProdutoBaixa] = useState<any>(null)
-  const [qtdBaixa, setQtdBaixa] = useState('')
-  const [previewBaixa, setPreviewBaixa] = useState<any>(null)
-  const [loadingBaixa, setLoadingBaixa] = useState(false)
-  const [resultadoBaixa, setResultadoBaixa] = useState<any>(null)
+  const qc        = useQueryClient()
+  const { toast } = useToast()
 
-  const dias = getWeekDates(weekOffset)
+  const [weekOffset, setWeekOffset]         = useState(0)
+  const [editandoCelula, setEditandoCelula] = useState<CelulaKey | null>(null)
+  const [valorCelula, setValorCelula]       = useState('')
+  const [showPrevisao, setShowPrevisao]     = useState(false)
+  const [showRegistro, setShowRegistro]     = useState(false)
+  const [previaLote, setPreviaLote]         = useState<any>(null)
+  const [carregandoPrevia, setCarregandoPrevia] = useState(false)
+  const [ciente, setCiente]                 = useState(false)
+
+  const dias   = getWeekDates(weekOffset)
   const inicio = isoDate(dias[0])
-  const fim = isoDate(dias[5])
+  const fim    = isoDate(dias[5])
 
   const { data: gradeData } = useQuery({
     queryKey: ['producao-grade', tenantSlug, inicio, fim],
-    queryFn: async () => (await fetch(`/api/${tenantSlug}/producao/grade?inicio=${inicio}&fim=${fim}`)).json(),
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/grade?inicio=${inicio}&fim=${fim}`)).json(),
+  })
+
+  // Células já lançadas: viram cinza e param de aceitar edição.
+  const { data: registrosData } = useQuery({
+    queryKey: ['producao-registros', tenantSlug, inicio, fim],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/registrar?inicio=${inicio}&fim=${fim}`)).json(),
   })
 
   const { data: previsaoData } = useQuery({
     queryKey: ['producao-previsao', tenantSlug, inicio, fim],
-    queryFn: async () => (await fetch(`/api/${tenantSlug}/producao/previsao?inicio=${inicio}&fim=${fim}`)).json(),
-    enabled: showPrevisao,
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/previsao?inicio=${inicio}&fim=${fim}`)).json(),
+    enabled:  showPrevisao,
   })
 
   // Previsão semanal necessária — média histórica de todos os meses anteriores ÷ 4
   const { data: prevSemanalData } = useQuery({
     queryKey: ['previsao-semanal', tenantSlug],
-    queryFn: async () => (await fetch(`/api/${tenantSlug}/metas?tipo=previsao&mes=${new Date().getMonth() + 1}&ano=${new Date().getFullYear()}&mesesHistorico=12`)).json(),
-    staleTime: 300000, // 5 min
-  })
-
-  const { data: produtosData } = useQuery({
-    queryKey: ['produtos-select', tenantSlug],
-    queryFn: async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos`)).json(),
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/metas?tipo=previsao&mes=${new Date().getMonth() + 1}&ano=${new Date().getFullYear()}&mesesHistorico=12`)).json(),
+    staleTime: 300000,
   })
 
   const salvarCelulaMut = useMutation({
@@ -71,13 +74,93 @@ export default function ProducaoView({ tenantSlug }: Props) {
     }).then(r => r.json()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
-      // A previsão de insumos deriva da grade — sem isto ela ficava com o
-      // número antigo até trocar de semana ou dar F5.
       qc.invalidateQueries({ queryKey: ['producao-previsao', tenantSlug] })
     },
   })
 
+  const grade      = gradeData?.data ?? gradeData ?? {}
+  const produtos   = Array.isArray(grade.produtos) ? grade.produtos : []
+  const celulas    = grade.grade ?? {}     // grade[produtoId][data] = qtd produção
+  const celulasPed = grade.pedidos ?? {}   // pedidos[produtoId][data] = qtd pedido
+
+  // registrados[produtoId][data] = { planejada, produzida, ... }
+  const registrados = registrosData?.data?.porProdutoData ?? {}
+  function jaRegistrada(produtoId: number, data: string) {
+    return !!registrados?.[produtoId]?.[data]
+  }
+
+  const previsao = Array.isArray(previsaoData?.data?.itens) ? previsaoData.data.itens
+    : Array.isArray(previsaoData?.data)  ? previsaoData.data
+    : Array.isArray(previsaoData?.itens) ? previsaoData.itens
+    : Array.isArray(previsaoData) ? previsaoData : []
+
+  const prevSemanal: Record<number, number> = {}
+  for (const p of (prevSemanalData?.data?.produtos ?? [])) {
+    prevSemanal[p.produtoId] = Math.ceil((p.mediaVendas ?? 0) / 4)
+  }
+
+  // ── Células pendentes de registro ────────────────────────────────────────
+  // Entram apenas dias que já aconteceram (até hoje). O que está planejado
+  // para os próximos dias continua editável e fora do lançamento — não faz
+  // sentido dar baixa de insumo de uma produção que ainda não ocorreu.
+  const pendentes = produtos.flatMap((p: any) =>
+    dias
+      .map(d => isoDate(d))
+      .filter(d => d <= HOJE)
+      .map(d => ({ produtoId: p.produtoId, nome: p.nome, unidade: p.unidade, data: d, quantidade: celulas?.[p.produtoId]?.[d] ?? 0 }))
+      .filter(c => c.quantidade > 0 && !jaRegistrada(c.produtoId, c.data))
+  )
+
+  async function abrirRegistro() {
+    if (pendentes.length === 0) {
+      toast('Nada a registrar: as células até hoje já foram lançadas ou estão zeradas.')
+      return
+    }
+    setShowRegistro(true)
+    setCiente(false)
+    setCarregandoPrevia(true)
+    setPreviaLote(null)
+    try {
+      const res = await fetch(`/api/${tenantSlug}/producao/registrar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmar: false,
+          itens: pendentes.map(c => ({ produtoId: c.produtoId, dataProducao: c.data, quantidade: c.quantidade })),
+        }),
+      })
+      const d = await res.json()
+      setPreviaLote(d?.data ?? d)
+    } finally { setCarregandoPrevia(false) }
+  }
+
+  const confirmarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/producao/registrar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmar: true,
+          itens: pendentes.map(c => ({ produtoId: c.produtoId, dataProducao: c.data, quantidade: c.quantidade })),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao registrar produção')
+      return d?.data ?? d
+    },
+    onSuccess: (d) => {
+      toast(d?.message ?? 'Produção registrada!')
+      setShowRegistro(false); setPreviaLote(null); setCiente(false)
+      qc.invalidateQueries({ queryKey: ['producao-registros', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['producao-previsao', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-kpis', tenantSlug] })
+    },
+    onError: (e: any) => toast(e?.message ?? 'Erro ao registrar produção.', 'error'),
+  })
+
   function iniciarEdicao(produtoId: number, data: string, tipo: 'producao' | 'pedido', valorAtual: number) {
+    if (jaRegistrada(produtoId, data)) return
     setEditandoCelula({ produtoId, data, tipo })
     setValorCelula(String(valorAtual || ''))
   }
@@ -87,105 +170,65 @@ export default function ProducaoView({ tenantSlug }: Props) {
     setEditandoCelula(null)
   }
 
-  const grade = gradeData?.data ?? gradeData ?? {}
-  const produtos = Array.isArray(grade.produtos) ? grade.produtos : []
-  const celulas = grade.grade ?? {}         // grade[produtoId][data] = qtd produção
-  const celulasPed = grade.pedidos ?? {}       // pedidos[produtoId][data] = qtd pedido (previsão de produção)
+  // Célula de PP. Depois de registrada fica cinza claro e some o clique —
+  // é o sinal visual de que aquele dia já baixou insumo e entrou no estoque.
+  function CelulaEditavel({ produtoId, data, valor }: { produtoId: number; data: string; valor: number }) {
+    const travada = jaRegistrada(produtoId, data)
+    const isEdit  = editandoCelula?.produtoId === produtoId && editandoCelula?.data === data && editandoCelula?.tipo === 'producao'
 
-  // A rota devolve { itens: [...] } com os totais ao lado. Antes esperávamos
-  // um array puro, então a lista nunca era reconhecida e a tabela ficava vazia.
-  // Os formatos antigos seguem aceitos para não depender da ordem do deploy.
-  const previsao = Array.isArray(previsaoData?.data?.itens) ? previsaoData.data.itens
-    : Array.isArray(previsaoData?.data) ? previsaoData.data
-      : Array.isArray(previsaoData?.itens) ? previsaoData.itens
-        : Array.isArray(previsaoData) ? previsaoData : []
+    if (travada) {
+      const reg = registrados[produtoId][data]
+      return (
+        <span
+          title={`Registrado: ${fmtQtd(reg.produzida)} — insumo já debitado`}
+          className="inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
+          {reg.produzida > 0 ? fmtQtd(reg.produzida) : '—'}
+        </span>
+      )
+    }
 
-  // Exclui produtos de revenda: eles não são produzidos (são comprados
-  // prontos), então não aparecem no "Registrar Produção". A grade em si já
-  // vem filtrada pela rota /producao/grade.
-  const todosProdutos = (Array.isArray(produtosData?.data?.data) ? produtosData.data.data
-    : Array.isArray(produtosData?.data) ? produtosData.data : [])
-    .filter((p: any) => !p.revenda)
-
-  // Mapa de previsão semanal por produto (média histórica ÷ 4)
-  const prevSemanal: Record<number, number> = {}
-  const prevProdutos = prevSemanalData?.data?.produtos ?? []
-  for (const p of prevProdutos) {
-    prevSemanal[p.produtoId] = Math.ceil((p.mediaVendas ?? 0) / 4)
-  }
-
-  async function verPreviewBaixa() {
-    if (!produtoBaixa || !qtdBaixa) return
-    setLoadingBaixa(true)
-    try {
-      const res = await fetch(`/api/${tenantSlug}/producao/baixar-insumos`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ produtoId: produtoBaixa.produtoId, quantidade: Number(qtdBaixa), confirmar: false }),
-      })
-      const data = await res.json()
-      setPreviewBaixa(data?.data ?? data)
-    } finally { setLoadingBaixa(false) }
-  }
-
-  async function confirmarBaixa() {
-    if (!produtoBaixa || !qtdBaixa) return
-    setLoadingBaixa(true)
-    try {
-      const res = await fetch(`/api/${tenantSlug}/producao/baixar-insumos`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ produtoId: produtoBaixa.produtoId, quantidade: Number(qtdBaixa), confirmar: true }),
-      })
-      const data = await res.json()
-      setResultadoBaixa(data?.data ?? data)
-      qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
-    } finally { setLoadingBaixa(false) }
-  }
-
-  function fecharBaixa() {
-    setShowBaixa(false); setProdutoBaixa(null); setQtdBaixa('')
-    setPreviewBaixa(null); setResultadoBaixa(null)
-  }
-
-  // Célula editável — usada APENAS para PP (previsão de produção).
-  // O PED é somente leitura (puxado dos Pedidos), renderizado direto na tabela.
-  function CelulaEditavel({ produtoId, data, tipo, valor, cor }: { produtoId: number; data: string; tipo: 'producao' | 'pedido'; valor: number; cor: string }) {
-    const isEdit = editandoCelula?.produtoId === produtoId && editandoCelula?.data === data && editandoCelula?.tipo === tipo
     if (isEdit) {
       return (
         <input type="number" min="0" value={valorCelula}
           onChange={e => setValorCelula(e.target.value)}
-          onBlur={() => salvarCelula(produtoId, data, tipo)}
+          onBlur={() => salvarCelula(produtoId, data, 'producao')}
           onKeyDown={e => {
-            if (e.key === 'Enter') salvarCelula(produtoId, data, tipo)
+            if (e.key === 'Enter') salvarCelula(produtoId, data, 'producao')
             if (e.key === 'Escape') setEditandoCelula(null)
           }}
           className="w-10 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
       )
     }
+
     return (
-      <button onClick={() => iniciarEdicao(produtoId, data, tipo, valor)}
-        className={`w-10 h-6 rounded text-xs font-medium transition-colors ${valor > 0 ? `${cor} hover:opacity-80` : 'text-gray-200 hover:bg-gray-100'}`}>
+      <button onClick={() => iniciarEdicao(produtoId, data, 'producao', valor)}
+        className={`w-10 h-6 rounded text-xs font-medium transition-colors ${
+          valor > 0 ? 'bg-green-100 text-green-700 hover:opacity-80' : 'text-gray-200 hover:bg-gray-100'
+        }`}>
         {valor > 0 ? valor : '—'}
       </button>
     )
   }
 
-  // Célula somente leitura — PED (volume vindo dos Pedidos pela previsão de produção da semana)
-  function CelulaPedido({ valor, cor }: { valor: number; cor: string }) {
+  function CelulaPedido({ valor }: { valor: number }) {
     return (
-      <span className={`inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium ${valor > 0 ? cor : 'text-gray-200'}`}>
+      <span className={`inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium ${
+        valor > 0 ? 'bg-blue-100 text-blue-700' : 'text-gray-200'
+      }`}>
         {valor > 0 ? valor : '—'}
       </span>
     )
   }
 
-  // Totais por coluna
   const totaisPedDia: Record<string, number> = {}
   const totaisPrevDia: Record<string, number> = {}
   for (const dia of dias) {
     const d = isoDate(dia)
-    totaisPedDia[d] = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
-    totaisPrevDia[d] = produtos.reduce((a: number, p: any) => a + (celulas?.[p.produtoId]?.[d] ?? 0), 0)
+    totaisPedDia[d]  = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
+    totaisPrevDia[d] = produtos.reduce((a: number, p: any) => {
+      const reg = registrados?.[p.produtoId]?.[d]
+      return a + (reg ? Number(reg.produzida) : (celulas?.[p.produtoId]?.[d] ?? 0))
+    }, 0)
   }
 
   return (
@@ -195,12 +238,23 @@ export default function ProducaoView({ tenantSlug }: Props) {
           <h1 className="text-2xl font-semibold text-gray-900">Produção</h1>
           <p className="text-sm text-gray-400 mt-0.5">{fmtDate(dias[0])} – {fmtDate(dias[5])}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowPrevisao(!showPrevisao)}>
             {showPrevisao ? 'Ocultar Previsão Insumos' : 'Ver Previsão de Insumos'}
           </Button>
-          <Button onClick={() => setShowBaixa(true)}>
-            <Factory size={14} className="mr-1.5" /> Registrar Produção
+          <InfoTip titulo="Registrar produção">
+            Lança de uma vez todas as células preenchidas <strong>até hoje</strong> que ainda
+            não foram registradas. Para cada uma: os insumos da ficha são debitados e a
+            quantidade entra no estoque do produto.
+            <br /><br />
+            A quantidade da célula é o que <strong>de fato</strong> foi produzido — se o plano
+            era 50 e saíram 52, corrija a célula para 52 antes de registrar.
+            <br /><br />
+            Célula registrada fica cinza e não aceita mais edição. Dias futuros não entram.
+          </InfoTip>
+          <Button onClick={abrirRegistro}>
+            <Factory size={14} className="mr-1.5" />
+            Registrar Produção{pendentes.length > 0 ? ` (${pendentes.length})` : ''}
           </Button>
         </div>
       </div>
@@ -252,21 +306,21 @@ export default function ProducaoView({ tenantSlug }: Props) {
                       <span className={`text-xs font-semibold ${estoque <= (p.estoqueMinimo ?? 0) ? 'text-red-600' : 'text-gray-700'}`}>{estoque}</span>
                     </td>
                     {dias.map(dia => {
-                      const d = isoDate(dia)
-                      const ped = celulasPed?.[p.produtoId]?.[d] ?? 0
-                      const prev = celulas?.[p.produtoId]?.[d] ?? 0
-                      totalPed += ped
+                      const d    = isoDate(dia)
+                      const ped  = celulasPed?.[p.produtoId]?.[d] ?? 0
+                      const reg  = registrados?.[p.produtoId]?.[d]
+                      const prev = reg ? Number(reg.produzida) : (celulas?.[p.produtoId]?.[d] ?? 0)
+                      totalPed  += ped
                       totalPrev += prev
                       return (
-                        <>
-                          <td key={`ped-${d}`} className="px-0.5 py-1 text-center">
-                            {/* PED — somente leitura: volume dos Pedidos (previsão de produção) */}
-                            <CelulaPedido valor={ped} cor="bg-blue-100 text-blue-700" />
-                          </td>
-                          <td key={`prev-${d}`} className="px-0.5 py-1 text-center">
-                            <CelulaEditavel produtoId={p.produtoId} data={d} tipo="producao" valor={prev} cor="bg-green-100 text-green-700" />
-                          </td>
-                        </>
+                        <td key={`dia-${d}`} className="px-0 py-1" colSpan={2}>
+                          <div className="grid grid-cols-2">
+                            <span className="text-center"><CelulaPedido valor={ped} /></span>
+                            <span className="text-center">
+                              <CelulaEditavel produtoId={p.produtoId} data={d} valor={celulas?.[p.produtoId]?.[d] ?? 0} />
+                            </span>
+                          </div>
+                        </td>
                       )
                     })}
                     <td className="px-2 py-2 text-center">
@@ -288,7 +342,6 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 )
               })}
             </tbody>
-            {/* Totais */}
             {produtos.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
@@ -299,10 +352,12 @@ export default function ProducaoView({ tenantSlug }: Props) {
                   {dias.map(dia => {
                     const d = isoDate(dia)
                     return (
-                      <>
-                        <td key={`tot-ped-${d}`} className="px-0.5 py-2 text-center text-xs font-bold text-blue-600">{totaisPedDia[d] > 0 ? totaisPedDia[d] : '—'}</td>
-                        <td key={`tot-prev-${d}`} className="px-0.5 py-2 text-center text-xs font-bold text-green-600">{totaisPrevDia[d] > 0 ? totaisPrevDia[d] : '—'}</td>
-                      </>
+                      <td key={`tot-${d}`} className="px-0 py-2" colSpan={2}>
+                        <div className="grid grid-cols-2">
+                          <span className="text-center text-xs font-bold text-blue-600">{totaisPedDia[d] > 0 ? totaisPedDia[d] : '—'}</span>
+                          <span className="text-center text-xs font-bold text-green-600">{totaisPrevDia[d] > 0 ? totaisPrevDia[d] : '—'}</span>
+                        </div>
+                      </td>
                     )
                   })}
                   <td className="px-2 py-2 text-center text-xs font-bold text-blue-700">
@@ -317,12 +372,11 @@ export default function ProducaoView({ tenantSlug }: Props) {
             )}
           </table>
         </div>
-        {/* Legenda */}
         <div className="px-4 py-2 border-t border-gray-100 flex gap-4 flex-wrap text-[10px] text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido (Ped) — puxado dos Pedidos pela previsão de produção (somente leitura)</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" /> Previsão de Produção (PP) — editável</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-100 inline-block" /> Prod. Necessária = média histórica ÷ 4 semanas</span>
-          <span className="text-gray-300">Prev. Est. = Estoque + Produção − Pedidos</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido (Ped) — dos Pedidos, somente leitura</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" /> Produção (PP) — editável</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-100 inline-block" /> Registrada — insumo debitado, estoque somado</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-100 inline-block" /> Necessária = média histórica ÷ 4</span>
         </div>
       </div>
 
@@ -339,7 +393,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
               <thead>
                 <tr className="border-b border-gray-100">
                   {['Insumo', 'Necessário', 'Estoque Atual', 'Situação'].map((h, i) => (
-                    <th key={h} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                    <th key={h} className={`${i === 0 ? 'text-left' : 'text-center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -347,9 +401,12 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 {previsao.map((item: any, i: number) => (
                   <tr key={i} className={`border-b border-gray-50 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
                     <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{item.nomeInsumo ?? item.nome}</td>
-                    <td className="px-4 py-2.5 text-center text-sm text-gray-600">{parseFloat(String(item.totalNecessario ?? item.necessario ?? 0)).toFixed(3)} {item.unidade}</td>
+                    <td className="px-4 py-2.5 text-center text-sm text-gray-600">{fmtQtd(item.totalNecessario ?? item.necessario ?? 0)} {item.unidade}</td>
                     <td className="px-4 py-2.5 text-center text-sm">
-                      <span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{parseFloat(String(item.estoqueAtual ?? item.emEstoque ?? 0)).toFixed(3)}</span>                    </td>
+                      <span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                        {fmtQtd(item.estoqueAtual ?? item.emEstoque ?? 0)}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5 text-center">
                       {item.suficiente
                         ? <span className="text-xs text-green-600 flex items-center justify-center gap-1"><CheckCircle size={12} /> OK</span>
@@ -363,87 +420,124 @@ export default function ProducaoView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Registrar Produção */}
-      {showBaixa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold">Registrar Produção</h2>
-                <p className="text-sm text-gray-400 mt-0.5">Baixa automática de insumos conforme ficha técnica</p>
-              </div>
-              <button onClick={fecharBaixa} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              {!resultadoBaixa ? (
-                <>
-                  <div>
-                    <Label>Produto *</Label>
-                    <select value={produtoBaixa?.produtoId ?? ''}
-                      onChange={e => { const p = todosProdutos.find((x: any) => x.produtoId === Number(e.target.value)); setProdutoBaixa(p ?? null); setPreviewBaixa(null) }}
-                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                      <option value="">Selecionar produto...</option>
-                      {todosProdutos.map((p: any) => <option key={p.produtoId} value={p.produtoId}>{p.nome}</option>)}
-                    </select>
+      {/* Modal — confirmação do registro em lote */}
+      {showRegistro && (
+        <FormModal
+          titulo="Registrar Produção"
+          onClose={() => { setShowRegistro(false); setPreviaLote(null); setCiente(false) }}
+          largura="max-w-2xl"
+          cabecalho={
+            <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5">
+              <Lock size={9} /> irreversível
+            </span>
+          }
+        >
+          <div className="p-6 space-y-5">
+            {carregandoPrevia ? (
+              <p className="text-sm text-gray-400 text-center py-8">Calculando...</p>
+            ) : !previaLote ? (
+              <p className="text-sm text-gray-400 text-center py-8">Nada a registrar.</p>
+            ) : (
+              <>
+                {previaLote.semFicha?.length > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+                    <p className="text-sm text-red-700">
+                      Sem ficha técnica: {previaLote.semFicha.join(', ')}. Cadastre a ficha antes de registrar.
+                    </p>
                   </div>
-                  <div>
-                    <Label>Quantidade produzida *</Label>
-                    <Input type="number" min="1" value={qtdBaixa} onChange={e => { setQtdBaixa(e.target.value); setPreviewBaixa(null) }} className="mt-1" placeholder="Ex: 10" />
-                  </div>
-                  {!previewBaixa && (
-                    <Button variant="outline" className="w-full" onClick={verPreviewBaixa} disabled={!produtoBaixa || !qtdBaixa || loadingBaixa}>
-                      {loadingBaixa ? 'Calculando...' : 'Ver insumos que serão consumidos'}
-                    </Button>
-                  )}
-                  {previewBaixa && (
-                    <>
-                      {!previewBaixa.temFicha ? (
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                          <p className="text-sm text-amber-700">{previewBaixa.message}</p>
-                        </div>
-                      ) : (
-                        <>
-                          <table className="w-full border border-gray-100 rounded-lg overflow-hidden">
-                            <thead><tr className="bg-gray-50">
-                              {['Insumo', 'Consumo', 'Estoque', 'Ficará'].map((h, i) => <th key={h} className={`text-xs font-medium text-gray-400 px-3 py-2 ${i === 0 ? 'text-left' : 'text-center'}`}>{h}</th>)}
-                            </tr></thead>
-                            <tbody>
-                              {previewBaixa.itens?.map((item: any, i: number) => (
-                                <tr key={i} className={`border-t border-gray-50 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
-                                  <td className="px-3 py-2 text-sm font-medium text-gray-900">{item.nomeInsumo}</td>
-                                  <td className="px-3 py-2 text-center text-sm">{item.qtdNecessaria.toFixed(3)} {item.unidade}</td>
-                                  <td className="px-3 py-2 text-center text-sm">{item.estoqueAtual.toFixed(3)}</td>
-                                  <td className="px-3 py-2 text-center text-sm"><span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{Math.max(0, item.estoqueRestante).toFixed(3)}</span></td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                          <div className="flex gap-3">
-                            <Button variant="outline" className="flex-1" onClick={() => setPreviewBaixa(null)}>Recalcular</Button>
-                            <Button className="flex-1" onClick={confirmarBaixa} disabled={loadingBaixa}>
-                              {loadingBaixa ? 'Registrando...' : 'Confirmar Produção'}
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
-                    <CheckCircle size={20} className="text-green-500" />
-                    <div>
-                      <p className="text-sm font-semibold text-green-700">Produção registrada!</p>
-                      <p className="text-sm text-green-600">{resultadoBaixa.message}</p>
-                    </div>
-                  </div>
-                  <Button className="w-full" onClick={fecharBaixa}>Fechar</Button>
+                )}
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Entra no estoque
+                  </p>
+                  <table className="w-full border border-gray-100 rounded-lg overflow-hidden">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="text-left   text-xs font-medium text-gray-400 px-3 py-2">Produto</th>
+                        <th className="text-center text-xs font-medium text-gray-400 px-3 py-2">Data</th>
+                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Quantidade</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previaLote.produtos?.map((p: any, i: number) => (
+                        <tr key={i} className="border-t border-gray-50">
+                          <td className="px-3 py-2 text-sm font-medium text-gray-900">{p.nome}</td>
+                          <td className="px-3 py-2 text-center text-sm text-gray-500">{fmtDate(p.dataProducao)}</td>
+                          <td className="px-3 py-2 text-right text-sm font-semibold text-green-700">
+                            +{fmtQtd(p.quantidade)} {p.unidade}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                    Sai do estoque
+                  </p>
+                  <table className="w-full border border-gray-100 rounded-lg overflow-hidden">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="text-left   text-xs font-medium text-gray-400 px-3 py-2">Insumo</th>
+                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Consumo</th>
+                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Estoque</th>
+                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Ficará</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previaLote.insumos?.map((it: any, i: number) => (
+                        <tr key={i} className={`border-t border-gray-50 ${!it.suficiente ? 'bg-red-50/40' : ''}`}>
+                          <td className="px-3 py-2 text-sm font-medium text-gray-900">
+                            {it.nome}
+                            {it.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm text-gray-600">−{fmtQtd(it.total)} {it.unidade}</td>
+                          <td className="px-3 py-2 text-right text-sm text-gray-500">{fmtQtd(it.estoqueAtual)}</td>
+                          <td className="px-3 py-2 text-right text-sm font-semibold">
+                            <span className={it.suficiente ? 'text-green-600' : 'text-red-600'}>
+                              {fmtQtd(Math.max(0, it.restante))}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {previaLote.temInsuficiencia && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="text-sm text-amber-700">
+                      Há insumo com estoque menor que o consumo. Se confirmar, o saldo desses
+                      insumos fica zerado — o negativo não é registrado.
+                    </p>
+                  </div>
+                )}
+
+                <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-gray-200 px-4 py-3">
+                  <input type="checkbox" checked={ciente} onChange={e => setCiente(e.target.checked)}
+                    className="w-4 h-4 rounded mt-0.5" />
+                  <span className="text-sm text-gray-700">
+                    Confirmo que estas quantidades foram <strong>realmente produzidas</strong>.
+                    Ao registrar, o insumo é debitado, o estoque é somado e as células ficam bloqueadas.
+                  </span>
+                </label>
+
+                <div className="flex justify-end gap-3 pt-1">
+                  <Button variant="outline" onClick={() => { setShowRegistro(false); setPreviaLote(null); setCiente(false) }}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={() => confirmarMut.mutate()}
+                    disabled={!ciente || confirmarMut.isPending || previaLote.semFicha?.length > 0}>
+                    {confirmarMut.isPending ? 'Registrando...' : 'Registrar Produção'}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )

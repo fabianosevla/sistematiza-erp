@@ -133,6 +133,166 @@ export class ProducaoRegistroService {
     }
   }
 
+  /**
+   * REGISTRO EM LOTE — o botão "Registrar Produção" da grade.
+   *
+   * Recebe as células pendentes (produto + data + quantidade) e grava todas
+   * numa transação só. Ou tudo entra, ou nada entra: não existe cenário em que
+   * metade dos produtos baixou insumo e a outra metade não.
+   *
+   * A quantidade da célula É a quantidade produzida. Se saíram 52 rondelis
+   * onde o plano dizia 50, a pessoa corrige a célula para 52 antes de
+   * registrar — por isso planejada e produzida são o mesmo número aqui.
+   */
+  async registrarLote({ itens, observacao, userId }: {
+    itens: { produtoId: number; dataProducao: string; quantidade: number }[]
+    observacao?: string
+    userId: number
+  }) {
+    const validos = (itens ?? []).filter(i => Number(i.quantidade) > 0 && Number(i.produtoId) > 0)
+    if (validos.length === 0) throw new Error('Nenhuma célula com quantidade para registrar')
+
+    // Confere as fichas antes de abrir transação — erro de cadastro não deve
+    // derrubar a gravação no meio.
+    const semFicha: string[] = []
+    for (const item of validos) {
+      const previa = await this.simular({
+        produtoId:    Number(item.produtoId),
+        qtdPlanejada: Number(item.quantidade),
+        qtdProduzida: Number(item.quantidade),
+      })
+      if (!previa.temFicha) semFicha.push(previa.nomeProduto)
+    }
+    if (semFicha.length > 0) {
+      throw new Error(`Sem ficha técnica: ${[...new Set(semFicha)].join(', ')}. Cadastre a ficha antes de registrar.`)
+    }
+
+    const debito = new DebitoInsumoService(this.db, this.schemaName)
+    const gravados: any[] = []
+
+    await this.db.execute(sql`BEGIN`)
+    try {
+      for (const item of validos) {
+        const produtoId = Number(item.produtoId)
+        const qtd       = Number(item.quantidade)
+        const data      = String(item.dataProducao)
+
+        const itensDebitados = await debito.simular(produtoId, qtd)
+        await debito.debitar(produtoId, qtd, userId)
+
+        await this.db.execute(sql`
+          UPDATE t_produto
+          SET estoque_atual = estoque_atual + ${qtd},
+              updated_dt = NOW(), updated_by = ${userId}
+          WHERE produto_id = ${produtoId}
+        `)
+
+        await this.db.execute(sql`
+          INSERT INTO t_movimentacao_estoque
+            (tipo, entidade, entidade_id, quantidade, preco_custo, observacao,
+             data_movimentacao, created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
+          VALUES
+            ('entrada', 'produto', ${produtoId}, ${qtd}, 0,
+             ${observacao ?? `Produção de ${data}`},
+             NOW(), ${userId}, ${userId}, NOW(), NOW(), true, 0)
+        `)
+
+        const reg = await this.db.execute(sql`
+          INSERT INTO t_producao_registro
+            (produto_id, data_producao, qtd_planejada, qtd_produzida, base_consumo,
+             itens_json, observacao, created_by, updated_by)
+          VALUES
+            (${produtoId}, ${data}::date, ${qtd}, ${qtd}, 'planejada',
+             ${JSON.stringify(itensDebitados)}::jsonb, ${observacao ?? null}, ${userId}, ${userId})
+          RETURNING registro_id
+        `)
+
+        gravados.push({
+          produtoId,
+          dataProducao: data,
+          quantidade:   qtd,
+          registroId:   (reg.rows as any[])[0]?.registro_id,
+          insuficiencia: itensDebitados.some((i: any) => i.insuficiente),
+        })
+      }
+
+      await this.db.execute(sql`COMMIT`)
+    } catch (err) {
+      await this.db.execute(sql`ROLLBACK`)
+      throw err
+    }
+
+    const comFalta = gravados.filter(g => g.insuficiencia).length
+    return {
+      registrado: true,
+      total: gravados.length,
+      gravados,
+      message: `${gravados.length} registro(s) de produção lançado(s).` +
+        (comFalta > 0 ? ` ${comFalta} com insumo insuficiente — o estoque desses insumos ficou zerado.` : ''),
+    }
+  }
+
+  /**
+   * Prévia do lote: soma o consumo de insumo de todas as células juntas, para
+   * a tela mostrar o que vai sair da prateleira antes de confirmar.
+   */
+  async simularLote(itens: { produtoId: number; dataProducao: string; quantidade: number }[]) {
+    const validos = (itens ?? []).filter(i => Number(i.quantidade) > 0)
+    const debito  = new DebitoInsumoService(this.db, this.schemaName)
+
+    const consumo: Record<number, any> = {}
+    const produtos: any[] = []
+
+    for (const item of validos) {
+      const produtoId = Number(item.produtoId)
+      const qtd       = Number(item.quantidade)
+      const linhas    = await debito.simular(produtoId, qtd)
+
+      const prod = await this.db.execute(sql`
+        SELECT nome, unidade FROM t_produto WHERE produto_id = ${produtoId}
+      `)
+      const p = (prod.rows as any[])[0] ?? {}
+
+      produtos.push({
+        produtoId,
+        nome:         p.nome ?? `#${produtoId}`,
+        unidade:      p.unidade ?? 'un',
+        dataProducao: item.dataProducao,
+        quantidade:   qtd,
+        temFicha:     linhas.length > 0,
+      })
+
+      for (const l of linhas) {
+        const key = Number(l.insumoId)
+        if (!consumo[key]) {
+          consumo[key] = {
+            insumoId:     key,
+            ehProduto:    l.ehProduto,
+            nome:         l.nome,
+            unidade:      l.unidadeEstoque,
+            estoqueAtual: l.estoqueAtual,
+            total:        0,
+          }
+        }
+        consumo[key].total += l.qtdTotalDebitar
+      }
+    }
+
+    const insumos = Object.values(consumo).map((c: any) => ({
+      ...c,
+      restante:   c.estoqueAtual - c.total,
+      suficiente: c.estoqueAtual >= c.total,
+    })).sort((a: any, b: any) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'))
+
+    return {
+      produtos,
+      insumos,
+      totalProdutos:  produtos.length,
+      semFicha:       produtos.filter(p => !p.temFicha).map(p => p.nome),
+      temInsuficiencia: insumos.some((i: any) => !i.suficiente),
+    }
+  }
+
   /** Registros de uma semana, para a grade marcar as células realizadas. */
   async listarPorPeriodo(dataInicio: string, dataFim: string) {
     const res = await this.db.execute(sql`
