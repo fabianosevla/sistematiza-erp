@@ -10,4 +10,4 @@ pool.connect().then(async client => {
   console.log('✓ Coluna tipo confirmada em t_produto (idempotente)')
   console.log('\n✅ Concluído!\n')
   client.release(); pool.end()
-}).catch(err => { console.error('Erro:', err.message); process.exit(1) })
+}).catch(err => { console.error('Erro:', err.message); process.exit(1) }) 
