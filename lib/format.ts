@@ -98,6 +98,33 @@ export function toInputDate(valor: any): string {
   return p ? `${p.a}-${p.m}-${p.d}` : ''
 }
 
+// ── Datas COM fuso (momentos) ───────────────────────────────────────────────
+//
+// As funções acima são para DATA PURA: vencimento, entrega, competência —
+// dias de calendário, que não podem mudar por causa do fuso do navegador.
+//
+// As duas abaixo são para MOMENTO: quando a venda aconteceu, quando o
+// cashback foi creditado. Aí o fuso importa: uma venda registrada às 22h em
+// Passos deve aparecer como 22h, e é o navegador quem sabe disso.
+
+/** Momento → "27/07/2026", já convertido para o fuso do navegador. */
+export function fmtDataLocal(valor: any): string {
+  if (valor === null || valor === undefined || valor === '') return TRACO
+  const d = valor instanceof Date ? valor : new Date(String(valor))
+  return isNaN(d.getTime()) ? TRACO : d.toLocaleDateString('pt-BR')
+}
+
+/** Momento → "27/07/2026 14:35", no fuso do navegador. */
+export function fmtDataHoraLocal(valor: any): string {
+  if (valor === null || valor === undefined || valor === '') return TRACO
+  const d = valor instanceof Date ? valor : new Date(String(valor))
+  if (isNaN(d.getTime())) return TRACO
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
 // ── Números ─────────────────────────────────────────────────────────────────
 
 /**

@@ -29,7 +29,7 @@
 const fs   = require('fs')
 const path = require('path')
 
-const VERSAO = 'v1'
+const VERSAO = 'v2'
 const RAIZ = process.cwd()
 const APLICAR = process.argv.includes('--apply')
 
@@ -71,6 +71,23 @@ const REGRAS = [
     valida: b => /match\(/.test(b) && /\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(b),
     porque: 'idêntico ao toInputDate de lib/format.ts',
   },
+
+  // ── MOMENTOS (timestamp) ────────────────────────────────────────────────
+  // Estas regras vêm por último de propósito: só pegam o que não bateu com
+  // nenhuma das anteriores, ou seja, new Date() aplicado a timestamp.
+  // Mantêm o fuso do navegador, que é o correto para "quando aconteceu".
+  ...['fmtDate', 'fmtDateHora', 'fmtData', 'fmtDataCurta'].flatMap(nome => ([
+    {
+      nome, exportado: 'fmtDataHoraLocal', modulo: '@/lib/format',
+      valida: b => /new Date\(/.test(b) && /hour/.test(b),
+      porque: 'momento com hora — segue no fuso do navegador',
+    },
+    {
+      nome, exportado: 'fmtDataLocal', modulo: '@/lib/format',
+      valida: b => /new Date\(/.test(b) && /toLocaleDateString/.test(b) && !/hour/.test(b),
+      porque: 'data de um momento — segue no fuso do navegador',
+    },
+  ])),
 ]
 
 const relatorio = { trocados: [], revisar: [], arquivos: 0 }

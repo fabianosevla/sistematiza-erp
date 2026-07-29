@@ -4,12 +4,11 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Package, CreditCard, User, Truck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtDataHoraLocal as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string; vendaId: number }
 
 
-function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 
 export default function VendaDetalheView({ tenantSlug, vendaId }: Props) {
   const router = useRouter()

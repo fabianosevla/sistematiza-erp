@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtDataHoraLocal as fmtData, fmtDataLocal as fmtDataCurta } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -21,8 +21,6 @@ const bpToPct  = (bp: number) => (Number(bp || 0) / 100)
 const pctToBp  = (p: any)     => Math.round(parseFloat(String(p).replace(',', '.') || '0') * 100)
 const centToBRL = (c: number) => (Number(c || 0) / 100).toFixed(2)
 const brlToCent = (v: any)    => Math.round(parseFloat(String(v).replace(',', '.') || '0') * 100)
-const fmtData = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
-const fmtDataCurta = (d: string | null) => d ? new Date(d).toLocaleDateString('pt-BR') : '—'
 
 const TIPO_CFG: Record<string, { label: string; cls: string; sinal: 1 | -1 }> = {
   credito:         { label: 'Crédito',             cls: 'bg-green-100 text-green-700',  sinal: 1 },

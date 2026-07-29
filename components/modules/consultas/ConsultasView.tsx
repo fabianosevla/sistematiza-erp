@@ -5,12 +5,11 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtDataLocal as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 
-function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
 
 function getMesAtual() {
   const now = new Date()
