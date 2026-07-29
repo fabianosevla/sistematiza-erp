@@ -4,8 +4,8 @@ import Providers from '@/components/providers'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'sistematiza.erp',
-  description: 'ERP SaaS para pequenas e médias empresas',
+  title: 'ERP Sistematiza.AI',
+  description: 'Gestão e controle do seu negócio',
 }
 
 export default function RootLayout({

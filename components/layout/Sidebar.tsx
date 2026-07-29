@@ -133,8 +133,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
       )}>
         {!recolhida && (
           <div className="flex items-baseline">
-            <span className="text-[19px] font-bold text-white tracking-tight">sistematiza</span>
-            <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ia</span>
+            <span className="text-[19px] font-bold text-white tracking-tight">Sistematiza</span>
+            <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.AI</span>
           </div>
         )}
         <div className="flex items-center gap-1">

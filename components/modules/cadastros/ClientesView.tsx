@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
-import { clienteInsertSchema, type ClienteInsertInput } from '@/lib/validations/cadastros'
+import { clienteInsertSchema, clienteNovoSchema, type ClienteInsertInput } from '@/lib/validations/cadastros'
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
@@ -19,6 +19,7 @@ import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { FormModal } from '@/components/ui/FormModal'
 import { Aviso } from '@/components/ui/Aviso'
+import { InfoTip } from '@/components/ui/InfoTip'
 
 interface Props { tenantSlug: string }
 
@@ -95,7 +96,11 @@ export default function ClientesView({ tenantSlug }: Props) {
     onError: (e: any) => { setConfirmDelete(null); flashMsg(e?.message ?? 'Erro ao excluir.') },
   })
 
-  const form = useForm<ClienteInsertInput>({ resolver: zodResolver(clienteInsertSchema) })
+  // Cadastro novo exige telefone ou celular; edição não — assim um cliente
+  // antigo sem telefone continua podendo ser corrigido e salvo.
+  const form = useForm<ClienteInsertInput>({
+    resolver: zodResolver(editItem ? clienteInsertSchema : clienteNovoSchema),
+  })
 
   function handleNew() {
     form.reset({ tipoPessoa: 'PF' }); setEditItem(null); setFormError(''); setShowForm(true)
@@ -119,9 +124,17 @@ export default function ClientesView({ tenantSlug }: Props) {
   function onSubmit(data: ClienteInsertInput) {
     if (editItem) {
       updateMutation.mutate({ id: editItem.clienteId, payload: { ...data, modificationNum: editItem.modificationNum } })
-    } else {
-      createMutation.mutate(data)
+      return
     }
+    // Guarda explícita além do schema: o resolver do react-hook-form é
+    // definido na montagem do formulário, e não quero depender disso para
+    // uma regra que protege dado em produção.
+    const temContato = (data.telefone ?? '').trim() || (data.celular ?? '').trim()
+    if (!temContato) {
+      form.setError('telefone', { type: 'manual', message: 'Informe telefone ou celular' })
+      return
+    }
+    createMutation.mutate(data)
   }
 
   const clientes  = data?.data?.data ?? []
@@ -227,9 +240,27 @@ export default function ClientesView({ tenantSlug }: Props) {
             </div>
             <div><Label>Nome fantasia</Label><Input {...form.register('nomeFantasia')} className="mt-1" /></div>
             <div className="grid grid-cols-3 gap-4">
-              <div><Label>E-mail</Label><Input {...form.register('email')} type="email" className="mt-1" /></div>
-              <div><Label>Celular</Label><Input {...form.register('celular')} className="mt-1" placeholder="(35) 99999-9999" /></div>
-              <div><Label>Telefone</Label><Input {...form.register('telefone')} className="mt-1" placeholder="(35) 3333-3333" /></div>
+              <div>
+                <Label>E-mail</Label>
+                <Input {...form.register('email')} type="email" className="mt-1" />
+                {form.formState.errors.email && <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>}
+              </div>
+              <div>
+                <Label>Celular{!editItem && ' *'}</Label>
+                <Input {...form.register('celular')} className="mt-1" placeholder="(35) 99999-9999" />
+              </div>
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Telefone{!editItem && ' *'}
+                  {!editItem && (
+                    <InfoTip titulo="Contato obrigatório">
+                      Cliente novo precisa de celular ou telefone. Só um dos dois basta.
+                    </InfoTip>
+                  )}
+                </Label>
+                <Input {...form.register('telefone')} className="mt-1" placeholder="(35) 3333-3333" />
+                {form.formState.errors.telefone && <p className="text-xs text-red-500 mt-1">{form.formState.errors.telefone.message}</p>}
+              </div>
             </div>
             {/* CORREÇÃO (dados ocultos): endereço completo existia no banco mas não aparecia no formulário */}
             <div className="grid grid-cols-3 gap-4">

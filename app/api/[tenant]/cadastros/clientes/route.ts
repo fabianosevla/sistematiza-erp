@@ -94,7 +94,15 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     const body   = await req.json()
+
     if (!body.nomeCompleto?.trim()) return badRequest('Nome é obrigatório')
+
+    // CONTATO OBRIGATÓRIO NO CADASTRO NOVO.
+    // Vale só aqui, no POST. O PUT (edição) não checa, para que um cliente
+    // antigo sem telefone continue podendo ser corrigido e salvo.
+    // Aceita celular ou telefone — um dos dois basta.
+    const temContato = (body.telefone?.trim() || body.celular?.trim())
+    if (!temContato) return badRequest('Informe telefone ou celular')
 
     const client = await pool.connect()
     try {
@@ -165,6 +173,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
         .query(`SELECT 1 FROM t_venda WHERE cliente_id = $1 LIMIT 1`, [id])
         .catch(() => ({ rows: [] as any[] }))
       if (vend.rows.length > 0) associado = true
+
       if (!associado) {
         const ped = await client
           .query(`SELECT 1 FROM t_pedido WHERE cliente_id = $1 LIMIT 1`, [id])

@@ -1,12 +1,33 @@
 // ESTE ARQUIVO VAI EM: lib/validations/cadastros.ts
 import { z } from 'zod'
 
+/**
+ * CAMPO OPCIONAL QUE VEM DE INPUT DE TEXTO — por que este helper existe.
+ *
+ * Um <input> não preenchido envia string VAZIA, não `undefined`. E `.optional()`
+ * do Zod só aceita `undefined`. Resultado: `z.string().email().optional()`
+ * rejeita `""` e o formulário não salva — era exatamente o que acontecia ao
+ * cadastrar cliente sem e-mail.
+ *
+ * `textoOpcional` normaliza "" (e só espaços) para null ANTES de validar:
+ * campo vazio passa, campo preenchido é validado de verdade.
+ */
+function textoOpcional<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    v => (typeof v === 'string' && v.trim() === '' ? null : v),
+    schema.nullable().optional(),
+  )
+}
+
+const emailOpcional = textoOpcional(z.string().email('E-mail inválido').max(150))
+const ufOpcional    = textoOpcional(z.string().length(2, 'UF deve ter 2 letras'))
+
 export const clienteInsertSchema = z.object({
   tipoPessoa:   z.enum(['PF', 'PJ']).default('PF'),
-  nomeCompleto: z.string().min(2).max(200),
+  nomeCompleto: z.string().min(2, 'Informe o nome').max(200),
   nomeFantasia: z.string().max(200).optional().nullable(),
   documento:    z.string().max(20).optional().nullable(),
-  email:        z.string().email().max(150).optional().nullable(),
+  email:        emailOpcional,
   telefone:     z.string().max(20).optional().nullable(),
   celular:      z.string().max(20).optional().nullable(),
   cep:          z.string().max(10).optional().nullable(),
@@ -15,19 +36,42 @@ export const clienteInsertSchema = z.object({
   complemento:  z.string().max(100).optional().nullable(),
   bairro:       z.string().max(100).optional().nullable(),
   cidade:       z.string().max(100).optional().nullable(),
-  uf:           z.string().length(2).optional().nullable(),
+  uf:           ufOpcional,
   observacao:   z.string().max(500).optional().nullable(),
 })
+
+/**
+ * CADASTRO NOVO DE CLIENTE — exige contato telefônico.
+ *
+ * Vale SÓ para criação. Cliente antigo sem telefone continua editável e
+ * salvável, porque `clienteUpdateSchema` não tem esta regra — senão você não
+ * conseguiria corrigir o endereço de um registro legado.
+ *
+ * Aceita telefone OU celular: na prática o cliente informa um dos dois. Para
+ * exigir estritamente o campo Telefone, remova o teste do celular abaixo.
+ */
+export const clienteNovoSchema = clienteInsertSchema.superRefine((dados, ctx) => {
+  const fixo  = (dados.telefone ?? '').trim()
+  const movel = (dados.celular  ?? '').trim()
+  if (!fixo && !movel) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['telefone'],
+      message: 'Informe telefone ou celular',
+    })
+  }
+})
+
 export const clienteUpdateSchema = clienteInsertSchema.partial().extend({ modificationNum: z.number().int().optional() })
 export type ClienteInsertInput = z.infer<typeof clienteInsertSchema>
 export type ClienteUpdateInput = z.infer<typeof clienteUpdateSchema>
 
 export const fornecedorInsertSchema = z.object({
   tipoPessoa:   z.enum(['PF', 'PJ']).default('PJ'),
-  nomeCompleto: z.string().min(2).max(200),
+  nomeCompleto: z.string().min(2, 'Informe o nome').max(200),
   nomeFantasia: z.string().max(200).optional().nullable(),
   cnpjCpf:      z.string().max(20).optional().nullable(),
-  email:        z.string().email().max(150).optional().nullable(),
+  email:        emailOpcional,
   telefone:     z.string().max(20).optional().nullable(),
   celular:      z.string().max(20).optional().nullable(),
   contato:      z.string().max(100).optional().nullable(),
@@ -37,7 +81,7 @@ export const fornecedorInsertSchema = z.object({
   complemento:  z.string().max(100).optional().nullable(),
   bairro:       z.string().max(100).optional().nullable(),
   cidade:       z.string().max(100).optional().nullable(),
-  uf:           z.string().length(2).optional().nullable(),
+  uf:           ufOpcional,
   observacao:   z.string().max(500).optional().nullable(),
 })
 export const fornecedorUpdateSchema = fornecedorInsertSchema.partial().extend({ modificationNum: z.number().int().optional() })
