@@ -1,25 +1,26 @@
 ﻿'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload, Package2, ArrowUpDown, Clock, Pencil } from 'lucide-react'
+import { Plus, Trash2, Download, Upload, Package2, Clock, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { TableSkeleton } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import CsvImportModal from '@/components/ui/CsvImportModal'
-import Paginacao from '@/components/ui/Paginacao'
 import { useDominio } from '@/hooks/useDominio'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
 import { fmtMoeda as fmt } from '@/lib/format'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SearchInput } from '@/components/ui/SearchInput'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
+import { FormModal } from '@/components/ui/FormModal'
 
 interface Props { tenantSlug: string }
-
-
 
 // Estoque de insumo é fracionado (ex.: 0,250 kg). Mostra até 4 casas,
 // cortando zeros à direita — 2 continua "2", 0,25 aparece "0,25".
@@ -136,14 +137,10 @@ export default function InsumosView({ tenantSlug }: Props) {
 
   function fecharModal() { setShowModal(false); setEditando(null) }
 
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortKey(key); setSortDir('asc') }
-  }
-
-  function SortIcon({ col }: { col: SortKey }) {
-    if (col !== sortKey) return <ArrowUpDown size={11} className="ml-1 text-gray-300 inline" />
-    return <span className="ml-1 text-green-500 text-[11px] inline">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  function toggleSort(key: string) {
+    const k = key as SortKey
+    if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(k); setSortDir('asc') }
   }
 
   // Exporta TODOS os insumos (não só a página atual)
@@ -153,7 +150,7 @@ export default function InsumosView({ tenantSlug }: Props) {
     const all = Array.isArray(j?.data?.data) ? j.data.data : Array.isArray(j?.data) ? j.data : []
     const rows = all.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
     const csv  = [['ID','Nome','Tipo','Unidade','Estoque Atual','Estoque Mínimo','Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
   }
 
   const pagina = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
@@ -166,144 +163,159 @@ export default function InsumosView({ tenantSlug }: Props) {
     return sortDir === 'asc' ? cmp : -cmp
   })
 
+  const colunas: Coluna[] = [
+    {
+      chave: 'nome', titulo: 'Nome', ordenavel: true,
+      // borda verde que aparece no hover da linha — comportamento original da tela
+      classeCelula: 'pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150',
+      render: (ins: any) => (
+        <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700" onClick={() => abrirModal(ins)}>
+          {ins.nome}
+        </span>
+      ),
+    },
+    {
+      chave: 'tipo', titulo: 'Tipo', ordenavel: true, alinhamento: 'center',
+      render: (ins: any) => <Badge variant="secondary">{ins.tipo ?? '—'}</Badge>,
+    },
+    {
+      chave: 'unidade', titulo: 'Unidade', alinhamento: 'center',
+      render: (ins: any) => ins.unidade ?? '—',
+    },
+    {
+      chave: 'estoqueAtual', titulo: 'Est. Atual', ordenavel: true, alinhamento: 'center',
+      render: (ins: any) => (
+        <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>
+          {fmtEstoque(ins.estoqueAtual)}
+        </span>
+      ),
+    },
+    {
+      chave: 'estoqueMinimo', titulo: 'Est. Mínimo', alinhamento: 'center',
+      render: (ins: any) => fmtEstoque(ins.estoqueMinimo),
+    },
+    {
+      chave: 'precoCusto', titulo: 'Preço Custo', ordenavel: true, alinhamento: 'center',
+      classeCelula: 'px-4 py-3 text-center text-sm font-medium text-gray-700',
+      render: (ins: any) => ins.precoCusto ? fmt(ins.precoCusto) : '—',
+    },
+  ]
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Insumos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{meta?.total ?? 0} cadastrados</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
-          <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
-          <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Insumo</Button>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Insumos"
+        subtitulo={`${meta?.total ?? 0} cadastrados`}
+        acoes={
+          <>
+            <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
+            <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
+            <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Insumo</Button>
+          </>
+        }
+      />
 
-      <div className="flex gap-3 mb-4">
-        <Input placeholder="Buscar insumo..." value={busca} onChange={e => setBusca(e.target.value)} className="max-w-xs h-9 text-sm" />
-      </div>
+      <SearchInput
+        valor={busca}
+        onChange={setBusca}
+        placeholder="Buscar insumo..."
+        className="mb-4 max-w-xs"
+      />
 
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('nome')}>Nome <SortIcon col="nome" /></th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('tipo')}>Tipo <SortIcon col="tipo" /></th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Unidade</th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('estoqueAtual')}>Est. Atual <SortIcon col="estoqueAtual" /></th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Est. Mínimo</th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('precoCusto')}>Preço Custo <SortIcon col="precoCusto" /></th>
-              <th className="w-20" />
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <TableSkeleton rows={6} cols={7} />
-            ) : insumos.length === 0 ? (
-              <tr><td colSpan={7}>
-                <EmptyState icon={Package2} title="Nenhum insumo encontrado"
-                  description="Cadastre os insumos utilizados na produção para controlar o estoque e a ficha técnica dos produtos."
-                  action="Cadastrar primeiro insumo" onAction={() => abrirModal()} />
-              </td></tr>
-            ) : insumos.map((ins: any) => (
-              <tr key={ins.insumoId} className="group border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
-                <td className="pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150">
-                  <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700" onClick={() => abrirModal(ins)}>{ins.nome}</span>
-                </td>
-                <td className="px-4 py-3 text-center"><Badge variant="secondary">{ins.tipo ?? '—'}</Badge></td>
-                <td className="px-4 py-3 text-center text-sm text-gray-500">{ins.unidade ?? '—'}</td>
-                <td className="px-4 py-3 text-center">
-                  <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{fmtEstoque(ins.estoqueAtual)}</span>
-                </td>
-                <td className="px-4 py-3 text-center text-sm text-gray-500">{fmtEstoque(ins.estoqueMinimo)}</td>
-                <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => setShowHistorico(ins)} title="Histórico" className="p-1 text-purple-400 hover:text-purple-600"><Clock size={14} /></button>
-                    <button onClick={() => abrirModal(ins)} title="Editar" className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
-                    <button onClick={() => setConfirmDelete({ id: ins.insumoId, nome: ins.nome })} className="p-1 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <Paginacao
-        page={page}
-        totalPages={meta?.totalPages ?? 1}
-        total={meta?.total ?? 0}
-        limit={limit}
-        onPage={setPage}
-        onLimit={(l) => { setLimit(l); setPage(1) }}
+      <DataTable
+        colunas={colunas}
+        itens={insumos}
+        chave={(ins: any) => ins.insumoId}
+        carregando={isLoading}
+        usarSkeleton
+        acoesCentro
+        vazio={
+          <EmptyState icon={Package2} title="Nenhum insumo encontrado"
+            description="Cadastre os insumos utilizados na produção para controlar o estoque e a ficha técnica dos produtos."
+            action="Cadastrar primeiro insumo" onAction={() => abrirModal()} />
+        }
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
+        meta={meta}
+        onPageChange={setPage}
+        onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        acoes={(ins: any) => (
+          <>
+            <BotaoIcone titulo="Histórico" variante="destaque" onClick={() => setShowHistorico(ins)}>
+              <Clock size={14} />
+            </BotaoIcone>
+            <BotaoIcone titulo="Editar" onClick={() => abrirModal(ins)}>
+              <Pencil size={14} />
+            </BotaoIcone>
+            <BotaoIcone titulo="Excluir" variante="perigo" onClick={() => setConfirmDelete({ id: ins.insumoId, nome: ins.nome })}>
+              <Trash2 size={14} />
+            </BotaoIcone>
+          </>
+        )}
       />
 
       {/* Modal Insumo */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">{editando ? 'Editar Insumo' : 'Novo Insumo'}</h2>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal
+          titulo={editando ? 'Editar Insumo' : 'Novo Insumo'}
+          onClose={fecharModal}
+          largura="max-w-lg"
+        >
+          <div className="p-6 space-y-4">
+            <div><Label>Nome *</Label><Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Tipo</Label>
+                <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  {tipos.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+              </div>
+              <div>
+                <Label>Unidade</Label>
+                <select value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  {unidades.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+                <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+              </div>
             </div>
-            <div className="p-6 space-y-4">
-              <div><Label>Nome *</Label><Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Tipo</Label>
-                  <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {tipos.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
-                </div>
-                <div>
-                  <Label>Unidade</Label>
-                  <select value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {unidades.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
-                </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Código de Barras</Label><Input value={codigoBarras} onChange={e => setCodigoBarras(e.target.value)} className="mt-1" placeholder="EAN" /></div>
+              <div>
+                <Label>Fornecedor</Label>
+                <select value={fornecedorId} onChange={e => setFornecedorId(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="">— Sem fornecedor —</option>
+                  {fornecedores.map((f: any) => <option key={f.fornecedorId} value={f.fornecedorId}>{f.nomeFantasia || f.nomeCompleto}</option>)}
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><Label>Código de Barras</Label><Input value={codigoBarras} onChange={e => setCodigoBarras(e.target.value)} className="mt-1" placeholder="EAN" /></div>
-                <div>
-                  <Label>Fornecedor</Label>
-                  <select value={fornecedorId} onChange={e => setFornecedorId(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="">— Sem fornecedor —</option>
-                    {fornecedores.map((f: any) => <option key={f.fornecedorId} value={f.fornecedorId}>{f.nomeFantasia || f.nomeCompleto}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div><Label>Descrição</Label><Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do insumo (opcional)" /></div>
-              <div className="grid grid-cols-3 gap-3">
-                {/* step="any": estoque de insumo é fracionado (ex.: 0,250 kg) */}
-                <div><Label>Est. Atual</Label><Input type="number" min="0" step="any" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
-                <div><Label>Est. Mínimo</Label><Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
-                <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
-              </div>
-              <p className="text-[10px] text-gray-400 -mt-2">Estoque aceita valores fracionados (ex.: 0.250)</p>
+            </div>
+            <div><Label>Descrição</Label><Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do insumo (opcional)" /></div>
+            <div className="grid grid-cols-3 gap-3">
+              {/* step="any": estoque de insumo é fracionado (ex.: 0,250 kg) */}
+              <div><Label>Est. Atual</Label><Input type="number" min="0" step="any" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
+              <div><Label>Est. Mínimo</Label><Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
+              <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
+            </div>
+            <p className="text-[10px] text-gray-400 -mt-2">Estoque aceita valores fracionados (ex.: 0.250)</p>
 
-              {editando && (
-                <AuditoriaInfo
-                  criadoPor={editando.createdBy}
-                  criadoEm={editando.createdDt}
-                  atualizadoPor={editando.updatedBy}
-                  atualizadoEm={editando.updatedDt}
-                  className="pt-3 border-t border-gray-100"
-                />
-              )}
+            {editando && (
+              <AuditoriaInfo
+                criadoPor={editando.createdBy}
+                criadoEm={editando.createdDt}
+                atualizadoPor={editando.updatedBy}
+                atualizadoEm={editando.updatedDt}
+                className="pt-3 border-t border-gray-100"
+              />
+            )}
 
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
-                <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
-                  {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
-                </Button>
-              </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
+                {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {showImport && (

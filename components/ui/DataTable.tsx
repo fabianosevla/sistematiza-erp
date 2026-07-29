@@ -1,44 +1,55 @@
 'use client'
 import type { ReactNode } from 'react'
+import { ArrowUpDown } from 'lucide-react'
 import Paginacao from '@/components/ui/Paginacao'
+import { TableSkeleton } from '@/components/ui/Skeleton'
 
 /**
  * components/ui/DataTable.tsx
  *
- * Tabela de listagem padrão. Toda a marcação foi extraída do FornecedoresView:
- * mesmo cartão externo, mesmo cabeçalho, mesma linha com hover, mesmo bloco de
- * paginação. Trocar uma tela por este componente não muda um pixel.
+ * Tabela de listagem padrão. Toda a marcação foi extraída das telas existentes
+ * (Fornecedores, Clientes, Insumos): mesmo cartão, mesmo cabeçalho, mesma linha
+ * com hover, mesma ordenação, mesma paginação. Trocar uma tela por este
+ * componente não muda um pixel.
  *
  *   const colunas: Coluna[] = [
- *     { chave: 'nomeCompleto', titulo: 'Nome', principal: true },
- *     { chave: 'tipoPessoa',   titulo: 'Tipo', esconderAte: 'md',
- *       render: i => <Badge variant="secondary">{i.tipoPessoa}</Badge> },
- *     { chave: 'email',        titulo: 'E-mail', esconderAte: 'lg' },
+ *     { chave: 'nome', titulo: 'Nome', principal: true, ordenavel: true },
+ *     { chave: 'tipo', titulo: 'Tipo', esconderAte: 'md',
+ *       render: i => <Badge variant="secondary">{i.tipo}</Badge> },
  *   ]
  *
  *   <DataTable
  *     colunas={colunas}
- *     itens={items}
- *     chave={i => i.fornecedorId}
+ *     itens={itens}
+ *     chave={i => i.id}
  *     carregando={isLoading}
- *     vazio="Nenhum fornecedor encontrado."
+ *     usarSkeleton
+ *     vazio={<EmptyState ... />}
+ *     ordem={{ chave: sortKey, dir: sortDir }}
+ *     onOrdenar={toggleSort}
  *     acoes={i => <>...</>}
  *     meta={meta}
  *     onPageChange={setPage}
+ *     onLimitChange={setLimit}
  *   />
  */
 
 export interface Coluna {
-  chave:        string
-  titulo:       string
-  /** primeira coluna: texto escuro e semibold, como nas telas atuais */
-  principal?:   boolean
-  /** esconde a coluna abaixo do breakpoint (hidden md:table-cell) */
-  esconderAte?: 'md' | 'lg' | 'xl'
-  alinhamento?: 'left' | 'center' | 'right'
-  largura?:     string
-  /** conteúdo customizado da célula; sem isso, mostra item[chave] ou travessão */
-  render?:      (item: any) => ReactNode
+  chave:            string
+  titulo:           string
+  /** primeira coluna: texto escuro e semibold */
+  principal?:       boolean
+  /** esconde abaixo do breakpoint (hidden md:table-cell) */
+  esconderAte?:     'md' | 'lg' | 'xl'
+  alinhamento?:     'left' | 'center' | 'right'
+  largura?:         string
+  /** habilita clique no cabeçalho para ordenar */
+  ordenavel?:       boolean
+  /** classes extras da célula (sobrescreve o padrão de cor/tamanho) */
+  classeCelula?:    string
+  classeCabecalho?: string
+  /** conteúdo customizado; sem isso, mostra item[chave] ou travessão */
+  render?:          (item: any) => ReactNode
 }
 
 export interface MetaPaginacao {
@@ -48,19 +59,31 @@ export interface MetaPaginacao {
   limit:      number
 }
 
+export interface Ordem {
+  chave: string
+  dir:   'asc' | 'desc'
+}
+
 interface Props {
-  colunas:       Coluna[]
-  itens:         any[]
-  chave:         (item: any) => string | number
-  carregando?:   boolean
-  vazio?:        string
-  acoes?:        (item: any) => ReactNode
-  meta?:         MetaPaginacao | null
-  onPageChange?: (page: number) => void
-  /** opcional: com ele, aparece o seletor de registros por página */
+  colunas:        Coluna[]
+  itens:          any[]
+  chave:          (item: any) => string | number
+  carregando?:    boolean
+  /** usa TableSkeleton no lugar do texto "Carregando..." */
+  usarSkeleton?:  boolean
+  /** texto ou componente (ex.: <EmptyState/>) quando não há itens */
+  vazio?:         ReactNode
+  acoes?:         (item: any) => ReactNode
+  /** alinhamento da coluna de ações: à direita (padrão) ou centro */
+  acoesCentro?:   boolean
+  meta?:          MetaPaginacao | null
+  onPageChange?:  (page: number) => void
   onLimitChange?: (limit: number) => void
-  onLinhaClick?: (item: any) => void
-  className?:    string
+  ordem?:         Ordem
+  onOrdenar?:     (chave: string) => void
+  onLinhaClick?:  (item: any) => void
+  classeLinha?:   (item: any) => string
+  className?:     string
 }
 
 const ALINHAMENTO = { left: 'text-left', center: 'text-center', right: 'text-right' }
@@ -68,15 +91,25 @@ const ALINHAMENTO = { left: 'text-left', center: 'text-center', right: 'text-rig
 export function DataTable({
   colunas, itens, chave,
   carregando = false,
+  usarSkeleton = false,
   vazio = 'Nenhum registro encontrado.',
-  acoes, meta, onPageChange, onLimitChange, onLinhaClick,
+  acoes, acoesCentro = false,
+  meta, onPageChange, onLimitChange,
+  ordem, onOrdenar,
+  onLinhaClick, classeLinha,
   className = '',
 }: Props) {
   const totalColunas = colunas.length + (acoes ? 1 : 0)
 
-  function classeVisibilidade(col: Coluna) {
-    if (!col.esconderAte) return ''
-    return `hidden ${col.esconderAte}:table-cell`
+  function visibilidade(col: Coluna) {
+    return col.esconderAte ? `hidden ${col.esconderAte}:table-cell` : ''
+  }
+
+  function IconeOrdem({ col }: { col: string }) {
+    if (!ordem || ordem.chave !== col) {
+      return <ArrowUpDown size={11} className="ml-1 text-gray-300 inline" />
+    }
+    return <span className="ml-1 text-green-500 text-[11px] inline">{ordem.dir === 'asc' ? '↑' : '↓'}</span>
   }
 
   return (
@@ -84,28 +117,39 @@ export function DataTable({
       <table className="w-full">
         <thead>
           <tr className="border-b border-gray-100">
-            {colunas.map(col => (
-              <th
-                key={col.chave}
-                className={`${ALINHAMENTO[col.alinhamento ?? 'left']} text-xs font-medium text-gray-400 px-4 py-3 ${classeVisibilidade(col)} ${col.largura ?? ''}`}
-              >
-                {col.titulo}
-              </th>
-            ))}
+            {colunas.map(col => {
+              const podeOrdenar = col.ordenavel && onOrdenar
+              return (
+                <th
+                  key={col.chave}
+                  onClick={podeOrdenar ? () => onOrdenar!(col.chave) : undefined}
+                  className={`${ALINHAMENTO[col.alinhamento ?? 'left']} text-xs font-medium text-gray-400 px-4 py-3 ${visibilidade(col)} ${col.largura ?? ''} ${
+                    podeOrdenar ? 'cursor-pointer select-none hover:text-gray-600' : ''
+                  } ${col.classeCabecalho ?? ''}`}
+                >
+                  {col.titulo}
+                  {col.ordenavel && <IconeOrdem col={col.chave} />}
+                </th>
+              )
+            })}
             {acoes && <th className="px-4 py-3 w-24" />}
           </tr>
         </thead>
 
         <tbody>
           {carregando ? (
-            <tr>
-              <td colSpan={totalColunas} className="px-4 py-12 text-center text-sm text-gray-400">
-                Carregando...
-              </td>
-            </tr>
+            usarSkeleton ? (
+              <TableSkeleton rows={6} cols={totalColunas} />
+            ) : (
+              <tr>
+                <td colSpan={totalColunas} className="px-4 py-12 text-center text-sm text-gray-400">
+                  Carregando...
+                </td>
+              </tr>
+            )
           ) : itens.length === 0 ? (
             <tr>
-              <td colSpan={totalColunas} className="px-4 py-12 text-center text-sm text-gray-400">
+              <td colSpan={totalColunas} className={typeof vazio === 'string' ? 'px-4 py-12 text-center text-sm text-gray-400' : ''}>
                 {vazio}
               </td>
             </tr>
@@ -113,21 +157,23 @@ export function DataTable({
             <tr
               key={chave(item)}
               onClick={onLinhaClick ? () => onLinhaClick(item) : undefined}
-              className={`group border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${onLinhaClick ? 'cursor-pointer' : ''}`}
+              className={`group border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${
+                onLinhaClick ? 'cursor-pointer' : ''
+              } ${classeLinha ? classeLinha(item) : ''}`}
             >
               {colunas.map(col => (
                 <td
                   key={col.chave}
-                  className={`px-4 py-3 ${ALINHAMENTO[col.alinhamento ?? 'left']} ${
+                  className={col.classeCelula ?? `px-4 py-3 ${ALINHAMENTO[col.alinhamento ?? 'left']} ${
                     col.principal ? 'text-sm font-medium text-gray-900' : 'text-sm text-gray-500'
-                  } ${classeVisibilidade(col)}`}
+                  } ${visibilidade(col)}`}
                 >
                   {col.render ? col.render(item) : (item?.[col.chave] ?? '—')}
                 </td>
               ))}
               {acoes && (
                 <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className={`flex items-center ${acoesCentro ? 'justify-center' : 'justify-end'} gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
                     {acoes(item)}
                   </div>
                 </td>

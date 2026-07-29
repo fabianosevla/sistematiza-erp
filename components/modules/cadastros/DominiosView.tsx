@@ -8,6 +8,9 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
+import { FormModal } from '@/components/ui/FormModal'
 
 interface Props { tenantSlug: string }
 
@@ -85,15 +88,15 @@ export default function DominiosView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Domínios</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Gerencie os valores das listas e categorias usadas no sistema</p>
-        </div>
-        <Button onClick={() => setShowNovoDominio(true)}>
-          <Plus size={15} className="mr-1.5" /> Nova tabela
-        </Button>
-      </div>
+      <PageHeader
+        titulo="Domínios"
+        subtitulo="Gerencie os valores das listas e categorias usadas no sistema"
+        acoes={
+          <Button onClick={() => setShowNovoDominio(true)}>
+            <Plus size={15} className="mr-1.5" /> Nova tabela
+          </Button>
+        }
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Lista lateral */}
@@ -199,16 +202,14 @@ export default function DominiosView({ tenantSlug }: Props) {
                         <>
                           <span className="text-sm font-medium text-gray-900 flex-1">{v.valor}</span>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => { setEditandoId(v.valorId); setEditandoValor(v.valor) }}
-                              className="p-1 text-gray-300 hover:text-blue-500 transition-colors">
+                            <BotaoIcone titulo="Editar valor" variante="info"
+                              onClick={() => { setEditandoId(v.valorId); setEditandoValor(v.valor) }}>
                               <Pencil size={12} />
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete({ id: v.valorId, valor: v.valor })}
-                              className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                            </BotaoIcone>
+                            <BotaoIcone titulo="Remover valor" variante="perigo"
+                              onClick={() => setConfirmDelete({ id: v.valorId, valor: v.valor })}>
                               <Trash2 size={13} />
-                            </button>
+                            </BotaoIcone>
                           </div>
                         </>
                       )}
@@ -229,45 +230,41 @@ export default function DominiosView({ tenantSlug }: Props) {
 
       {/* Modal nova tabela */}
       {showNovoDominio && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold">Nova Tabela de Domínio</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Crie uma nova lista reutilizável</p>
-              </div>
-              <button onClick={() => setShowNovoDominio(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal
+          titulo="Nova Tabela de Domínio"
+          onClose={() => setShowNovoDominio(false)}
+          largura="max-w-md"
+        >
+          <div className="p-6 space-y-4">
+            <p className="text-xs text-gray-400 -mt-2">Crie uma nova lista reutilizável</p>
+            <div>
+              <Label>Nome *</Label>
+              <Input value={novoNome} onChange={e => setNovoNome(e.target.value)} className="mt-1"
+                placeholder="Ex: Tipos de Pedido" autoFocus />
             </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <Label>Nome *</Label>
-                <Input value={novoNome} onChange={e => setNovoNome(e.target.value)} className="mt-1"
-                  placeholder="Ex: Tipos de Pedido" autoFocus />
-              </div>
-              <div>
-                <Label>Código interno *</Label>
-                <Input
-                  value={novoCodigo}
-                  onChange={e => setNovoCodigo(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
-                  className="mt-1 font-mono"
-                  placeholder="Ex: tipo_pedido" />
-                <p className="text-xs text-gray-400 mt-1">Apenas letras minúsculas, números e _. Não pode ser alterado depois.</p>
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <Input value={novaDescricao} onChange={e => setNovaDescricao(e.target.value)} className="mt-1"
-                  placeholder="Onde esta tabela é usada (opcional)" />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setShowNovoDominio(false)}>Cancelar</Button>
-                <Button onClick={() => criarDominioMut.mutate()}
-                  disabled={!novoNome.trim() || !novoCodigo.trim() || criarDominioMut.isPending}>
-                  {criarDominioMut.isPending ? 'Criando...' : 'Criar Tabela'}
-                </Button>
-              </div>
+            <div>
+              <Label>Código interno *</Label>
+              <Input
+                value={novoCodigo}
+                onChange={e => setNovoCodigo(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
+                className="mt-1 font-mono"
+                placeholder="Ex: tipo_pedido" />
+              <p className="text-xs text-gray-400 mt-1">Apenas letras minúsculas, números e _. Não pode ser alterado depois.</p>
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Input value={novaDescricao} onChange={e => setNovaDescricao(e.target.value)} className="mt-1"
+                placeholder="Onde esta tabela é usada (opcional)" />
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setShowNovoDominio(false)}>Cancelar</Button>
+              <Button onClick={() => criarDominioMut.mutate()}
+                disabled={!novoNome.trim() || !novoCodigo.trim() || criarDominioMut.isPending}>
+                {criarDominioMut.isPending ? 'Criando...' : 'Criar Tabela'}
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {confirmDelete && (

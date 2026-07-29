@@ -1,0 +1,1305 @@
+
+===== components\modules\cadastros\ClientesView.tsx =====
+
+'use client'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Search, Pencil, X, Upload, Clock, Trash2, Eye, EyeOff } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { clienteInsertSchema, type ClienteInsertInput } from '@/lib/validations/cadastros'
+import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
+import { HistoricoModal } from '@/components/ui/HistoricoModal'
+import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
+
+interface Props { tenantSlug: string }
+
+export default function ClientesView({ tenantSlug }: Props) {
+  const queryClient = useQueryClient()
+  const [search, setSearch]           = useState('')
+  const [page, setPage]               = useState(1)
+  const [showForm, setShowForm]       = useState(false)
+  const [showImport, setShowImport]   = useState(false)
+  const [showHistorico, setShowHistorico] = useState<any>(null)
+  const [editItem, setEditItem]       = useState<any>(null)
+  const [incluirInativos, setIncluirInativos] = useState(false)
+  const [confirmDelete, setConfirmDelete]     = useState<any>(null)
+  const [formError, setFormError]     = useState('')
+  const [flash, setFlash]             = useState('')
+  const apiBase = `/api/${tenantSlug}/cadastros/clientes`
+
+  const flashMsg = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 4000) }
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['clientes', tenantSlug, page, search, incluirInativos],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), limit: '20' })
+      if (search) params.set('search', search)
+      if (incluirInativos) params.set('incluirInativos', 'true')
+      const res = await fetch(`${apiBase}?${params}`)
+      return res.json()
+    },
+  })
+
+  const createMutation = useMutation({
+    mutationFn: async (payload: ClienteInsertInput) => {
+      const res = await fetch(apiBase, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      // Sem esse check, um 400 "Registro já existente" caía em onSuccess e fechava o form.
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar cliente')
+      return json
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] }); setShowForm(false); setFormError('') },
+    onError: (e: any) => setFormError(e?.message ?? 'Erro ao salvar.'),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
+      const res = await fetch(`${apiBase}/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar cliente')
+      return json
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] })
+      setShowForm(false); setEditItem(null); setFormError('')
+    },
+    onError: (e: any) => setFormError(e?.message ?? 'Erro ao salvar.'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${apiBase}?id=${id}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao excluir cliente')
+      return json
+    },
+    onSuccess: (json: any) => {
+      queryClient.invalidateQueries({ queryKey: ['clientes', tenantSlug] })
+      setConfirmDelete(null)
+      flashMsg(json?.data?.message ?? 'Cliente removido.')
+    },
+    onError: (e: any) => { setConfirmDelete(null); flashMsg(e?.message ?? 'Erro ao excluir.') },
+  })
+
+  const form = useForm<ClienteInsertInput>({ resolver: zodResolver(clienteInsertSchema) })
+
+  function handleNew() {
+    form.reset({ tipoPessoa: 'PF' }); setEditItem(null); setFormError(''); setShowForm(true)
+  }
+
+  function handleEdit(item: any) {
+    setEditItem(item); setFormError('')
+    form.reset({
+      tipoPessoa: item.tipoPessoa, nomeCompleto: item.nomeCompleto, nomeFantasia: item.nomeFantasia,
+      documento: item.documento, email: item.email, telefone: item.telefone, celular: item.celular,
+      cep: item.cep, endereco: item.endereco, numero: item.numero, complemento: item.complemento,
+      bairro: item.bairro, cidade: item.cidade, uf: item.uf, observacao: item.observacao,
+    })
+    setShowForm(true)
+  }
+
+  function onSubmit(data: ClienteInsertInput) {
+    if (editItem) {
+      updateMutation.mutate({ id: editItem.clienteId, payload: { ...data, modificationNum: editItem.modificationNum } })
+    } else {
+      createMutation.mutate(data)
+    }
+  }
+
+  const clientes  = data?.data?.data ?? []
+  const meta      = data?.data?.meta
+  const isPending = createMutation.isPending || updateMutation.isPending
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Clientes</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => { setIncluirInativos(v => !v); setPage(1) }}>
+            {incluirInativos ? <Eye size={14} className="mr-1.5" /> : <EyeOff size={14} className="mr-1.5" />}
+            {incluirInativos ? 'Vendo inativos' : 'Ver inativos'}
+          </Button>
+          <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
+          <Button onClick={handleNew}><Plus size={15} className="mr-1.5" /> Novo cliente</Button>
+        </div>
+      </div>
+
+      {flash && (
+        <div className="mb-4 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-2.5">{flash}</div>
+      )}
+
+      {showImport && (
+        <ImportacaoModal tenantSlug={tenantSlug} entidade="clientes" queryKey="clientes" onClose={() => setShowImport(false)} />
+      )}
+
+      <div className="relative mb-4">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Input placeholder="Buscar clientes..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} className="pl-9" />
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Nome</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Tipo</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">E-mail</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Cidade</th>
+              <th className="px-4 py-3 w-28" />
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+            ) : clientes.length === 0 ? (
+              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum cliente encontrado.</td></tr>
+            ) : clientes.map((c: any) => (
+              <tr key={c.clienteId} className={`group border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${c.activeFlag === false ? 'opacity-60' : ''}`}>
+                <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                  <span className="flex items-center gap-2">
+                    {c.nomeCompleto}
+                    {c.activeFlag === false && <Badge variant="outline" className="text-gray-400">Inativo</Badge>}
+                  </span>
+                </td>
+                <td className="px-4 py-3 hidden md:table-cell"><Badge variant={c.tipoPessoa === 'PJ' ? 'secondary' : 'outline'}>{c.tipoPessoa}</Badge></td>
+                <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">{c.email ?? '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 hidden lg:table-cell">{c.cidade ? `${c.cidade}/${c.uf ?? ''}` : '—'}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => setShowHistorico(c)} title="Histórico" className="p-1 text-purple-400 hover:text-purple-600"><Clock size={14} /></button>
+                    <button onClick={() => handleEdit(c)} title="Editar" className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
+                    <button onClick={() => setConfirmDelete(c)} title="Excluir" className="p-1 text-gray-300 hover:text-red-600 transition-colors"><Trash2 size={14} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {meta && meta.totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages}</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</Button>
+              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(p => p + 1)}>Próximo</Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold text-gray-900">{editItem ? 'Editar cliente' : 'Novo cliente'}</h2>
+              <button onClick={() => { setShowForm(false); setEditItem(null); setFormError('') }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
+              {formError && (
+                <div className="rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm px-4 py-2.5">{formError}</div>
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Tipo de pessoa *</Label>
+                  <select {...form.register('tipoPessoa')} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                    <option value="PF">Pessoa Física</option>
+                    <option value="PJ">Pessoa Jurídica</option>
+                  </select>
+                </div>
+                <div><Label>Documento (CPF/CNPJ)</Label><Input {...form.register('documento')} className="mt-1" placeholder="000.000.000-00" /></div>
+              </div>
+              <div>
+                <Label>Nome completo / Razão social *</Label>
+                <Input {...form.register('nomeCompleto')} className="mt-1" />
+                {form.formState.errors.nomeCompleto && <p className="text-xs text-red-500 mt-1">{form.formState.errors.nomeCompleto.message}</p>}
+              </div>
+              <div><Label>Nome fantasia</Label><Input {...form.register('nomeFantasia')} className="mt-1" /></div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label>E-mail</Label><Input {...form.register('email')} type="email" className="mt-1" /></div>
+                <div><Label>Celular</Label><Input {...form.register('celular')} className="mt-1" placeholder="(35) 99999-9999" /></div>
+                <div><Label>Telefone</Label><Input {...form.register('telefone')} className="mt-1" placeholder="(35) 3333-3333" /></div>
+              </div>
+              {/* CORREÇÃO (dados ocultos): endereço completo existia no banco mas não aparecia no formulário */}
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label>CEP</Label><Input {...form.register('cep')} className="mt-1" placeholder="00000-000" /></div>
+                <div className="col-span-2"><Label>Endereço</Label><Input {...form.register('endereco')} className="mt-1" placeholder="Rua, avenida…" /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><Label>Número</Label><Input {...form.register('numero')} className="mt-1" /></div>
+                <div><Label>Complemento</Label><Input {...form.register('complemento')} className="mt-1" /></div>
+                <div><Label>Bairro</Label><Input {...form.register('bairro')} className="mt-1" /></div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2"><Label>Cidade</Label><Input {...form.register('cidade')} className="mt-1" /></div>
+                <div><Label>UF</Label><Input {...form.register('uf')} className="mt-1" maxLength={2} /></div>
+              </div>
+              <div>
+                <Label>Observação</Label>
+                <textarea {...form.register('observacao')} rows={2} className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400 resize-none" />
+              </div>
+
+              {editItem && (
+                <AuditoriaInfo
+                  criadoPor={editItem.createdBy}
+                  criadoEm={editItem.createdDt}
+                  atualizadoPor={editItem.updatedBy}
+                  atualizadoEm={editItem.updatedDt}
+                  className="pt-3 border-t border-gray-100"
+                />
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => { setShowForm(false); setEditItem(null); setFormError('') }}>Cancelar</Button>
+                <Button type="submit" disabled={isPending}>{isPending ? 'Salvando...' : editItem ? 'Salvar alterações' : 'Salvar cliente'}</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Excluir cliente"
+          message={`Excluir "${confirmDelete.nomeCompleto}"? Se ele tiver vendas associadas, será apenas inativado (histórico preservado).`}
+          confirmLabel="Excluir"
+          danger
+          onConfirm={() => deleteMutation.mutate(confirmDelete.clienteId)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {showHistorico && (
+        <HistoricoModal
+          tenantSlug={tenantSlug}
+          entidade="cliente"
+          entidadeId={showHistorico.clienteId}
+          titulo={showHistorico.nomeCompleto}
+          onClose={() => setShowHistorico(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+===== components\modules\cadastros\InsumosView.tsx =====
+
+'use client'
+import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Trash2, Download, Upload, Package2, ArrowUpDown, Clock, Pencil } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { TableSkeleton } from '@/components/ui/Skeleton'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useToast } from '@/components/ui/Toast'
+import CsvImportModal from '@/components/ui/CsvImportModal'
+import Paginacao from '@/components/ui/Paginacao'
+import { useDominio } from '@/hooks/useDominio'
+import { HistoricoModal } from '@/components/ui/HistoricoModal'
+import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+
+
+// Estoque de insumo é fracionado (ex.: 0,250 kg). Mostra até 4 casas,
+// cortando zeros à direita — 2 continua "2", 0,25 aparece "0,25".
+function fmtEstoque(v: any) {
+  const n = parseFloat(String(v ?? 0))
+  if (!isFinite(n)) return '0'
+  return String(Number(n.toFixed(4)))
+}
+
+type SortKey = 'nome' | 'tipo' | 'estoqueAtual' | 'precoCusto'
+type SortDir  = 'asc' | 'desc'
+
+export default function InsumosView({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/cadastros/insumos`
+
+  const tipos    = useDominio(tenantSlug, 'tipo_insumo',    ['Matéria Prima', 'Embalagem', 'Limpeza', 'Outros'])
+  const unidades = useDominio(tenantSlug, 'unidade_medida', ['kg', 'g', 'l', 'ml', 'un', 'cx', 'sc', 'fd'])
+
+  const [busca, setBusca]                 = useState('')
+  const [page, setPage]                   = useState(1)
+  const [limit, setLimit]                 = useState(20)
+  const [showModal, setShowModal]         = useState(false)
+  const [showImport, setShowImport]       = useState(false)
+  const [showHistorico, setShowHistorico] = useState<any>(null)
+  const [editando, setEditando]           = useState<any>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: number; nome: string } | null>(null)
+  const [sortKey, setSortKey]             = useState<SortKey>('nome')
+  const [sortDir, setSortDir]             = useState<SortDir>('asc')
+
+  const [nome, setNome]               = useState('')
+  const [tipo, setTipo]               = useState('')
+  const [unidade, setUnidade]         = useState('')
+  const [estoqueMin, setEstoqueMin]   = useState('0')
+  const [estoqueAtual, setEstoqueAtual] = useState('0')
+  const [precoCusto, setPrecoCusto]   = useState('')
+  // CORREÇÃO (dados ocultos): descricao, codigoBarras e fornecedorId existiam
+  // no banco mas não apareciam em lugar nenhum da tela.
+  const [descricao, setDescricao]       = useState('')
+  const [codigoBarras, setCodigoBarras] = useState('')
+  const [fornecedorId, setFornecedorId] = useState('')
+
+  // Volta pra página 1 sempre que a busca muda
+  useEffect(() => { setPage(1) }, [busca])
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['insumos', tenantSlug] })
+
+  // Paginação e busca no SERVIDOR (?page, ?limit, ?search).
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['insumos', tenantSlug, page, limit, busca],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (busca) params.set('search', busca)
+      return (await fetch(`${api}?${params}`)).json()
+    },
+  })
+
+  // Fornecedores para o dropdown do campo fornecedorId
+  const { data: fornecedoresRaw } = useQuery({
+    queryKey: ['fornecedores-select', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/fornecedores?limit=500`)).json(),
+  })
+  const fornecedores: any[] = Array.isArray(fornecedoresRaw?.data?.data) ? fornecedoresRaw.data.data
+    : Array.isArray(fornecedoresRaw?.data) ? fornecedoresRaw.data : []
+
+  const salvarMut = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        nome, tipo, unidade,
+        descricao:    descricao.trim() || null,
+        codigoBarras: codigoBarras.trim() || null,
+        fornecedorId: fornecedorId ? Number(fornecedorId) : null,
+        // Estoque de insumo aceita fração (ex.: 0,250 kg) — colunas
+        // migradas para NUMERIC(14,4) e Zod sem .int()
+        estoqueMinimo: parseFloat(String(estoqueMin).replace(',', '.')) || 0,
+        estoqueAtual:  parseFloat(String(estoqueAtual).replace(',', '.')) || 0,
+        precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : 0,
+      }
+      const url    = editando ? `${api}/${editando.insumoId}` : api
+      const method = editando ? 'PUT' : 'POST'
+      const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const json   = await res.json()
+      // Sem esse check, um 400 "Registro já existente" caía em onSuccess e mostrava "Insumo criado!".
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar insumo')
+      return json
+    },
+    onSuccess: () => { invalidate(); fecharModal(); toast(editando ? 'Insumo atualizado!' : 'Insumo criado!') },
+    onError:   (e: any) => toast(e?.message ?? 'Erro ao salvar insumo.', 'error'),
+  })
+
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { invalidate(); toast('Insumo excluído.') },
+    onError:   () => toast('Erro ao excluir.', 'error'),
+  })
+
+  function abrirModal(item?: any) {
+    if (item) {
+      setEditando(item); setNome(item.nome)
+      setTipo(item.tipo ?? tipos[0] ?? ''); setUnidade(item.unidade ?? unidades[0] ?? '')
+      setEstoqueMin(String(item.estoqueMinimo ?? 0)); setEstoqueAtual(String(item.estoqueAtual ?? 0))
+      setPrecoCusto(item.precoCusto ? (item.precoCusto / 100).toFixed(2) : '')
+      setDescricao(item.descricao ?? '')
+      setCodigoBarras(item.codigoBarras ?? '')
+      setFornecedorId(item.fornecedorId ? String(item.fornecedorId) : '')
+    } else {
+      setEditando(null); setNome(''); setTipo(tipos[0] ?? ''); setUnidade(unidades[0] ?? '')
+      setEstoqueMin('0'); setEstoqueAtual('0'); setPrecoCusto('')
+      setDescricao(''); setCodigoBarras(''); setFornecedorId('')
+    }
+    setShowModal(true)
+  }
+
+  function fecharModal() { setShowModal(false); setEditando(null) }
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  function SortIcon({ col }: { col: SortKey }) {
+    if (col !== sortKey) return <ArrowUpDown size={11} className="ml-1 text-gray-300 inline" />
+    return <span className="ml-1 text-green-500 text-[11px] inline">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  }
+
+  // Exporta TODOS os insumos (não só a página atual)
+  async function exportCSV() {
+    const res = await fetch(`${api}?limit=100000`)
+    const j   = await res.json()
+    const all = Array.isArray(j?.data?.data) ? j.data.data : Array.isArray(j?.data) ? j.data : []
+    const rows = all.map((i: any) => [i.insumoId, i.nome, i.tipo ?? '', i.unidade ?? '', i.estoqueAtual, i.estoqueMinimo, i.precoCusto ? (i.precoCusto/100).toFixed(2) : '0'])
+    const csv  = [['ID','Nome','Tipo','Unidade','Estoque Atual','Estoque Mínimo','Preço Custo'], ...rows].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\uFEFF'+csv], { type: 'text/csv' })); a.download = 'insumos.csv'; a.click()
+  }
+
+  const pagina = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
+  const meta   = raw?.data?.meta
+
+  // Ordena apenas a página atual (a busca é feita no servidor)
+  const insumos = [...pagina].sort((a: any, b: any) => {
+    const av = a[sortKey] ?? ''; const bv = b[sortKey] ?? ''
+    const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Insumos</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{meta?.total ?? 0} cadastrados</p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
+          <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
+          <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Insumo</Button>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mb-4">
+        <Input placeholder="Buscar insumo..." value={busca} onChange={e => setBusca(e.target.value)} className="max-w-xs h-9 text-sm" />
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('nome')}>Nome <SortIcon col="nome" /></th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('tipo')}>Tipo <SortIcon col="tipo" /></th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Unidade</th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('estoqueAtual')}>Est. Atual <SortIcon col="estoqueAtual" /></th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Est. Mínimo</th>
+              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600" onClick={() => toggleSort('precoCusto')}>Preço Custo <SortIcon col="precoCusto" /></th>
+              <th className="w-20" />
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <TableSkeleton rows={6} cols={7} />
+            ) : insumos.length === 0 ? (
+              <tr><td colSpan={7}>
+                <EmptyState icon={Package2} title="Nenhum insumo encontrado"
+                  description="Cadastre os insumos utilizados na produção para controlar o estoque e a ficha técnica dos produtos."
+                  action="Cadastrar primeiro insumo" onAction={() => abrirModal()} />
+              </td></tr>
+            ) : insumos.map((ins: any) => (
+              <tr key={ins.insumoId} className="group border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
+                <td className="pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150">
+                  <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700" onClick={() => abrirModal(ins)}>{ins.nome}</span>
+                </td>
+                <td className="px-4 py-3 text-center"><Badge variant="secondary">{ins.tipo ?? '—'}</Badge></td>
+                <td className="px-4 py-3 text-center text-sm text-gray-500">{ins.unidade ?? '—'}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{fmtEstoque(ins.estoqueAtual)}</span>
+                </td>
+                <td className="px-4 py-3 text-center text-sm text-gray-500">{fmtEstoque(ins.estoqueMinimo)}</td>
+                <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => setShowHistorico(ins)} title="Histórico" className="p-1 text-purple-400 hover:text-purple-600"><Clock size={14} /></button>
+                    <button onClick={() => abrirModal(ins)} title="Editar" className="p-1 text-gray-300 hover:text-green-600 transition-colors"><Pencil size={14} /></button>
+                    <button onClick={() => setConfirmDelete({ id: ins.insumoId, nome: ins.nome })} className="p-1 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Paginacao
+        page={page}
+        totalPages={meta?.totalPages ?? 1}
+        total={meta?.total ?? 0}
+        limit={limit}
+        onPage={setPage}
+        onLimit={(l) => { setLimit(l); setPage(1) }}
+      />
+
+      {/* Modal Insumo */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">{editando ? 'Editar Insumo' : 'Novo Insumo'}</h2>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div><Label>Nome *</Label><Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Tipo</Label>
+                  <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    {tipos.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+                </div>
+                <div>
+                  <Label>Unidade</Label>
+                  <select value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    {unidades.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Código de Barras</Label><Input value={codigoBarras} onChange={e => setCodigoBarras(e.target.value)} className="mt-1" placeholder="EAN" /></div>
+                <div>
+                  <Label>Fornecedor</Label>
+                  <select value={fornecedorId} onChange={e => setFornecedorId(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="">— Sem fornecedor —</option>
+                    {fornecedores.map((f: any) => <option key={f.fornecedorId} value={f.fornecedorId}>{f.nomeFantasia || f.nomeCompleto}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div><Label>Descrição</Label><Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do insumo (opcional)" /></div>
+              <div className="grid grid-cols-3 gap-3">
+                {/* step="any": estoque de insumo é fracionado (ex.: 0,250 kg) */}
+                <div><Label>Est. Atual</Label><Input type="number" min="0" step="any" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
+                <div><Label>Est. Mínimo</Label><Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
+                <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
+              </div>
+              <p className="text-[10px] text-gray-400 -mt-2">Estoque aceita valores fracionados (ex.: 0.250)</p>
+
+              {editando && (
+                <AuditoriaInfo
+                  criadoPor={editando.createdBy}
+                  criadoEm={editando.createdDt}
+                  atualizadoPor={editando.updatedBy}
+                  atualizadoEm={editando.updatedDt}
+                  className="pt-3 border-t border-gray-100"
+                />
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+                <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
+                  {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showImport && (
+        <CsvImportModal tenantSlug={tenantSlug} entidade="insumos" nomeEntidade="Insumos"
+          onClose={() => setShowImport(false)} onSuccess={() => { invalidate(); setShowImport(false) }} />
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal title="Excluir insumo"
+          message={`Tem certeza que deseja excluir "${confirmDelete.nome}"? Isso pode afetar fichas técnicas vinculadas.`}
+          confirmLabel="Excluir" danger
+          onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)} />
+      )}
+
+      {showHistorico && (
+        <HistoricoModal
+          tenantSlug={tenantSlug}
+          entidade="insumo"
+          entidadeId={showHistorico.insumoId}
+          titulo={showHistorico.nome}
+          onClose={() => setShowHistorico(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+===== components\modules\cadastros\UsuariosView.tsx =====
+
+'use client'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Shield, User, X, Mail, Pencil, UserX, KeyRound } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { useToast } from '@/components/ui/Toast'
+
+interface Props { tenantSlug: string }
+
+const schema = z.object({
+  nome:     z.string().min(2, 'Nome obrigatório'),
+  email:    z.string().email('E-mail inválido'),
+  perfilId: z.coerce.number({ required_error: 'Selecione um perfil' }).int(),
+})
+type FormData = z.infer<typeof schema>
+
+export default function UsuariosView({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const apiBase   = `/api/${tenantSlug}/cadastros/usuarios`
+
+  const [showForm, setShowForm]               = useState(false)
+  const [successMsg, setSuccessMsg]           = useState('')
+  const [formError, setFormError]             = useState('')
+  const [editando, setEditando]               = useState<any>(null)
+  const [editNome, setEditNome]               = useState('')
+  const [editEmail, setEditEmail]             = useState('')
+  const [editPerfilId, setEditPerfilId]       = useState<number | ''>('')
+  const [confirmInativar, setConfirmInativar] = useState<any>(null)
+  const [confirmReset, setConfirmReset]       = useState<any>(null)
+  const [linkReset, setLinkReset]             = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['usuarios', tenantSlug],
+    queryFn:  async () => (await fetch(apiBase)).json(),
+  })
+
+  const { data: perfisRaw } = useQuery({
+    queryKey: ['perfis', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis`)).json(),
+  })
+  const perfis: any[] = Array.isArray(perfisRaw?.data) ? perfisRaw.data : []
+
+  // ── Criar usuário ─────────────────────────────────────────────────────────
+  const createMut = useMutation({
+    mutationFn: async (payload: FormData) => {
+      const perfilSelecionado = perfis.find(p => p.perfilId === payload.perfilId)
+      const res = await fetch(apiBase, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome:     payload.nome,
+          email:    payload.email,
+          perfil:   perfilSelecionado?.isAdmin ? 'admin' : 'user',
+          perfilId: payload.perfilId,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao criar usuário')
+      const novoId = data?.data?.usuarioId ?? data?.usuarioId
+      if (novoId) {
+        await fetch(`${apiBase}/${novoId}/perfil`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ perfilId: payload.perfilId }),
+        }).catch(() => {})
+      }
+      return data
+    },
+    onSuccess: (_, variables) => {
+      qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
+      setShowForm(false)
+      setSuccessMsg(`Convite enviado para ${variables.email}`)
+      setTimeout(() => setSuccessMsg(''), 5000)
+    },
+  })
+
+  // ── Editar usuário (nome + email + perfil) ────────────────────────────────
+  const editarMut = useMutation({
+    mutationFn: async () => {
+      // 1. Atualiza nome e e-mail
+      const res = await fetch(`${apiBase}/${editando.usuarioId}`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: editNome, email: editEmail }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao atualizar')
+
+      // 2. Atualiza perfil se mudou
+      if (editPerfilId && editPerfilId !== editando.perfilId) {
+        await fetch(`${apiBase}/${editando.usuarioId}/perfil`, {
+          method:  'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ perfilId: editPerfilId }),
+        }).catch(() => {})
+      }
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
+      setEditando(null)
+      toast('Usuário atualizado!')
+    },
+    onError: (err: any) => toast(err?.message ?? 'Erro ao atualizar.', 'error'),
+  })
+
+  // ── Reset de senha ────────────────────────────────────────────────────────
+  const resetMut = useMutation({
+    mutationFn: async (usuario: any) => {
+      const res = await fetch(`${apiBase}/${usuario.usuarioId}/reset-senha`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: usuario.email }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar reset')
+      return data
+    },
+    onSuccess: (data: any) => {
+      if (data?.data?.tipo === 'convite_reenviado') {
+        toast('Convite reenviado por e-mail!')
+      } else if (data?.data?.url) {
+        setLinkReset(data.data.url)
+      } else {
+        toast('Link de reset gerado.')
+      }
+    },
+    onError: (err: any) => toast(err?.message ?? 'Erro ao enviar reset.', 'error'),
+  })
+
+  // ── Inativar ──────────────────────────────────────────────────────────────
+  const inativarMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`${apiBase}/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao inativar')
+      return data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
+      toast('Usuário deletado permanentemente.')
+    },
+    onError: (err: any) => toast(err?.message ?? 'Erro ao inativar.', 'error'),
+  })
+
+  const form = useForm<FormData>({ resolver: zodResolver(schema) })
+
+  async function onSubmit(data: FormData) {
+    setFormError('')
+    try {
+      await createMut.mutateAsync(data)
+    } catch (err: any) {
+      setFormError(err.message)
+    }
+  }
+
+  function abrirEdicao(item: any) {
+    setEditando(item)
+    setEditNome(item.nome ?? '')
+    setEditEmail(item.email ?? '')
+    setEditPerfilId(item.perfilId ?? '')
+  }
+
+  const items = Array.isArray(data?.data?.data) ? data.data.data
+    : Array.isArray(data?.data) ? data.data : []
+  const meta  = data?.data?.meta
+
+  function nomePerfilDoItem(item: any) {
+    if (item.perfilNome) return item.perfilNome
+    const p = perfis.find(p => p.perfilId === item.perfilId)
+    if (p) return p.nome
+    return item.perfil === 'admin' ? 'Administrador' : 'Vendedor'
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Usuários</h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            {meta ? `${meta.total} usuário${meta.total !== 1 ? 's' : ''}` : ''}
+          </p>
+        </div>
+        <Button onClick={() => { form.reset({ perfilId: undefined }); setFormError(''); setShowForm(true) }}>
+          <Plus size={15} className="mr-1.5" /> Novo usuário
+        </Button>
+      </div>
+
+      {successMsg && (
+        <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+          <Mail size={15} className="text-green-600" />
+          <p className="text-sm text-green-700">{successMsg}</p>
+        </div>
+      )}
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Nome</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">E-mail</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Perfil</th>
+              <th className="w-28" />
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+            ) : items.length === 0 ? (
+              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum usuário encontrado.</td></tr>
+            ) : items.map((item: any) => (
+              <tr key={item.usuarioId} className="group border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                      {item.perfil === 'admin'
+                        ? <Shield size={14} className="text-green-600" />
+                        : <User size={14} className="text-gray-400" />}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">{item.nome}</span>
+                  </div>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{item.email || '—'}</td>
+                <td className="px-4 py-3">
+                  <Badge variant={item.perfil === 'admin' ? 'default' : 'secondary'}>
+                    {nomePerfilDoItem(item)}
+                  </Badge>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => abrirEdicao(item)} title="Editar"
+                      className="p-1.5 text-gray-400 hover:text-blue-600 rounded">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => setConfirmReset(item)} title="Resetar senha"
+                      className="p-1.5 text-gray-400 hover:text-amber-500 rounded">
+                      <KeyRound size={14} />
+                    </button>
+                    <button onClick={() => setConfirmInativar(item)} title="Inativar"
+                      className="p-1.5 text-gray-400 hover:text-red-500 rounded">
+                      <UserX size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Modal Novo Usuário */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Novo usuário</h2>
+              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
+              <div>
+                <Label>Nome completo *</Label>
+                <Input {...form.register('nome')} className="mt-1" placeholder="João Silva" />
+                {form.formState.errors.nome && <p className="text-xs text-red-500 mt-1">{form.formState.errors.nome.message}</p>}
+              </div>
+              <div>
+                <Label>E-mail *</Label>
+                <Input {...form.register('email')} type="email" className="mt-1" placeholder="joao@empresa.com" />
+                {form.formState.errors.email && <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>}
+              </div>
+              <div>
+                <Label>Perfil *</Label>
+                <select {...form.register('perfilId')} defaultValue=""
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                  <option value="" disabled>Selecione um perfil...</option>
+                  {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
+                </select>
+                {form.formState.errors.perfilId && <p className="text-xs text-red-500 mt-1">{form.formState.errors.perfilId.message}</p>}
+                <p className="text-xs text-gray-400 mt-1">Os privilégios são definidos em Cadastros → Perfis de Acesso.</p>
+              </div>
+              {formError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formError}</p>}
+              <p className="text-xs text-gray-400">Um e-mail será enviado para o usuário definir sua senha.</p>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+                <Button type="submit" disabled={createMut.isPending}>
+                  {createMut.isPending ? 'Enviando...' : 'Criar e enviar convite'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Usuário */}
+      {editando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Editar usuário</h2>
+              <button onClick={() => setEditando(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <Label>Nome completo</Label>
+                <Input value={editNome} onChange={e => setEditNome(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>E-mail</Label>
+                <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="mt-1" />
+                <p className="text-xs text-gray-400 mt-1">Alterar o e-mail atualiza o cadastro local. O login no Clerk continuará com o e-mail anterior até o usuário fazer login novamente.</p>
+              </div>
+              <div>
+                <Label>Perfil</Label>
+                <select value={String(editPerfilId ?? "")} onChange={e => setEditPerfilId(Number(e.target.value))}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="">Selecionar...</option>
+                  {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
+                <Button onClick={() => editarMut.mutate()} disabled={!editNome || !editEmail || editarMut.isPending}>
+                  {editarMut.isPending ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal link reset */}
+      {linkReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Link de acesso para reset</h2>
+              <button onClick={() => setLinkReset('')} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600">Copie o link abaixo e envie para o usuário. Válido por 24 horas.</p>
+              <div className="bg-gray-50 rounded-lg p-3 break-all text-xs text-gray-700 font-mono">{linkReset}</div>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setLinkReset('')}>Fechar</Button>
+                <Button onClick={() => { navigator.clipboard.writeText(linkReset); toast('Link copiado!') }}>
+                  Copiar link
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm reset senha */}
+      {confirmReset && (
+        <ConfirmModal
+          title="Resetar senha"
+          message={`Enviar e-mail de redefinição de senha para ${confirmReset.email}?`}
+          confirmLabel="Enviar e-mail"
+          onConfirm={() => { resetMut.mutate(confirmReset); setConfirmReset(null) }}
+          onCancel={() => setConfirmReset(null)}
+        />
+      )}
+
+      {/* Confirm inativar */}
+      {confirmInativar && (
+        <ConfirmModal
+          title="Deletar usuário permanentemente"
+          message={`Deletar permanentemente "${confirmInativar.nome}"? O usuário será removido do sistema e do login (Clerk). Esta ação não pode ser desfeita.`}
+          confirmLabel="Deletar permanentemente"
+          danger
+          onConfirm={() => { inativarMut.mutate(confirmInativar.usuarioId); setConfirmInativar(null) }}
+          onCancel={() => setConfirmInativar(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+
+===== components\modules\cadastros\DominiosView.tsx =====
+
+'use client'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Trash2, Database, ChevronRight, Pencil, Check } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { useToast } from '@/components/ui/Toast'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+
+interface Props { tenantSlug: string }
+
+export default function DominiosView({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/dominios`
+
+  const [selecionado, setSelecionado]         = useState<string | null>(null)
+  const [novoValor, setNovoValor]             = useState('')
+  const [editandoId, setEditandoId]           = useState<number | null>(null)
+  const [editandoValor, setEditandoValor]     = useState('')
+  const [confirmDelete, setConfirmDelete]     = useState<{ id: number; valor: string } | null>(null)
+  const [showNovoDominio, setShowNovoDominio] = useState(false)
+  const [novoCodigo, setNovoCodigo]           = useState('')
+  const [novoNome, setNovoNome]               = useState('')
+  const [novaDescricao, setNovaDescricao]     = useState('')
+
+  const { data: listData, isLoading } = useQuery({
+    queryKey: ['dominios-list', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
+  })
+
+  const { data: dominioData } = useQuery({
+    queryKey: ['dominio-detalhe', tenantSlug, selecionado],
+    queryFn:  async () => (await fetch(`${api}/${selecionado}`)).json(),
+    enabled:  !!selecionado,
+  })
+
+  function invalidateAll() {
+    qc.invalidateQueries({ queryKey: ['dominios-list', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['dominio-detalhe', tenantSlug, selecionado] })
+    qc.invalidateQueries({ queryKey: ['dominio', tenantSlug] })
+  }
+
+  const addValorMut = useMutation({
+    mutationFn: () => fetch(`${api}/${selecionado}/valores`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valor: novoValor.trim() }),
+    }).then(r => r.json()),
+    onSuccess: () => { invalidateAll(); setNovoValor(''); toast('Valor adicionado!') },
+    onError:   () => toast('Erro ao adicionar.', 'error'),
+  })
+
+  const updateValorMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${selecionado}/valores/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valor: editandoValor.trim() }),
+    }).then(r => r.json()),
+    onSuccess: () => { invalidateAll(); setEditandoId(null); toast('Valor atualizado!') },
+    onError:   () => toast('Erro ao atualizar.', 'error'),
+  })
+
+  const deleteValorMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${selecionado}/valores/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { invalidateAll(); toast('Valor removido.') },
+    onError:   () => toast('Erro ao remover.', 'error'),
+  })
+
+  const criarDominioMut = useMutation({
+    mutationFn: () => fetch(api, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo: novoCodigo, nome: novoNome.trim(), descricao: novaDescricao.trim() || undefined }),
+    }).then(r => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['dominios-list', tenantSlug] })
+      setShowNovoDominio(false); setNovoCodigo(''); setNovoNome(''); setNovaDescricao('')
+      toast('Tabela criada!')
+    },
+    onError: () => toast('Erro ao criar tabela. O código pode já existir.', 'error'),
+  })
+
+  const dominios = Array.isArray(listData?.data) ? listData.data : []
+  const dominio  = dominioData?.data ?? null
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Domínios</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Gerencie os valores das listas e categorias usadas no sistema</p>
+        </div>
+        <Button onClick={() => setShowNovoDominio(true)}>
+          <Plus size={15} className="mr-1.5" /> Nova tabela
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Lista lateral */}
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Tabelas disponíveis</p>
+          </div>
+          {isLoading ? (
+            <div className="p-6 text-center text-sm text-gray-400">Carregando...</div>
+          ) : dominios.length === 0 ? (
+            <div className="p-6 text-center text-sm text-gray-400">Nenhuma tabela. Execute a migration primeiro.</div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {dominios.map((dom: any) => (
+                <button key={dom.dominioId} onClick={() => setSelecionado(dom.codigo)}
+                  className={`w-full flex items-center justify-between px-4 py-3.5 text-left transition-colors ${
+                    selecionado === dom.codigo
+                      ? 'bg-green-50 border-l-2 border-green-500 pl-[14px]'
+                      : 'hover:bg-gray-50'
+                  }`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-gray-900 truncate">{dom.nome}</p>
+                      {dom.sistema && <Badge variant="outline" className="text-[9px] px-1 py-0">sistema</Badge>}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {dom.totalValores} valores · <span className="font-mono">{dom.codigo}</span>
+                    </p>
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 flex-shrink-0 ml-2" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Painel de valores */}
+        <div className="lg:col-span-2">
+          {!selecionado ? (
+            <div className="bg-white rounded-xl border border-gray-100 flex flex-col items-center justify-center h-64 text-center px-4">
+              <Database size={28} className="text-gray-200 mb-3" />
+              <p className="text-sm font-medium text-gray-500">Selecione uma tabela</p>
+              <p className="text-xs text-gray-400 mt-1 max-w-xs">Clique em qualquer item à esquerda para gerenciar os valores</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-base font-semibold text-gray-900">{dominio?.nome ?? selecionado}</p>
+                {dominio?.descricao && <p className="text-xs text-gray-400 mt-0.5">{dominio.descricao}</p>}
+                <p className="text-xs text-gray-300 mt-1 font-mono">{dominio?.codigo}</p>
+              </div>
+
+              {/* Adicionar novo valor */}
+              <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+                <p className="text-xs font-medium text-gray-500 mb-2">Adicionar novo valor</p>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Digite o novo valor..."
+                    value={novoValor}
+                    onChange={e => setNovoValor(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && novoValor.trim()) addValorMut.mutate() }}
+                    className="h-9 text-sm"
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={() => addValorMut.mutate()}
+                    disabled={!novoValor.trim() || addValorMut.isPending}>
+                    <Plus size={14} className="mr-1" /> Adicionar
+                  </Button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">Pressione Enter para adicionar rapidamente</p>
+              </div>
+
+              {/* Lista de valores */}
+              {!dominio?.valores?.length ? (
+                <div className="px-5 py-10 text-center text-sm text-gray-400">
+                  Nenhum valor cadastrado. Adicione o primeiro acima.
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {dominio.valores.map((v: any, i: number) => (
+                    <div key={v.valorId} className="group flex items-center gap-3 px-5 py-3 hover:bg-gray-50/60 transition-colors">
+                      <span className="text-xs text-gray-300 w-5 text-right flex-shrink-0">{i + 1}</span>
+
+                      {editandoId === v.valorId ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Input
+                            value={editandoValor}
+                            onChange={e => setEditandoValor(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') updateValorMut.mutate(v.valorId)
+                              if (e.key === 'Escape') setEditandoId(null)
+                            }}
+                            className="h-7 text-sm py-0" autoFocus
+                          />
+                          <button onClick={() => updateValorMut.mutate(v.valorId)} className="text-green-500 hover:text-green-700">
+                            <Check size={14} />
+                          </button>
+                          <button onClick={() => setEditandoId(null)} className="text-gray-400 hover:text-gray-600">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-sm font-medium text-gray-900 flex-1">{v.valor}</span>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => { setEditandoId(v.valorId); setEditandoValor(v.valor) }}
+                              className="p-1 text-gray-300 hover:text-blue-500 transition-colors">
+                              <Pencil size={12} />
+                            </button>
+                            <button
+                              onClick={() => setConfirmDelete({ id: v.valorId, valor: v.valor })}
+                              className="p-1 text-gray-300 hover:text-red-500 transition-colors">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/30">
+                <p className="text-xs text-gray-400">
+                  {dominio?.valores?.length ?? 0} valor(es) · Alterações refletem automaticamente nos formulários do sistema
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal nova tabela */}
+      {showNovoDominio && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-semibold">Nova Tabela de Domínio</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Crie uma nova lista reutilizável</p>
+              </div>
+              <button onClick={() => setShowNovoDominio(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <Label>Nome *</Label>
+                <Input value={novoNome} onChange={e => setNovoNome(e.target.value)} className="mt-1"
+                  placeholder="Ex: Tipos de Pedido" autoFocus />
+              </div>
+              <div>
+                <Label>Código interno *</Label>
+                <Input
+                  value={novoCodigo}
+                  onChange={e => setNovoCodigo(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
+                  className="mt-1 font-mono"
+                  placeholder="Ex: tipo_pedido" />
+                <p className="text-xs text-gray-400 mt-1">Apenas letras minúsculas, números e _. Não pode ser alterado depois.</p>
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Input value={novaDescricao} onChange={e => setNovaDescricao(e.target.value)} className="mt-1"
+                  placeholder="Onde esta tabela é usada (opcional)" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setShowNovoDominio(false)}>Cancelar</Button>
+                <Button onClick={() => criarDominioMut.mutate()}
+                  disabled={!novoNome.trim() || !novoCodigo.trim() || criarDominioMut.isPending}>
+                  {criarDominioMut.isPending ? 'Criando...' : 'Criar Tabela'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmModal
+          title="Remover valor"
+          message={`Remover "${confirmDelete.valor}"? Registros que já usam este valor não serão afetados.`}
+          confirmLabel="Remover" danger
+          onConfirm={() => { deleteValorMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+    </div>
+  )
+}

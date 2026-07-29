@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Shield, User, X, Mail, Pencil, UserX, KeyRound } from 'lucide-react'
+import { Plus, Shield, User, Mail, Pencil, UserX, KeyRound } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -11,6 +11,11 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
+import { FormModal } from '@/components/ui/FormModal'
+import { Aviso } from '@/components/ui/Aviso'
 
 interface Props { tenantSlug: string }
 
@@ -180,181 +185,156 @@ export default function UsuariosView({ tenantSlug }: Props) {
     return item.perfil === 'admin' ? 'Administrador' : 'Vendedor'
   }
 
+  const colunas: Coluna[] = [
+    {
+      chave: 'nome', titulo: 'Nome',
+      classeCelula: 'px-4 py-3',
+      render: (item: any) => (
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+            {item.perfil === 'admin'
+              ? <Shield size={14} className="text-green-600" />
+              : <User size={14} className="text-gray-400" />}
+          </div>
+          <span className="text-sm font-medium text-gray-900">{item.nome}</span>
+        </div>
+      ),
+    },
+    {
+      chave: 'email', titulo: 'E-mail', esconderAte: 'md',
+      render: (item: any) => item.email || '—',
+    },
+    {
+      chave: 'perfil', titulo: 'Perfil',
+      classeCelula: 'px-4 py-3',
+      render: (item: any) => (
+        <Badge variant={item.perfil === 'admin' ? 'default' : 'secondary'}>
+          {nomePerfilDoItem(item)}
+        </Badge>
+      ),
+    },
+  ]
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Usuários</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {meta ? `${meta.total} usuário${meta.total !== 1 ? 's' : ''}` : ''}
-          </p>
-        </div>
-        <Button onClick={() => { form.reset({ perfilId: undefined }); setFormError(''); setShowForm(true) }}>
-          <Plus size={15} className="mr-1.5" /> Novo usuário
-        </Button>
-      </div>
+      <PageHeader
+        titulo="Usuários"
+        subtitulo={meta ? `${meta.total} usuário${meta.total !== 1 ? 's' : ''}` : ''}
+        acoes={
+          <Button onClick={() => { form.reset({ perfilId: undefined }); setFormError(''); setShowForm(true) }}>
+            <Plus size={15} className="mr-1.5" /> Novo usuário
+          </Button>
+        }
+      />
 
       {successMsg && (
-        <div className="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-          <Mail size={15} className="text-green-600" />
-          <p className="text-sm text-green-700">{successMsg}</p>
-        </div>
+        <Aviso tom="sucesso" className="mb-4" icone={<Mail size={15} className="text-green-600" />}>
+          {successMsg}
+        </Aviso>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Nome</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">E-mail</th>
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Perfil</th>
-              <th className="w-28" />
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum usuário encontrado.</td></tr>
-            ) : items.map((item: any) => (
-              <tr key={item.usuarioId} className="group border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                      {item.perfil === 'admin'
-                        ? <Shield size={14} className="text-green-600" />
-                        : <User size={14} className="text-gray-400" />}
-                    </div>
-                    <span className="text-sm font-medium text-gray-900">{item.nome}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{item.email || '—'}</td>
-                <td className="px-4 py-3">
-                  <Badge variant={item.perfil === 'admin' ? 'default' : 'secondary'}>
-                    {nomePerfilDoItem(item)}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => abrirEdicao(item)} title="Editar"
-                      className="p-1.5 text-gray-400 hover:text-blue-600 rounded">
-                      <Pencil size={14} />
-                    </button>
-                    <button onClick={() => setConfirmReset(item)} title="Resetar senha"
-                      className="p-1.5 text-gray-400 hover:text-amber-500 rounded">
-                      <KeyRound size={14} />
-                    </button>
-                    <button onClick={() => setConfirmInativar(item)} title="Inativar"
-                      className="p-1.5 text-gray-400 hover:text-red-500 rounded">
-                      <UserX size={14} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        colunas={colunas}
+        itens={items}
+        chave={(item: any) => item.usuarioId}
+        carregando={isLoading}
+        vazio="Nenhum usuário encontrado."
+        acoes={(item: any) => (
+          <>
+            <BotaoIcone titulo="Editar" variante="info" tamanho="md" onClick={() => abrirEdicao(item)}>
+              <Pencil size={14} />
+            </BotaoIcone>
+            <BotaoIcone titulo="Resetar senha" variante="alerta" tamanho="md" onClick={() => setConfirmReset(item)}>
+              <KeyRound size={14} />
+            </BotaoIcone>
+            <BotaoIcone titulo="Inativar" variante="perigo" tamanho="md" onClick={() => setConfirmInativar(item)}>
+              <UserX size={14} />
+            </BotaoIcone>
+          </>
+        )}
+      />
 
       {/* Modal Novo Usuário */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Novo usuário</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Novo usuário" onClose={() => setShowForm(false)} largura="max-w-md">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
+            <div>
+              <Label>Nome completo *</Label>
+              <Input {...form.register('nome')} className="mt-1" placeholder="João Silva" />
+              {form.formState.errors.nome && <p className="text-xs text-red-500 mt-1">{form.formState.errors.nome.message}</p>}
             </div>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
-              <div>
-                <Label>Nome completo *</Label>
-                <Input {...form.register('nome')} className="mt-1" placeholder="João Silva" />
-                {form.formState.errors.nome && <p className="text-xs text-red-500 mt-1">{form.formState.errors.nome.message}</p>}
-              </div>
-              <div>
-                <Label>E-mail *</Label>
-                <Input {...form.register('email')} type="email" className="mt-1" placeholder="joao@empresa.com" />
-                {form.formState.errors.email && <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>}
-              </div>
-              <div>
-                <Label>Perfil *</Label>
-                <select {...form.register('perfilId')} defaultValue=""
-                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
-                  <option value="" disabled>Selecione um perfil...</option>
-                  {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
-                </select>
-                {form.formState.errors.perfilId && <p className="text-xs text-red-500 mt-1">{form.formState.errors.perfilId.message}</p>}
-                <p className="text-xs text-gray-400 mt-1">Os privilégios são definidos em Cadastros → Perfis de Acesso.</p>
-              </div>
-              {formError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{formError}</p>}
-              <p className="text-xs text-gray-400">Um e-mail será enviado para o usuário definir sua senha.</p>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
-                <Button type="submit" disabled={createMut.isPending}>
-                  {createMut.isPending ? 'Enviando...' : 'Criar e enviar convite'}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <div>
+              <Label>E-mail *</Label>
+              <Input {...form.register('email')} type="email" className="mt-1" placeholder="joao@empresa.com" />
+              {form.formState.errors.email && <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>}
+            </div>
+            <div>
+              <Label>Perfil *</Label>
+              <select {...form.register('perfilId')} defaultValue=""
+                className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                <option value="" disabled>Selecione um perfil...</option>
+                {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
+              </select>
+              {form.formState.errors.perfilId && <p className="text-xs text-red-500 mt-1">{form.formState.errors.perfilId.message}</p>}
+              <p className="text-xs text-gray-400 mt-1">Os privilégios são definidos em Cadastros → Perfis de Acesso.</p>
+            </div>
+            {formError && <Aviso tom="erro">{formError}</Aviso>}
+            <p className="text-xs text-gray-400">Um e-mail será enviado para o usuário definir sua senha.</p>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+              <Button type="submit" disabled={createMut.isPending}>
+                {createMut.isPending ? 'Enviando...' : 'Criar e enviar convite'}
+              </Button>
+            </div>
+          </form>
+        </FormModal>
       )}
 
       {/* Modal Editar Usuário */}
       {editando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Editar usuário</h2>
-              <button onClick={() => setEditando(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Editar usuário" onClose={() => setEditando(null)} largura="max-w-md">
+          <div className="p-6 space-y-4">
+            <div>
+              <Label>Nome completo</Label>
+              <Input value={editNome} onChange={e => setEditNome(e.target.value)} className="mt-1" />
             </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <Label>Nome completo</Label>
-                <Input value={editNome} onChange={e => setEditNome(e.target.value)} className="mt-1" />
-              </div>
-              <div>
-                <Label>E-mail</Label>
-                <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="mt-1" />
-                <p className="text-xs text-gray-400 mt-1">Alterar o e-mail atualiza o cadastro local. O login no Clerk continuará com o e-mail anterior até o usuário fazer login novamente.</p>
-              </div>
-              <div>
-                <Label>Perfil</Label>
-                <select value={String(editPerfilId ?? "")} onChange={e => setEditPerfilId(Number(e.target.value))}
-                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                  <option value="">Selecionar...</option>
-                  {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
-                </select>
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
-                <Button onClick={() => editarMut.mutate()} disabled={!editNome || !editEmail || editarMut.isPending}>
-                  {editarMut.isPending ? 'Salvando...' : 'Salvar'}
-                </Button>
-              </div>
+            <div>
+              <Label>E-mail</Label>
+              <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="mt-1" />
+              <p className="text-xs text-gray-400 mt-1">Alterar o e-mail atualiza o cadastro local. O login no Clerk continuará com o e-mail anterior até o usuário fazer login novamente.</p>
+            </div>
+            <div>
+              <Label>Perfil</Label>
+              <select value={String(editPerfilId ?? "")} onChange={e => setEditPerfilId(Number(e.target.value))}
+                className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                <option value="">Selecionar...</option>
+                {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
+              </select>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
+              <Button onClick={() => editarMut.mutate()} disabled={!editNome || !editEmail || editarMut.isPending}>
+                {editarMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {/* Modal link reset */}
       {linkReset && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Link de acesso para reset</h2>
-              <button onClick={() => setLinkReset('')} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-600">Copie o link abaixo e envie para o usuário. Válido por 24 horas.</p>
-              <div className="bg-gray-50 rounded-lg p-3 break-all text-xs text-gray-700 font-mono">{linkReset}</div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setLinkReset('')}>Fechar</Button>
-                <Button onClick={() => { navigator.clipboard.writeText(linkReset); toast('Link copiado!') }}>
-                  Copiar link
-                </Button>
-              </div>
+        <FormModal titulo="Link de acesso para reset" onClose={() => setLinkReset('')} largura="max-w-md">
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-gray-600">Copie o link abaixo e envie para o usuário. Válido por 24 horas.</p>
+            <div className="bg-gray-50 rounded-lg p-3 break-all text-xs text-gray-700 font-mono">{linkReset}</div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setLinkReset('')}>Fechar</Button>
+              <Button onClick={() => { navigator.clipboard.writeText(linkReset); toast('Link copiado!') }}>
+                Copiar link
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {/* Confirm reset senha */}
