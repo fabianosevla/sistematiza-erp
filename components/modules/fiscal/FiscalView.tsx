@@ -1,13 +1,18 @@
 ﻿'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Play, Square, FileText, AlertTriangle, CheckCircle, Clock, Printer, ArrowRight } from 'lucide-react'
+import { Plus, Play, Square, FileText, AlertTriangle, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { Aviso } from '@/components/ui/Aviso'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { FormModal } from '@/components/ui/FormModal'
 import NovaNotaModal from './NovaNotaModal'
-import { fmtMoeda as formatCents } from '@/lib/format'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -30,6 +35,7 @@ export default function FiscalView({ tenantSlug }: Props) {
   const [showNovaNota, setShowNovaNota]   = useState(false)
   const [showCancelar, setShowCancelar]   = useState<number | null>(null)
   const [motivoCancelamento, setMotivo]   = useState('')
+  const [confirmFechar, setConfirmFechar] = useState<any>(null)
 
   const [showAbrirTurno, setShowAbrirTurno] = useState(false)
   const [operador, setOperador]             = useState('')
@@ -83,12 +89,7 @@ export default function FiscalView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Fiscal</h1>
-          <p className="text-sm text-gray-400 mt-0.5">NFC-e, NF-e e NFS-e via Focus NFe</p>
-        </div>
-      </div>
+      <PageHeader titulo="Fiscal" />
 
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
         {([
@@ -109,7 +110,13 @@ export default function FiscalView({ tenantSlug }: Props) {
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-gray-700">Turno de Caixa</h2>
+                <h2 className="text-sm font-semibold text-gray-700 inline-flex items-center gap-1">
+                  Turno de Caixa
+                  <InfoTip titulo="Turno de caixa">
+                    Enquanto o turno está aberto, as vendas do PDV podem gerar NFC-e.
+                    Ao fechar, o sistema registra o encerramento do período do operador.
+                  </InfoTip>
+                </h2>
                 {turno ? (
                   <p className="text-xs text-gray-400 mt-1">
                     Caixa #{turno.numeroCaixa} — {turno.operador} — aberto às {new Date(turno.abertoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -125,7 +132,7 @@ export default function FiscalView({ tenantSlug }: Props) {
                   </Button>
                 ) : (
                   <Button variant="outline" size="sm" className="text-red-500 border-red-200"
-                    onClick={() => { if (confirm('Fechar o turno de caixa?')) fecharTurnoMut.mutate(turno.turnoId) }}>
+                    onClick={() => setConfirmFechar(turno)}>
                     <Square size={14} className="mr-1.5" /> Fechar turno
                   </Button>
                 )}
@@ -140,11 +147,11 @@ export default function FiscalView({ tenantSlug }: Props) {
                 <Plus size={14} className="mr-1.5" /> Nova NFC-e
               </Button>
             </div>
+            {/* Condição real do sistema — não é explicação, continua na tela */}
             {!turno && (
-              <div className="flex items-center gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <AlertTriangle size={15} className="text-amber-500" />
-                <p className="text-sm text-amber-700">Abra o turno de caixa para emitir NFC-e.</p>
-              </div>
+              <Aviso tom="atencao" icone={<AlertTriangle size={15} className="text-amber-500 flex-shrink-0" />}>
+                Abra o turno de caixa para emitir NFC-e.
+              </Aviso>
             )}
           </div>
 
@@ -171,9 +178,12 @@ export default function FiscalView({ tenantSlug }: Props) {
       {aba === 'nfe-entrada' && (
         <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
           <FileText size={32} className="mx-auto text-gray-200 mb-3" />
-          <p className="text-sm text-gray-600 font-medium">Entrada de NF-e de fornecedor já existe no Estoque Avançado</p>
-          <p className="text-xs text-gray-400 mt-1 max-w-md mx-auto">
-            Upload do XML, vínculo com insumos, entrada no estoque e geração da conta a pagar — tudo em um único fluxo, sem duplicar lançamento.
+          <p className="text-sm text-gray-600 font-medium inline-flex items-center gap-1">
+            Entrada de NF-e de fornecedor fica no Estoque Avançado
+            <InfoTip titulo="Por que fica lá">
+              O fluxo é único: upload do XML, vínculo com insumos, entrada no estoque e
+              geração da conta a pagar — sem duplicar lançamento.
+            </InfoTip>
           </p>
           <Anchor href={`/${tenantSlug}/estoque-avancado`}
             className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 transition-colors">
@@ -185,49 +195,63 @@ export default function FiscalView({ tenantSlug }: Props) {
       {aba === 'relatorios' && <RelatoriosFiscal tenantSlug={tenantSlug} />}
 
       {showAbrirTurno && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Abrir Turno de Caixa</h2>
-              <button onClick={() => setShowAbrirTurno(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Abrir Turno de Caixa" onClose={() => setShowAbrirTurno(false)} largura="max-w-sm">
+          <div className="p-6 space-y-4">
+            <div><Label>Operador *</Label><Input value={operador} onChange={e => setOperador(e.target.value)} className="mt-1" placeholder="Seu nome" autoFocus /></div>
+            <div>
+              <Label className="inline-flex items-center gap-1">
+                Valor de abertura (R$)
+                <InfoTip titulo="Valor de abertura">
+                  Dinheiro em caixa no início do turno. Serve de referência na conferência do fechamento.
+                </InfoTip>
+              </Label>
+              <Input type="number" min="0" step="0.01" value={valorAbertura} onChange={e => setValorAbertura(e.target.value)} className="mt-1" />
             </div>
-            <div className="p-6 space-y-4">
-              <div><Label>Operador *</Label><Input value={operador} onChange={e => setOperador(e.target.value)} className="mt-1" placeholder="Seu nome" autoFocus /></div>
-              <div><Label>Valor de abertura (R$)</Label><Input type="number" min="0" step="0.01" value={valorAbertura} onChange={e => setValorAbertura(e.target.value)} className="mt-1" /></div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setShowAbrirTurno(false)}>Cancelar</Button>
-                <Button onClick={() => abrirTurnoMut.mutate()} disabled={!operador || abrirTurnoMut.isPending}>Abrir turno</Button>
-              </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowAbrirTurno(false)}>Cancelar</Button>
+              <Button onClick={() => abrirTurnoMut.mutate()} disabled={!operador || abrirTurnoMut.isPending}>Abrir turno</Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {showCancelar && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Cancelar Nota</h2>
-              <button onClick={() => setShowCancelar(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Cancelar Nota" onClose={() => setShowCancelar(null)} largura="max-w-sm">
+          <div className="p-6 space-y-4">
+            <div>
+              <Label className="inline-flex items-center gap-1">
+                Justificativa do cancelamento *
+                <InfoTip titulo="Exigência da SEFAZ">
+                  A justificativa vai junto com o pedido de cancelamento e precisa de
+                  no mínimo 15 caracteres.
+                </InfoTip>
+              </Label>
+              <textarea value={motivoCancelamento} onChange={e => setMotivo(e.target.value)} rows={3}
+                className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none resize-none"
+                placeholder="Mínimo 15 caracteres..." />
+              <p className="text-xs text-gray-400 mt-1">{motivoCancelamento.length} caracteres</p>
             </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <Label>Justificativa do cancelamento *</Label>
-                <textarea value={motivoCancelamento} onChange={e => setMotivo(e.target.value)} rows={3}
-                  className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none resize-none"
-                  placeholder="Mínimo 15 caracteres..." />
-                <p className="text-xs text-gray-400 mt-1">{motivoCancelamento.length} caracteres (mín. 15)</p>
-              </div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setShowCancelar(null)}>Voltar</Button>
-                <Button className="bg-red-500 hover:bg-red-600" onClick={() => cancelarMut.mutate(showCancelar)}
-                  disabled={motivoCancelamento.length < 15 || cancelarMut.isPending}>
-                  Confirmar cancelamento
-                </Button>
-              </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowCancelar(null)}>Voltar</Button>
+              <Button className="bg-red-500 hover:bg-red-600" onClick={() => cancelarMut.mutate(showCancelar)}
+                disabled={motivoCancelamento.length < 15 || cancelarMut.isPending}>
+                Confirmar cancelamento
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
+      )}
+
+      {/* Antes era o confirm() do navegador */}
+      {confirmFechar && (
+        <ConfirmModal
+          title="Fechar turno de caixa"
+          message={`Fechar o turno do caixa #${confirmFechar.numeroCaixa} (${confirmFechar.operador})? Novas NFC-e só poderão ser emitidas após abrir outro turno.`}
+          confirmLabel="Fechar turno"
+          danger
+          onConfirm={() => { fecharTurnoMut.mutate(confirmFechar.turnoId); setConfirmFechar(null) }}
+          onCancel={() => setConfirmFechar(null)}
+        />
       )}
 
       {showNovaNota && (
@@ -273,8 +297,9 @@ function NotasList({ notas, isLoading, onEmitir, onCancelar }: {
                 <td className="px-4 py-3 text-sm font-mono text-gray-600">{n.numero ?? '—'}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{n.razaoSocial ?? 'Consumidor Final'}</td>
                 <td className="px-4 py-3"><Badge variant={s.color as any}>{s.label}</Badge></td>
-                <td className="px-4 py-3 text-right text-sm font-semibold">{(n.valorTotal / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td className="px-4 py-3 text-right text-sm font-semibold">{fmt(n.valorTotal)}</td>
                 <td className="px-4 py-3">
+                  {/* Ações ficam sempre visíveis: são o caminho principal da tela */}
                   <div className="flex items-center justify-end gap-2">
                     {n.status === 'pendente' && (
                       <button onClick={() => onEmitir(n.notaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Emitir</button>
@@ -344,7 +369,7 @@ function RelatoriosFiscal({ tenantSlug }: { tenantSlug: string }) {
                   <td className="px-4 py-2 text-right text-sm text-green-600 font-medium">{r.autorizadas}</td>
                   <td className="px-4 py-2 text-right text-sm text-red-500">{r.canceladas}</td>
                   <td className="px-4 py-2 text-right text-sm text-amber-500">{r.pendentes}</td>
-                  <td className="px-4 py-2 text-right text-sm font-semibold">{(r.valorTotal / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                  <td className="px-4 py-2 text-right text-sm font-semibold">{fmt(r.valorTotal)}</td>
                 </tr>
               ))}
             </tbody>
@@ -362,15 +387,20 @@ function RelatoriosFiscal({ tenantSlug }: { tenantSlug: string }) {
           ) : porForma.map((f: any, i: number) => (
             <div key={i} className="flex justify-between px-4 py-2.5 border-b border-gray-50 last:border-0">
               <span className="text-sm text-gray-700">{f.forma} <span className="text-gray-400">({f.qtdNotas})</span></span>
-              <span className="text-sm font-semibold">{(f.total / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+              <span className="text-sm font-semibold">{fmt(f.total)}</span>
             </div>
           ))}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-700">Impostos lançados nas notas</p>
-            <p className="text-xs text-gray-400 mt-0.5">Soma do que já está registrado — não é cálculo automático de tributos</p>
+            <p className="text-sm font-semibold text-gray-700 inline-flex items-center gap-1">
+              Impostos lançados nas notas
+              <InfoTip titulo="Como este número é formado">
+                É a soma dos impostos já registrados em cada nota emitida.
+                Não é cálculo automático de tributos nem substitui a apuração contábil.
+              </InfoTip>
+            </p>
           </div>
           {loadingApuracao ? (
             <p className="text-sm text-gray-400 text-center py-8">Carregando...</p>
@@ -380,9 +410,9 @@ function RelatoriosFiscal({ tenantSlug }: { tenantSlug: string }) {
             <div key={i} className="px-4 py-2.5 border-b border-gray-50 last:border-0">
               <p className="text-sm font-medium text-gray-900 mb-1">{a.mes}</p>
               <div className="flex gap-4 text-xs text-gray-500">
-                <span>ICMS: <b className="text-gray-700">{(a.icms/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></span>
-                <span>IPI: <b className="text-gray-700">{(a.ipi/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></span>
-                <span>ST: <b className="text-gray-700">{(a.valorSt/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</b></span>
+                <span>ICMS: <b className="text-gray-700">{fmt(a.icms)}</b></span>
+                <span>IPI: <b className="text-gray-700">{fmt(a.ipi)}</b></span>
+                <span>ST: <b className="text-gray-700">{fmt(a.valorSt)}</b></span>
               </div>
             </div>
           ))}

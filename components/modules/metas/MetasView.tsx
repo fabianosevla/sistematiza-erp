@@ -6,6 +6,9 @@ import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
 import { Label }    from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip }  from '@/components/ui/InfoTip'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { FormModal }  from '@/components/ui/FormModal'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -101,19 +104,19 @@ export default function MetasView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Metas & Simulador</h1>
-          <div className="flex items-center gap-2 mt-1">
+      <PageHeader
+        titulo="Metas & Simulador"
+        subtitulo={
+          <span className="flex items-center gap-2">
             <button onClick={() => navMes(-1)} className="p-0.5 text-gray-400 hover:text-gray-700"><ChevronLeft size={16} /></button>
             <span className="text-sm font-semibold text-gray-700 min-w-36 text-center">
               {MESES[mes - 1]} {ano}
               {eMesAtual && <span className="ml-2 text-xs font-normal text-green-600 bg-green-50 px-1.5 py-0.5 rounded">mês atual</span>}
             </span>
             <button onClick={() => navMes(1)} className="p-0.5 text-gray-400 hover:text-gray-700"><ChevronRight size={16} /></button>
-          </div>
-        </div>
-      </div>
+          </span>
+        }
+      />
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
@@ -162,7 +165,12 @@ export default function MetasView({ tenantSlug }: Props) {
               })}
             </div>
           )}
-          <div className="flex justify-end">
+          <div className="flex justify-end items-center gap-2">
+            <InfoTip titulo="Para que servem as metas">
+              Com metas definidas, os cartões acima mostram o quanto do mês já foi cumprido.
+              O <strong>Simulador</strong> projeta receita e lucro antes de fechar o mês, e a
+              <strong> Previsão de Produção</strong> calcula quanto produzir no próximo.
+            </InfoTip>
             <Button onClick={() => {
               setFReceita(meta?.metaReceita ? (meta.metaReceita / 100).toFixed(2) : '')
               setFDespesa(meta?.metaDespesaMaxima ? (meta.metaDespesaMaxima / 100).toFixed(2) : '')
@@ -170,12 +178,6 @@ export default function MetasView({ tenantSlug }: Props) {
               setShowEditMeta(true)
             }}><Target size={14} className="mr-1.5" /> Definir Metas de {MESES[mes - 1]}</Button>
           </div>
-          {!meta?.metaReceita && !meta?.metaLucro && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-              <Lightbulb size={16} className="text-blue-500 mt-0.5 flex-shrink-0" />
-              <p className="text-sm text-blue-700">Defina metas mensais para acompanhar o progresso em tempo real. Use o <b>Simulador</b> para projetar receitas e lucros antes de fechar o mês. Use <b>Previsão de Produção</b> para calcular quanto produzir no próximo mês.</p>
-            </div>
-          )}
         </div>
       )}
 
@@ -205,9 +207,12 @@ export default function MetasView({ tenantSlug }: Props) {
                 </div>
               ))}
             </div>
-            <div className="pt-2 border-t border-gray-100">
-              <p className="text-xs text-gray-400 mb-3">Usa fichas técnicas para calcular custo de insumos e considera as despesas de {MESES[mes - 1]} {ano}.</p>
-              <Button className="w-full" onClick={calcularSimulacao} disabled={simLoading}>
+            <div className="pt-2 border-t border-gray-100 flex items-center gap-2">
+              <InfoTip titulo="Como a projeção é calculada">
+                O custo dos insumos vem das fichas técnicas dos produtos escolhidos, e as
+                despesas consideradas são as de {MESES[mes - 1]} {ano}.
+              </InfoTip>
+              <Button className="flex-1" onClick={calcularSimulacao} disabled={simLoading}>
                 {simLoading ? 'Calculando...' : <><Calculator size={14} className="mr-1.5" /> Calcular Projeção</>}
               </Button>
             </div>
@@ -240,6 +245,7 @@ export default function MetasView({ tenantSlug }: Props) {
                     ))}
                   </div>
                 </div>
+                {/* Sugestões vêm do servidor, com base nos números — é resultado, não explicação */}
                 {simulado.sugestoes?.length > 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                     <div className="flex items-center gap-2 mb-2"><Lightbulb size={15} className="text-amber-600" /><p className="text-sm font-semibold text-amber-700">Sugestões</p></div>
@@ -255,17 +261,16 @@ export default function MetasView({ tenantSlug }: Props) {
       {/* ABA: PREVISÃO DE PRODUÇÃO */}
       {aba === 'previsao' && (
         <div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-            <BarChart2 size={16} className="text-blue-500 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-blue-700 mb-1">Previsão de Produção para {MESES[mes - 1]} {ano}</p>
-              <p className="text-xs text-blue-600">Calcula a média de vendas e pedidos dos meses anteriores para projetar quanto produzir, quanto de cada insumo será necessário (via ficha técnica) e qual será o custo estimado.</p>
-            </div>
-          </div>
-
           {/* Controle de histórico */}
           <div className="flex items-center gap-3">
-            <Label className="text-sm text-gray-600 whitespace-nowrap">Meses de histórico:</Label>
+            <Label className="text-sm text-gray-600 whitespace-nowrap inline-flex items-center gap-1">
+              Meses de histórico
+              <InfoTip titulo="Como a previsão é calculada">
+                O sistema tira a média de vendas e pedidos dos meses anteriores para projetar
+                quanto produzir em {MESES[mes - 1]} {ano}, quanto de cada insumo será necessário
+                (pela ficha técnica) e qual o custo estimado.
+              </InfoTip>
+            </Label>
             <div className="flex gap-1">
               {[1, 2, 3, 6].map(n => (
                 <button key={n} onClick={() => setPrevisaoMeses(n)}
@@ -274,11 +279,6 @@ export default function MetasView({ tenantSlug }: Props) {
                 </button>
               ))}
             </div>
-            <p className="text-xs text-gray-400">
-              {mes === now.getMonth() + 1 && ano === now.getFullYear()
-                ? `Usando média dos últimos ${previsaoMeses} meses para projetar ${MESES[mes - 1]}`
-                : `Usando média dos ${previsaoMeses} meses anteriores a ${MESES[mes - 1]}`}
-            </p>
           </div>
 
           {loadingPrevisao ? (
@@ -289,9 +289,8 @@ export default function MetasView({ tenantSlug }: Props) {
             <>
               {/* Tabela de produtos */}
               <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
                   <h3 className="text-sm font-semibold text-gray-700">Produção necessária por produto</h3>
-                  <p className="text-xs text-gray-400">Média de {previsaoMeses} mês{previsaoMeses > 1 ? 'es' : ''} anteriores</p>
                 </div>
                 <table className="w-full">
                   <thead>
@@ -342,8 +341,13 @@ export default function MetasView({ tenantSlug }: Props) {
               {(previsao.insumos ?? []).length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                    <h3 className="text-sm font-semibold text-gray-700">Insumos necessários (via ficha técnica)</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Baseado na previsão de produção × ficha técnica de cada produto</p>
+                    <h3 className="text-sm font-semibold text-gray-700 inline-flex items-center gap-1">
+                      Insumos necessários
+                      <InfoTip titulo="De onde vêm estes números">
+                        Previsão de produção de cada produto multiplicada pela ficha técnica dele,
+                        somando os insumos repetidos.
+                      </InfoTip>
+                    </h3>
                   </div>
                   <table className="w-full">
                     <thead>
@@ -410,23 +414,27 @@ export default function MetasView({ tenantSlug }: Props) {
 
       {/* Modal Metas */}
       {showEditMeta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div><h2 className="text-lg font-semibold">Metas de {MESES[mes - 1]} {ano}</h2><p className="text-xs text-gray-400 mt-0.5">Deixe em branco para não monitorar</p></div>
-              <button onClick={() => setShowEditMeta(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div><Label>Meta de Receita (R$)</Label><Input type="number" min="0" step="0.01" value={fReceita} onChange={e => setFReceita(e.target.value)} className="mt-1" placeholder="Ex: 30000,00" autoFocus /></div>
-              <div><Label>Despesa Máxima (R$)</Label><Input type="number" min="0" step="0.01" value={fDespesa} onChange={e => setFDespesa(e.target.value)} className="mt-1" placeholder="Ex: 8000,00" /></div>
-              <div><Label>Meta de Lucro (R$)</Label><Input type="number" min="0" step="0.01" value={fLucro} onChange={e => setFLucro(e.target.value)} className="mt-1" placeholder="Ex: 15000,00" /></div>
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setShowEditMeta(false)}>Cancelar</Button>
-                <Button onClick={() => salvarMetaMut.mutate()} disabled={salvarMetaMut.isPending}>{salvarMetaMut.isPending ? 'Salvando...' : 'Salvar Metas'}</Button>
-              </div>
+        <FormModal
+          titulo={`Metas de ${MESES[mes - 1]} ${ano}`}
+          onClose={() => setShowEditMeta(false)}
+          largura="max-w-sm"
+          cabecalho={
+            <InfoTip titulo="Campos opcionais">
+              Deixe em branco a meta que você não quer monitorar — ela deixa de aparecer
+              nos cartões de acompanhamento.
+            </InfoTip>
+          }
+        >
+          <div className="p-6 space-y-4">
+            <div><Label>Meta de Receita (R$)</Label><Input type="number" min="0" step="0.01" value={fReceita} onChange={e => setFReceita(e.target.value)} className="mt-1" placeholder="Ex: 30000,00" autoFocus /></div>
+            <div><Label>Despesa Máxima (R$)</Label><Input type="number" min="0" step="0.01" value={fDespesa} onChange={e => setFDespesa(e.target.value)} className="mt-1" placeholder="Ex: 8000,00" /></div>
+            <div><Label>Meta de Lucro (R$)</Label><Input type="number" min="0" step="0.01" value={fLucro} onChange={e => setFLucro(e.target.value)} className="mt-1" placeholder="Ex: 15000,00" /></div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={() => setShowEditMeta(false)}>Cancelar</Button>
+              <Button onClick={() => salvarMetaMut.mutate()} disabled={salvarMetaMut.isPending}>{salvarMetaMut.isPending ? 'Salvando...' : 'Salvar Metas'}</Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )
