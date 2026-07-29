@@ -46,8 +46,8 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const [valorCelula, setValorCelula]       = useState('')
   const [showPrevisao, setShowPrevisao]     = useState(false)
   const [showRegistro, setShowRegistro]     = useState(false)
-  const [previaLote, setPreviaLote]         = useState<any>(null)
-  const [carregandoPrevia, setCarregandoPrevia] = useState(false)
+  // Dias marcados no modal. Vazio = nada será registrado.
+  const [diasSelecionados, setDiasSelecionados] = useState<string[]>([])
   const [ciente, setCiente]                 = useState(false)
 
   const dias   = getWeekDates(weekOffset)
@@ -128,36 +128,71 @@ export default function ProducaoView({ tenantSlug }: Props) {
       .filter((c: CelulaPendente) => c.quantidade > 0 && !jaRegistrada(c.produtoId, c.data))
   )
 
-  async function abrirRegistro() {
-    if (pendentes.length === 0) {
-      toast('Nada a registrar: as células até hoje já foram lançadas ou estão zeradas.')
-      return
-    }
-    setShowRegistro(true)
-    setCiente(false)
-    setCarregandoPrevia(true)
-    setPreviaLote(null)
-    try {
+  // Dias que têm algo a registrar, com o resumo de cada um. É essa lista que
+  // vira a seleção por checkbox dentro do modal.
+  const diasComPendencia = dias
+    .map(d => isoDate(d))
+    .filter((d: string) => d <= HOJE)
+    .map((d: string) => {
+      const doDia = pendentes.filter(c => c.data === d)
+      return {
+        data:     d,
+        produtos: doDia.length,
+        total:    doDia.reduce((a, c) => a + c.quantidade, 0),
+      }
+    })
+    .filter(d => d.produtos > 0)
+
+  // Só o que está marcado é enviado. A prévia recalcula sozinha a cada
+  // mudança na seleção, porque a chave da query inclui os itens escolhidos.
+  const itensSelecionados = pendentes
+    .filter(c => diasSelecionados.includes(c.data))
+    .map(c => ({ produtoId: c.produtoId, dataProducao: c.data, quantidade: c.quantidade }))
+
+  const { data: previaRaw, isFetching: carregandoPrevia } = useQuery({
+    queryKey: ['producao-previa-lote', tenantSlug, JSON.stringify(itensSelecionados)],
+    queryFn:  async () => {
       const res = await fetch(`/api/${tenantSlug}/producao/registrar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          confirmar: false,
-          itens: pendentes.map(c => ({ produtoId: c.produtoId, dataProducao: c.data, quantidade: c.quantidade })),
-        }),
+        body: JSON.stringify({ confirmar: false, itens: itensSelecionados }),
       })
-      const d = await res.json()
-      setPreviaLote(d?.data ?? d)
-    } finally { setCarregandoPrevia(false) }
+      return res.json()
+    },
+    enabled: showRegistro && itensSelecionados.length > 0,
+  })
+  const previaLote = previaRaw?.data ?? previaRaw ?? null
+
+  function abrirRegistro() {
+    if (diasComPendencia.length === 0) {
+      toast('Nada a registrar: os dias até hoje já foram lançados ou estão zerados.')
+      return
+    }
+    // Abre com o dia de hoje marcado, se houver — é o uso do dia a dia.
+    // Os outros ficam disponíveis para recuperar um dia esquecido.
+    const temHoje = diasComPendencia.some(d => d.data === HOJE)
+    setDiasSelecionados(temHoje ? [HOJE] : [])
+    setCiente(false)
+    setShowRegistro(true)
+  }
+
+  function alternarDia(data: string) {
+    setCiente(false)
+    setDiasSelecionados(prev =>
+      prev.includes(data) ? prev.filter(d => d !== data) : [...prev, data]
+    )
+  }
+
+  function fecharRegistro() {
+    setShowRegistro(false)
+    setDiasSelecionados([])
+    setCiente(false)
   }
 
   const confirmarMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/${tenantSlug}/producao/registrar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          confirmar: true,
-          itens: pendentes.map(c => ({ produtoId: c.produtoId, dataProducao: c.data, quantidade: c.quantidade })),
-        }),
+        body: JSON.stringify({ confirmar: true, itens: itensSelecionados }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d?.message ?? 'Erro ao registrar produção')
@@ -165,7 +200,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
     },
     onSuccess: (d) => {
       toast(d?.message ?? 'Produção registrada!')
-      setShowRegistro(false); setPreviaLote(null); setCiente(false)
+      fecharRegistro()
       qc.invalidateQueries({ queryKey: ['producao-registros', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['producao-previsao', tenantSlug] })
@@ -260,18 +295,21 @@ export default function ProducaoView({ tenantSlug }: Props) {
             {showPrevisao ? 'Ocultar Previsão Insumos' : 'Ver Previsão de Insumos'}
           </Button>
           <InfoTip titulo="Registrar produção">
-            Lança de uma vez todas as células preenchidas <strong>até hoje</strong> que ainda
-            não foram registradas. Para cada uma: os insumos da ficha são debitados e a
+            Abre a lista dos dias com produção pendente. Você marca quais quer lançar —
+            dá para registrar hoje e recuperar um dia esquecido na mesma operação.
+            <br /><br />
+            Para cada célula dos dias marcados: os insumos da ficha são debitados e a
             quantidade entra no estoque do produto.
             <br /><br />
             A quantidade da célula é o que <strong>de fato</strong> foi produzido — se o plano
             era 50 e saíram 52, corrija a célula para 52 antes de registrar.
             <br /><br />
-            Célula registrada fica cinza e não aceita mais edição. Dias futuros não entram.
+            Célula registrada fica cinza e não aceita mais edição. Dias futuros não aparecem
+            na lista.
           </InfoTip>
           <Button onClick={abrirRegistro}>
             <Factory size={14} className="mr-1.5" />
-            Registrar Produção{pendentes.length > 0 ? ` (${pendentes.length})` : ''}
+            Registrar Produção{diasComPendencia.length > 0 ? ` (${diasComPendencia.length})` : ''}
           </Button>
         </div>
       </div>
@@ -441,7 +479,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
       {showRegistro && (
         <FormModal
           titulo="Registrar Produção"
-          onClose={() => { setShowRegistro(false); setPreviaLote(null); setCiente(false) }}
+          onClose={fecharRegistro}
           largura="max-w-2xl"
           cabecalho={
             <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2 py-0.5">
@@ -450,7 +488,50 @@ export default function ProducaoView({ tenantSlug }: Props) {
           }
         >
           <div className="p-6 space-y-5">
-            {carregandoPrevia ? (
+
+            {/* Seleção de dias — uma linha por dia com pendência */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dias a registrar</p>
+                <InfoTip titulo="Seleção de dias">
+                  Só os dias marcados são lançados. Dias já registrados e dias futuros não
+                  aparecem aqui.
+                </InfoTip>
+              </div>
+              <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                {diasComPendencia.map(d => {
+                  const marcado = diasSelecionados.includes(d.data)
+                  const rotulo  = DIAS[dias.findIndex(x => isoDate(x) === d.data)] ?? ''
+                  return (
+                    <label
+                      key={d.data}
+                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
+                        marcado ? 'bg-green-50/60' : 'hover:bg-gray-50'
+                      }`}>
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={() => alternarDia(d.data)}
+                        className="w-4 h-4 rounded" />
+                      <span className="text-sm font-medium text-gray-900 w-28">
+                        {rotulo} {fmtDate(d.data)}
+                        {d.data === HOJE && <span className="ml-1.5 text-[10px] text-green-600 font-semibold">hoje</span>}
+                      </span>
+                      <span className="text-xs text-gray-500 flex-1">
+                        {d.produtos} produto{d.produtos > 1 ? 's' : ''}
+                      </span>
+                      <span className="text-xs font-semibold text-gray-700">{fmtQtd(d.total)} un</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            {itensSelecionados.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">
+                Marque ao menos um dia para ver o que será lançado.
+              </p>
+            ) : carregandoPrevia ? (
               <p className="text-sm text-gray-400 text-center py-8">Calculando...</p>
             ) : !previaLote ? (
               <p className="text-sm text-gray-400 text-center py-8">Nada a registrar.</p>
@@ -542,7 +623,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 </label>
 
                 <div className="flex justify-end gap-3 pt-1">
-                  <Button variant="outline" onClick={() => { setShowRegistro(false); setPreviaLote(null); setCiente(false) }}>
+                  <Button variant="outline" onClick={fecharRegistro}>
                     Cancelar
                   </Button>
                   <Button
