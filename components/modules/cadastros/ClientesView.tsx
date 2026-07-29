@@ -153,7 +153,6 @@ export default function ClientesView({ tenantSlug }: Props) {
     <div>
       <PageHeader
         titulo="Clientes"
-        subtitulo={meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}
         acoes={
           <>
             <Button variant="outline" onClick={() => { setIncluirInativos(v => !v); setPage(1) }}>

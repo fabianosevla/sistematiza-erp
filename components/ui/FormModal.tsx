@@ -23,7 +23,9 @@ interface Props {
   children:    ReactNode
   /** classe de largura máxima: max-w-sm | max-w-lg | max-w-2xl | max-w-4xl… */
   largura?:    string
-  /** conteúdo opcional à direita do título (badge, contador) */
+  /** linha de apoio abaixo do título */
+  subtitulo?:  ReactNode
+  /** conteúdo opcional colado ao título (selo, InfoTip, contador) */
   cabecalho?:  ReactNode
   fecharNoEsc?: boolean
 }
@@ -31,6 +33,7 @@ interface Props {
 export function FormModal({
   titulo, onClose, children,
   largura = 'max-w-2xl',
+  subtitulo,
   cabecalho,
   fecharNoEsc = true,
 }: Props) {
@@ -53,19 +56,22 @@ export function FormModal({
       style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
     >
       <div className={`bg-white rounded-2xl shadow-xl w-full ${largura} mx-4 max-h-[90vh] overflow-y-auto`}>
-        <div className="flex items-center justify-between p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">{titulo}</h2>
-          <div className="flex items-center gap-3">
-            {cabecalho}
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600"
-              aria-label="Fechar"
-            >
-              <X size={18} />
-            </button>
+        <div className="flex items-start justify-between p-6 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              {titulo}
+              {cabecalho}
+            </h2>
+            {subtitulo && <p className="text-sm text-gray-400 mt-0.5">{subtitulo}</p>}
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+            aria-label="Fechar"
+          >
+            <X size={18} />
+          </button>
         </div>
         {children}
       </div>

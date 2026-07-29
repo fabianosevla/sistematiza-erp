@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
@@ -219,7 +220,6 @@ export default function UsuariosView({ tenantSlug }: Props) {
     <div>
       <PageHeader
         titulo="Usuários"
-        subtitulo={meta ? `${meta.total} usuário${meta.total !== 1 ? 's' : ''}` : ''}
         acoes={
           <Button onClick={() => { form.reset({ perfilId: undefined }); setFormError(''); setShowForm(true) }}>
             <Plus size={15} className="mr-1.5" /> Novo usuário
@@ -256,7 +256,17 @@ export default function UsuariosView({ tenantSlug }: Props) {
 
       {/* Modal Novo Usuário */}
       {showForm && (
-        <FormModal titulo="Novo usuário" onClose={() => setShowForm(false)} largura="max-w-md">
+        <FormModal
+          titulo="Novo usuário"
+          onClose={() => setShowForm(false)}
+          largura="max-w-md"
+          cabecalho={
+            <InfoTip titulo="Como funciona o convite">
+              Ao salvar, o usuário recebe um e-mail para definir a própria senha.
+              Ele só aparece como ativo depois de aceitar o convite.
+            </InfoTip>
+          }
+        >
           <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-4">
             <div>
               <Label>Nome completo *</Label>
@@ -269,17 +279,21 @@ export default function UsuariosView({ tenantSlug }: Props) {
               {form.formState.errors.email && <p className="text-xs text-red-500 mt-1">{form.formState.errors.email.message}</p>}
             </div>
             <div>
-              <Label>Perfil *</Label>
+              <Label className="inline-flex items-center gap-1">
+                Perfil *
+                <InfoTip titulo="Perfil de acesso">
+                  Define o que o usuário enxerga e pode fazer. Os privilégios de cada perfil
+                  são configurados em Cadastros → Perfis de Acesso.
+                </InfoTip>
+              </Label>
               <select {...form.register('perfilId')} defaultValue=""
                 className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                 <option value="" disabled>Selecione um perfil...</option>
                 {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
               </select>
               {form.formState.errors.perfilId && <p className="text-xs text-red-500 mt-1">{form.formState.errors.perfilId.message}</p>}
-              <p className="text-xs text-gray-400 mt-1">Os privilégios são definidos em Cadastros → Perfis de Acesso.</p>
             </div>
             {formError && <Aviso tom="erro">{formError}</Aviso>}
-            <p className="text-xs text-gray-400">Um e-mail será enviado para o usuário definir sua senha.</p>
             <div className="flex justify-end gap-3 pt-2">
               <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
               <Button type="submit" disabled={createMut.isPending}>
@@ -299,9 +313,14 @@ export default function UsuariosView({ tenantSlug }: Props) {
               <Input value={editNome} onChange={e => setEditNome(e.target.value)} className="mt-1" />
             </div>
             <div>
-              <Label>E-mail</Label>
+              <Label className="inline-flex items-center gap-1">
+                E-mail
+                <InfoTip titulo="Alterar e-mail">
+                  Atualiza o cadastro local. O login continua com o e-mail anterior
+                  até o usuário entrar no sistema novamente.
+                </InfoTip>
+              </Label>
               <Input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="mt-1" />
-              <p className="text-xs text-gray-400 mt-1">Alterar o e-mail atualiza o cadastro local. O login no Clerk continuará com o e-mail anterior até o usuário fazer login novamente.</p>
             </div>
             <div>
               <Label>Perfil</Label>
@@ -323,9 +342,18 @@ export default function UsuariosView({ tenantSlug }: Props) {
 
       {/* Modal link reset */}
       {linkReset && (
-        <FormModal titulo="Link de acesso para reset" onClose={() => setLinkReset('')} largura="max-w-md">
+        <FormModal
+          titulo="Link de acesso para reset"
+          onClose={() => setLinkReset('')}
+          largura="max-w-md"
+          cabecalho={
+            <InfoTip titulo="Como usar">
+              Copie e envie para o usuário. O link vale por 24 horas e permite que ele
+              defina uma senha nova.
+            </InfoTip>
+          }
+        >
           <div className="p-6 space-y-4">
-            <p className="text-sm text-gray-600">Copie o link abaixo e envie para o usuário. Válido por 24 horas.</p>
             <div className="bg-gray-50 rounded-lg p-3 break-all text-xs text-gray-700 font-mono">{linkReset}</div>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setLinkReset('')}>Fechar</Button>

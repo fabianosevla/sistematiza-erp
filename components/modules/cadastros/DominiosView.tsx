@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { FormModal } from '@/components/ui/FormModal'
@@ -90,7 +91,6 @@ export default function DominiosView({ tenantSlug }: Props) {
     <div>
       <PageHeader
         titulo="Domínios"
-        subtitulo="Gerencie os valores das listas e categorias usadas no sistema"
         acoes={
           <Button onClick={() => setShowNovoDominio(true)}>
             <Plus size={15} className="mr-1.5" /> Nova tabela
@@ -139,7 +139,6 @@ export default function DominiosView({ tenantSlug }: Props) {
             <div className="bg-white rounded-xl border border-gray-100 flex flex-col items-center justify-center h-64 text-center px-4">
               <Database size={28} className="text-gray-200 mb-3" />
               <p className="text-sm font-medium text-gray-500">Selecione uma tabela</p>
-              <p className="text-xs text-gray-400 mt-1 max-w-xs">Clique em qualquer item à esquerda para gerenciar os valores</p>
             </div>
           ) : (
             <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -151,7 +150,12 @@ export default function DominiosView({ tenantSlug }: Props) {
 
               {/* Adicionar novo valor */}
               <div className="px-5 py-4 border-b border-gray-100 bg-gray-50/50">
-                <p className="text-xs font-medium text-gray-500 mb-2">Adicionar novo valor</p>
+                <p className="text-xs font-medium text-gray-500 mb-2 inline-flex items-center gap-1">
+                  Adicionar novo valor
+                  <InfoTip titulo="Atalho">
+                    Pressione Enter no campo para adicionar sem tirar a mão do teclado.
+                  </InfoTip>
+                </p>
                 <div className="flex gap-2">
                   <Input
                     placeholder="Digite o novo valor..."
@@ -166,7 +170,6 @@ export default function DominiosView({ tenantSlug }: Props) {
                     <Plus size={14} className="mr-1" /> Adicionar
                   </Button>
                 </div>
-                <p className="text-xs text-gray-400 mt-1.5">Pressione Enter para adicionar rapidamente</p>
               </div>
 
               {/* Lista de valores */}
@@ -219,8 +222,12 @@ export default function DominiosView({ tenantSlug }: Props) {
               )}
 
               <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/30">
-                <p className="text-xs text-gray-400">
-                  {dominio?.valores?.length ?? 0} valor(es) · Alterações refletem automaticamente nos formulários do sistema
+                <p className="text-xs text-gray-400 inline-flex items-center gap-1">
+                  {dominio?.valores?.length ?? 0} valor(es)
+                  <InfoTip titulo="Onde estes valores aparecem">
+                    Alimentam os campos de seleção do sistema. Qualquer alteração aqui
+                    reflete imediatamente nos formulários que usam esta lista.
+                  </InfoTip>
                 </p>
               </div>
             </div>
@@ -236,20 +243,24 @@ export default function DominiosView({ tenantSlug }: Props) {
           largura="max-w-md"
         >
           <div className="p-6 space-y-4">
-            <p className="text-xs text-gray-400 -mt-2">Crie uma nova lista reutilizável</p>
             <div>
               <Label>Nome *</Label>
               <Input value={novoNome} onChange={e => setNovoNome(e.target.value)} className="mt-1"
                 placeholder="Ex: Tipos de Pedido" autoFocus />
             </div>
             <div>
-              <Label>Código interno *</Label>
+              <Label className="inline-flex items-center gap-1">
+                Código interno *
+                <InfoTip titulo="Código interno">
+                  É como o sistema identifica esta lista no código. Aceita apenas letras
+                  minúsculas, números e underline — e <strong>não pode ser alterado depois</strong>.
+                </InfoTip>
+              </Label>
               <Input
                 value={novoCodigo}
                 onChange={e => setNovoCodigo(e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''))}
                 className="mt-1 font-mono"
                 placeholder="Ex: tipo_pedido" />
-              <p className="text-xs text-gray-400 mt-1">Apenas letras minúsculas, números e _. Não pode ser alterado depois.</p>
             </div>
             <div>
               <Label>Descrição</Label>

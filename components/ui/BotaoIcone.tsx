@@ -15,7 +15,7 @@ import type { ReactNode } from 'react'
  *
  *   <BotaoIcone titulo="Editar" onClick={...}><Pencil size={14} /></BotaoIcone>
  */
-type Variante = 'padrao' | 'perigo' | 'destaque' | 'info' | 'alerta'
+type Variante = 'padrao' | 'perigo' | 'destaque' | 'info' | 'alerta' | 'sucesso' | 'azul'
 type Tamanho  = 'sm' | 'md'
 
 const CORES: Record<Variante, string> = {
@@ -24,6 +24,9 @@ const CORES: Record<Variante, string> = {
   destaque: 'text-purple-400 hover:text-purple-600',
   info:     'text-gray-400 hover:text-blue-600',
   alerta:   'text-gray-400 hover:text-amber-500',
+  // usadas em Produtos, onde o ícone já nasce colorido
+  sucesso:  'text-green-400 hover:text-green-600',
+  azul:     'text-blue-400 hover:text-blue-600',
 }
 
 const TAMANHOS: Record<Tamanho, string> = {

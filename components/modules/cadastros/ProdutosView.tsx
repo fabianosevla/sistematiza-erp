@@ -1,25 +1,26 @@
 ﻿'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Upload, BookOpen, Package, ArrowUpDown, EyeOff, Pencil, Lock } from 'lucide-react'
+import { Plus, Trash2, Download, Upload, BookOpen, Package, EyeOff, Pencil, Lock, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { TableSkeleton } from '@/components/ui/Skeleton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
-import Paginacao from '@/components/ui/Paginacao'
 import { useDominio } from '@/hooks/useDominio'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { fmtMoeda as fmt, fmtMoedaInput as fmtInput, fmtQtd } from '@/lib/format'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SearchInput } from '@/components/ui/SearchInput'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
+import { FormModal } from '@/components/ui/FormModal'
 
 interface Props { tenantSlug: string }
-
-
-
 
 type SortKey = 'nome' | 'tipo' | 'precoVarejo' | 'estoqueAtual'
 type SortDir  = 'asc' | 'desc'
@@ -33,8 +34,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const unidades = useDominio(tenantSlug, 'unidade_medida', ['kg','g','l','ml','un','cx'])
 
   const [busca, setBusca]                 = useState('')
-  const [page, setPage]               = useState(1)
-  const [limit, setLimit]             = useState(20)
+  const [page, setPage]                   = useState(1)
+  const [limit, setLimit]                 = useState(20)
   const [showInativos, setShowInativos]   = useState(false)
   const [showModal, setShowModal]         = useState(false)
   const [showImport, setShowImport]       = useState(false)
@@ -209,14 +210,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
   function fecharModal() { setShowModal(false); setEditando(null) }
 
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    else { setSortKey(key); setSortDir('asc') }
-  }
-
-  function SortIcon({ col }: { col: SortKey }) {
-    if (col !== sortKey) return <ArrowUpDown size={11} className="ml-1 text-gray-300 inline" />
-    return <span className="ml-1 text-green-500 text-[11px] inline">{sortDir === 'asc' ? '↑' : '↓'}</span>
+  function toggleSort(key: string) {
+    const k = key as SortKey
+    if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(k); setSortDir('asc') }
   }
 
   function exportCSV() {
@@ -229,7 +226,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
     const csv = [['ID','Nome','Tipo','Unidade','Preço Varejo','Est.Atual','Est.Mín','Status'], ...rows]
       .map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }))
     a.download = 'produtos.csv'
     a.click()
   }
@@ -260,358 +257,390 @@ export default function ProdutosView({ tenantSlug }: Props) {
       return sortDir === 'asc' ? cmp : -cmp
     })
 
-  const inativos = todos.filter((p: any) => !p.activeFlag).length
+  const colunas: Coluna[] = [
+    {
+      chave: 'nome', titulo: 'Nome', ordenavel: true,
+      classeCelula: 'pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150',
+      render: (p: any) => {
+        const inativo = p.activeFlag === false
+        return (
+          <>
+            <span
+              className={`text-sm font-medium ${inativo ? 'text-gray-400 line-through' : 'text-gray-900 cursor-pointer hover:text-green-700'}`}
+              onClick={() => !inativo && abrirModal(p)}>
+              {p.nome}
+            </span>
+            {p.insumoFlg && !inativo && (
+              <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5 align-middle">insumo</span>
+            )}
+            {p.revenda && !inativo && (
+              <span className="ml-2 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 align-middle">revenda</span>
+            )}
+            {inativo && (
+              <InfoTip titulo="Produto inativo" className="ml-2 align-middle">
+                Não aparece em vendas nem em produção. O histórico é preservado e você pode reativar a qualquer momento.
+              </InfoTip>
+            )}
+          </>
+        )
+      },
+    },
+    {
+      chave: 'tipo', titulo: 'Tipo', ordenavel: true, alinhamento: 'center',
+      render: (p: any) => <Badge variant="secondary">{p.tipo ?? '—'}</Badge>,
+    },
+    { chave: 'unidade', titulo: 'Unidade', alinhamento: 'center', render: (p: any) => p.unidade ?? '—' },
+    {
+      chave: 'precoVarejo', titulo: 'Varejo', ordenavel: true, alinhamento: 'center',
+      classeCelula: 'px-4 py-3 text-center text-sm font-medium',
+      render: (p: any) => p.precoVarejo ? fmt(p.precoVarejo) : '—',
+    },
+    {
+      chave: 'precoAtacadoA', titulo: 'Atacado A', alinhamento: 'center',
+      render: (p: any) => (p.precoAtacadoA ?? p.precoAtacado) ? fmt(p.precoAtacadoA ?? p.precoAtacado) : '—',
+    },
+    {
+      chave: 'estoqueAtual', titulo: 'Estoque', ordenavel: true, alinhamento: 'center',
+      render: (p: any) => (
+        <>
+          <span className={`text-sm font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>
+            {p.estoqueAtual}
+          </span>
+          <span className="text-xs text-gray-300">/{p.estoqueMinimo}</span>
+        </>
+      ),
+    },
+    {
+      chave: 'activeFlag', titulo: 'Status', alinhamento: 'center',
+      render: (p: any) => {
+        const inativo = p.activeFlag === false
+        return <Badge variant={inativo ? 'secondary' : 'default'}>{inativo ? 'Inativo' : 'Ativo'}</Badge>
+      },
+    },
+  ]
 
   // ── RENDER ────────────────────────────────────────────────────────────────
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Produtos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            {todos.filter((p: any) => p.activeFlag !== false).length} ativos
-            {inativos > 0 && <span className="ml-2 text-gray-300">· {inativos} inativos</span>}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowInativos(v => !v)}
-            className={showInativos ? 'border-amber-300 text-amber-600' : ''}>
-            <EyeOff size={14} className="mr-1.5" />
-            {showInativos ? 'Ocultar inativos' : 'Ver inativos'}
-          </Button>
-          <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
-          <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
-          <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Produto</Button>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Produtos"
+        acoes={
+          <>
+            <Button variant="outline" onClick={() => setShowInativos(v => !v)}
+              className={showInativos ? 'border-amber-300 text-amber-600' : ''}>
+              <EyeOff size={14} className="mr-1.5" />
+              {showInativos ? 'Ocultar inativos' : 'Ver inativos'}
+            </Button>
+            <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
+            <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
+            <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Produto</Button>
+          </>
+        }
+      />
 
-      {/* Filtro */}
-      <div className="flex gap-3 mb-4">
-        <Input
-          placeholder="Buscar produto..."
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          className="max-w-xs h-9 text-sm"
-        />
-      </div>
+      <SearchInput
+        valor={busca}
+        onChange={setBusca}
+        placeholder="Buscar produto..."
+        className="mb-4 max-w-xs"
+      />
 
-      {/* Tabela */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600"
-                onClick={() => toggleSort('nome')}>Nome <SortIcon col="nome" /></th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600"
-                onClick={() => toggleSort('tipo')}>Tipo <SortIcon col="tipo" /></th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Unidade</th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600"
-                onClick={() => toggleSort('precoVarejo')}>Varejo <SortIcon col="precoVarejo" /></th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Atacado A</th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3 cursor-pointer select-none hover:text-gray-600"
-                onClick={() => toggleSort('estoqueAtual')}>Estoque <SortIcon col="estoqueAtual" /></th>
-              <th className="text-center text-xs font-medium text-gray-400 px-4 py-3">Status</th>
-              <th className="w-24" />
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <TableSkeleton rows={6} cols={8} />
-            ) : produtos.length === 0 ? (
-              <tr><td colSpan={8}>
-                <EmptyState icon={Package} title="Nenhum produto cadastrado"
-                  action="Cadastrar primeiro produto" onAction={() => abrirModal()} />
-              </td></tr>
-            ) : produtos.map((p: any) => {
-              const inativo = p.activeFlag === false
-              return (
-                <tr key={p.produtoId}
-                  className={`group border-b border-gray-50 transition-colors ${inativo ? 'opacity-50 bg-gray-50/50' : 'hover:bg-gray-50/80'}`}>
-                  <td className="pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150">
-                    <span
-                      className={`text-sm font-medium ${inativo ? 'text-gray-400 line-through' : 'text-gray-900 cursor-pointer hover:text-green-700'}`}
-                      onClick={() => !inativo && abrirModal(p)}>
-                      {p.nome}
-                    </span>
-                    {p.insumoFlg && !inativo && (
-                      <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5 align-middle">insumo</span>
-                    )}
-                    {p.revenda && !inativo && (
-                      <span className="ml-2 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 align-middle">revenda</span>
-                    )}
-                    {inativo && (
-                      <p className="text-xs text-gray-400 mt-0.5">desativado — preservado no histórico</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-center"><Badge variant="secondary">{p.tipo ?? '—'}</Badge></td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-500">{p.unidade ?? '—'}</td>
-                  <td className="px-4 py-3 text-center text-sm font-medium">{p.precoVarejo ? fmt(p.precoVarejo) : '—'}</td>
-                  <td className="px-4 py-3 text-center text-sm text-gray-500">
-                    {(p.precoAtacadoA ?? p.precoAtacado) ? fmt(p.precoAtacadoA ?? p.precoAtacado) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`text-sm font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>
-                      {p.estoqueAtual}
-                    </span>
-                    <span className="text-xs text-gray-300">/{p.estoqueMinimo}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <Badge variant={inativo ? 'secondary' : 'default'}>{inativo ? 'Inativo' : 'Ativo'}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!inativo && (<><button onClick={() => abrirModal(p)} title="Editar" className="p-1 text-green-400 hover:text-green-600"><Pencil size={14} /></button><button onClick={() => setShowFicha(p)} title="Ver ficha técnica (somente leitura)" className="p-1 text-blue-400 hover:text-blue-600"><BookOpen size={14} /></button></>)}
-                      {inativo ? (
-                        <button onClick={() => reativarMut.mutate(p.produtoId)} title="Reativar"
-                          className="p-1 text-green-400 hover:text-green-600 text-xs font-medium">↺</button>
-                      ) : (
-                        <button onClick={() => setConfirmDelete({ id: p.produtoId, nome: p.nome })}
-                          className="p-1 text-gray-300 hover:text-red-500">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      <Paginacao
-        page={page}
-        totalPages={raw?.data?.meta?.totalPages ?? 1}
-        total={raw?.data?.meta?.total ?? produtos.length}
-        limit={limit}
-        onPage={setPage}
-        onLimit={(l) => { setLimit(l); setPage(1) }}
+      <DataTable
+        colunas={colunas}
+        itens={produtos}
+        chave={(p: any) => p.produtoId}
+        carregando={isLoading}
+        usarSkeleton
+        acoesCentro
+        vazio={
+          <EmptyState icon={Package} title="Nenhum produto cadastrado"
+            action="Cadastrar primeiro produto" onAction={() => abrirModal()} />
+        }
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
+        classeLinha={(p: any) => p.activeFlag === false ? 'opacity-50 bg-gray-50/50' : ''}
+        meta={raw?.data?.meta}
+        onPageChange={setPage}
+        onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        acoes={(p: any) => {
+          const inativo = p.activeFlag === false
+          return (
+            <>
+              {!inativo && (
+                <>
+                  <BotaoIcone titulo="Editar" variante="sucesso" onClick={() => abrirModal(p)}>
+                    <Pencil size={14} />
+                  </BotaoIcone>
+                  <BotaoIcone titulo="Ver ficha técnica (somente leitura)" variante="azul" onClick={() => setShowFicha(p)}>
+                    <BookOpen size={14} />
+                  </BotaoIcone>
+                </>
+              )}
+              {inativo ? (
+                <BotaoIcone titulo="Reativar" variante="sucesso" onClick={() => reativarMut.mutate(p.produtoId)}>
+                  <RotateCcw size={14} />
+                </BotaoIcone>
+              ) : (
+                <BotaoIcone titulo="Desativar" variante="perigo" onClick={() => setConfirmDelete({ id: p.produtoId, nome: p.nome })}>
+                  <Trash2 size={14} />
+                </BotaoIcone>
+              )}
+            </>
+          )
+        }}
       />
 
       {/* Modal Criar/Editar */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">{editando ? 'Editar Produto' : 'Novo Produto'}</h2>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal
+          titulo={editando ? 'Editar Produto' : 'Novo Produto'}
+          onClose={fecharModal}
+          largura="max-w-xl"
+        >
+          <div className="p-6 space-y-4">
+            <div>
+              <Label>Nome *</Label>
+              <Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus />
             </div>
-            <div className="p-6 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Nome *</Label>
-                <Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus />
+                <Label className="inline-flex items-center gap-1">
+                  Tipo
+                  <InfoTip titulo="Tipo de produto">
+                    A lista vem de Cadastros → Domínios. Para incluir um tipo novo, cadastre lá e ele aparece aqui.
+                  </InfoTip>
+                </Label>
+                <select value={tipo} onChange={e => setTipo(e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  {tipos.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Tipo</Label>
-                  <select value={tipo} onChange={e => setTipo(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {tipos.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <Label>Unidade</Label>
-                  <select value={unidade} onChange={e => setUnidade(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    {unidades.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Unidade
+                  <InfoTip titulo="Unidade">
+                    Também vem de Cadastros → Domínios. É a unidade em que o produto é vendido e controlado no estoque.
+                  </InfoTip>
+                </Label>
+                <select value={unidade} onChange={e => setUnidade(e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  {unidades.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Categoria</Label>
-                  <Input value={categoria} onChange={e => setCategoria(e.target.value)} className="mt-1" placeholder="Ex.: Massas, Bebidas…" />
-                </div>
-                <div>
-                  <Label>Código de Barras</Label>
-                  <Input value={codigoBarras} onChange={e => setCodigoBarras(e.target.value)} className="mt-1" placeholder="EAN" />
-                </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Categoria</Label>
+                <Input value={categoria} onChange={e => setCategoria(e.target.value)} className="mt-1" placeholder="Ex.: Massas, Bebidas…" />
               </div>
               <div>
-                <Label>Descrição</Label>
-                <Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do produto (opcional)" />
+                <Label>Código de Barras</Label>
+                <Input value={codigoBarras} onChange={e => setCodigoBarras(e.target.value)} className="mt-1" placeholder="EAN" />
               </div>
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do produto (opcional)" />
+            </div>
 
-              <div>
-                <p className="text-sm font-semibold text-gray-700 mb-3">Preços</p>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs text-orange-700 font-semibold">Custo (R$)</Label>
-                      <Input type="number" min="0" step="0.01" value={precoCusto}
-                        onChange={e => setPrecoCusto(e.target.value)} className="mt-1 h-9" placeholder="0,00" />
-                      <p className="text-[11px] text-gray-400 mt-1">Se o produto tem ficha técnica, o custo calculado dela prevalece — este campo é usado só como fallback.</p>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-green-700 font-semibold">Varejo (R$)</Label>
-                      <Input type="number" min="0" step="0.01" value={precoVarejo}
-                        onChange={e => setPrecoVarejo(e.target.value)} className="mt-1 h-9" placeholder="0,00" />
-                    </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-700 mb-3">Preços</p>
+              <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-orange-700 font-semibold inline-flex items-center gap-1">
+                      Custo (R$)
+                      <InfoTip titulo="Preço de custo">
+                        Se o produto tem ficha técnica, o custo calculado por ela prevalece.
+                        Este campo é usado apenas como valor de reserva.
+                      </InfoTip>
+                    </Label>
+                    <Input type="number" min="0" step="0.01" value={precoCusto}
+                      onChange={e => setPrecoCusto(e.target.value)} className="mt-1 h-9" placeholder="0,00" />
                   </div>
-                  <div className="border-t border-gray-200 pt-3">
-                    <p className="text-xs text-gray-500 font-medium mb-2">Atacado — deixe em branco os que não usar</p>
-                    <div className="grid grid-cols-5 gap-2">
-                      {(['A','B','C','D','E'] as const).map(k => (
-                        <div key={k}>
-                          <Label className="text-xs">Atac. {k}</Label>
-                          <Input type="number" min="0" step="0.01" value={atacados[k]}
-                            onChange={e => setAtacados(prev => ({ ...prev, [k]: e.target.value }))}
-                            className="mt-1 h-9 text-sm" placeholder="0,00" />
-                        </div>
-                      ))}
-                    </div>
+                  <div>
+                    <Label className="text-xs text-green-700 font-semibold">Varejo (R$)</Label>
+                    <Input type="number" min="0" step="0.01" value={precoVarejo}
+                      onChange={e => setPrecoVarejo(e.target.value)} className="mt-1 h-9" placeholder="0,00" />
                   </div>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Estoque Atual</Label>
-                  <Input
-                    type="number"
-                    value={estoqueAtual}
-                    readOnly
-                    className="mt-1 bg-gray-50 text-gray-400 cursor-not-allowed"
-                  />
-                  <p className="text-xs text-gray-400 mt-1">Altere via módulo Estoque → Produto Acabado</p>
+                <div className="border-t border-gray-200 pt-3">
+                  <p className="text-xs text-gray-500 font-medium mb-2 inline-flex items-center gap-1">
+                    Atacado
+                    <InfoTip titulo="Tabelas de atacado">
+                      Cinco faixas de preço para clientes diferentes. Deixe em branco as que você não usa —
+                      elas não aparecem na hora da venda.
+                    </InfoTip>
+                  </p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {(['A','B','C','D','E'] as const).map(k => (
+                      <div key={k}>
+                        <Label className="text-xs">Atac. {k}</Label>
+                        <Input type="number" min="0" step="0.01" value={atacados[k]}
+                          onChange={e => setAtacados(prev => ({ ...prev, [k]: e.target.value }))}
+                          className="mt-1 h-9 text-sm" placeholder="0,00" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <Label>Estoque Mínimo</Label>
-                  <Input type="number" min="0" value={estoqueMin}
-                    onChange={e => setEstoqueMin(e.target.value)} className="mt-1" />
-                </div>
               </div>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-4 h-4 rounded" />
-                  <span className="text-sm text-gray-700">Produto ativo</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={revenda} onChange={e => setRevenda(e.target.checked)} className="w-4 h-4 rounded" />
-                  <span className="text-sm text-gray-700">Produto para revenda</span>
-                </label>
-              </div>
-              {revenda && (
-                <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
-                  Produtos de revenda aparecem na Compra Rápida e NÃO aparecem na grade de Produção (são comprados prontos). O tipo (ex.: Bebida) é mantido.
-                </p>
-              )}
-
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={insumoAtivo} onChange={e => setInsumoAtivo(e.target.checked)} className="w-4 h-4 rounded" />
-                <span className="text-sm text-gray-700">Usar também como insumo em outros produtos</span>
-              </label>
-              {insumoAtivo && (
-                <p className="text-xs text-purple-700 bg-purple-50 rounded-lg px-3 py-2">
-                  Este produto passa a aparecer na tela de Insumos e nos dropdowns de Ficha Técnica. Ao produzir um produto que o usa como insumo, o estoque dele é baixado — os insumos que o compõem só baixam quando você produz este produto.
-                </p>
-              )}
-
-              {editando && (
-                <AuditoriaInfo
-                  criadoPor={editando.createdBy}
-                  criadoEm={editando.createdDt}
-                  atualizadoPor={editando.updatedBy}
-                  atualizadoEm={editando.updatedDt}
-                  className="pt-3 border-t border-gray-100"
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Estoque Atual
+                  <InfoTip titulo="Estoque atual">
+                    Somente leitura aqui. O saldo muda por produção, venda e ajustes —
+                    para corrigir, use Estoque → Produto Acabado.
+                  </InfoTip>
+                </Label>
+                <Input
+                  type="number"
+                  value={estoqueAtual}
+                  readOnly
+                  className="mt-1 bg-gray-50 text-gray-400 cursor-not-allowed"
                 />
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
-                <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
-                  {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
-                </Button>
               </div>
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Estoque Mínimo
+                  <InfoTip titulo="Estoque mínimo">
+                    Abaixo desta quantidade o saldo aparece em vermelho nas listagens e entra nos alertas de reposição.
+                  </InfoTip>
+                </Label>
+                <Input type="number" min="0" value={estoqueMin}
+                  onChange={e => setEstoqueMin(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={ativo} onChange={e => setAtivo(e.target.checked)} className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-700">Produto ativo</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={revenda} onChange={e => setRevenda(e.target.checked)} className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-700 inline-flex items-center gap-1">
+                  Produto para revenda
+                  <InfoTip titulo="Produto para revenda">
+                    Aparece na Compra Rápida e <strong>não</strong> aparece na grade de Produção,
+                    porque é comprado pronto. O tipo (ex.: Bebida) é mantido.
+                  </InfoTip>
+                </span>
+              </label>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={insumoAtivo} onChange={e => setInsumoAtivo(e.target.checked)} className="w-4 h-4 rounded" />
+              <span className="text-sm text-gray-700 inline-flex items-center gap-1">
+                Usar também como insumo em outros produtos
+                <InfoTip titulo="Produto usado como insumo">
+                  Passa a aparecer na tela de Insumos e nos dropdowns de Ficha Técnica.
+                  Ao produzir um produto que o usa, o estoque dele é baixado — os insumos que o
+                  compõem só baixam quando você produz este produto.
+                </InfoTip>
+              </span>
+            </label>
+
+            {editando && (
+              <AuditoriaInfo
+                criadoPor={editando.createdBy}
+                criadoEm={editando.createdDt}
+                atualizadoPor={editando.updatedBy}
+                atualizadoEm={editando.updatedDt}
+                className="pt-3 border-t border-gray-100"
+              />
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
+                {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {/* Modal Ficha Técnica — SOMENTE LEITURA.
           A edição (adicionar/remover insumos) fica exclusivamente em
           Cadastros → Fichas Técnicas. */}
       {showFicha && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                  Ficha Técnica
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200 rounded-full px-2 py-0.5">
-                    <Lock size={9} /> somente leitura
-                  </span>
-                </h2>
-                <p className="text-sm text-gray-400 mt-0.5">{showFicha.nome} — insumos por unidade produzida</p>
-              </div>
-              <button onClick={() => setShowFicha(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-4">
-                <p className="text-xs text-blue-700">
-                  Para adicionar, alterar ou remover insumos desta ficha, acesse <strong>Cadastros → Fichas Técnicas</strong>.
-                </p>
-              </div>
-
-              {fichaItens.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-8">
-                  Nenhum insumo na ficha técnica.
-                </p>
-              ) : (
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left  text-xs font-medium text-gray-400 px-3 py-2">Insumo</th>
-                      <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Qtd / unidade</th>
-                      <th className="text-center text-xs font-medium text-gray-400 px-3 py-2">Unidade</th>
-                      <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Preço Custo</th>
-                      <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Custo da Fração</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fichaItens.map((item: any) => {
-                      const qtd         = parseFloat(String(item.quantidade ?? 0))
-                      const precoCustoI = Number(item.precoCusto ?? 0)
-                      const custoFracao = qtd * precoCustoI
-                      return (
-                        <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50">
-                          <td className="px-3 py-2.5 text-sm font-medium text-gray-900">
-                            {item.nomeInsumo ?? item.insumo?.nome ?? `#${item.insumoId}`}
-                            {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
-                          </td>
-                          <td className="px-3 py-2.5 text-right text-sm text-gray-600">{fmtQtd(item.quantidade)}</td>
-                          <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
-                          <td className="px-3 py-2.5 text-right text-sm text-gray-600">
-                            {precoCustoI ? fmt(precoCustoI) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td className="px-3 py-2.5 text-right text-sm font-semibold">
-                            {custoFracao > 0 ? <span className="text-orange-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                  {custoFicha > 0 && (
-                    <tfoot className="border-t-2 border-gray-200 bg-gray-50">
-                      <tr>
-                        <td colSpan={4} className="px-3 py-3 text-sm font-bold text-gray-700 text-right">Custo total / unidade produzida</td>
-                        <td className="px-3 py-3 text-right text-base font-bold text-orange-600">{fmt(custoFicha)}</td>
+        <FormModal
+          titulo="Ficha Técnica"
+          subtitulo={`${showFicha.nome} — insumos por unidade produzida`}
+          onClose={() => setShowFicha(null)}
+          largura="max-w-2xl"
+          cabecalho={
+            <>
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200 rounded-full px-2 py-0.5">
+                <Lock size={9} /> somente leitura
+              </span>
+              <InfoTip titulo="Onde editar">
+                Para adicionar, alterar ou remover insumos desta ficha, acesse
+                <strong> Cadastros → Fichas Técnicas</strong>.
+              </InfoTip>
+            </>
+          }
+        >
+          <div className="p-6">
+            {fichaItens.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-8">
+                Nenhum insumo na ficha técnica.
+              </p>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left  text-xs font-medium text-gray-400 px-3 py-2">Insumo</th>
+                    <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Qtd / unidade</th>
+                    <th className="text-center text-xs font-medium text-gray-400 px-3 py-2">Unidade</th>
+                    <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Preço Custo</th>
+                    <th className="text-right text-xs font-medium text-gray-400 px-3 py-2">Custo da Fração</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fichaItens.map((item: any) => {
+                    const qtd         = parseFloat(String(item.quantidade ?? 0))
+                    const precoCustoI = Number(item.precoCusto ?? 0)
+                    const custoFracao = qtd * precoCustoI
+                    return (
+                      <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50">
+                        <td className="px-3 py-2.5 text-sm font-medium text-gray-900">
+                          {item.nomeInsumo ?? item.insumo?.nome ?? `#${item.insumoId}`}
+                          {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-sm text-gray-600">{fmtQtd(item.quantidade)}</td>
+                        <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
+                        <td className="px-3 py-2.5 text-right text-sm text-gray-600">
+                          {precoCustoI ? fmt(precoCustoI) : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right text-sm font-semibold">
+                          {custoFracao > 0 ? <span className="text-orange-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
+                        </td>
                       </tr>
-                    </tfoot>
-                  )}
-                </table>
-              )}
+                    )
+                  })}
+                </tbody>
+                {custoFicha > 0 && (
+                  <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+                    <tr>
+                      <td colSpan={4} className="px-3 py-3 text-sm font-bold text-gray-700 text-right">Custo total / unidade produzida</td>
+                      <td className="px-3 py-3 text-right text-base font-bold text-orange-600">{fmt(custoFicha)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            )}
 
-              <div className="flex justify-end pt-6">
-                <Button variant="outline" onClick={() => setShowFicha(null)}>Fechar</Button>
-              </div>
+            <div className="flex justify-end pt-6">
+              <Button variant="outline" onClick={() => setShowFicha(null)}>Fechar</Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {/* Import CSV */}
@@ -635,8 +664,6 @@ export default function ProdutosView({ tenantSlug }: Props) {
           onCancel={() => setConfirmDelete(null)}
         />
       )}
-
-
     </div>
   )
 }

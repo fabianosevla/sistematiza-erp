@@ -13,6 +13,7 @@ import CsvImportModal from '@/components/ui/CsvImportModal'
 import { useDominio } from '@/hooks/useDominio'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { fmtMoeda as fmt } from '@/lib/format'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SearchInput } from '@/components/ui/SearchInput'
@@ -205,7 +206,6 @@ export default function InsumosView({ tenantSlug }: Props) {
     <div>
       <PageHeader
         titulo="Insumos"
-        subtitulo={`${meta?.total ?? 0} cadastrados`}
         acoes={
           <>
             <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
@@ -231,7 +231,6 @@ export default function InsumosView({ tenantSlug }: Props) {
         acoesCentro
         vazio={
           <EmptyState icon={Package2} title="Nenhum insumo encontrado"
-            description="Cadastre os insumos utilizados na produção para controlar o estoque e a ficha técnica dos produtos."
             action="Cadastrar primeiro insumo" onAction={() => abrirModal()} />
         }
         ordem={{ chave: sortKey, dir: sortDir }}
@@ -265,18 +264,26 @@ export default function InsumosView({ tenantSlug }: Props) {
             <div><Label>Nome *</Label><Input value={nome} onChange={e => setNome(e.target.value)} className="mt-1" autoFocus /></div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Tipo</Label>
+                <Label className="inline-flex items-center gap-1">
+                  Tipo
+                  <InfoTip titulo="Tipo de insumo">
+                    A lista vem de Cadastros → Domínios. Para incluir um tipo novo, cadastre lá e ele aparece aqui.
+                  </InfoTip>
+                </Label>
                 <select value={tipo} onChange={e => setTipo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                   {tipos.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
-                <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
               </div>
               <div>
-                <Label>Unidade</Label>
+                <Label className="inline-flex items-center gap-1">
+                  Unidade
+                  <InfoTip titulo="Unidade">
+                    Unidade em que o estoque deste insumo é controlado. A lista vem de Cadastros → Domínios.
+                  </InfoTip>
+                </Label>
                 <select value={unidade} onChange={e => setUnidade(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                   {unidades.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
-                <p className="text-[10px] text-gray-400 mt-1">Gerencie em Cadastros → Domínios</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -292,11 +299,27 @@ export default function InsumosView({ tenantSlug }: Props) {
             <div><Label>Descrição</Label><Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do insumo (opcional)" /></div>
             <div className="grid grid-cols-3 gap-3">
               {/* step="any": estoque de insumo é fracionado (ex.: 0,250 kg) */}
-              <div><Label>Est. Atual</Label><Input type="number" min="0" step="any" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" /></div>
-              <div><Label>Est. Mínimo</Label><Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" /></div>
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Est. Atual
+                  <InfoTip titulo="Estoque atual">
+                    Aceita valores fracionados — use ponto como separador (ex.: 0.250 kg).
+                  </InfoTip>
+                </Label>
+                <Input type="number" min="0" step="any" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Est. Mínimo
+                  <InfoTip titulo="Estoque mínimo">
+                    Abaixo desta quantidade o saldo aparece em vermelho na listagem.
+                    Aceita fração — use ponto (ex.: 0.250).
+                  </InfoTip>
+                </Label>
+                <Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" />
+              </div>
               <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
             </div>
-            <p className="text-[10px] text-gray-400 -mt-2">Estoque aceita valores fracionados (ex.: 0.250)</p>
 
             {editando && (
               <AuditoriaInfo

@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Plus, X, Trash2, BookOpen, ChevronRight, ChevronDown, AlertTriangle, Layers, Download, Copy } from 'lucide-react'
+import { Plus, Trash2, BookOpen, ChevronRight, ChevronDown, AlertTriangle, Layers, Download, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,19 +9,13 @@ import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { Aviso } from '@/components/ui/Aviso'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 import { unidadesCompativeis } from '@/lib/unidades'
 
 interface Props { tenantSlug: string }
-
-
-
-// Quantidade da ficha: até 6 casas decimais (insumos usados em quantidade
-// mínima, ex.: orégano a 0.00027 kg por bandeja). Mostra no mínimo 3 casas e
-// corta zeros à direita além disso.
-
-// Unidades compatíveis entre si (podem ser convertidas pelo DebitoInsumoService)
-
 
 type Aba = 'ficha' | 'composicao'
 
@@ -184,19 +178,14 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
       ...linhasComposicao(),
     ].map((r: string[]) => r.map(c => `"${c}"`).join(',')).join('\n')
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv' }))
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }))
     a.download = `composicao-${(selecionado?.nome ?? 'produto').replace(/\s+/g, '-').toLowerCase()}.csv`
     a.click()
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Fichas Técnicas</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Insumos, quantidades e custo de produção por produto</p>
-        </div>
-      </div>
+      <PageHeader titulo="Fichas Técnicas" />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
@@ -230,7 +219,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
             <div className="bg-white rounded-xl border border-gray-100 flex flex-col items-center justify-center h-64 text-center px-4">
               <BookOpen size={28} className="text-gray-200 mb-3" />
               <p className="text-sm font-medium text-gray-500">Selecione um produto</p>
-              <p className="text-xs text-gray-400 mt-1 max-w-xs">Clique em qualquer produto para ver e editar sua ficha técnica</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -252,7 +240,13 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                   </div>
                   {margem !== null && (
                     <div className={`text-center px-4 py-2 rounded-xl border ${margem >= 40 ? 'bg-green-50 border-green-200' : margem >= 20 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'}`}>
-                      <p className="text-xs text-gray-500">Margem Bruta</p>
+                      <p className="text-xs text-gray-500 inline-flex items-center gap-1">
+                        Margem Bruta
+                        <InfoTip titulo="Margem bruta">
+                          Diferença entre o preço de varejo e o custo dos insumos da ficha,
+                          dividida pelo preço de varejo. Não considera despesas fixas nem impostos.
+                        </InfoTip>
+                      </p>
                       <p className={`text-2xl font-bold ${margem >= 40 ? 'text-green-600' : margem >= 20 ? 'text-amber-600' : 'text-red-600'}`}>{margem.toFixed(1)}%</p>
                       <p className="text-xs text-gray-400">lucro: {fmt(lucroUnit)}/un</p>
                     </div>
@@ -358,7 +352,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                   <div className="px-5 py-10 text-center">
                     <AlertTriangle size={20} className="text-amber-400 mx-auto mb-2" />
                     <p className="text-sm font-medium text-gray-600">Ficha vazia</p>
-                    <p className="text-xs text-gray-400 mt-1">Adicione os insumos para produzir 1 unidade deste produto</p>
                   </div>
                 ) : (
                   <table className="w-full">
@@ -389,11 +382,14 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                               {custoFracao > 0 ? <span className="text-orange-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
                             </td>
                             <td className="px-3 py-3 text-center">
-                              <button
-                                onClick={() => setConfirmDelete({ id: item.produtoInsumoId ?? item.itemId, nome: item.nomeInsumo ?? ins?.nome ?? `#${item.insumoId}` })}
-                                className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Trash2 size={13} />
-                              </button>
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                                <BotaoIcone
+                                  titulo="Remover da ficha"
+                                  variante="perigo"
+                                  onClick={() => setConfirmDelete({ id: item.produtoInsumoId ?? item.itemId, nome: item.nomeInsumo ?? ins?.nome ?? `#${item.insumoId}` })}>
+                                  <Trash2 size={13} />
+                                </BotaoIcone>
+                              </div>
                             </td>
                           </tr>
                         )
@@ -452,7 +448,6 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                   <div className="px-5 py-10 text-center">
                     <AlertTriangle size={20} className="text-amber-400 mx-auto mb-2" />
                     <p className="text-sm font-medium text-gray-600">Nada a compor</p>
-                    <p className="text-xs text-gray-400 mt-1">Cadastre a ficha técnica deste produto (e dos produtos-insumo usados nela).</p>
                   </div>
                 ) : (
                   <table className="w-full">
@@ -517,12 +512,11 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                   </table>
                 )}
 
+                {/* Condição real do sistema, não explicação — continua visível */}
                 {composicao?.truncou && (
-                  <div className="px-5 py-2.5 bg-amber-50 border-t border-amber-200">
-                    <p className="text-xs text-amber-700">
-                      Referência circular ou aninhamento muito profundo entre produtos-insumo — parte da composição não foi expandida.
-                    </p>
-                  </div>
+                  <Aviso tom="atencao" className="rounded-none border-x-0 border-b-0">
+                    Referência circular ou aninhamento muito profundo entre produtos-insumo — parte da composição não foi expandida.
+                  </Aviso>
                 )}
               </div>
               )}

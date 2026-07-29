@@ -141,7 +141,6 @@ export default function FornecedoresView({ tenantSlug }: Props) {
     <div>
       <PageHeader
         titulo="Fornecedores"
-        subtitulo={meta ? `${meta.total} registro${meta.total !== 1 ? 's' : ''}` : ''}
         acoes={
           <>
             <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
