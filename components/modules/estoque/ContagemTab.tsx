@@ -3,11 +3,15 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, CheckCircle, Loader2, Search } from 'lucide-react'
+import { Plus, CheckCircle, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { SearchInput } from '@/components/ui/SearchInput'
+import { FormModal } from '@/components/ui/FormModal'
+import { fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -100,7 +104,11 @@ export default function ContagemTab({ tenantSlug }: Props) {
   if (!contagemId) {
     return (
       <div className="space-y-4">
-        <div className="flex justify-end">
+        <div className="flex justify-end items-center gap-2">
+          <InfoTip titulo="O que é a contagem">
+            Congela o saldo do sistema e permite lançar o que você contou fisicamente.
+            Ao finalizar, cada diferença vira uma movimentação de estoque automática.
+          </InfoTip>
           <Button size="sm" onClick={() => setShowNova(true)}>
             <Plus size={13} className="mr-1.5" /> Iniciar contagem
           </Button>
@@ -118,7 +126,7 @@ export default function ContagemTab({ tenantSlug }: Props) {
                 className="w-full flex items-center justify-between bg-white rounded-xl border border-gray-100 hover:border-green-300 p-4 text-left transition-colors">
                 <div>
                   <span className="text-sm font-medium text-gray-900">{c.descricao}</span>
-                  <span className="text-xs text-gray-400 ml-2">{new Date(c.dataContagem + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
+                  <span className="text-xs text-gray-400 ml-2">{fmtData(c.dataContagem)}</span>
                 </div>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${sCfg.cls}`}>{sCfg.label}</span>
               </button>
@@ -127,25 +135,29 @@ export default function ContagemTab({ tenantSlug }: Props) {
         </div>
 
         {showNova && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-              <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold">Nova contagem</h2>
-                <button onClick={() => setShowNova(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-              </div>
-              <div className="p-6">
+          <FormModal
+            titulo="Nova contagem"
+            onClose={() => setShowNova(false)}
+            largura="max-w-sm"
+            cabecalho={
+              <InfoTip titulo="O que entra na contagem">
+                Todos os produtos e insumos ativos são trazidos para conferência.
+              </InfoTip>
+            }
+          >
+            <div className="p-6 space-y-4">
+              <div>
                 <Label>Descrição (opcional)</Label>
                 <Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Ex: Contagem mensal" />
-                <p className="text-xs text-gray-400 mt-2">Vai trazer todos os produtos e insumos ativos pra conferência.</p>
               </div>
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+              <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
                 <Button variant="outline" onClick={() => setShowNova(false)}>Cancelar</Button>
                 <Button onClick={() => iniciarMut.mutate()} disabled={iniciarMut.isPending}>
                   {iniciarMut.isPending ? 'Criando...' : 'Iniciar'}
                 </Button>
               </div>
             </div>
-          </div>
+          </FormModal>
         )}
       </div>
     )
@@ -166,15 +178,12 @@ export default function ContagemTab({ tenantSlug }: Props) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold text-gray-900">{detail.descricao}</p>
-          <p className="text-xs text-gray-400">{totalLancados} de {detail.itens.length} item(ns) já contado(s)</p>
+          <p className="text-xs text-gray-400">{totalLancados} de {detail.itens.length} item(ns) contado(s)</p>
         </div>
         <button onClick={() => setContagemId(null)} className="text-xs text-gray-400 hover:text-gray-600">← voltar</button>
       </div>
 
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Filtrar item..." className="pl-9 h-9 text-sm" />
-      </div>
+      <SearchInput valor={busca} onChange={setBusca} placeholder="Filtrar item..." className="" />
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden max-h-[500px] overflow-y-auto">
         <table className="w-full">
@@ -212,7 +221,11 @@ export default function ContagemTab({ tenantSlug }: Props) {
         </table>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-end items-center gap-2">
+        <InfoTip titulo="O que acontece ao finalizar">
+          Item sem diferença não gera ajuste. Item com diferença vira movimentação de
+          estoque automática, corrigindo o saldo do sistema.
+        </InfoTip>
         <Button disabled={totalLancados === 0 || finalizarMut.isPending} onClick={() => finalizarMut.mutate()}>
           {finalizarMut.isPending
             ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Finalizando...</>
@@ -220,9 +233,6 @@ export default function ContagemTab({ tenantSlug }: Props) {
           }
         </Button>
       </div>
-      <p className="text-xs text-gray-400 text-right">
-        Itens sem diferença não geram ajuste. Itens com diferença viram movimentação de estoque automaticamente.
-      </p>
     </div>
   )
 }

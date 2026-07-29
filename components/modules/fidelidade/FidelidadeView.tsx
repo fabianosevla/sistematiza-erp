@@ -9,6 +9,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { Aviso } from '@/components/ui/Aviso'
 import { fmtMoeda as fmt, fmtDataHoraLocal as fmtData, fmtDataLocal as fmtDataCurta } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -130,7 +132,6 @@ export default function FidelidadeView({ tenantSlug }: Props) {
         <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
           <Gift size={22} className="text-green-600" /> Fidelidade
         </h1>
-        <p className="text-sm text-gray-400 mt-0.5">Cashback e reativação de clientes por WhatsApp</p>
       </div>
 
       {/* Tabs */}
@@ -162,10 +163,13 @@ export default function FidelidadeView({ tenantSlug }: Props) {
           <div className="max-w-3xl space-y-3">
             {/* Master toggle */}
             <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl p-4">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">Programa ativo</p>
-                <p className="text-xs text-gray-400">Liga/desliga o cashback sem apagar nenhum dado.</p>
-              </div>
+              <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1">
+                Programa ativo
+                <InfoTip titulo="Programa ativo">
+                  Liga e desliga o cashback sem apagar nenhum dado. Desligado, nenhuma venda
+                  gera crédito — os saldos existentes continuam guardados.
+                </InfoTip>
+              </p>
               <Toggle on={form.programaAtivo} onChange={v => set('programaAtivo', v)} />
             </div>
 
@@ -175,10 +179,32 @@ export default function FidelidadeView({ tenantSlug }: Props) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Campo label="Cashback por venda (%)"><Input value={form.cashbackPct} onChange={e => set('cashbackPct', e.target.value)} inputMode="decimal" /></Campo>
                 <Campo label="Compra mínima p/ gerar (R$)"><Input value={form.compraMinima} onChange={e => set('compraMinima', e.target.value)} inputMode="decimal" /></Campo>
-                <Campo label="Validade do cashback (dias, 0 = não expira)"><Input value={form.validadeDias} onChange={e => set('validadeDias', e.target.value)} inputMode="numeric" /></Campo>
-                <Campo label="Limite de uso por compra (% da venda)"><Input value={form.limiteUsoPct} onChange={e => set('limiteUsoPct', e.target.value)} inputMode="decimal" /></Campo>
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Validade do cashback (dias)
+                    <InfoTip titulo="Validade">Zero significa que o cashback não expira.</InfoTip>
+                  </span>
+                }>
+                  <Input value={form.validadeDias} onChange={e => set('validadeDias', e.target.value)} inputMode="numeric" />
+                </Campo>
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Limite de uso por compra (%)
+                    <InfoTip titulo="Limite de uso">
+                      Teto de quanto do total da venda pode ser pago com cashback.
+                      100% permite quitar a venda inteira com saldo.
+                    </InfoTip>
+                  </span>
+                }>
+                  <Input value={form.limiteUsoPct} onChange={e => set('limiteUsoPct', e.target.value)} inputMode="decimal" />
+                </Campo>
                 <Campo label="Saldo mínimo p/ usar (R$)"><Input value={form.saldoMinimoUso} onChange={e => set('saldoMinimoUso', e.target.value)} inputMode="decimal" /></Campo>
-                <Campo label="Base de cálculo">
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Base de cálculo
+                    <InfoTip titulo="Base de cálculo">
+                      Define sobre qual valor o percentual de cashback incide: o total já com
+                      desconto aplicado, ou o total cheio antes do desconto.
+                    </InfoTip>
+                  </span>
+                }>
                   <Select value={form.baseCalculo} onChange={v => set('baseCalculo', v)}
                     opcoes={[['liquido', 'Sobre o total já com desconto'], ['bruto', 'Sobre o total sem desconto']]} />
                 </Campo>
@@ -193,7 +219,13 @@ export default function FidelidadeView({ tenantSlug }: Props) {
             <Accordion aberto={secao === 'reativacao'} onClick={() => setSecao(secao === 'reativacao' ? null : 'reativacao')}
               icon={Clock} titulo="Regras de Reativação">
               <div className="flex items-center justify-between mb-4">
-                <p className="text-sm text-gray-600">Enviar aviso de reativação por WhatsApp</p>
+                <p className="text-sm text-gray-600 inline-flex items-center gap-1">
+                  Enviar aviso de reativação por WhatsApp
+                  <InfoTip titulo="Reativação automática">
+                    Com isto ligado, uma rotina diária procura clientes inativos com saldo
+                    e envia o aviso dentro da faixa de horário configurada abaixo.
+                  </InfoTip>
+                </p>
                 <Toggle on={form.reativacaoAtiva} onChange={v => set('reativacaoAtiva', v)} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -204,7 +236,13 @@ export default function FidelidadeView({ tenantSlug }: Props) {
                   <Toggle on={form.repetirAviso} onChange={v => set('repetirAviso', v)} />
                 </div>
                 <Campo label="Intervalo entre repetições (dias)"><Input disabled={!form.repetirAviso} value={form.intervaloRepeticaoDias} onChange={e => set('intervaloRepeticaoDias', e.target.value)} inputMode="numeric" /></Campo>
-                <Campo label="Máx. de avisos (0 = ilimitado)"><Input disabled={!form.repetirAviso} value={form.maxAvisos} onChange={e => set('maxAvisos', e.target.value)} inputMode="numeric" /></Campo>
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Máx. de avisos
+                    <InfoTip titulo="Máximo de avisos">Zero significa sem limite de repetições.</InfoTip>
+                  </span>
+                }>
+                  <Input disabled={!form.repetirAviso} value={form.maxAvisos} onChange={e => set('maxAvisos', e.target.value)} inputMode="numeric" />
+                </Campo>
                 <Campo label="Enviar a partir das (hora)"><Input value={form.horarioInicio} onChange={e => set('horarioInicio', e.target.value)} inputMode="numeric" /></Campo>
                 <Campo label="Enviar até as (hora)"><Input value={form.horarioFim} onChange={e => set('horarioFim', e.target.value)} inputMode="numeric" /></Campo>
               </div>
@@ -213,20 +251,36 @@ export default function FidelidadeView({ tenantSlug }: Props) {
             {/* WhatsApp (Meta) */}
             <Accordion aberto={secao === 'whatsapp'} onClick={() => setSecao(secao === 'whatsapp' ? null : 'whatsapp')}
               icon={MessageCircle} titulo="WhatsApp (Meta Cloud API)">
+              {/* Condição real do servidor — continua visível */}
               {cfg && !cfg.encKeyConfigurada && (
-                <div className="mb-4 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-3">
-                  A chave <code>FIDELIDADE_ENC_KEY</code> não está configurada no servidor. Sem ela não é possível salvar o token com segurança.
-                </div>
+                <Aviso tom="atencao" className="mb-4">
+                  A chave <code>FIDELIDADE_ENC_KEY</code> não está configurada no servidor.
+                  Sem ela não é possível salvar o token com segurança.
+                </Aviso>
               )}
-              <div className="mb-4 text-xs bg-blue-50 border border-blue-200 text-blue-700 rounded-lg p-3">
-                O template aprovado na Meta deve ter <b>2 variáveis no corpo</b>, nesta ordem: <code>{'{{1}}'}</code> = nome do cliente, <code>{'{{2}}'}</code> = saldo (ex.: "R$ 12,50").
-              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Campo label="Phone Number ID"><Input value={form.waPhoneNumberId} onChange={e => set('waPhoneNumberId', e.target.value)} /></Campo>
                 <Campo label="WhatsApp Business Account ID"><Input value={form.waBusinessAccountId} onChange={e => set('waBusinessAccountId', e.target.value)} /></Campo>
-                <Campo label="Nome do template aprovado"><Input value={form.waTemplateNome} onChange={e => set('waTemplateNome', e.target.value)} placeholder="ex.: reativacao_cashback" /></Campo>
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Nome do template aprovado
+                    <InfoTip titulo="Formato exigido pela Meta">
+                      O template precisa ter duas variáveis no corpo, nesta ordem:
+                      a primeira é o nome do cliente, a segunda é o saldo (ex.: R$ 12,50).
+                    </InfoTip>
+                  </span>
+                }>
+                  <Input value={form.waTemplateNome} onChange={e => set('waTemplateNome', e.target.value)} placeholder="ex.: reativacao_cashback" />
+                </Campo>
                 <Campo label="Idioma do template"><Input value={form.waTemplateIdioma} onChange={e => set('waTemplateIdioma', e.target.value)} placeholder="pt_BR" /></Campo>
-                <Campo label={`Token da Meta ${cfg?.waTokenSet ? '(configurado — preencha só p/ trocar)' : ''}`}>
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Token da Meta
+                    <InfoTip titulo="Token">
+                      {cfg?.waTokenSet
+                        ? 'Já existe um token salvo. Preencha apenas se quiser trocá-lo.'
+                        : 'Cole aqui o token gerado no painel da Meta. Ele é guardado criptografado.'}
+                    </InfoTip>
+                  </span>
+                }>
                   <Input type="password" value={novoToken} onChange={e => setNovoToken(e.target.value)}
                     placeholder={cfg?.waTokenSet ? '••••••••••••' : 'colar token'} />
                 </Campo>
@@ -237,13 +291,26 @@ export default function FidelidadeView({ tenantSlug }: Props) {
             <Accordion aberto={secao === 'geral'} onClick={() => setSecao(secao === 'geral' ? null : 'geral')}
               icon={ShieldCheck} titulo="Ativação & Geral">
               <div className="space-y-4">
-                <Campo label="Mensagem padrão (usa {nome} e {saldo})">
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Mensagem padrão
+                    <InfoTip titulo="Variáveis disponíveis">
+                      Use <code>{'{nome}'}</code> para o nome do cliente e <code>{'{saldo}'}</code> para
+                      o valor do cashback — o sistema substitui no envio.
+                    </InfoTip>
+                  </span>
+                }>
                   <textarea value={form.mensagemPadrao} onChange={e => set('mensagemPadrao', e.target.value)}
                     rows={3} className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none"
                     placeholder="Oi {nome}! Você tem {saldo} de cashback esperando na loja. Volte e use!" />
                 </Campo>
                 <div className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2">
-                  <span className="text-sm text-gray-600">Exigir opt-in (consentimento LGPD) antes de avisar</span>
+                  <span className="text-sm text-gray-600 inline-flex items-center gap-1">
+                    Exigir opt-in antes de avisar
+                    <InfoTip titulo="Opt-in (LGPD)">
+                      Só envia mensagem para clientes que autorizaram receber contato.
+                      Recomendado manter ligado.
+                    </InfoTip>
+                  </span>
                   <Toggle on={form.exigeOptin} onChange={v => set('exigeOptin', v)} />
                 </div>
               </div>
@@ -288,6 +355,7 @@ function VisaoTab({ tenantSlug, programaAtivo, onIrConfig }: { tenantSlug: strin
 
   return (
     <div className="space-y-4">
+      {/* Estado real do sistema — continua visível */}
       {!programaAtivo && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start justify-between gap-3">
           <p className="text-sm text-amber-700">O programa de cashback está <b>desativado</b>. Nenhum cashback está sendo gerado nas vendas.</p>
@@ -501,14 +569,17 @@ function ReativacaoTab({ tenantSlug, onIrConfig }: { tenantSlug: string; onIrCon
         <StatusCard ok={conf?.waConfigurado} label="WhatsApp (Meta)" texto={conf?.waConfigurado ? 'Configurado' : 'Falta configurar'} onFix={!conf?.waConfigurado ? onIrConfig : undefined} />
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
-        Clientes inativos há {conf?.diasInatividade ?? 30}+ dias e com saldo de cashback. O envio automático roda diariamente entre {conf?.horarioInicio ?? 9}h e {conf?.horarioFim ?? 20}h. Aqui você pode disparar manualmente a qualquer hora.
-      </div>
-
       {/* Candidatos */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-          <p className="text-sm font-semibold text-gray-700">Elegíveis agora ({candidatos.length})</p>
+          <p className="text-sm font-semibold text-gray-700 inline-flex items-center gap-1">
+            Elegíveis agora ({candidatos.length})
+            <InfoTip titulo="Quem entra nesta lista">
+              Clientes sem comprar há {conf?.diasInatividade ?? 30} dias ou mais e com saldo de
+              cashback. O envio automático roda diariamente entre {conf?.horarioInicio ?? 9}h e
+              {' '}{conf?.horarioFim ?? 20}h — aqui você pode disparar manualmente a qualquer hora.
+            </InfoTip>
+          </p>
           <div className="flex items-center gap-2">
             {msg && <span className="text-xs text-gray-500">{msg}</span>}
             <Button size="sm" variant="outline" disabled={sel.size === 0 || enviar.isPending}

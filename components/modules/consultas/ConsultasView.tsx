@@ -5,10 +5,10 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/ui/PageHeader'
 import { fmtMoeda as fmt, fmtDataLocal as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
-
 
 
 function getMesAtual() {
@@ -68,10 +68,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900">Consultas</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Relatórios e visões analíticas</p>
-      </div>
+      <PageHeader titulo="Consultas" />
 
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit overflow-x-auto">
         {([

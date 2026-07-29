@@ -2,10 +2,14 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Paginacao from '@/components/ui/Paginacao'
-import { Plus, X, Download, AlertTriangle, CheckCircle, Edit3, Warehouse, ClipboardCheck, FileSpreadsheet, Search } from 'lucide-react'
+import { Plus, Download, AlertTriangle, CheckCircle, Edit3, Warehouse, ClipboardCheck, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SearchInput } from '@/components/ui/SearchInput'
+import { FormModal } from '@/components/ui/FormModal'
 import LocaisTab from './LocaisTab'
 import PerdasTab from './PerdasTab'
 import ContagemTab from './ContagemTab'
@@ -178,22 +182,23 @@ export default function EstoqueView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Estoque</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Produtos, insumos, locais, perdas, contagem e entrada via NF-e</p>
-        </div>
-        {aba === 'produtos' && produtos.length > 0 && (
-          <Button variant="outline" onClick={() => exportCSV(produtos, 'estoque-produtos')}>
-            <Download size={14} className="mr-1.5" /> CSV
-          </Button>
-        )}
-        {aba === 'insumos' && insumos.length > 0 && (
-          <Button variant="outline" onClick={() => exportCSV(insumos, 'estoque-insumos')}>
-            <Download size={14} className="mr-1.5" /> CSV
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        titulo="Estoque"
+        acoes={
+          <>
+            {aba === 'produtos' && produtos.length > 0 && (
+              <Button variant="outline" onClick={() => exportCSV(produtos, 'estoque-produtos')}>
+                <Download size={14} className="mr-1.5" /> CSV
+              </Button>
+            )}
+            {aba === 'insumos' && insumos.length > 0 && (
+              <Button variant="outline" onClick={() => exportCSV(insumos, 'estoque-insumos')}>
+                <Download size={14} className="mr-1.5" /> CSV
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {mostrarKpisBase && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -212,7 +217,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
       )}
 
       <div className="border-b border-gray-100 mb-6 overflow-x-auto">
-        <div className="flex gap-0 min-w-max">
+        <div className="flex gap-0 min-w-max items-center">
           {ABAS_BASE.map(a => (
             <button key={a.key} onClick={() => trocarAba(a.key)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -235,7 +240,8 @@ export default function EstoqueView({ tenantSlug }: Props) {
 
       {aba === 'produtos' && (
         <>
-        <div className="mb-4"><input value={buscaProduto} onChange={e => { setBuscaProduto(e.target.value); setPage(1) }} placeholder="Buscar produto..." className="h-9 max-w-xs px-3 rounded-lg border border-gray-200 text-sm focus:outline-none" /></div>
+        <SearchInput valor={buscaProduto} onChange={v => { setBuscaProduto(v); setPage(1) }}
+          placeholder="Buscar produto..." className="mb-4 max-w-xs" />
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
             <thead>
@@ -274,7 +280,8 @@ export default function EstoqueView({ tenantSlug }: Props) {
 
       {aba === 'insumos' && (
         <>
-        <div className="mb-4"><input value={buscaInsumo} onChange={e => { setBuscaInsumo(e.target.value); setPage(1) }} placeholder="Buscar insumo..." className="h-9 max-w-xs px-3 rounded-lg border border-gray-200 text-sm focus:outline-none" /></div>
+        <SearchInput valor={buscaInsumo} onChange={v => { setBuscaInsumo(v); setPage(1) }}
+          placeholder="Buscar insumo..." className="mb-4 max-w-xs" />
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
           <table className="w-full">
             <thead>
@@ -314,16 +321,13 @@ export default function EstoqueView({ tenantSlug }: Props) {
 
       {aba === 'ajuste' && (
         <div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4 flex items-start gap-3">
-            <AlertTriangle size={16} className="text-amber-500 mt-0.5 flex-shrink-0" />
-            <p className="text-sm text-amber-700">
-              Esta aba permite atualizar o estoque de produtos <strong>sem dar baixa nos insumos</strong>. Use apenas para correções e inventário.
-            </p>
-          </div>
-
-          <div className="relative mb-4 max-w-xs">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <Input value={buscaAjuste} onChange={e => { setBuscaAjuste(e.target.value); setPage(1) }} placeholder="Buscar produto..." className="pl-9 h-9 text-sm" />
+          <div className="flex items-center gap-2 mb-4">
+            <SearchInput valor={buscaAjuste} onChange={v => { setBuscaAjuste(v); setPage(1) }}
+              placeholder="Buscar produto..." className="max-w-xs flex-1" />
+            <InfoTip titulo="Ajuste sem baixa">
+              Atualiza o estoque do produto <strong>sem debitar os insumos</strong> da ficha técnica.
+              Use apenas para correção de inventário — para produção, use o módulo Produção.
+            </InfoTip>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -382,47 +386,51 @@ export default function EstoqueView({ tenantSlug }: Props) {
       {aba === 'nfe'      && <EntradaNfeTab tenantSlug={tenantSlug} />}
 
       {showModal === 'produto' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Adicionar Estoque de Produto</h2>
-              <button onClick={() => setShowModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-blue-700">Os insumos da ficha técnica serão debitados automaticamente proporcionalmente à quantidade adicionada.</p>
-              </div>
-              <div><Label>Quantidade a adicionar *</Label><Input type="number" min="1" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
-                <Button onClick={() => adicionarProdMut.mutate()} disabled={!qtdAdicionar || adicionarProdMut.isPending}>
-                  {adicionarProdMut.isPending ? 'Processando...' : 'Confirmar'}
-                </Button>
-              </div>
+        <FormModal
+          titulo="Adicionar Estoque de Produto"
+          onClose={() => setShowModal(null)}
+          largura="max-w-sm"
+          cabecalho={
+            <InfoTip titulo="Efeito no estoque">
+              Os insumos da ficha técnica são debitados automaticamente, proporcionalmente
+              à quantidade adicionada.
+            </InfoTip>
+          }
+        >
+          <div className="p-6 space-y-4">
+            <div><Label>Quantidade a adicionar *</Label><Input type="number" min="1" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
+              <Button onClick={() => adicionarProdMut.mutate()} disabled={!qtdAdicionar || adicionarProdMut.isPending}>
+                {adicionarProdMut.isPending ? 'Processando...' : 'Confirmar'}
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
       {showModal === 'insumo' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Adicionar Insumo</h2>
-              <button onClick={() => setShowModal(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Adicionar Insumo" onClose={() => setShowModal(null)} largura="max-w-sm">
+          <div className="p-6 space-y-4">
+            <div><Label>Quantidade *</Label><Input type="number" min="0" step="0.001" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
+            <div>
+              <Label className="inline-flex items-center gap-1">
+                Preço de Custo (R$)
+                <InfoTip titulo="Preço de custo">
+                  Se informado, atualiza o custo do insumo no cadastro — o que muda o custo
+                  calculado das fichas técnicas que o utilizam.
+                </InfoTip>
+              </Label>
+              <Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" placeholder="0,00" />
             </div>
-            <div className="p-6 space-y-4">
-              <div><Label>Quantidade *</Label><Input type="number" min="0" step="0.001" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
-              <div><Label>Preço de Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" placeholder="0,00" /></div>
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
-                <Button onClick={() => adicionarInsMut.mutate()} disabled={!qtdAdicionar || adicionarInsMut.isPending}>
-                  {adicionarInsMut.isPending ? 'Processando...' : 'Confirmar'}
-                </Button>
-              </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
+              <Button onClick={() => adicionarInsMut.mutate()} disabled={!qtdAdicionar || adicionarInsMut.isPending}>
+                {adicionarInsMut.isPending ? 'Processando...' : 'Confirmar'}
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )

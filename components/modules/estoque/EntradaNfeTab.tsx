@@ -7,6 +7,8 @@ import { Upload, CheckCircle, Loader2, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { Aviso } from '@/components/ui/Aviso'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -17,7 +19,6 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
 }
 
 
-
 export default function EntradaNfeTab({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
@@ -26,7 +27,6 @@ export default function EntradaNfeTab({ tenantSlug }: Props) {
 
   const [entradaId, setEntradaId]   = useState<number | null>(null)
   const [uploading, setUploading]   = useState(false)
-  const [buscaInsumo, setBuscaInsumo] = useState<Record<number, string>>({})
 
   const { data: listRaw, isLoading: loadingList } = useQuery({
     queryKey: ['estoque-nfe-list', tenantSlug],
@@ -39,19 +39,6 @@ export default function EntradaNfeTab({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`${api}/${entradaId}`)).json(),
     enabled:  !!entradaId,
   })
-
-  const { data: insumosRaw } = useQuery({
-    queryKey: ['estoque-nfe-insumos-busca', tenantSlug, JSON.stringify(buscaInsumo)],
-    queryFn:  async () => ({}), // placeholder, busca real é feita inline abaixo por item
-    enabled:  false,
-  })
-
-  async function buscarInsumos(query: string) {
-    if (!query) return []
-    const res = await fetch(`/api/${tenantSlug}/cadastros/insumos?search=${query}&limit=6`)
-    const d = await res.json()
-    return Array.isArray(d?.data?.data) ? d.data.data : Array.isArray(d?.data) ? d.data : []
-  }
 
   const uploadMut = useMutation({
     mutationFn: async (xmlContent: string) => {
@@ -119,12 +106,18 @@ export default function EntradaNfeTab({ tenantSlug }: Props) {
     return (
       <div className="space-y-4">
         <div className="bg-white rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
-          <Upload size={28} className="text-gray-300 mx-auto mb-2" />
-          <p className="text-sm text-gray-500 mb-3">Selecione o arquivo XML da NF-e do fornecedor</p>
+          <Upload size={28} className="text-gray-300 mx-auto mb-3" />
           <input ref={fileRef} type="file" accept=".xml" onChange={handleFileChange} className="hidden" id="nfe-upload" />
-          <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
-            {uploading ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Processando...</> : 'Selecionar XML'}
-          </Button>
+          <div className="flex items-center justify-center gap-2">
+            <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
+              {uploading ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Processando...</> : 'Selecionar XML da NF-e'}
+            </Button>
+            <InfoTip titulo="Como funciona">
+              Envie o XML da nota do fornecedor. O sistema lê os itens, você vincula cada um
+              a um insumo do cadastro e, ao confirmar, o estoque entra e uma conta a pagar
+              é gerada.
+            </InfoTip>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -163,10 +156,13 @@ export default function EntradaNfeTab({ tenantSlug }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold text-gray-900">{detail.nomeFornecedor} — NF-e {detail.numeroNfe}</p>
-          <p className="text-xs text-gray-400">Vincule cada item da nota a um insumo do cadastro</p>
-        </div>
+        <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1">
+          {detail.nomeFornecedor} — NF-e {detail.numeroNfe}
+          <InfoTip titulo="Vínculo dos itens">
+            Cada item da nota precisa apontar para um insumo do seu cadastro — é assim que
+            o sistema sabe qual estoque aumentar e com qual custo.
+          </InfoTip>
+        </p>
         <button onClick={() => setEntradaId(null)} className="text-xs text-gray-400 hover:text-gray-600">← voltar</button>
       </div>
 
@@ -191,14 +187,14 @@ export default function EntradaNfeTab({ tenantSlug }: Props) {
           </Button>
         </div>
       )}
+      {/* Condição que bloqueia o botão — continua visível */}
       {!todosMapeados && detail.status === 'pendente' && (
         <p className="text-xs text-amber-500 text-right">Vincule todos os itens a um insumo antes de confirmar.</p>
       )}
       {detail.status === 'processada' && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
-          <CheckCircle size={18} className="text-green-600 mx-auto mb-1" />
-          <p className="text-sm text-green-700">Entrada já processada — estoque atualizado e conta a pagar gerada.</p>
-        </div>
+        <Aviso tom="sucesso" icone={<CheckCircle size={15} className="text-green-600 flex-shrink-0" />}>
+          Entrada já processada — estoque atualizado e conta a pagar gerada.
+        </Aviso>
       )}
     </div>
   )
