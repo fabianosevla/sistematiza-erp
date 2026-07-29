@@ -42,26 +42,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     })
   }
 
-  // Flags de módulo que não vêm no config do layout — buscadas direto da API.
-  const [flags, setFlags] = useState<{ fidelidade: boolean; compras: boolean }>({
-    fidelidade: false, compras: true,
-  })
-  useEffect(() => {
-    let vivo = true
-    fetch(`/api/${tenantSlug}/configuracoes`)
-      .then(r => r.json())
-      .then(j => {
-        if (!vivo) return
-        setFlags({
-          fidelidade: j?.data?.fidelidadeAtivo === true,
-          // Compras nasce ligado: o módulo já existia sem flag nenhuma
-          compras:    j?.data?.comprasAtivo !== false,
-        })
-      })
-      .catch(() => {})
-    return () => { vivo = false }
-  }, [tenantSlug])
-
+  // Todas as flags vêm do `config` montado no tenant-layout. Não há fetch
+  // aqui: o menu tem que existir já na primeira pintura, senão pisca.
   const fixos: Item[] = [
     { label: 'Dashboard', href: '', icon: BarChart3 },
     {
@@ -87,22 +69,21 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),
     ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
     ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
-    // Compras: módulo existia em código mas nunca aparecia no menu
-    ...(flags.compras ? [{
+    ...(config.comprasAtivo ? [{
       label: 'Compras', icon: ShoppingBag,
       children: [
         { label: 'Visão geral',   href: '/compras' },
         { label: 'Compra Rápida', href: '/compras/rapida' },
       ],
     }] : []),
-    ...(config.comandasAtivo  ? [{ label: 'Comandas',          href: '/comandas',   icon: CreditCard }]     : []),
-    ...(config.fiscalAtivo    ? [{ label: 'Fiscal',            href: '/fiscal',     icon: CreditCard }]     : []),
-    ...(flags.fidelidade      ? [{ label: 'Fidelidade',        href: '/fidelidade', icon: Gift }]           : []),
+    ...(config.comandasAtivo   ? [{ label: 'Comandas',    href: '/comandas',   icon: CreditCard }] : []),
+    ...(config.fiscalAtivo     ? [{ label: 'Fiscal',      href: '/fiscal',     icon: CreditCard }] : []),
+    ...(config.fidelidadeAtivo ? [{ label: 'Fidelidade',  href: '/fidelidade', icon: Gift }]       : []),
   ]
 
   const finais: Item[] = [
-    { label: 'Vendas',     href: '/vendas',     icon: ShoppingCart },
-    { label: 'Financeiro', href: '/financeiro', icon: DollarSign },
+    ...(config.vendasAtivo     ? [{ label: 'Vendas',     href: '/vendas',     icon: ShoppingCart }] : []),
+    ...(config.financeiroAtivo ? [{ label: 'Financeiro', href: '/financeiro', icon: DollarSign }]   : []),
   ]
 
   const allItems: Item[] = [...fixos, ...modulares, ...finais]
@@ -121,7 +102,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     const doAtivo = allItems.find(i => i.children?.some(c => isActive(c.href)))
     if (doAtivo) setAbertos(a => (a.includes(doAtivo.label) ? a : [...a, doAtivo.label]))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, flags.compras])
+  }, [pathname, config.comprasAtivo])
 
   function alternarGrupo(label: string) {
     // Com a barra recolhida não há espaço para o submenu: expande a barra

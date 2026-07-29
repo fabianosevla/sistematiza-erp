@@ -17,6 +17,11 @@ export interface Config {
   contasReceberAtivo:       boolean
   conciliacaoBancariaAtivo: boolean
   comprasAtivo:             boolean
+  // Menus que antes não tinham chave: agora chegam pelo layout, então o
+  // Sidebar não precisa mais buscá-los por conta própria na API.
+  vendasAtivo:              boolean
+  financeiroAtivo:          boolean
+  fidelidadeAtivo:          boolean
   entradaNfeAtivo:          boolean
   perdaProdutoAtivo:        boolean
   contagemInventarioAtivo:  boolean
@@ -52,7 +57,6 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
           onClick={() => setSidebarOpen(false)}
         />
       )}
-
       <Sidebar
         tenantSlug={tenantSlug}
         tenantName={tenantName}
@@ -60,7 +64,6 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
       />
-
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           tenantSlug={tenantSlug}
@@ -71,7 +74,6 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
           onToggleSidebar={() => setSidebarOpen(prev => !prev)}
           logoBase64={config.logoBase64}
         />
-
         <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>

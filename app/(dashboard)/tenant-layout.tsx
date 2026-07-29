@@ -51,7 +51,17 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     contasPagarAtivo:         cfg?.contas_pagar_ativo         ?? false,
     contasReceberAtivo:       cfg?.contas_receber_ativo       ?? false,
     conciliacaoBancariaAtivo: cfg?.conciliacao_bancaria_ativo ?? false,
-    comprasAtivo:             cfg?.modulo_compras_ativo       ?? true,
+
+    // Compras: a coluna correta é compras_ativo — é onde a API grava.
+    // modulo_compras_ativo fica como segundo fallback só para bases antigas
+    // que ainda não rodaram scripts/migrate-menu-flags.js.
+    comprasAtivo:    cfg?.compras_ativo    ?? cfg?.modulo_compras_ativo ?? true,
+
+    // Menus que antes não tinham chave nenhuma
+    vendasAtivo:     cfg?.vendas_ativo     ?? true,
+    financeiroAtivo: cfg?.financeiro_ativo ?? true,
+    fidelidadeAtivo: cfg?.fidelidade_ativo ?? true,
+
     entradaNfeAtivo:          cfg?.entrada_nfe_ativo          ?? true,
     perdaProdutoAtivo:        cfg?.perda_produto_ativo        ?? true,
     contagemInventarioAtivo:  cfg?.contagem_inventario_ativo  ?? true,

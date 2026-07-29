@@ -1,3 +1,6 @@
+
+
+===== components\layout\Header.tsx =====
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -17,32 +20,17 @@ interface Props {
   logoBase64:      string | null
 }
 
-// Módulos toggleáveis no painel de configurações.
-//
-// REGRA: todo item que aparece no menu lateral tem que estar nesta lista.
-// Ao acrescentar um menu no Sidebar, acrescente a chave aqui também — senão
-// o cliente não consegue desligá-lo.
-//
-// Duas exceções propositais: Dashboard e Cadastros. O Dashboard é a rota raiz
-// do tenant e sem Cadastros ninguém cria produto nem cliente — esconder
-// qualquer um dos dois deixaria o sistema inutilizável.
+// Módulos toggleáveis no painel de configurações
 const MODULOS = [
-  // Menus que antes não tinham chave nenhuma
-  { key: 'vendasAtivo',     label: 'Vendas',            group: 'Menus principais' },
-  { key: 'financeiroAtivo', label: 'Financeiro',        group: 'Menus principais' },
-
   { key: 'producaoAtivo',  label: 'Produção',          group: 'Operacional' },
   { key: 'estoqueAtivo',   label: 'Estoque',           group: 'Operacional' },
-  { key: 'comprasAtivo',   label: 'Compras',           group: 'Operacional' },
   { key: 'pedidosAtivo',   label: 'Pedidos',           group: 'Operacional' },
   { key: 'comandasAtivo',  label: 'Comandas',          group: 'Operacional' },
-
   { key: 'consultasAtivo', label: 'Consultas',         group: 'Gerencial'   },
   { key: 'metasAtivo',     label: 'Metas & Simulador', group: 'Gerencial'   },
   { key: 'fidelidadeAtivo',label: 'Fidelidade',        group: 'Gerencial'   },
   { key: 'planoAcaoAtivo', label: 'Plano de Ação',     group: 'Gerencial'   },
   { key: 'fiscalAtivo',    label: 'Fiscal (NFC-e)',    group: 'Gerencial'   },
-
   // Financeiro Completo
   { key: 'contasPagarAtivo',         label: 'Contas a Pagar',   group: 'Financeiro' },
   { key: 'contasReceberAtivo',       label: 'Contas a Receber', group: 'Financeiro' },
@@ -62,7 +50,8 @@ export default function Header({
   const [localConfig, setLocalConfig]     = useState<Record<string, boolean>>({})
   const [logoPreview, setLogoPreview]     = useState<string | null>(logoBase64)
 
-  // Estado real das flags via API. Serve de baseline dos toggles.
+  // Estado real das flags via API (o config do tenant-layout não traz campos
+  // novos como fidelidadeAtivo; a API traz tudo). Serve de baseline dos toggles.
   const { data: configApiRaw } = useQuery({
     queryKey: ['configuracoes', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
@@ -87,11 +76,6 @@ export default function Header({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
       toast('Configuração salva!')
-      // O menu lateral é montado no servidor a partir do tenant-layout.
-      // Sem este refresh, a chave só apareceria no menu no próximo F5.
-      if (typeof window !== 'undefined') {
-        setTimeout(() => window.location.reload(), 400)
-      }
     },
     onError: () => toast('Erro ao salvar.', 'error'),
   })
@@ -302,4 +286,122 @@ export default function Header({
       )}
     </>
   )
+}
+
+
+===== app\(dashboard)\tenant-layout.tsx =====
+import { auth } from '@clerk/nextjs/server'
+import { redirect } from 'next/navigation'
+import { eq } from 'drizzle-orm'
+import { pool, getPublicDb } from '@/lib/db/connection'
+import { dbTenant } from '@/lib/db/schemas/public'
+import ClientShell from '@/components/layout/ClientShell'
+
+interface Props {
+  children:    React.ReactNode
+  tenantSlug:  string
+}
+
+export default async function TenantLayout({ children, tenantSlug }: Props) {
+  const { userId } = await auth()
+  if (!userId) redirect('/sign-in')
+
+  const { db: publicDb, release: releasePublic } = await getPublicDb()
+  let schemaName = ''
+  try {
+    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, tenantSlug))
+    schemaName = tenant?.schemaName ?? ''
+  } finally {
+    releasePublic()
+  }
+
+  if (!schemaName) redirect('/onboarding')
+
+  const client = await pool.connect()
+  let cfg: any = null
+  try {
+    await client.query(`SET search_path TO "${schemaName}", public`)
+    const cfgResult = await client.query(`SELECT * FROM t_configuracoes_tenant LIMIT 1`)
+    cfg = cfgResult.rows[0] ?? null
+  } catch (_) {
+    // tenant ainda não tem configurações — usa defaults
+  } finally {
+    client.release()
+  }
+
+  const tenantName = cfg?.nome_empresa || cfg?.nome_fantasia || tenantSlug
+
+  const config = {
+    comandasAtivo:   cfg?.comandas_ativo   ?? false,
+    producaoAtivo:   cfg?.producao_ativo   ?? true,
+    estoqueAtivo:    cfg?.estoque_ativo    ?? true,
+    fiscalAtivo:     cfg?.fiscal_ativo     ?? false,
+    consultasAtivo:  cfg?.consultas_ativo  ?? true,
+    pedidosAtivo:    cfg?.pedidos_ativo    ?? true,
+    planoAcaoAtivo:  cfg?.plano_acao_ativo ?? false,
+    metasAtivo:      cfg?.metas_ativo      ?? false,
+    contasPagarAtivo:         cfg?.contas_pagar_ativo         ?? false,
+    contasReceberAtivo:       cfg?.contas_receber_ativo       ?? false,
+    conciliacaoBancariaAtivo: cfg?.conciliacao_bancaria_ativo ?? false,
+    comprasAtivo:             cfg?.modulo_compras_ativo       ?? true,
+    entradaNfeAtivo:          cfg?.entrada_nfe_ativo          ?? true,
+    perdaProdutoAtivo:        cfg?.perda_produto_ativo        ?? true,
+    contagemInventarioAtivo:  cfg?.contagem_inventario_ativo  ?? true,
+    multiplosLocaisAtivo:     cfg?.multiplos_locais_ativo     ?? false,
+    logoBase64: cfg?.logo_base64 ?? null,
+    darkMode:   cfg?.dark_mode   ?? false,
+  }
+
+  return (
+    <ClientShell
+      tenantSlug={tenantSlug}
+      tenantName={tenantName}
+      config={config}
+    >
+      {children}
+    </ClientShell>
+  )
+}
+
+
+===== lib\services\configuracoes\ConfiguracoesService.ts =====
+import { eq } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { dbConfiguracoesTenant, type TpDbConfiguracoesTenantRow } from '@/lib/db/schemas/vendas'
+
+export class ConfiguracoesService {
+  constructor(private db: AppDB) {}
+
+  async get(): Promise<TpDbConfiguracoesTenantRow | null> {
+    const [result] = await this.db.select().from(dbConfiguracoesTenant).limit(1)
+    return result ?? null
+  }
+
+  async update(data: Partial<{
+    comandasAtivo:    boolean
+    producaoAtivo:    boolean
+    estoqueAtivo:     boolean
+    fiscalAtivo:      boolean
+    consultasAtivo:   boolean
+    pedidosAtivo:     boolean
+    planoAcaoAtivo:   boolean
+    nomeEmpresa:      string
+    cnpj:             string
+    telefone:         string
+    endereco:         string
+    ieEstadual:       string
+    regimeTributario: string
+    uf:               string
+    focusNfeToken:    string
+    focusNfeAmbiente: string
+  }>): Promise<TpDbConfiguracoesTenantRow | null> {
+    const [current] = await this.db.select().from(dbConfiguracoesTenant).limit(1)
+    if (!current) return null
+    const [result] = await this.db
+      .update(dbConfiguracoesTenant)
+      .set({ ...data, updatedDt: new Date() })
+      .where(eq(dbConfiguracoesTenant.configId, current.configId))
+      .returning()
+    return result ?? null
+  }
 }

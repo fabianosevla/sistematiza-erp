@@ -25,8 +25,12 @@ export async function GET(req: NextRequest, { params }: Params) {
         pedidosAtivo:    r.pedidos_ativo    ?? true,
         planoAcaoAtivo:  r.plano_acao_ativo ?? false,
         metasAtivo:      r.metas_ativo      ?? false,
-        // Compras — módulo existia em código mas não era registrado aqui
-        comprasAtivo:    r.compras_ativo    ?? true,
+        // Compras — compras_ativo é a coluna oficial; modulo_compras_ativo é
+        // o nome antigo, mantido como fallback para bases ainda não migradas
+        comprasAtivo:    r.compras_ativo    ?? r.modulo_compras_ativo ?? true,
+        // Menus que antes não tinham chave
+        vendasAtivo:     r.vendas_ativo     ?? true,
+        financeiroAtivo: r.financeiro_ativo ?? true,
         // Fidelidade (cashback)
         fidelidadeAtivo: r.fidelidade_ativo ?? true,
         // Financeiro Completo
@@ -60,6 +64,16 @@ export async function PUT(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
+      // Só grava em coluna que existe de fato. Sem isto, um tenant que ainda
+      // não rodou scripts/migrate-menu-flags.js quebraria ao salvar a chave
+      // de Vendas ou Financeiro.
+      const { rows: cols } = await client.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = $1 AND table_name = 't_configuracoes_tenant'`,
+        [tenant.schemaName]
+      )
+      const existe = new Set(cols.map((c: any) => c.column_name))
+
       // PADRÃO CRÍTICO: raw SQL UPDATE individual por campo
       const updates: [string, any][] = [
         ['comandas_ativo',           body.comandasAtivo],
@@ -72,6 +86,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['metas_ativo',              body.metasAtivo],
         // Compras
         ['compras_ativo',            body.comprasAtivo],
+        ['modulo_compras_ativo',     body.comprasAtivo],
+        // Menus que antes não tinham chave
+        ['vendas_ativo',             body.vendasAtivo],
+        ['financeiro_ativo',         body.financeiroAtivo],
         // Fidelidade
         ['fidelidade_ativo',         body.fidelidadeAtivo],
         // Financeiro Completo
@@ -94,7 +112,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
       ]
 
       for (const [col, val] of updates) {
-        if (val !== undefined) {
+        if (val !== undefined && existe.has(col)) {
           await client.query(
             `UPDATE t_configuracoes_tenant SET ${col} = $1`,
             [val]
