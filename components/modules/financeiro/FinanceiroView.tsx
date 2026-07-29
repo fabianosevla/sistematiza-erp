@@ -14,6 +14,7 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import ConciliacaoView   from './ConciliacaoView'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -21,7 +22,6 @@ type Aba = 'despesas' | 'dre' | 'gastos-fixos' | 'demonstrativo' | 'a-pagar' | '
 
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const CORES  = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c']
-const fmt    = (c: number) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtPct = (n: number) => `${n.toFixed(1)}%`
 
 const CATEGORIAS_DESPESA = [

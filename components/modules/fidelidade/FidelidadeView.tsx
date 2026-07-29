@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -20,7 +21,6 @@ const bpToPct  = (bp: number) => (Number(bp || 0) / 100)
 const pctToBp  = (p: any)     => Math.round(parseFloat(String(p).replace(',', '.') || '0') * 100)
 const centToBRL = (c: number) => (Number(c || 0) / 100).toFixed(2)
 const brlToCent = (v: any)    => Math.round(parseFloat(String(v).replace(',', '.') || '0') * 100)
-const fmt = (c: number) => (Number(c || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const fmtData = (d: string | null) => d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtDataCurta = (d: string | null) => d ? new Date(d).toLocaleDateString('pt-BR') : '—'
 

@@ -26,6 +26,10 @@
 const fs   = require('fs')
 const path = require('path')
 
+// v3 — extrator conta (), {} e [] e ignora strings; import entra depois do
+//      último bloco de import, nunca dentro dele.
+const VERSAO = 'v3'
+
 const RAIZ  = process.cwd()
 const APLICAR = process.argv.includes('--apply')
 
@@ -104,28 +108,40 @@ function acharDefinicao(src, nome) {
     const m = re.exec(src)
     if (!m) continue
     const inicio = m.index
-    const abre = src.indexOf('{', m.index + m[0].length - 1)
-    const fimLinha = src.indexOf('\n', m.index)
 
-    // arrow de uma linha só, sem corpo em chaves
-    if (abre === -1 || (fimLinha !== -1 && abre > fimLinha)) {
-      const fim = fimLinha === -1 ? src.length : fimLinha
-      return { inicio, fim, texto: src.slice(inicio, fim) }
-    }
-
-    // corpo em chaves: casa as chaves
+    // Percorre a partir do início da definição contando (), {} e [].
+    // A definição termina na primeira quebra de linha em que TODOS os
+    // delimitadores estão fechados. Isso cobre os três formatos:
+    //   function f() { ... }
+    //   const f = (x) => { ... }
+    //   const f = (x) => (
+    //     ...várias linhas...
+    //   )
+    // A primeira versão deste script cortava só a primeira linha do terceiro
+    // caso e deixava um ')' órfão — foi o que quebrou FidelidadeView e
+    // FinanceiroView.
     let nivel = 0
-    for (let i = abre; i < src.length; i++) {
-      if (src[i] === '{') nivel++
-      else if (src[i] === '}') {
-        nivel--
-        if (nivel === 0) {
-          let fim = i + 1
-          if (src[fim] === '\n') fim++
-          return { inicio, fim, texto: src.slice(inicio, fim) }
-        }
+    let viuAbertura = false
+    let emTexto = null   // ' " ` quando dentro de string
+
+    for (let i = inicio; i < src.length; i++) {
+      const c = src[i]
+      const anterior = src[i - 1]
+
+      if (emTexto) {
+        if (c === emTexto && anterior !== '\\') emTexto = null
+        continue
+      }
+      if (c === "'" || c === '"' || c === '`') { emTexto = c; continue }
+
+      if (c === '(' || c === '{' || c === '[') { nivel++; viuAbertura = true }
+      else if (c === ')' || c === '}' || c === ']') nivel--
+      else if (c === '\n' && viuAbertura && nivel <= 0) {
+        const fim = i + 1
+        return { inicio, fim, texto: src.slice(inicio, fim) }
       }
     }
+    return { inicio, fim: src.length, texto: src.slice(inicio) }
   }
   return null
 }
@@ -230,7 +246,7 @@ for (const arquivo of arquivos) {
 
 // ── saída ───────────────────────────────────────────────────────────────────
 
-console.log(`\n${APLICAR ? '✍️  APLICANDO' : '🔍 SIMULAÇÃO (nada foi escrito — use --apply)'}\n`)
+console.log(`\npadronizar-format ${VERSAO} — ${APLICAR ? '✍️  APLICANDO' : '🔍 SIMULAÇÃO (nada foi escrito — use --apply)'}\n`)
 
 console.log(`Arquivos alterados: ${relatorio.arquivos}`)
 for (const t of relatorio.trocados) {
