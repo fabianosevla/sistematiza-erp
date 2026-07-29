@@ -7,6 +7,7 @@ import { Plus, Check, Trash2, Scale, Loader2, ShoppingBag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props {
   tenantSlug:       string
@@ -14,7 +15,7 @@ interface Props {
   onPedidosGerados: () => void
 }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerados }: Props) {
   const qc        = useQueryClient()

@@ -4,6 +4,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+import { fmtMoeda as fmt } from '@/lib/format'
   Search, X, Plus, Minus, Trash2, CheckCircle,
   ShoppingCart, LayoutGrid, ClipboardList,
   LogOut, ChevronLeft, AlertCircle, Loader2,
@@ -32,9 +33,7 @@ interface Mesa {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function fmt(c: number) {
-  return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+
 
 const FORMAS_RAPIDAS = ['Dinheiro', 'PIX', 'Crédito', 'Débito']
 

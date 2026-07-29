@@ -7,12 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import NovaNotaModal from './NovaNotaModal'
+import { fmtMoeda as formatCents } from '@/lib/format'
 
 interface Props { tenantSlug: string }
-
-function formatCents(c: number) {
-  return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
   pendente:   { label: 'Pendente',   color: 'secondary' },

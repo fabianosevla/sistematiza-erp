@@ -6,6 +6,7 @@ import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
+import { converterUnidade } from '@/lib/unidades'
 
 function resolverPreco(produto: any, tipoPrecao: string): number {
   switch (tipoPrecao) {
@@ -22,18 +23,7 @@ function resolverPreco(produto: any, tipoPrecao: string): number {
  * Converte quantidade da ficha técnica para a unidade do estoque.
  * Mesma lógica do DebitoInsumoService — centralizada aqui para uso interno.
  */
-function converterUnidade(qtd: number, de: string, para: string): number {
-  const f = de.toLowerCase().trim()
-  const e = para.toLowerCase().trim()
-  if (f === e) return qtd
-  if (f === 'g'  && e === 'kg') return qtd / 1000
-  if (f === 'kg' && e === 'g')  return qtd * 1000
-  if (f === 'ml' && e === 'l')  return qtd / 1000
-  if (f === 'l'  && e === 'ml') return qtd * 1000
-  if (f === 'mg' && e === 'g')  return qtd / 1000
-  if (f === 'mg' && e === 'kg') return qtd / 1_000_000
-  return qtd
-}
+
 
 export class VendaService {
   constructor(private db: AppDB, private schemaName: string = '') {}

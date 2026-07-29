@@ -9,10 +9,12 @@ import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { fmtMoeda as fmt } from '@/lib/format'
+import { unidadesCompativeis } from '@/lib/unidades'
 
 interface Props { tenantSlug: string }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 // Quantidade da ficha: até 6 casas decimais (insumos usados em quantidade
 // mínima, ex.: orégano a 0.00027 kg por bandeja). Mostra no mínimo 3 casas e
@@ -26,12 +28,7 @@ function fmtQtd(v: any) {
 }
 
 // Unidades compatíveis entre si (podem ser convertidas pelo DebitoInsumoService)
-function unidadesCompativeis(unidadeInsumo: string): string[] {
-  const u = unidadeInsumo.toLowerCase()
-  if (u === 'kg' || u === 'g')   return ['kg', 'g']
-  if (u === 'l'  || u === 'ml')  return ['l', 'ml']
-  return [unidadeInsumo] // demais unidades: só a mesma
-}
+
 
 type Aba = 'ficha' | 'composicao'
 

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 // modo: 'balcao' = venda de balcão (retirada). 'delivery' = venda para entrega:
 // mesma tela do balcão, mas com endereço em destaque/obrigatório e tipo de
@@ -27,9 +28,7 @@ interface ItemCarrinho {
   subtotal:      number   // já líquido do desconto do item
 }
 
-function fmt(c: number) {
-  return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+
 
 // Preço do produto em centavos.
 // A listagem pode chegar mapeada (precoVarejo), crua do Postgres (preco_varejo)

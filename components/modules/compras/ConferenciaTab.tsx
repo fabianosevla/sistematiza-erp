@@ -10,13 +10,14 @@ import { CheckCircle, PackageCheck, Loader2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props {
   tenantSlug:      string
   pedidoIdInicial: number | null
 }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
   const qc        = useQueryClient()

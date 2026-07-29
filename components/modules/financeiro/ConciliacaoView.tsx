@@ -8,14 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function fmt(c: number) {
-  const abs = Math.abs(c)
-  const str = (abs / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  return c < 0 ? `-${str}` : str
-}
+
 function fmtDate(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—' }
 
 export default function ConciliacaoView({ tenantSlug }: Props) {

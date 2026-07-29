@@ -15,10 +15,11 @@ import Paginacao from '@/components/ui/Paginacao'
 import { useDominio } from '@/hooks/useDominio'
 import { HistoricoModal } from '@/components/ui/HistoricoModal'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 // Estoque de insumo é fracionado (ex.: 0,250 kg). Mostra até 4 casas,
 // cortando zeros à direita — 2 continua "2", 0,25 aparece "0,25".

@@ -11,10 +11,10 @@ import { TableSkeleton } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
 import { useDominio } from '@/hooks/useDominio'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
 function fmtDateHora(d: string) {
   return new Date(d).toLocaleString('pt-BR', {

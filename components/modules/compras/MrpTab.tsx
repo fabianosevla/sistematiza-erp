@@ -8,13 +8,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props {
   tenantSlug:    string
   onListaGerada: (listaId: number) => void
 }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 export default function MrpTab({ tenantSlug, onListaGerada }: Props) {
   const { toast } = useToast()

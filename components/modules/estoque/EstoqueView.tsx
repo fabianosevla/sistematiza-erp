@@ -10,12 +10,11 @@ import LocaisTab from './LocaisTab'
 import PerdasTab from './PerdasTab'
 import ContagemTab from './ContagemTab'
 import EntradaNfeTab from './EntradaNfeTab'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 type Aba = 'produtos' | 'insumos' | 'ajuste' | 'locais' | 'perdas' | 'contagem' | 'nfe'
-
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
 function StatusIcon({ atual, min }: { atual: number; min: number }) {
   if (atual <= min * 0.5) return <AlertTriangle size={14} className="text-red-500" />

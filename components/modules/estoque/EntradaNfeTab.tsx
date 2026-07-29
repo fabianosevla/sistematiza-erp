@@ -7,6 +7,7 @@ import { Upload, CheckCircle, Loader2, FileSpreadsheet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -15,7 +16,7 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   processada: { label: 'Processada',            cls: 'bg-green-100 text-green-700' },
 }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 export default function EntradaNfeTab({ tenantSlug }: Props) {
   const qc        = useQueryClient()

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props {
   tenantSlug:  string
@@ -28,7 +29,7 @@ interface ItemNota {
   precoUnitario: string
 }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 export default function NovaNotaModal({ tenantSlug, tipoInicial, onClose }: Props) {
   const qc        = useQueryClient()

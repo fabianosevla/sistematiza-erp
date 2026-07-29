@@ -9,10 +9,9 @@ import type { AppDB } from '@/lib/db/connection'
 import { CashbackService, type FidelidadeConfig } from '@/lib/services/fidelidade/CashbackService'
 import { enviarTemplate, normalizarTelefone } from '@/lib/services/fidelidade/WhatsAppService'
 import { decryptSecret, isEncKeyConfigured } from '@/lib/crypto/secretBox'
+import { fmtMoeda as fmt } from '@/lib/format'
 
-function fmt(c: number) {
-  return (Number(c || 0) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+
 
 const SINAL_SQL = `
   CASE

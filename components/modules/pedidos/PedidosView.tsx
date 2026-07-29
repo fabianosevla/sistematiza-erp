@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function fmt(cents: number) { return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+
 
 // CORREÇÃO ("Invalid Date"): a API devolve timestamp completo
 // ("2026-07-30T00:00:00.000Z"), e a versão anterior concatenava 'T12:00:00'

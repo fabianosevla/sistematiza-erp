@@ -1,0 +1,134 @@
+/**
+ * lib/format.ts
+ * Formatação de exibição — fonte única.
+ *
+ * Regras do projeto que este arquivo materializa:
+ *  - dinheiro é SEMPRE inteiro em centavos; a divisão por 100 acontece só aqui
+ *  - datas vindas do banco podem ser 'AAAA-MM-DD' ou ISO completo; nenhuma das
+ *    duas pode sofrer conversão de fuso na exibição (era o bug do "um dia a menos")
+ *  - valor ausente vira travessão, nunca "NaN" ou "Invalid Date"
+ */
+
+const TRACO = '—'
+
+// ── Dinheiro ────────────────────────────────────────────────────────────────
+
+/** Centavos → "R$ 1.234,56" */
+export function fmtMoeda(centavos: any): string {
+  const n = Number(centavos ?? 0)
+  if (!Number.isFinite(n)) return TRACO
+  return (n / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+/** Centavos → "1234.56" para preencher <input type="number">. Zero vira ''. */
+export function fmtMoedaInput(centavos: any): string {
+  const n = Number(centavos ?? 0)
+  return Number.isFinite(n) && n > 0 ? (n / 100).toFixed(2) : ''
+}
+
+/** "1.234,56" ou "1234.56" → 123456 (centavos). Vazio vira 0. */
+export function parseMoeda(texto: any): number {
+  if (texto === null || texto === undefined || texto === '') return 0
+  const limpo = String(texto).trim().replace(/\s/g, '').replace(/R\$/i, '')
+  // Se tem vírgula, ela é o separador decimal e o ponto é milhar
+  const normalizado = limpo.includes(',')
+    ? limpo.replace(/\./g, '').replace(',', '.')
+    : limpo
+  const n = parseFloat(normalizado)
+  return Number.isFinite(n) ? Math.round(n * 100) : 0
+}
+
+// ── Datas ───────────────────────────────────────────────────────────────────
+
+/**
+ * Lê o dia/mês/ano SEM passar por fuso horário.
+ * Aceita 'AAAA-MM-DD', ISO completo, Date e timestamp.
+ */
+function partesDaData(valor: any): { d: string; m: string; a: string; hora: string } | null {
+  if (valor === null || valor === undefined || valor === '') return null
+
+  if (valor instanceof Date) {
+    if (isNaN(valor.getTime())) return null
+    return {
+      d: String(valor.getDate()).padStart(2, '0'),
+      m: String(valor.getMonth() + 1).padStart(2, '0'),
+      a: String(valor.getFullYear()),
+      hora: `${String(valor.getHours()).padStart(2, '0')}:${String(valor.getMinutes()).padStart(2, '0')}`,
+    }
+  }
+
+  const s = String(valor)
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/)
+  if (m) {
+    return { a: m[1], m: m[2], d: m[3], hora: m[4] ? `${m[4]}:${m[5]}` : '' }
+  }
+
+  const dt = new Date(s)
+  if (isNaN(dt.getTime())) return null
+  return {
+    d: String(dt.getDate()).padStart(2, '0'),
+    m: String(dt.getMonth() + 1).padStart(2, '0'),
+    a: String(dt.getFullYear()),
+    hora: `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`,
+  }
+}
+
+/** → "27/07/2026" */
+export function fmtData(valor: any): string {
+  const p = partesDaData(valor)
+  return p ? `${p.d}/${p.m}/${p.a}` : TRACO
+}
+
+/** → "27/07/2026 14:35" */
+export function fmtDataHora(valor: any): string {
+  const p = partesDaData(valor)
+  if (!p) return TRACO
+  return p.hora ? `${p.d}/${p.m}/${p.a} ${p.hora}` : `${p.d}/${p.m}/${p.a}`
+}
+
+/** → "27/07" */
+export function fmtDataCurta(valor: any): string {
+  const p = partesDaData(valor)
+  return p ? `${p.d}/${p.m}` : TRACO
+}
+
+/** → "2026-07-27", para <input type="date"> */
+export function toInputDate(valor: any): string {
+  const p = partesDaData(valor)
+  return p ? `${p.a}-${p.m}-${p.d}` : ''
+}
+
+// ── Números ─────────────────────────────────────────────────────────────────
+
+/**
+ * Quantidade com casas decimais suficientes para insumos usados em fração
+ * mínima (ex.: orégano a 0.00027 kg). Mostra no mínimo 3 casas e corta os
+ * zeros à direita além disso.
+ */
+export function fmtQtd(valor: any, casasMin = 3, casasMax = 6): string {
+  const n = parseFloat(String(valor ?? 0))
+  if (!Number.isFinite(n)) return (0).toFixed(casasMin)
+  const s = n.toFixed(casasMax).replace(/0+$/, '')
+  const [inteiro, dec = ''] = s.split('.')
+  return `${inteiro}.${dec.padEnd(casasMin, '0')}`
+}
+
+/** 12.3456 → "12,3%" */
+export function fmtPct(valor: any, casas = 1): string {
+  const n = Number(valor ?? 0)
+  if (!Number.isFinite(n)) return TRACO
+  return `${n.toFixed(casas).replace('.', ',')}%`
+}
+
+/** Texto com vírgula ou ponto → número. Vazio vira 0. */
+export function parseNumero(texto: any): number {
+  if (texto === null || texto === undefined || texto === '') return 0
+  const n = parseFloat(String(texto).replace(',', '.'))
+  return Number.isFinite(n) ? n : 0
+}
+
+/** Texto vazio/nulo → travessão. Para células de tabela. */
+export function ouTraco(valor: any): string {
+  const s = valor === null || valor === undefined ? '' : String(valor).trim()
+  return s === '' ? TRACO : s
+}

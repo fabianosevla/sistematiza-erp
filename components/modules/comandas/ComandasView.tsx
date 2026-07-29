@@ -7,12 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { fmtMoeda as formatCents } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function formatCents(cents: number) {
-  return (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
+
 
 const FORMAS_PAGAMENTO = ['Dinheiro', 'Crédito', 'Débito', 'PIX', 'Vale Refeição']
 

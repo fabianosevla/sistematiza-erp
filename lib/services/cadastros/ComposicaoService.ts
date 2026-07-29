@@ -8,23 +8,9 @@
 // converte unidades (kg/g, l/ml) e SOMA insumos que aparecem em mais de um
 // caminho. Somente leitura: nao altera nada no banco.
 import { sql } from 'drizzle-orm'
+import { converterUnidade } from '@/lib/unidades'
 
 const PROFUNDIDADE_MAX = 10
-
-function converterUnidade(quantidade, de, para) {
-  const f = String(de ?? '').toLowerCase().trim()
-  const e = String(para ?? '').toLowerCase().trim()
-  if (!f || !e || f === e) return quantidade
-  if (f === 'g'  && e === 'kg') return quantidade / 1000
-  if (f === 'kg' && e === 'g')  return quantidade * 1000
-  if (f === 'mg' && e === 'g')  return quantidade / 1000
-  if (f === 'mg' && e === 'kg') return quantidade / 1000000
-  if (f === 'ml' && e === 'l')  return quantidade / 1000
-  if (f === 'l'  && e === 'ml') return quantidade * 1000
-  if (f === 'cl' && e === 'l')  return quantidade / 100
-  if (f === 'l'  && e === 'cl') return quantidade * 100
-  return quantidade
-}
 
 export class ComposicaoService {
   constructor(db) { this.db = db }

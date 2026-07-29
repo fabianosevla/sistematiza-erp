@@ -14,11 +14,12 @@ import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import Paginacao from '@/components/ui/Paginacao'
 import { useDominio } from '@/hooks/useDominio'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
+import { fmtMoeda as fmt, fmtMoedaInput as fmtInput } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-function fmtInput(c: number) { return c > 0 ? (c / 100).toFixed(2) : '' }
+
+
 function fmtQtd(v: any) {
   const n = parseFloat(String(v ?? 0))
   if (!isFinite(n)) return '0.000'

@@ -1,21 +1,8 @@
 import type { AppDB } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
+import { converterUnidade } from '@/lib/unidades'
 
-function converterUnidade(quantidade: number, unidadeFicha: string, unidadeEstoque: string): number {
-  const f = unidadeFicha.toLowerCase().trim()
-  const e = unidadeEstoque.toLowerCase().trim()
-  if (f === e) return quantidade
-  if (f === 'g'  && e === 'kg') return quantidade / 1000
-  if (f === 'kg' && e === 'g')  return quantidade * 1000
-  if (f === 'mg' && e === 'g')  return quantidade / 1000
-  if (f === 'mg' && e === 'kg') return quantidade / 1_000_000
-  if (f === 'ml' && e === 'l')  return quantidade / 1000
-  if (f === 'l'  && e === 'ml') return quantidade * 1000
-  if (f === 'cl' && e === 'l')  return quantidade / 100
-  if (f === 'l'  && e === 'cl') return quantidade * 100
-  console.warn(`[DebitoInsumoService] conversão não suportada: ${f} → ${e}`)
-  return quantidade
-}
+
 
 export class DebitoInsumoService {
   constructor(private db: AppDB, private schemaName: string) {}

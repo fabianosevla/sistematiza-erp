@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -146,10 +147,6 @@ export default function PerfisView({ tenantSlug }: Props) {
   }
 
   const perfis = Array.isArray(raw?.data) ? raw.data : []
-
-  function fmt(c: number) {
-    return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-  }
 
   return (
     <div>
