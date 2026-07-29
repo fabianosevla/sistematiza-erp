@@ -1,4 +1,9 @@
 // @ts-nocheck
+// app/api/[tenant]/producao/previsao/route.ts
+//
+// A tela de Produção chama esta rota com ?inicio=&fim=, mas a versão anterior
+// só lia dataInicio/dataFim — e caía no default (hoje), devolvendo previsão
+// vazia. Agora aceita os dois nomes, igual à rota /producao/grade.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
@@ -13,8 +18,9 @@ export async function GET(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { searchParams } = new URL(req.url)
-      const dataInicio = searchParams.get('dataInicio') ?? new Date().toISOString().slice(0, 10)
-      const dataFim    = searchParams.get('dataFim')    ?? new Date().toISOString().slice(0, 10)
+      const hoje = new Date().toISOString().slice(0, 10)
+      const dataInicio = searchParams.get('inicio') ?? searchParams.get('dataInicio') ?? hoje
+      const dataFim    = searchParams.get('fim')    ?? searchParams.get('dataFim')    ?? hoje
       return ok(await new ProducaoService(db).getPrevisaoInsumos(dataInicio, dataFim))
     } finally { release() }
   } catch (err) { return serverError(err) }

@@ -1,3 +1,4 @@
+// app/api/[tenant]/estoque/contagens/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest, { params }: P) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      return ok(await new ContagemInventarioService(db).list({
+      return ok(await new ContagemInventarioService(db, tenant.schemaName).list({
         status: url.searchParams.get('status') ?? undefined,
       }))
     } finally { release() }
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, { params }: P) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body = await req.json()
-      return created(await new ContagemInventarioService(db).iniciar({ ...body, userId: 1 }))
+      return created(await new ContagemInventarioService(db, tenant.schemaName).iniciar({ ...body, userId: 1 }))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

@@ -1,3 +1,4 @@
+// app/api/[tenant]/estoque/contagens/[id]/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest, { params }: P) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      const result = await new ContagemInventarioService(db).findById(Number(params.id))
+      const result = await new ContagemInventarioService(db, tenant.schemaName).findById(Number(params.id))
       if (!result) return notFound('Contagem não encontrada')
       return ok(result)
     } finally { release() }
@@ -25,7 +26,9 @@ export async function PUT(req: NextRequest, { params }: P) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body = await req.json()
-      const svc  = new ContagemInventarioService(db)
+      // schemaName é obrigatório: sem ele o ajuste de estoque iria para o
+      // schema errado caso a contagem passe a debitar insumo no futuro.
+      const svc = new ContagemInventarioService(db, tenant.schemaName)
 
       if (body.acao === 'lancar-item') {
         return ok(await svc.lancarItem(body.itemId, body.quantidadeContada, 1))

@@ -15,8 +15,9 @@ function getStatus(atual: number, minimo: number): StatusEstoque {
 }
 
 export class EstoqueService {
-  // CORRECAO: recebe schemaName para repassar ao DebitoInsumoService,
-  // que precisa setar o search_path corretamente via pool direto.
+  // schemaName é repassado ao DebitoInsumoService, que usa pool direto e
+  // precisa do SET search_path. Quem instancia sem ele perde o débito de
+  // insumo em silêncio — por isso o aviso no console abaixo.
   constructor(private db: AppDB, private schemaName: string = '') {}
 
   async listProdutos({ page, limit, search, status }: {
@@ -80,11 +81,16 @@ export class EstoqueService {
   }) {
     const now = new Date()
 
+    // t_movimentacao_estoque.quantidade é NUMERIC(12,3) — o Drizzle espera
+    // string em coluna numeric. Antes era INTEGER e a rota arredondava, o que
+    // fazia 0,5 kg de insumo virar 1 no histórico.
+    const qtdMovimento = tipo === 'saida' ? -Math.abs(quantidade) : Math.abs(quantidade)
+
     await this.db.insert(dbMovimentacaoEstoque).values({
       tipo,
       entidade,
       entidadeId,
-      quantidade:       tipo === 'saida' ? -Math.abs(quantidade) : Math.abs(quantidade),
+      quantidade:       String(qtdMovimento),
       precoCusto:       precoCusto ?? 0,
       observacao,
       dataMovimentacao: now,
@@ -109,11 +115,19 @@ export class EstoqueService {
         }).where(eq(dbProduto.produtoId, entidadeId))
 
         // Débito automático de insumos via ficha técnica — só na ENTRADA.
-        // CORRECAO: passa schemaName para o DebitoInsumoService usar pool
-        // direto com SET search_path correto.
+        // Produzir consome; ajuste é correção de inventário e não consome.
         if (tipo === 'entrada' && quantidade > 0) {
-          debitoInsumos = await new DebitoInsumoService(this.db, this.schemaName)
-            .debitar(entidadeId, Math.abs(quantidade), userId)
+          if (!this.schemaName) {
+            // Falha barulhenta: sem schemaName o DebitoInsumoService iria
+            // para o schema errado e o insumo não baixaria, sem erro nenhum.
+            console.error(
+              '[EstoqueService] entrada de produto sem schemaName — ' +
+              'o débito de insumo foi PULADO. Instancie com new EstoqueService(db, tenant.schemaName).'
+            )
+          } else {
+            debitoInsumos = await new DebitoInsumoService(this.db, this.schemaName)
+              .debitar(entidadeId, Math.abs(quantidade), userId)
+          }
         }
       }
     } else {

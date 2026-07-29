@@ -5,7 +5,6 @@ import { ChevronLeft, ChevronRight, Factory, AlertTriangle, CheckCircle, X } fro
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { fmtQtd, fmtDataCurta as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -19,54 +18,50 @@ function getWeekDates(offset = 0) {
   })
 }
 
+function fmtDate(d: Date) { return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }
 function isoDate(d: Date) { return d.toISOString().slice(0, 10) }
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-
-// Quantidades de insumo: exibe até 6 casas decimais, mínimo 3, cortando zeros
-// à direita. Necessário porque a ficha técnica agora aceita quantidades
-// mínimas (ex.: orégano a 0,00027 kg por unidade) — com 3 casas fixas o
-// consumo de poucas unidades aparecia como "0.000".
 
 type CelulaKey = { produtoId: number; data: string; tipo: 'producao' | 'pedido' }
 
 export default function ProducaoView({ tenantSlug }: Props) {
   const qc = useQueryClient()
-  const [weekOffset, setWeekOffset]         = useState(0)
+  const [weekOffset, setWeekOffset] = useState(0)
   const [editandoCelula, setEditandoCelula] = useState<CelulaKey | null>(null)
-  const [valorCelula, setValorCelula]       = useState('')
-  const [showPrevisao, setShowPrevisao]     = useState(false)
-  const [showBaixa, setShowBaixa]           = useState(false)
-  const [produtoBaixa, setProdutoBaixa]     = useState<any>(null)
-  const [qtdBaixa, setQtdBaixa]             = useState('')
-  const [previewBaixa, setPreviewBaixa]     = useState<any>(null)
-  const [loadingBaixa, setLoadingBaixa]     = useState(false)
+  const [valorCelula, setValorCelula] = useState('')
+  const [showPrevisao, setShowPrevisao] = useState(false)
+  const [showBaixa, setShowBaixa] = useState(false)
+  const [produtoBaixa, setProdutoBaixa] = useState<any>(null)
+  const [qtdBaixa, setQtdBaixa] = useState('')
+  const [previewBaixa, setPreviewBaixa] = useState<any>(null)
+  const [loadingBaixa, setLoadingBaixa] = useState(false)
   const [resultadoBaixa, setResultadoBaixa] = useState<any>(null)
 
-  const dias   = getWeekDates(weekOffset)
+  const dias = getWeekDates(weekOffset)
   const inicio = isoDate(dias[0])
-  const fim    = isoDate(dias[5])
+  const fim = isoDate(dias[5])
 
   const { data: gradeData } = useQuery({
     queryKey: ['producao-grade', tenantSlug, inicio, fim],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/grade?inicio=${inicio}&fim=${fim}`)).json(),
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/producao/grade?inicio=${inicio}&fim=${fim}`)).json(),
   })
 
   const { data: previsaoData } = useQuery({
     queryKey: ['producao-previsao', tenantSlug, inicio, fim],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/previsao?inicio=${inicio}&fim=${fim}`)).json(),
-    enabled:  showPrevisao,
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/producao/previsao?inicio=${inicio}&fim=${fim}`)).json(),
+    enabled: showPrevisao,
   })
 
   // Previsão semanal necessária — média histórica de todos os meses anteriores ÷ 4
   const { data: prevSemanalData } = useQuery({
     queryKey: ['previsao-semanal', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/metas?tipo=previsao&mes=${new Date().getMonth() + 1}&ano=${new Date().getFullYear()}&mesesHistorico=12`)).json(),
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/metas?tipo=previsao&mes=${new Date().getMonth() + 1}&ano=${new Date().getFullYear()}&mesesHistorico=12`)).json(),
     staleTime: 300000, // 5 min
   })
 
   const { data: produtosData } = useQuery({
     queryKey: ['produtos-select', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos`)).json(),
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos`)).json(),
   })
 
   const salvarCelulaMut = useMutation({
@@ -74,7 +69,12 @@ export default function ProducaoView({ tenantSlug }: Props) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ produtoId, dataProducao: data, quantidade: Number(quantidade), tipo }),
     }).then(r => r.json()),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
+      // A previsão de insumos deriva da grade — sem isto ela ficava com o
+      // número antigo até trocar de semana ou dar F5.
+      qc.invalidateQueries({ queryKey: ['producao-previsao', tenantSlug] })
+    },
   })
 
   function iniciarEdicao(produtoId: number, data: string, tipo: 'producao' | 'pedido', valorAtual: number) {
@@ -87,13 +87,18 @@ export default function ProducaoView({ tenantSlug }: Props) {
     setEditandoCelula(null)
   }
 
-  const grade        = gradeData?.data ?? gradeData ?? {}
-  const produtos     = Array.isArray(grade.produtos) ? grade.produtos : []
-  const celulas      = grade.grade ?? {}         // grade[produtoId][data] = qtd produção
-  const celulasPed   = grade.pedidos ?? {}       // pedidos[produtoId][data] = qtd pedido (previsão de produção)
+  const grade = gradeData?.data ?? gradeData ?? {}
+  const produtos = Array.isArray(grade.produtos) ? grade.produtos : []
+  const celulas = grade.grade ?? {}         // grade[produtoId][data] = qtd produção
+  const celulasPed = grade.pedidos ?? {}       // pedidos[produtoId][data] = qtd pedido (previsão de produção)
 
-  const previsao = Array.isArray(previsaoData?.data) ? previsaoData.data
-    : Array.isArray(previsaoData) ? previsaoData : []
+  // A rota devolve { itens: [...] } com os totais ao lado. Antes esperávamos
+  // um array puro, então a lista nunca era reconhecida e a tabela ficava vazia.
+  // Os formatos antigos seguem aceitos para não depender da ordem do deploy.
+  const previsao = Array.isArray(previsaoData?.data?.itens) ? previsaoData.data.itens
+    : Array.isArray(previsaoData?.data) ? previsaoData.data
+      : Array.isArray(previsaoData?.itens) ? previsaoData.itens
+        : Array.isArray(previsaoData) ? previsaoData : []
 
   // Exclui produtos de revenda: eles não são produzidos (são comprados
   // prontos), então não aparecem no "Registrar Produção". A grade em si já
@@ -179,7 +184,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const totaisPrevDia: Record<string, number> = {}
   for (const dia of dias) {
     const d = isoDate(dia)
-    totaisPedDia[d]  = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
+    totaisPedDia[d] = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
     totaisPrevDia[d] = produtos.reduce((a: number, p: any) => a + (celulas?.[p.produtoId]?.[d] ?? 0), 0)
   }
 
@@ -248,9 +253,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
                     </td>
                     {dias.map(dia => {
                       const d = isoDate(dia)
-                      const ped  = celulasPed?.[p.produtoId]?.[d] ?? 0
+                      const ped = celulasPed?.[p.produtoId]?.[d] ?? 0
                       const prev = celulas?.[p.produtoId]?.[d] ?? 0
-                      totalPed  += ped
+                      totalPed += ped
                       totalPrev += prev
                       return (
                         <>
@@ -342,10 +347,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 {previsao.map((item: any, i: number) => (
                   <tr key={i} className={`border-b border-gray-50 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
                     <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{item.nomeInsumo ?? item.nome}</td>
-                    <td className="px-4 py-2.5 text-center text-sm text-gray-600">{fmtQtd(item.totalNecessario ?? item.necessario ?? 0)} {item.unidade}</td>
+                    <td className="px-4 py-2.5 text-center text-sm text-gray-600">{parseFloat(String(item.totalNecessario ?? item.necessario ?? 0)).toFixed(3)} {item.unidade}</td>
                     <td className="px-4 py-2.5 text-center text-sm">
-                      <span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{item.estoqueAtual}</span>
-                    </td>
+                      <span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{parseFloat(String(item.estoqueAtual ?? item.emEstoque ?? 0)).toFixed(3)}</span>                    </td>
                     <td className="px-4 py-2.5 text-center">
                       {item.suficiente
                         ? <span className="text-xs text-green-600 flex items-center justify-center gap-1"><CheckCircle size={12} /> OK</span>
@@ -401,15 +405,15 @@ export default function ProducaoView({ tenantSlug }: Props) {
                         <>
                           <table className="w-full border border-gray-100 rounded-lg overflow-hidden">
                             <thead><tr className="bg-gray-50">
-                              {['Insumo','Consumo','Estoque','Ficará'].map((h,i) => <th key={h} className={`text-xs font-medium text-gray-400 px-3 py-2 ${i===0?'text-left':'text-center'}`}>{h}</th>)}
+                              {['Insumo', 'Consumo', 'Estoque', 'Ficará'].map((h, i) => <th key={h} className={`text-xs font-medium text-gray-400 px-3 py-2 ${i === 0 ? 'text-left' : 'text-center'}`}>{h}</th>)}
                             </tr></thead>
                             <tbody>
                               {previewBaixa.itens?.map((item: any, i: number) => (
                                 <tr key={i} className={`border-t border-gray-50 ${!item.suficiente ? 'bg-red-50/30' : ''}`}>
                                   <td className="px-3 py-2 text-sm font-medium text-gray-900">{item.nomeInsumo}</td>
-                                  <td className="px-3 py-2 text-center text-sm">{fmtQtd(item.qtdNecessaria)} {item.unidade}</td>
-                                  <td className="px-3 py-2 text-center text-sm">{fmtQtd(item.estoqueAtual)}</td>
-                                  <td className="px-3 py-2 text-center text-sm"><span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{fmtQtd(Math.max(0, item.estoqueRestante))}</span></td>
+                                  <td className="px-3 py-2 text-center text-sm">{item.qtdNecessaria.toFixed(3)} {item.unidade}</td>
+                                  <td className="px-3 py-2 text-center text-sm">{item.estoqueAtual.toFixed(3)}</td>
+                                  <td className="px-3 py-2 text-center text-sm"><span className={item.suficiente ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>{Math.max(0, item.estoqueRestante).toFixed(3)}</span></td>
                                 </tr>
                               ))}
                             </tbody>

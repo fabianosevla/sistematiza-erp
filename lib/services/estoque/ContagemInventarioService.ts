@@ -5,7 +5,11 @@ import { dbProduto, dbInsumo } from '@/lib/db/schemas/cadastros'
 import { EstoqueService } from '@/lib/services/estoque/EstoqueService'
 
 export class ContagemInventarioService {
-  constructor(private db: AppDB) {}
+  // schemaName é repassado ao EstoqueService, que por sua vez o entrega ao
+  // DebitoInsumoService. Hoje a contagem só usa tipo 'ajuste', que não debita
+  // insumo — mas sem o schemaName qualquer mudança futura falharia em
+  // silêncio, no schema errado.
+  constructor(private db: AppDB, private schemaName: string = '') {}
 
   /**
    * Inicia uma contagem já populada com TODOS os produtos e insumos ativos,
@@ -78,7 +82,7 @@ export class ContagemInventarioService {
     const contagem = await this.findById(contagemId)
     if (!contagem) throw new Error('Contagem não encontrada')
 
-    const estoqueService = new EstoqueService(this.db)
+    const estoqueService = new EstoqueService(this.db, this.schemaName)
     let ajustesAplicados = 0
 
     for (const item of contagem.itens) {

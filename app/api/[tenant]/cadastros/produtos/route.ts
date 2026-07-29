@@ -71,7 +71,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         insumoFlg:      r.insumo_flg === true,
         // Flag própria de revenda (independente do tipo). Mantém o fallback
         // pelo tipo='Revenda' para dados anteriores à migration.
-        revenda:        r.revenda === true || r.tipo === 'Revenda',
+        revenda: r.revenda === true,
         activeFlag:     r.active_flg,
         modificationNum: r.modification_num,
       }))

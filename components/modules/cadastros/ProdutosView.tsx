@@ -186,7 +186,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setEstoqueMin(String(item.estoqueMinimo ?? 0))
       setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setAtivo(item.activeFlag ?? true)
-      setRevenda(item.tipo === 'Revenda' || item.revenda === true)
+      setRevenda(item.revenda === true)
       setInsumoAtivo(item.insumoFlg === true)
     } else {
       setEditando(null)

@@ -1,0 +1,3049 @@
+
+
+===== app\(dashboard)\[tenant]\estoque\page.tsx =====
+import TenantLayout from '@/app/(dashboard)/tenant-layout'
+import EstoqueView from '@/components/modules/estoque/EstoqueView'
+interface Props { params: { tenant: string } }
+export default async function EstoquePage({ params }: Props) {
+  return <TenantLayout tenantSlug={params.tenant}><EstoqueView tenantSlug={params.tenant} /></TenantLayout>
+}
+
+
+===== app\(dashboard)\[tenant]\estoque-avancado\page.tsx =====
+// Estoque Avançado foi unificado dentro de Estoque (abas Locais, Perdas,
+// Contagem, Entrada NF-e). Esta rota só existe para não quebrar links ou
+// favoritos antigos.
+import { redirect } from 'next/navigation'
+
+interface Props { params: { tenant: string } }
+
+export default function EstoqueAvancadoRedirect({ params }: Props) {
+  redirect(`/${params.tenant}/estoque`)
+}
+
+
+===== app\api\[tenant]\estoque\ajustar\route.ts =====
+// @ts-nocheck
+// app/api/[tenant]/estoque/ajustar/route.ts
+//
+// Reescrito com pool + SET search_path e agora com paginação + busca.
+// GET retorna { data, meta } no mesmo formato de produtos/insumos.
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { pool } from '@/lib/db/connection'
+import { ok, serverError } from '@/lib/api/responses'
+
+type Params = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { searchParams } = new URL(req.url)
+    const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
+    const limit  = Math.min(500, Math.max(1, Number(searchParams.get('limit') ?? 20)))
+    const search = searchParams.get('search') ?? ''
+    const offset = (page - 1) * limit
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      const conds: string[] = ['active_flg = true']
+      const vals: any[] = []
+      let idx = 1
+      if (search) { conds.push(`LOWER(nome) LIKE $${idx++}`); vals.push(`%${search.toLowerCase()}%`) }
+      const where = `WHERE ${conds.join(' AND ')}`
+
+      const [dataRes, countRes] = await Promise.all([
+        client.query(`
+          SELECT produto_id, nome, estoque_atual, estoque_minimo, unidade
+          FROM t_produto ${where}
+          ORDER BY nome ASC
+          LIMIT $${idx++} OFFSET $${idx++}
+        `, [...vals, limit, offset]),
+        client.query(`SELECT COUNT(*)::int as total FROM t_produto ${where}`, vals),
+      ])
+
+      const total = Number(countRes.rows[0]?.total ?? 0)
+      const data = dataRes.rows.map(r => ({
+        produtoId:     r.produto_id,
+        nome:          r.nome,
+        estoqueAtual:  Number(r.estoque_atual ?? 0),
+        estoqueMinimo: Number(r.estoque_minimo ?? 0),
+        unidade:       r.unidade,
+      }))
+
+      return ok({ data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } })
+    } finally {
+      client.release()
+    }
+  } catch (err) { return serverError(err) }
+}
+
+export async function PUT(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { produtoId, novoEstoque } = await req.json()
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+      await client.query(
+        `UPDATE t_produto SET estoque_atual = $1, updated_dt = NOW() WHERE produto_id = $2`,
+        [Number(novoEstoque), Number(produtoId)]
+      )
+      return ok({ ok: true })
+    } finally {
+      client.release()
+    }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\contagens\[id]\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { ContagemInventarioService } from '@/lib/services/estoque/ContagemInventarioService'
+import { ok, serverError, notFound } from '@/lib/api/responses'
+
+type P = { params: { tenant: string; id: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const result = await new ContagemInventarioService(db).findById(Number(params.id))
+      if (!result) return notFound('Contagem não encontrada')
+      return ok(result)
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+// body: { acao: 'lancar-item', itemId, quantidadeContada } | { acao: 'finalizar' }
+export async function PUT(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body = await req.json()
+      const svc  = new ContagemInventarioService(db)
+
+      if (body.acao === 'lancar-item') {
+        return ok(await svc.lancarItem(body.itemId, body.quantidadeContada, 1))
+      }
+      if (body.acao === 'finalizar') {
+        return ok(await svc.finalizar(Number(params.id), 1))
+      }
+      return serverError(new Error('ação inválida'))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\contagens\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { ContagemInventarioService } from '@/lib/services/estoque/ContagemInventarioService'
+import { ok, created, serverError } from '@/lib/api/responses'
+
+type P = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const url    = new URL(req.url)
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      return ok(await new ContagemInventarioService(db).list({
+        status: url.searchParams.get('status') ?? undefined,
+      }))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function POST(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body = await req.json()
+      return created(await new ContagemInventarioService(db).iniciar({ ...body, userId: 1 }))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\entrada-nfe\[id]\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { EntradaNfeService } from '@/lib/services/estoque/EntradaNfeService'
+import { ok, serverError, notFound } from '@/lib/api/responses'
+
+type P = { params: { tenant: string; id: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const result = await new EntradaNfeService(db).findById(Number(params.id))
+      if (!result) return notFound('Entrada não encontrada')
+      return ok(result)
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+// body: { acao: 'mapear-item', itemId, insumoId } | { acao: 'confirmar' }
+export async function PUT(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body = await req.json()
+      const svc  = new EntradaNfeService(db)
+
+      if (body.acao === 'mapear-item') {
+        return ok(await svc.mapearItem(body.itemId, body.insumoId, 1))
+      }
+      if (body.acao === 'confirmar') {
+        return ok(await svc.confirmar(Number(params.id), 1))
+      }
+      return serverError(new Error('ação inválida'))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\entrada-nfe\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { EntradaNfeService } from '@/lib/services/estoque/EntradaNfeService'
+import { ok, created, serverError } from '@/lib/api/responses'
+
+type P = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const url    = new URL(req.url)
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      return ok(await new EntradaNfeService(db).list({
+        status: url.searchParams.get('status') ?? undefined,
+      }))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+// body: { xmlContent: string } — o conteúdo bruto do arquivo XML
+export async function POST(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const { xmlContent } = await req.json()
+      const svc    = new EntradaNfeService(db)
+      const parsed = svc.parseXml(xmlContent)
+      return created(await svc.criar(parsed, 1))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\insumos\route.ts =====
+// @ts-nocheck
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { pool } from '@/lib/db/connection'
+import { ok, serverError } from '@/lib/api/responses'
+type Params = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { searchParams } = new URL(req.url)
+    const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
+    const limit  = Math.min(500, Math.max(1, Number(searchParams.get('limit') ?? 20)))
+    const search = searchParams.get('search') ?? ''
+    const offset = (page - 1) * limit
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+      const conds = ['i.active_flg = true']
+      const vals: any[] = []
+      let idx = 1
+      if (search) { conds.push(`LOWER(i.nome) LIKE $${idx++}`); vals.push(`%${search.toLowerCase()}%`) }
+      const where = `WHERE ${conds.join(' AND ')}`
+
+      const [dataRes, countRes] = await Promise.all([
+        client.query(`
+          SELECT i.insumo_id, i.nome, i.unidade, i.tipo,
+                 i.estoque_atual, i.estoque_minimo, i.preco_custo,
+                 COALESCE(SUM(c.quantidade), 0) as total_comprado
+          FROM t_insumo i
+          LEFT JOIN t_compra_insumo c ON c.insumo_id = i.insumo_id AND c.active_flg = true
+          ${where}
+          GROUP BY i.insumo_id, i.nome, i.unidade, i.tipo, i.estoque_atual, i.estoque_minimo, i.preco_custo
+          ORDER BY i.nome ASC
+          LIMIT $${idx++} OFFSET $${idx++}
+        `, [...vals, limit, offset]),
+        client.query(`SELECT COUNT(*)::int as total FROM t_insumo i ${where}`, vals),
+      ])
+
+      const total = Number(countRes.rows[0]?.total ?? 0)
+      const data = dataRes.rows.map(r => ({
+        insumoId:      r.insumo_id,
+        nome:          r.nome,
+        unidade:       r.unidade,
+        tipo:          r.tipo,
+        estoqueAtual:  Number(r.estoque_atual ?? 0),
+        estoqueMinimo: Number(r.estoque_minimo ?? 0),
+        precoCusto:    Number(r.preco_custo ?? 0),
+        totalComprado: Number(r.total_comprado ?? 0),
+      }))
+      return ok({ data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } })
+    } finally { client.release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const body   = await req.json()
+    const { insumoId, quantidade, precoCusto } = body
+    if (!insumoId || !quantidade) return serverError(new Error('Dados inválidos'))
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+      await client.query(
+        `UPDATE t_insumo SET estoque_atual = estoque_atual + $1, updated_dt = NOW() WHERE insumo_id = $2`,
+        [Number(quantidade), Number(insumoId)]
+      )
+      if (precoCusto && Number(precoCusto) > 0) {
+        await client.query(
+          `UPDATE t_insumo SET preco_custo = $1, updated_dt = NOW() WHERE insumo_id = $2`,
+          [Number(precoCusto), Number(insumoId)]
+        )
+      }
+      return ok({ ok: true })
+    } finally { client.release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+
+===== app\api\[tenant]\estoque\kpis\route.ts =====
+// @ts-nocheck
+// app/api/[tenant]/estoque/kpis/route.ts
+//
+// KPIs do Estoque contando TODOS os registros (não só a página atual).
+// Retorna totais e "críticos" (estoque_atual <= estoque_minimo) de produtos e insumos.
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { pool } from '@/lib/db/connection'
+import { ok, serverError } from '@/lib/api/responses'
+
+type Params = { params: { tenant: string } }
+
+export async function GET(_req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+      const res = await client.query(`
+        SELECT
+          (SELECT COUNT(*)::int FROM t_produto WHERE active_flg = true)                                              AS produtos,
+          (SELECT COUNT(*)::int FROM t_produto WHERE active_flg = true AND estoque_atual <= estoque_minimo)          AS produtos_criticos,
+          (SELECT COUNT(*)::int FROM t_insumo  WHERE active_flg = true)                                              AS insumos,
+          (SELECT COUNT(*)::int FROM t_insumo  WHERE active_flg = true AND estoque_atual <= estoque_minimo)          AS insumos_criticos
+      `)
+      const r = res.rows[0] ?? {}
+      return ok({
+        produtos:         Number(r.produtos ?? 0),
+        produtosCriticos: Number(r.produtos_criticos ?? 0),
+        insumos:          Number(r.insumos ?? 0),
+        insumosCriticos:  Number(r.insumos_criticos ?? 0),
+      })
+    } finally {
+      client.release()
+    }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\locais\distribuicao\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { LocalEstoqueService } from '@/lib/services/estoque/LocalEstoqueService'
+import { ok, serverError } from '@/lib/api/responses'
+
+type P = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const url    = new URL(req.url)
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const entidade   = url.searchParams.get('entidade') as 'produto' | 'insumo'
+      const entidadeId = Number(url.searchParams.get('entidadeId') ?? 0)
+      return ok(await new LocalEstoqueService(db).getDistribuicao(entidade, entidadeId))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\locais\transferir\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { LocalEstoqueService } from '@/lib/services/estoque/LocalEstoqueService'
+import { ok, serverError } from '@/lib/api/responses'
+
+type P = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      return ok(await new LocalEstoqueService(db).listTransferencias())
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function POST(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body = await req.json()
+      return ok(await new LocalEstoqueService(db).transferir({ ...body, userId: 1 }))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\locais\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { LocalEstoqueService } from '@/lib/services/estoque/LocalEstoqueService'
+import { ok, created, serverError } from '@/lib/api/responses'
+
+type P = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      return ok(await new LocalEstoqueService(db).listLocais())
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function POST(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const { nome, descricao } = await req.json()
+      return created(await new LocalEstoqueService(db).criarLocal(nome, descricao, 1))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\movimentar\route.ts =====
+import type { NextRequest } from 'next/server'
+import { z } from 'zod'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { EstoqueService } from '@/lib/services/estoque/EstoqueService'
+import { ok, serverError, badRequest } from '@/lib/api/responses'
+
+type Params = { params: { tenant: string } }
+
+const movimentarSchema = z.object({
+  entidade:   z.enum(['produto', 'insumo']),
+  entidadeId: z.number().int(),
+  // CORRECAO: aceita number() sem .int() para não rejeitar
+  // valores enviados pelo frontend que possam não ser inteiros estritos.
+  // O Math.abs() garante valor positivo.
+  tipo:       z.enum(['entrada', 'saida', 'ajuste']),
+  quantidade: z.number().min(0.001),
+  precoCusto: z.number().int().optional(),
+  observacao: z.string().max(500).optional(),
+})
+
+export async function POST(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body = await req.json()
+      console.log('[movimentar] body recebido:', JSON.stringify(body))
+
+      let payload: z.infer<typeof movimentarSchema>
+      try {
+        payload = movimentarSchema.parse(body)
+      } catch (zodErr: any) {
+        console.error('[movimentar] erro de validacao:', JSON.stringify(zodErr.errors))
+        return badRequest('Dados inválidos: ' + JSON.stringify(zodErr.errors))
+      }
+
+      console.log('[movimentar] payload validado:', JSON.stringify(payload))
+      const service = new EstoqueService(db, tenant.schemaName)
+      const result  = await service.movimentar({
+        ...payload,
+        quantidade: Math.round(payload.quantidade),
+        userId: 1,
+      })
+      console.log('[movimentar] resultado:', JSON.stringify(result))
+      return ok(result)
+    } finally {
+      release()
+    }
+  } catch (err: any) {
+    console.error('[movimentar] erro geral:', err?.message)
+    return serverError(err)
+  }
+}
+
+
+===== app\api\[tenant]\estoque\perdas\[id]\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { PerdaEstoqueService } from '@/lib/services/estoque/PerdaEstoqueService'
+import { ok, serverError } from '@/lib/api/responses'
+
+type P = { params: { tenant: string; id: string } }
+
+export async function DELETE(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      return ok(await new PerdaEstoqueService(db).excluir(Number(params.id), 1))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\perdas\route.ts =====
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { PerdaEstoqueService } from '@/lib/services/estoque/PerdaEstoqueService'
+import { ok, created, serverError } from '@/lib/api/responses'
+
+type P = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: P) {
+  try {
+    const url    = new URL(req.url)
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      return ok(await new PerdaEstoqueService(db).list({
+        entidade:   url.searchParams.get('entidade') ?? undefined,
+        motivo:     url.searchParams.get('motivo') ?? undefined,
+        dataInicio: url.searchParams.get('dataInicio') ?? undefined,
+        dataFim:    url.searchParams.get('dataFim') ?? undefined,
+      }))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function POST(req: NextRequest, { params }: P) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body = await req.json()
+      return created(await new PerdaEstoqueService(db).registrar({ ...body, userId: 1 }))
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\estoque\produtos\route.ts =====
+// @ts-nocheck
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { pool } from '@/lib/db/connection'
+import { ok, created, serverError, badRequest } from '@/lib/api/responses'
+
+type Params = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { searchParams } = new URL(req.url)
+    const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
+    const limit  = Math.min(500, Math.max(1, Number(searchParams.get('limit') ?? 20)))
+    const search = searchParams.get('search') ?? ''
+    const incluirInativos = searchParams.get('incluirInativos') === 'true'
+    const offset = (page - 1) * limit
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      const conditions = []
+      const values: any[] = []
+      let idx = 1
+
+      if (!incluirInativos) {
+        conditions.push(`active_flg = true`)
+      }
+      if (search) {
+        conditions.push(`LOWER(nome) LIKE $${idx++}`)
+        values.push(`%${search.toLowerCase()}%`)
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
+
+      const [dataRes, countRes] = await Promise.all([
+        client.query(`
+          SELECT produto_id, nome, descricao, codigo_barras, unidade, tipo, categoria,
+                 estoque_atual, estoque_minimo, preco_custo, preco_varejo,
+                 preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
+                 insumo_flg, active_flg, modification_num, created_dt, updated_dt
+          FROM t_produto ${where}
+          ORDER BY nome ASC
+          LIMIT $${idx++} OFFSET $${idx++}
+        `, [...values, limit, offset]),
+        client.query(`SELECT COUNT(*)::int as total FROM t_produto ${where}`, values),
+      ])
+
+      const total      = Number(countRes.rows[0]?.total ?? 0)
+      const totalPages = Math.ceil(total / limit)
+
+      const data = dataRes.rows.map(r => ({
+        produtoId:      r.produto_id,
+        nome:           r.nome,
+        descricao:      r.descricao,
+        codigoBarras:   r.codigo_barras,
+        unidade:        r.unidade,
+        tipo:           r.tipo,
+        categoria:      r.categoria,
+        estoqueAtual:   Number(r.estoque_atual ?? 0),
+        estoqueMinimo:  Number(r.estoque_minimo ?? 0),
+        precoCusto:     Number(r.preco_custo ?? 0),
+        precoVarejo:    Number(r.preco_varejo ?? 0),
+        precoAtacadoA:  Number(r.preco_atacado_a ?? 0),
+        precoAtacadoB:  Number(r.preco_atacado_b ?? 0),
+        precoAtacadoC:  Number(r.preco_atacado_c ?? 0),
+        precoAtacadoD:  Number(r.preco_atacado_d ?? 0),
+        precoAtacadoE:  Number(r.preco_atacado_e ?? 0),
+        insumoFlg:      r.insumo_flg === true,
+        activeFlag:     r.active_flg,
+        modificationNum: r.modification_num,
+      }))
+
+      return ok({ data, meta: { total, page, limit, totalPages } })
+    } finally {
+      client.release()
+    }
+  } catch (err) { return serverError(err) }
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const body   = await req.json()
+    if (!body.nome?.trim()) return badRequest('Nome é obrigatório')
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      // Impede cadastro duplicado: chave = nome (produto ativo).
+      const dup = await client.query(
+        `SELECT produto_id FROM t_produto
+         WHERE active_flg = true AND LOWER(nome) = LOWER($1) LIMIT 1`,
+        [body.nome.trim()]
+      )
+      if (dup.rows.length > 0) return badRequest('Registro já existente')
+
+      const res = await client.query(`
+        INSERT INTO t_produto (
+          nome, descricao, codigo_barras, unidade, tipo, categoria,
+          estoque_atual, estoque_minimo, preco_custo, preco_varejo,
+          preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
+          insumo_flg, active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,0,1,1,NOW(),NOW())
+        RETURNING produto_id as "produtoId"
+      `, [
+        body.nome.trim(),
+        body.descricao?.trim() || null,
+        body.codigoBarras?.trim() || null,
+        body.unidade?.trim() || 'un',
+        body.tipo?.trim() || null,
+        body.categoria?.trim() || null,
+        Number(body.estoqueAtual ?? 0),
+        Number(body.estoqueMinimo ?? 0),
+        Number(body.precoCusto ?? 0),
+        Number(body.precoVarejo ?? 0),
+        Number(body.precoAtacadoA ?? body.precoAtacado ?? 0),
+        Number(body.precoAtacadoB ?? 0),
+        Number(body.precoAtacadoC ?? 0),
+        Number(body.precoAtacadoD ?? 0),
+        Number(body.precoAtacadoE ?? 0),
+        body.insumoFlg === true,
+      ])
+      return created(res.rows[0])
+    } finally {
+      client.release()
+    }
+  } catch (err: any) {
+    if (err?.code === '23505') return badRequest('Registro já existente')
+    return serverError(err)
+  }
+}
+
+
+===== components\modules\estoque\ContagemTab.tsx =====
+'use client'
+// components/modules/estoque/ContagemTab.tsx
+
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, CheckCircle, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { SearchInput } from '@/components/ui/SearchInput'
+import { FormModal } from '@/components/ui/FormModal'
+import { fmtData } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  aberta:    { label: 'Aberta',    cls: 'bg-blue-100 text-blue-700' },
+  concluida: { label: 'Concluída', cls: 'bg-green-100 text-green-700' },
+}
+
+export default function ContagemTab({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/estoque/contagens`
+
+  const [contagemId, setContagemId] = useState<number | null>(null)
+  const [showNova, setShowNova]     = useState(false)
+  const [descricao, setDescricao]   = useState('')
+  const [busca, setBusca]           = useState('')
+  const [valores, setValores]       = useState<Record<number, string>>({})
+
+  const { data: listRaw, isLoading: loadingList } = useQuery({
+    queryKey: ['estoque-contagens', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
+    enabled:  !contagemId,
+  })
+
+  const { data: detailRaw, refetch: refetchDetail, isLoading: loadingDetail } = useQuery({
+    queryKey: ['estoque-contagem-detail', tenantSlug, contagemId],
+    queryFn:  async () => (await fetch(`${api}/${contagemId}`)).json(),
+    enabled:  !!contagemId,
+  })
+
+  const iniciarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ descricao: descricao || undefined }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: (d) => {
+      setContagemId(d.data.contagemId); setShowNova(false); setDescricao('')
+      qc.invalidateQueries({ queryKey: ['estoque-contagens', tenantSlug] })
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao iniciar contagem.', 'error'),
+  })
+
+  const lancarMut = useMutation({
+    mutationFn: async ({ itemId, quantidadeContada }: { itemId: number; quantidadeContada: number }) => {
+      const res = await fetch(`${api}/${contagemId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'lancar-item', itemId, quantidadeContada }),
+      })
+      return res.json()
+    },
+    onSuccess: () => refetchDetail(),
+  })
+
+  const finalizarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${api}/${contagemId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'finalizar' }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: (d) => {
+      toast(`Contagem finalizada! ${d.data.ajustesAplicados} ajuste(s) de estoque aplicado(s).`)
+      qc.invalidateQueries({ queryKey: ['estoque-contagens', tenantSlug] })
+      setContagemId(null)
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao finalizar.', 'error'),
+  })
+
+  function handleQtdChange(itemId: number, value: string) {
+    setValores(prev => ({ ...prev, [itemId]: value }))
+  }
+  function handleQtdBlur(itemId: number) {
+    const val = parseFloat(valores[itemId])
+    if (!isNaN(val)) lancarMut.mutate({ itemId, quantidadeContada: val })
+  }
+
+  const contagens = Array.isArray(listRaw?.data) ? listRaw.data : []
+  const detail     = detailRaw?.data
+
+  // ── Lista de contagens ──────────────────────────────────────────────────
+  if (!contagemId) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-end items-center gap-2">
+          <InfoTip titulo="O que é a contagem">
+            Congela o saldo do sistema e permite lançar o que você contou fisicamente.
+            Ao finalizar, cada diferença vira uma movimentação de estoque automática.
+          </InfoTip>
+          <Button size="sm" onClick={() => setShowNova(true)}>
+            <Plus size={13} className="mr-1.5" /> Iniciar contagem
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          {loadingList ? (
+            <p className="text-sm text-gray-400 text-center py-10">Carregando...</p>
+          ) : contagens.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-10 bg-white rounded-xl border border-gray-100">Nenhuma contagem ainda.</p>
+          ) : contagens.map((c: any) => {
+            const sCfg = STATUS_CFG[c.status] ?? STATUS_CFG.aberta
+            return (
+              <button key={c.contagemId} onClick={() => setContagemId(c.contagemId)}
+                className="w-full flex items-center justify-between bg-white rounded-xl border border-gray-100 hover:border-green-300 p-4 text-left transition-colors">
+                <div>
+                  <span className="text-sm font-medium text-gray-900">{c.descricao}</span>
+                  <span className="text-xs text-gray-400 ml-2">{fmtData(c.dataContagem)}</span>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${sCfg.cls}`}>{sCfg.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {showNova && (
+          <FormModal
+            titulo="Nova contagem"
+            onClose={() => setShowNova(false)}
+            largura="max-w-sm"
+            cabecalho={
+              <InfoTip titulo="O que entra na contagem">
+                Todos os produtos e insumos ativos são trazidos para conferência.
+              </InfoTip>
+            }
+          >
+            <div className="p-6 space-y-4">
+              <div>
+                <Label>Descrição (opcional)</Label>
+                <Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Ex: Contagem mensal" />
+              </div>
+              <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+                <Button variant="outline" onClick={() => setShowNova(false)}>Cancelar</Button>
+                <Button onClick={() => iniciarMut.mutate()} disabled={iniciarMut.isPending}>
+                  {iniciarMut.isPending ? 'Criando...' : 'Iniciar'}
+                </Button>
+              </div>
+            </div>
+          </FormModal>
+        )}
+      </div>
+    )
+  }
+
+  // ── Detalhe da contagem ──────────────────────────────────────────────────
+  if (loadingDetail || !detail) {
+    return <div className="flex justify-center py-12"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
+  }
+
+  const itensFiltrados = detail.itens.filter((i: any) =>
+    !busca || i.nomeEntidade.toLowerCase().includes(busca.toLowerCase())
+  )
+  const totalLancados = detail.itens.filter((i: any) => i.quantidadeContada !== null).length
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">{detail.descricao}</p>
+          <p className="text-xs text-gray-400">{totalLancados} de {detail.itens.length} item(ns) contado(s)</p>
+        </div>
+        <button onClick={() => setContagemId(null)} className="text-xs text-gray-400 hover:text-gray-600">← voltar</button>
+      </div>
+
+      <SearchInput valor={busca} onChange={setBusca} placeholder="Filtrar item..." className="" />
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden max-h-[500px] overflow-y-auto">
+        <table className="w-full">
+          <thead className="sticky top-0 bg-white">
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Item</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Sistema</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Contado</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Diferença</th>
+            </tr>
+          </thead>
+          <tbody>
+            {itensFiltrados.map((item: any) => {
+              const contado = valores[item.itemId] ?? (item.quantidadeContada !== null ? String(item.quantidadeContada) : '')
+              const diferenca = item.diferenca !== null ? Number(item.diferenca) : null
+              return (
+                <tr key={item.itemId} className="border-b border-gray-50">
+                  <td className="px-4 py-2 text-sm text-gray-900">{item.nomeEntidade}</td>
+                  <td className="px-4 py-2 text-right text-sm text-gray-500">{Number(item.quantidadeSistema).toFixed(2)}</td>
+                  <td className="px-4 py-2 text-right">
+                    <Input type="number" min="0" step="0.001" value={contado}
+                      onChange={e => handleQtdChange(item.itemId, e.target.value)}
+                      onBlur={() => handleQtdBlur(item.itemId)}
+                      className="w-24 h-7 text-sm text-right ml-auto" />
+                  </td>
+                  <td className={`px-4 py-2 text-right text-sm font-medium ${
+                    diferenca === null ? 'text-gray-300' : diferenca === 0 ? 'text-gray-400' : diferenca > 0 ? 'text-blue-500' : 'text-red-500'
+                  }`}>
+                    {diferenca === null ? '—' : (diferenca > 0 ? '+' : '') + diferenca.toFixed(2)}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex justify-end items-center gap-2">
+        <InfoTip titulo="O que acontece ao finalizar">
+          Item sem diferença não gera ajuste. Item com diferença vira movimentação de
+          estoque automática, corrigindo o saldo do sistema.
+        </InfoTip>
+        <Button disabled={totalLancados === 0 || finalizarMut.isPending} onClick={() => finalizarMut.mutate()}>
+          {finalizarMut.isPending
+            ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Finalizando...</>
+            : <><CheckCircle size={14} className="mr-1.5" /> Finalizar Contagem</>
+          }
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+
+===== components\modules\estoque\EntradaNfeTab.tsx =====
+'use client'
+// components/modules/estoque/EntradaNfeTab.tsx
+
+import { useRef, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Upload, CheckCircle, Loader2, FileSpreadsheet } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { Aviso } from '@/components/ui/Aviso'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+const STATUS_CFG: Record<string, { label: string; cls: string }> = {
+  pendente:   { label: 'Aguardando mapeamento', cls: 'bg-amber-100 text-amber-700' },
+  processada: { label: 'Processada',            cls: 'bg-green-100 text-green-700' },
+}
+
+
+export default function EntradaNfeTab({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/estoque/entrada-nfe`
+  const fileRef   = useRef<HTMLInputElement>(null)
+
+  const [entradaId, setEntradaId]   = useState<number | null>(null)
+  const [uploading, setUploading]   = useState(false)
+
+  const { data: listRaw, isLoading: loadingList } = useQuery({
+    queryKey: ['estoque-nfe-list', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
+    enabled:  !entradaId,
+  })
+
+  const { data: detailRaw, refetch: refetchDetail, isLoading: loadingDetail } = useQuery({
+    queryKey: ['estoque-nfe-detail', tenantSlug, entradaId],
+    queryFn:  async () => (await fetch(`${api}/${entradaId}`)).json(),
+    enabled:  !!entradaId,
+  })
+
+  const uploadMut = useMutation({
+    mutationFn: async (xmlContent: string) => {
+      const res = await fetch(api, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ xmlContent }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: (d) => {
+      setEntradaId(d.data.entradaId)
+      qc.invalidateQueries({ queryKey: ['estoque-nfe-list', tenantSlug] })
+      toast('XML importado! Agora vincule cada item a um insumo.')
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao processar XML.', 'error'),
+    onSettled: () => setUploading(false),
+  })
+
+  const mapearMut = useMutation({
+    mutationFn: async ({ itemId, insumoId }: { itemId: number; insumoId: number }) => {
+      const res = await fetch(`${api}/${entradaId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'mapear-item', itemId, insumoId }),
+      })
+      return res.json()
+    },
+    onSuccess: () => refetchDetail(),
+  })
+
+  const confirmarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${api}/${entradaId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ acao: 'confirmar' }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: (d) => {
+      toast(`Entrada confirmada! Estoque atualizado e Conta a Pagar #${d.data.contaPagarId} gerada.`)
+      qc.invalidateQueries({ queryKey: ['estoque-nfe-list', tenantSlug] })
+      setEntradaId(null)
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao confirmar.', 'error'),
+  })
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    const reader = new FileReader()
+    reader.onload = (ev) => uploadMut.mutate(ev.target?.result as string)
+    reader.readAsText(file)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  const entradas = Array.isArray(listRaw?.data) ? listRaw.data : []
+  const detail    = detailRaw?.data
+
+  // ── Lista de entradas ────────────────────────────────────────────────────
+  if (!entradaId) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-white rounded-xl border-2 border-dashed border-gray-200 p-8 text-center">
+          <Upload size={28} className="text-gray-300 mx-auto mb-3" />
+          <input ref={fileRef} type="file" accept=".xml" onChange={handleFileChange} className="hidden" id="nfe-upload" />
+          <div className="flex items-center justify-center gap-2">
+            <Button onClick={() => fileRef.current?.click()} disabled={uploading}>
+              {uploading ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Processando...</> : 'Selecionar XML da NF-e'}
+            </Button>
+            <InfoTip titulo="Como funciona">
+              Envie o XML da nota do fornecedor. O sistema lê os itens, você vincula cada um
+              a um insumo do cadastro e, ao confirmar, o estoque entra e uma conta a pagar
+              é gerada.
+            </InfoTip>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          {loadingList ? (
+            <p className="text-sm text-gray-400 text-center py-6">Carregando...</p>
+          ) : entradas.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">Nenhuma entrada de NF-e ainda.</p>
+          ) : entradas.map((e: any) => {
+            const sCfg = STATUS_CFG[e.status] ?? STATUS_CFG.pendente
+            return (
+              <button key={e.entradaId} onClick={() => setEntradaId(e.entradaId)}
+                className="w-full flex items-center justify-between bg-white rounded-xl border border-gray-100 hover:border-green-300 p-4 text-left transition-colors">
+                <div className="flex items-center gap-3">
+                  <FileSpreadsheet size={16} className="text-gray-300" />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">{e.nomeFornecedor || 'Fornecedor não identificado'}</span>
+                    <span className="text-xs text-gray-400 ml-2">NF-e {e.numeroNfe} · {fmt(e.valorTotal)}</span>
+                  </div>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${sCfg.cls}`}>{sCfg.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Mapeamento de itens ──────────────────────────────────────────────────
+  if (loadingDetail || !detail) {
+    return <div className="flex justify-center py-12"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
+  }
+
+  const todosMapeados = detail.itens.every((i: any) => i.insumoId)
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1">
+          {detail.nomeFornecedor} — NF-e {detail.numeroNfe}
+          <InfoTip titulo="Vínculo dos itens">
+            Cada item da nota precisa apontar para um insumo do seu cadastro — é assim que
+            o sistema sabe qual estoque aumentar e com qual custo.
+          </InfoTip>
+        </p>
+        <button onClick={() => setEntradaId(null)} className="text-xs text-gray-400 hover:text-gray-600">← voltar</button>
+      </div>
+
+      <div className="space-y-2">
+        {detail.itens.map((item: any) => (
+          <ItemMapeamento
+            key={item.itemId}
+            item={item}
+            tenantSlug={tenantSlug}
+            onMapear={(insumoId) => mapearMut.mutate({ itemId: item.itemId, insumoId })}
+          />
+        ))}
+      </div>
+
+      {detail.status === 'pendente' && (
+        <div className="flex justify-end">
+          <Button disabled={!todosMapeados || confirmarMut.isPending} onClick={() => confirmarMut.mutate()}>
+            {confirmarMut.isPending
+              ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Confirmando...</>
+              : <><CheckCircle size={14} className="mr-1.5" /> Confirmar Entrada</>
+            }
+          </Button>
+        </div>
+      )}
+      {/* Condição que bloqueia o botão — continua visível */}
+      {!todosMapeados && detail.status === 'pendente' && (
+        <p className="text-xs text-amber-500 text-right">Vincule todos os itens a um insumo antes de confirmar.</p>
+      )}
+      {detail.status === 'processada' && (
+        <Aviso tom="sucesso" icone={<CheckCircle size={15} className="text-green-600 flex-shrink-0" />}>
+          Entrada já processada — estoque atualizado e conta a pagar gerada.
+        </Aviso>
+      )}
+    </div>
+  )
+}
+
+function ItemMapeamento({ item, tenantSlug, onMapear }: { item: any; tenantSlug: string; onMapear: (insumoId: number) => void }) {
+  const [busca, setBusca] = useState('')
+  const [resultados, setResultados] = useState<any[]>([])
+  const [nomeInsumoSelecionado, setNomeInsumoSelecionado] = useState(item.nomeInsumoMapeado ?? '')
+
+  async function handleBusca(value: string) {
+    setBusca(value)
+    if (!value) { setResultados([]); return }
+    const res = await fetch(`/api/${tenantSlug}/cadastros/insumos?search=${value}&limit=6`)
+    const d = await res.json()
+    setResultados(Array.isArray(d?.data?.data) ? d.data.data : Array.isArray(d?.data) ? d.data : [])
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <p className="text-sm font-medium text-gray-900">{item.descricaoXml}</p>
+          <p className="text-xs text-gray-400">Qtd: {Number(item.quantidade).toFixed(2)} · {fmt(item.valorUnitario)}/un</p>
+        </div>
+        {item.insumoId && <CheckCircle size={16} className="text-green-500 flex-shrink-0" />}
+      </div>
+
+      {item.insumoId ? (
+        <div className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
+          <span className="text-sm text-green-700">{nomeInsumoSelecionado || 'Insumo vinculado'}</span>
+        </div>
+      ) : (
+        <div>
+          <Input value={busca} onChange={e => handleBusca(e.target.value)} placeholder="Buscar insumo pra vincular..." className="h-8 text-sm" />
+          {resultados.length > 0 && (
+            <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+              {resultados.map((ins: any) => (
+                <button key={ins.insumoId} onClick={() => { onMapear(ins.insumoId); setNomeInsumoSelecionado(ins.nome) }}
+                  className="w-full px-3 py-2 hover:bg-gray-50 text-left text-sm">{ins.nome}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+===== components\modules\estoque\EstoqueAvancadoView.tsx =====
+'use client'
+// components/modules/estoque/EstoqueAvancadoView.tsx
+
+import { useState } from 'react'
+import { Warehouse, AlertTriangle, ClipboardCheck, FileSpreadsheet } from 'lucide-react'
+import LocaisTab    from './LocaisTab'
+import PerdasTab    from './PerdasTab'
+import ContagemTab  from './ContagemTab'
+import EntradaNfeTab from './EntradaNfeTab'
+
+interface Props { tenantSlug: string }
+
+type Aba = 'locais' | 'perdas' | 'contagem' | 'nfe'
+
+const ABAS: { key: Aba; label: string; icon: any }[] = [
+  { key: 'locais',   label: 'Locais',       icon: Warehouse },
+  { key: 'perdas',   label: 'Perdas',       icon: AlertTriangle },
+  { key: 'contagem', label: 'Contagem',     icon: ClipboardCheck },
+  { key: 'nfe',      label: 'Entrada NF-e', icon: FileSpreadsheet },
+]
+
+export default function EstoqueAvancadoView({ tenantSlug }: Props) {
+  const [aba, setAba] = useState<Aba>('locais')
+
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold text-gray-900">Estoque Avançado</h1>
+        <p className="text-sm text-gray-400 mt-0.5">Locais, perdas, contagem de inventário e entrada via NF-e</p>
+      </div>
+
+      <div className="border-b border-gray-100 mb-6 overflow-x-auto">
+        <div className="flex gap-0 min-w-max">
+          {ABAS.map(a => (
+            <button key={a.key} onClick={() => setAba(a.key)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              <a.icon size={14} />
+              {a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {aba === 'locais'   && <LocaisTab tenantSlug={tenantSlug} />}
+      {aba === 'perdas'   && <PerdasTab tenantSlug={tenantSlug} />}
+      {aba === 'contagem' && <ContagemTab tenantSlug={tenantSlug} />}
+      {aba === 'nfe'      && <EntradaNfeTab tenantSlug={tenantSlug} />}
+    </div>
+  )
+}
+
+
+===== components\modules\estoque\EstoqueView.tsx =====
+'use client'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import Paginacao from '@/components/ui/Paginacao'
+import { Plus, Download, AlertTriangle, CheckCircle, Edit3, Warehouse, ClipboardCheck, FileSpreadsheet } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { SearchInput } from '@/components/ui/SearchInput'
+import { FormModal } from '@/components/ui/FormModal'
+import LocaisTab from './LocaisTab'
+import PerdasTab from './PerdasTab'
+import ContagemTab from './ContagemTab'
+import EntradaNfeTab from './EntradaNfeTab'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+type Aba = 'produtos' | 'insumos' | 'ajuste' | 'locais' | 'perdas' | 'contagem' | 'nfe'
+
+function StatusIcon({ atual, min }: { atual: number; min: number }) {
+  if (atual <= min * 0.5) return <AlertTriangle size={14} className="text-red-500" />
+  if (atual <= min)       return <AlertTriangle size={14} className="text-amber-500" />
+  return <CheckCircle size={14} className="text-green-500" />
+}
+
+export default function EstoqueView({ tenantSlug }: Props) {
+  const qc = useQueryClient()
+  const [aba, setAba]               = useState<Aba>('produtos')
+  const [buscaInsumo, setBuscaInsumo] = useState('')
+  const [buscaProduto, setBuscaProduto] = useState('')
+  const [buscaAjuste, setBuscaAjuste]   = useState('')
+  const [page, setPage]               = useState(1)
+  const [limit, setLimit]             = useState(20)
+  const [showModal, setShowModal]   = useState<'produto' | 'insumo' | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [qtdAdicionar, setQtdAdicionar]     = useState('')
+  const [precoCusto, setPrecoCusto]         = useState('')
+  const [editandoAjuste, setEditandoAjuste] = useState<{ id: number; valor: string } | null>(null)
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['estoque-ajuste', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['estoque-kpis', tenantSlug] })
+  }
+
+  const { data: configRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 60000,
+  })
+  const config = configRaw?.data
+
+  // KPIs contam TODOS os registros (não só a página atual).
+  const { data: kpisRaw } = useQuery({
+    queryKey: ['estoque-kpis', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/kpis`)).json(),
+    staleTime: 15000,
+  })
+  const kpis = kpisRaw?.data
+
+  const { data: produtosRaw, isLoading: prodLoad } = useQuery({
+    queryKey: ['estoque-produtos', tenantSlug, page, limit, buscaProduto],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (buscaProduto) params.set('search', buscaProduto)
+      return (await fetch(`/api/${tenantSlug}/estoque/produtos?${params}`)).json()
+    },
+  })
+
+  const { data: insumosRaw, isLoading: insLoad } = useQuery({
+    queryKey: ['estoque-insumos', tenantSlug, page, limit, buscaInsumo],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (buscaInsumo) params.set('search', buscaInsumo)
+      return (await fetch(`/api/${tenantSlug}/estoque/insumos?${params}`)).json()
+    },
+  })
+
+  const { data: ajusteRaw, isLoading: ajusteLoad } = useQuery({
+    queryKey: ['estoque-ajuste', tenantSlug, page, limit, buscaAjuste],
+    queryFn:  async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (buscaAjuste) params.set('search', buscaAjuste)
+      return (await fetch(`/api/${tenantSlug}/estoque/ajustar?${params}`)).json()
+    },
+    enabled: aba === 'ajuste',
+  })
+
+  const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data : Array.isArray(produtosRaw?.data) ? produtosRaw.data : Array.isArray(produtosRaw) ? produtosRaw : []
+  const insumos  = Array.isArray(insumosRaw?.data?.data)  ? insumosRaw.data.data  : Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : Array.isArray(insumosRaw)  ? insumosRaw  : []
+  const ajuste   = Array.isArray(ajusteRaw?.data?.data)   ? ajusteRaw.data.data   : Array.isArray(ajusteRaw?.data)   ? ajusteRaw.data   : Array.isArray(ajusteRaw)   ? ajusteRaw   : []
+
+  // CORRIGIDO: campos trocados — schema da rota espera "entidade" e "tipo",
+  // não "tipo" para entidade e "tipoMovimento" para o tipo de operação.
+  const adicionarProdMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/estoque/movimentar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entidade:   'produto',
+          entidadeId: selectedId,
+          quantidade: Number(qtdAdicionar),
+          tipo:       'entrada',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao movimentar estoque')
+      return data
+    },
+    onSuccess: () => { invalidate(); setShowModal(null); setQtdAdicionar('') },
+  })
+
+  const adicionarInsMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/estoque/movimentar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entidade:   'insumo',
+          entidadeId: selectedId,
+          quantidade: Number(qtdAdicionar),
+          tipo:       'entrada',
+          precoCusto: precoCusto ? Math.round(parseFloat(precoCusto.replace(',', '.')) * 100) : undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao movimentar estoque')
+      return data
+    },
+    onSuccess: () => { invalidate(); setShowModal(null); setQtdAdicionar(''); setPrecoCusto('') },
+  })
+
+  const ajustarMut = useMutation({
+    mutationFn: ({ produtoId, novoEstoque }: any) => fetch(`/api/${tenantSlug}/estoque/ajustar`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ produtoId, novoEstoque: Number(novoEstoque) }),
+    }).then(r => r.json()),
+    onSuccess: () => { invalidate(); setEditandoAjuste(null) },
+  })
+
+  function exportCSV(dados: any[], nome: string) {
+    const csv = [
+      ['ID', 'Nome', 'Estoque Atual', 'Estoque Mínimo'],
+      ...dados.map((d: any) => [d.produtoId ?? d.insumoId, d.nome, d.estoqueAtual, d.estoqueMinimo]),
+    ].map(r => r.map((c: any) => `"${c}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }))
+    a.download = `${nome}.csv`
+    a.click()
+  }
+
+  // Usa os totais do endpoint de KPIs (conta tudo). Cai pro page-based só até carregar.
+  const kpisProd = {
+    total:    kpis?.produtos          ?? produtos.length,
+    criticos: kpis?.produtosCriticos  ?? produtos.filter((p: any) => p.estoqueAtual <= p.estoqueMinimo).length,
+  }
+  const kpisIns = {
+    total:    kpis?.insumos           ?? insumos.length,
+    criticos: kpis?.insumosCriticos   ?? insumos.filter((i: any) => i.estoqueAtual <= i.estoqueMinimo).length,
+  }
+
+  const ABAS_BASE: { key: Aba; label: string }[] = [
+    { key: 'produtos', label: 'Produto Acabado' },
+    { key: 'insumos',  label: 'Insumos' },
+    { key: 'ajuste',   label: 'Ajuste Sem Baixa' },
+  ]
+  const ABAS_AVANCADAS: { key: Aba; label: string; icon: any; check: boolean }[] = [
+    { key: 'locais',   label: 'Locais',       icon: Warehouse,       check: !!config?.multiplosLocaisAtivo },
+    { key: 'perdas',   label: 'Perdas',       icon: AlertTriangle,   check: !!config?.perdaProdutoAtivo },
+    { key: 'contagem', label: 'Contagem',     icon: ClipboardCheck,  check: !!config?.contagemInventarioAtivo },
+    { key: 'nfe',      label: 'Entrada NF-e', icon: FileSpreadsheet, check: !!config?.entradaNfeAtivo },
+  ]
+
+  const mostrarKpisBase = aba === 'produtos' || aba === 'insumos' || aba === 'ajuste'
+
+  function trocarAba(nova: Aba) {
+    setAba(nova); setPage(1); setBuscaInsumo(''); setBuscaProduto(''); setBuscaAjuste('')
+  }
+
+  return (
+    <div>
+      <PageHeader
+        titulo="Estoque"
+        acoes={
+          <>
+            {aba === 'produtos' && produtos.length > 0 && (
+              <Button variant="outline" onClick={() => exportCSV(produtos, 'estoque-produtos')}>
+                <Download size={14} className="mr-1.5" /> CSV
+              </Button>
+            )}
+            {aba === 'insumos' && insumos.length > 0 && (
+              <Button variant="outline" onClick={() => exportCSV(insumos, 'estoque-insumos')}>
+                <Download size={14} className="mr-1.5" /> CSV
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {mostrarKpisBase && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: 'Produtos',          value: String(kpisProd.total),    color: '' },
+            { label: 'Produtos críticos', value: String(kpisProd.criticos), color: kpisProd.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisProd.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
+            { label: 'Insumos',           value: String(kpisIns.total),     color: '' },
+            { label: 'Insumos críticos',  value: String(kpisIns.criticos),  color: kpisIns.criticos > 0 ? 'text-red-600' : 'text-green-600', bg: kpisIns.criticos > 0 ? 'bg-red-50 border-red-200' : '' },
+          ].map((kpi, i) => (
+            <div key={i} className={`rounded-xl border p-4 ${kpi.bg ?? 'bg-white border-gray-100'}`}>
+              <p className="text-xs text-gray-400">{kpi.label}</p>
+              <p className={`text-2xl font-bold mt-1 ${kpi.color || 'text-gray-900'}`}>{kpi.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="border-b border-gray-100 mb-6 overflow-x-auto">
+        <div className="flex gap-0 min-w-max items-center">
+          {ABAS_BASE.map(a => (
+            <button key={a.key} onClick={() => trocarAba(a.key)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              {a.label}
+            </button>
+          ))}
+          {ABAS_AVANCADAS.filter(a => a.check).map(a => (
+            <button key={a.key} onClick={() => trocarAba(a.key)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}>
+              <a.icon size={14} />
+              {a.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {aba === 'produtos' && (
+        <>
+        <SearchInput valor={buscaProduto} onChange={v => { setBuscaProduto(v); setPage(1) }}
+          placeholder="Buscar produto..." className="mb-4 max-w-xs" />
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['', 'Produto', 'Est. Atual', 'Est. Mínimo', 'Unidade', ''].map((h, i) => (
+                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'w-10' : ''} ${i === 5 ? 'w-24' : ''}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {prodLoad ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              ) : produtos.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
+              ) : produtos.map((p: any) => (
+                <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <td className="px-4 py-3 text-center"><StatusIcon atual={p.estoqueAtual} min={p.estoqueMinimo} /></td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-center">{p.estoqueAtual}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{p.estoqueMinimo}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{p.unidade ?? '—'}</td>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => { setSelectedId(p.produtoId); setShowModal('produto') }}
+                      className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 mx-auto">
+                      <Plus size={12} /> Adicionar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Paginacao page={page} totalPages={produtosRaw?.data?.meta?.totalPages ?? 1} total={produtosRaw?.data?.meta?.total ?? 0} limit={limit} onPage={setPage} onLimit={(l) => { setLimit(l); setPage(1) }} />
+        </>
+      )}
+
+      {aba === 'insumos' && (
+        <>
+        <SearchInput valor={buscaInsumo} onChange={v => { setBuscaInsumo(v); setPage(1) }}
+          placeholder="Buscar insumo..." className="mb-4 max-w-xs" />
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-100">
+                {['', 'Insumo', 'Est. Atual', 'Est. Mínimo', 'Unidade', 'Preço Custo', ''].map((h, i) => (
+                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {insLoad ? (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+              ) : insumos.length === 0 ? (
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum insumo cadastrado.</td></tr>
+              ) : insumos.map((ins: any) => (
+                <tr key={ins.insumoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <td className="px-4 py-3 text-center"><StatusIcon atual={ins.estoqueAtual} min={ins.estoqueMinimo} /></td>
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{ins.nome}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-center">{ins.estoqueAtual}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{ins.estoqueMinimo}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{ins.unidade ?? '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 text-center">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
+                  <td className="px-4 py-3 text-center">
+                    <button onClick={() => { setSelectedId(ins.insumoId); setShowModal('insumo') }}
+                      className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 mx-auto">
+                      <Plus size={12} /> Adicionar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <Paginacao page={page} totalPages={insumosRaw?.data?.meta?.totalPages ?? 1} total={insumosRaw?.data?.meta?.total ?? 0} limit={limit} onPage={setPage} onLimit={(l) => { setLimit(l); setPage(1) }} />
+        </>
+      )}
+
+      {aba === 'ajuste' && (
+        <div>
+          <div className="flex items-center gap-2 mb-4">
+            <SearchInput valor={buscaAjuste} onChange={v => { setBuscaAjuste(v); setPage(1) }}
+              placeholder="Buscar produto..." className="max-w-xs flex-1" />
+            <InfoTip titulo="Ajuste sem baixa">
+              Atualiza o estoque do produto <strong>sem debitar os insumos</strong> da ficha técnica.
+              Use apenas para correção de inventário — para produção, use o módulo Produção.
+            </InfoTip>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  {['Produto', 'Estoque Atual', 'Novo Estoque', ''].map((h, i) => (
+                    <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ajusteLoad ? (
+                  <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
+                ) : ajuste.length === 0 ? (
+                  <tr><td colSpan={4} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto encontrado.</td></tr>
+                ) : ajuste.map((p: any) => (
+                  <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
+                    <td className="px-4 py-3 text-center">
+                      <span className={`text-sm font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{p.estoqueAtual}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {editandoAjuste?.id === p.produtoId ? (
+                        <input type="number" min="0"
+                          value={editandoAjuste?.valor ?? ''}
+                          onChange={e => setEditandoAjuste({ id: p.produtoId, valor: e.target.value })}
+                          onBlur={() => ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' })}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' })
+                            if (e.key === 'Escape') setEditandoAjuste(null)
+                          }}
+                          className="w-20 h-7 text-center text-sm border border-green-400 rounded focus:outline-none" autoFocus />
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button onClick={() => setEditandoAjuste({ id: p.produtoId, valor: String(p.estoqueAtual) })}
+                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 mx-auto">
+                        <Edit3 size={12} /> Ajustar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Paginacao page={page} totalPages={ajusteRaw?.data?.meta?.totalPages ?? 1} total={ajusteRaw?.data?.meta?.total ?? 0} limit={limit} onPage={setPage} onLimit={(l) => { setLimit(l); setPage(1) }} />
+        </div>
+      )}
+
+      {aba === 'locais'   && <LocaisTab tenantSlug={tenantSlug} />}
+      {aba === 'perdas'   && <PerdasTab tenantSlug={tenantSlug} />}
+      {aba === 'contagem' && <ContagemTab tenantSlug={tenantSlug} />}
+      {aba === 'nfe'      && <EntradaNfeTab tenantSlug={tenantSlug} />}
+
+      {showModal === 'produto' && (
+        <FormModal
+          titulo="Adicionar Estoque de Produto"
+          onClose={() => setShowModal(null)}
+          largura="max-w-sm"
+          cabecalho={
+            <InfoTip titulo="Efeito no estoque">
+              Os insumos da ficha técnica são debitados automaticamente, proporcionalmente
+              à quantidade adicionada.
+            </InfoTip>
+          }
+        >
+          <div className="p-6 space-y-4">
+            <div><Label>Quantidade a adicionar *</Label><Input type="number" min="1" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
+              <Button onClick={() => adicionarProdMut.mutate()} disabled={!qtdAdicionar || adicionarProdMut.isPending}>
+                {adicionarProdMut.isPending ? 'Processando...' : 'Confirmar'}
+              </Button>
+            </div>
+          </div>
+        </FormModal>
+      )}
+
+      {showModal === 'insumo' && (
+        <FormModal titulo="Adicionar Insumo" onClose={() => setShowModal(null)} largura="max-w-sm">
+          <div className="p-6 space-y-4">
+            <div><Label>Quantidade *</Label><Input type="number" min="0" step="0.001" value={qtdAdicionar} onChange={e => setQtdAdicionar(e.target.value)} className="mt-1" autoFocus /></div>
+            <div>
+              <Label className="inline-flex items-center gap-1">
+                Preço de Custo (R$)
+                <InfoTip titulo="Preço de custo">
+                  Se informado, atualiza o custo do insumo no cadastro — o que muda o custo
+                  calculado das fichas técnicas que o utilizam.
+                </InfoTip>
+              </Label>
+              <Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" placeholder="0,00" />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setShowModal(null)}>Cancelar</Button>
+              <Button onClick={() => adicionarInsMut.mutate()} disabled={!qtdAdicionar || adicionarInsMut.isPending}>
+                {adicionarInsMut.isPending ? 'Processando...' : 'Confirmar'}
+              </Button>
+            </div>
+          </div>
+        </FormModal>
+      )}
+    </div>
+  )
+}
+
+
+===== components\modules\estoque\LocaisTab.tsx =====
+'use client'
+// components/modules/estoque/LocaisTab.tsx
+
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, ArrowRightLeft, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useToast } from '@/components/ui/Toast'
+
+interface Props { tenantSlug: string }
+
+export default function LocaisTab({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+
+  const [showNovoLocal, setShowNovoLocal] = useState(false)
+  const [nomeLocal, setNomeLocal]         = useState('')
+  const [descLocal, setDescLocal]         = useState('')
+
+  const [showTransferir, setShowTransferir] = useState(false)
+  const [entidade, setEntidade]       = useState<'produto' | 'insumo'>('insumo')
+  const [busca, setBusca]             = useState('')
+  const [itemSelecionado, setItemSelecionado] = useState<any>(null)
+  const [localOrigemId, setLocalOrigemId]   = useState('')
+  const [localDestinoId, setLocalDestinoId] = useState('')
+  const [quantidade, setQuantidade]   = useState('')
+
+  const { data: locaisRaw, isLoading } = useQuery({
+    queryKey: ['estoque-locais', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/locais`)).json(),
+  })
+
+  const { data: transferenciasRaw } = useQuery({
+    queryKey: ['estoque-transferencias', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/estoque/locais/transferir`)).json(),
+  })
+
+  const { data: itensRaw } = useQuery({
+    queryKey: ['estoque-itens-busca', tenantSlug, entidade, busca],
+    queryFn:  async () => {
+      const endpoint = entidade === 'produto' ? 'cadastros/produtos' : 'cadastros/insumos'
+      return (await fetch(`/api/${tenantSlug}/${endpoint}?search=${busca}&limit=8`)).json()
+    },
+    enabled: busca.length > 0,
+  })
+
+  const { data: distribuicaoRaw, isLoading: loadingDistribuicao } = useQuery({
+    queryKey: ['estoque-distribuicao', tenantSlug, entidade, itemSelecionado?.produtoId ?? itemSelecionado?.insumoId],
+    queryFn:  async () => {
+      const id = itemSelecionado.produtoId ?? itemSelecionado.insumoId
+      return (await fetch(`/api/${tenantSlug}/estoque/locais/distribuicao?entidade=${entidade}&entidadeId=${id}`)).json()
+    },
+    enabled: !!itemSelecionado,
+  })
+
+  const criarLocalMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/estoque/locais`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nomeLocal, descricao: descLocal }),
+      })
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['estoque-locais', tenantSlug] })
+      setShowNovoLocal(false); setNomeLocal(''); setDescLocal('')
+      toast('Local criado!')
+    },
+  })
+
+  const transferirMut = useMutation({
+    mutationFn: async () => {
+      const id = itemSelecionado.produtoId ?? itemSelecionado.insumoId
+      const res = await fetch(`/api/${tenantSlug}/estoque/locais/transferir`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          localOrigemId: Number(localOrigemId), localDestinoId: Number(localDestinoId),
+          entidade, entidadeId: id, nomeEntidade: itemSelecionado.nome, quantidade: parseFloat(quantidade),
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['estoque-distribuicao', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-transferencias', tenantSlug] })
+      toast('Transferência realizada!')
+      setQuantidade('')
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao transferir.', 'error'),
+  })
+
+  const locais        = Array.isArray(locaisRaw?.data) ? locaisRaw.data : []
+  const transferencias = Array.isArray(transferenciasRaw?.data) ? transferenciasRaw.data : []
+  const itens          = Array.isArray(itensRaw?.data?.data) ? itensRaw.data.data : Array.isArray(itensRaw?.data) ? itensRaw.data : []
+  const distribuicao    = Array.isArray(distribuicaoRaw?.data) ? distribuicaoRaw.data : []
+
+  function fecharTransferir() {
+    setShowTransferir(false); setItemSelecionado(null); setBusca(''); setQuantidade('')
+    setLocalOrigemId(''); setLocalDestinoId('')
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-400">Locais cadastrados e movimentação entre eles</p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setShowTransferir(true)}>
+            <ArrowRightLeft size={13} className="mr-1.5" /> Transferir
+          </Button>
+          <Button size="sm" onClick={() => setShowNovoLocal(true)}>
+            <Plus size={13} className="mr-1.5" /> Novo local
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {isLoading ? (
+          <p className="text-sm text-gray-400 col-span-4 text-center py-6">Carregando...</p>
+        ) : locais.map((l: any) => (
+          <div key={l.localId} className="bg-white rounded-xl border border-gray-100 p-4">
+            <p className="text-sm font-semibold text-gray-900">{l.nome}</p>
+            {l.padrao && <span className="text-[10px] text-green-600 font-medium">Padrão</span>}
+            {l.descricao && <p className="text-xs text-gray-400 mt-1">{l.descricao}</p>}
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <p className="text-sm font-semibold text-gray-900 mb-3">Últimas transferências</p>
+        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          {transferencias.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">Nenhuma transferência registrada ainda.</p>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Item</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Quantidade</th>
+                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transferencias.map((t: any) => (
+                  <tr key={t.transferenciaId} className="border-b border-gray-50">
+                    <td className="px-4 py-2.5 text-sm text-gray-900">{t.nomeEntidade}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-600">{parseFloat(t.quantidade).toFixed(2)}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-400">{new Date(t.dataTransferencia + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {showNovoLocal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Novo local</h2>
+              <button onClick={() => setShowNovoLocal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div><Label>Nome</Label><Input value={nomeLocal} onChange={e => setNomeLocal(e.target.value)} className="mt-1" placeholder="Ex: Depósito Externo" /></div>
+              <div><Label>Descrição</Label><Input value={descLocal} onChange={e => setDescLocal(e.target.value)} className="mt-1" /></div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+              <Button variant="outline" onClick={() => setShowNovoLocal(false)}>Cancelar</Button>
+              <Button onClick={() => criarLocalMut.mutate()} disabled={!nomeLocal || criarLocalMut.isPending}>Criar</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTransferir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Transferir entre locais</h2>
+              <button onClick={fecharTransferir} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex gap-2">
+                <button onClick={() => { setEntidade('insumo'); setItemSelecionado(null) }}
+                  className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'insumo' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Insumo</button>
+                <button onClick={() => { setEntidade('produto'); setItemSelecionado(null) }}
+                  className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'produto' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Produto</button>
+              </div>
+
+              {!itemSelecionado ? (
+                <div>
+                  <Label>Buscar item</Label>
+                  <Input value={busca} onChange={e => setBusca(e.target.value)} className="mt-1" placeholder="Digite pra buscar..." />
+                  {busca && itens.length > 0 && (
+                    <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                      {itens.map((it: any) => (
+                        <button key={it.produtoId ?? it.insumoId} onClick={() => setItemSelecionado(it)}
+                          className="w-full px-3 py-2 hover:bg-gray-50 text-left text-sm">{it.nome}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                    <span className="text-sm font-medium text-gray-900">{itemSelecionado.nome}</span>
+                    <button onClick={() => setItemSelecionado(null)} className="text-xs text-gray-400 hover:text-gray-600">trocar</button>
+                  </div>
+
+                  {loadingDistribuicao ? (
+                    <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-300" /></div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {distribuicao.map((d: any) => (
+                        <div key={d.localId} className="flex justify-between text-sm px-1">
+                          <span className="text-gray-500">{d.nome}{d.padrao ? ' (padrão)' : ''}</span>
+                          <span className="font-medium text-gray-900">{d.quantidade.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">De</Label>
+                      <select value={localOrigemId} onChange={e => setLocalOrigemId(e.target.value)}
+                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm">
+                        <option value="">Selecione...</option>
+                        {locais.map((l: any) => <option key={l.localId} value={l.localId}>{l.nome}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Para</Label>
+                      <select value={localDestinoId} onChange={e => setLocalDestinoId(e.target.value)}
+                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm">
+                        <option value="">Selecione...</option>
+                        {locais.map((l: any) => <option key={l.localId} value={l.localId}>{l.nome}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Quantidade</Label>
+                    <Input type="number" min="0" step="0.001" value={quantidade} onChange={e => setQuantidade(e.target.value)} className="mt-1" />
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+              <Button variant="outline" onClick={fecharTransferir}>Cancelar</Button>
+              <Button
+                disabled={!itemSelecionado || !localOrigemId || !localDestinoId || !quantidade || transferirMut.isPending}
+                onClick={() => transferirMut.mutate()}>
+                {transferirMut.isPending ? 'Transferindo...' : 'Transferir'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+===== components\modules\estoque\PerdasTab.tsx =====
+'use client'
+// components/modules/estoque/PerdasTab.tsx
+
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, X, Trash2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt } from '@/lib/format'
+
+interface Props { tenantSlug: string }
+
+const MOTIVOS = [
+  { value: 'vencimento',     label: 'Vencimento' },
+  { value: 'quebra',         label: 'Quebra' },
+  { value: 'contaminacao',   label: 'Contaminação' },
+  { value: 'erro_producao',  label: 'Erro de produção' },
+  { value: 'outro',          label: 'Outro' },
+]
+
+
+
+export default function PerdasTab({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/estoque/perdas`
+
+  const [showModal, setShowModal] = useState(false)
+  const [entidade, setEntidade]   = useState<'produto' | 'insumo'>('insumo')
+  const [busca, setBusca]         = useState('')
+  const [itemSelecionado, setItemSelecionado] = useState<any>(null)
+  const [quantidade, setQuantidade] = useState('')
+  const [motivo, setMotivo]         = useState('vencimento')
+  const [observacao, setObservacao] = useState('')
+
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['estoque-perdas', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
+  })
+
+  const { data: itensRaw } = useQuery({
+    queryKey: ['perda-itens-busca', tenantSlug, entidade, busca],
+    queryFn:  async () => {
+      const endpoint = entidade === 'produto' ? 'cadastros/produtos' : 'cadastros/insumos'
+      return (await fetch(`/api/${tenantSlug}/${endpoint}?search=${busca}&limit=8`)).json()
+    },
+    enabled: busca.length > 0,
+  })
+
+  const inv = () => qc.invalidateQueries({ queryKey: ['estoque-perdas', tenantSlug] })
+
+  const registrarMut = useMutation({
+    mutationFn: async () => {
+      const id = itemSelecionado.produtoId ?? itemSelecionado.insumoId
+      const res = await fetch(api, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entidade, entidadeId: id, quantidade: parseFloat(quantidade), motivo, observacao }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.message)
+      return d
+    },
+    onSuccess: () => { inv(); fecharModal(); toast('Perda registrada — estoque já atualizado.') },
+    onError: (e: any) => toast(e.message || 'Erro ao registrar.', 'error'),
+  })
+
+  const excluirMut = useMutation({
+    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: inv,
+  })
+
+  function fecharModal() {
+    setShowModal(false); setItemSelecionado(null); setBusca(''); setQuantidade(''); setMotivo('vencimento'); setObservacao('')
+  }
+
+  const perdas = raw?.data?.data ?? []
+  const kpis   = raw?.data?.kpis
+  const itens  = Array.isArray(itensRaw?.data?.data) ? itensRaw.data.data : Array.isArray(itensRaw?.data) ? itensRaw.data : []
+
+  return (
+    <div className="space-y-4">
+      {kpis && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <p className="text-xs text-gray-400">Registros</p>
+            <p className="text-xl font-bold text-gray-900">{kpis.totalRegistros}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-100 p-4">
+            <p className="text-xs text-gray-400">Valor perdido</p>
+            <p className="text-xl font-bold text-red-500">{fmt(kpis.valorTotal)}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setShowModal(true)}>
+          <Plus size={13} className="mr-1.5" /> Registrar perda
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100">
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Item</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Qtd</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Motivo</th>
+              <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Data</th>
+              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Valor</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
+            ) : perdas.length === 0 ? (
+              <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-400">Nenhuma perda registrada.</td></tr>
+            ) : perdas.map((p: any) => (
+              <tr key={p.perdaId} className="border-b border-gray-50">
+                <td className="px-4 py-2.5 text-sm text-gray-900">{p.nomeEntidade}</td>
+                <td className="px-4 py-2.5 text-right text-sm text-gray-600">{parseFloat(p.quantidade).toFixed(2)}</td>
+                <td className="px-4 py-2.5 text-sm text-gray-600">{MOTIVOS.find(m => m.value === p.motivo)?.label ?? p.motivo}</td>
+                <td className="px-4 py-2.5 text-sm text-gray-400">{new Date(p.dataPerda + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                <td className="px-4 py-2.5 text-right text-sm font-medium text-red-500">{fmt(p.valorEstimado)}</td>
+                <td className="px-4 py-2.5">
+                  <button onClick={() => excluirMut.mutate(p.perdaId)} className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <h2 className="text-lg font-semibold">Registrar perda</h2>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex gap-2">
+                <button onClick={() => { setEntidade('insumo'); setItemSelecionado(null) }}
+                  className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'insumo' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Insumo</button>
+                <button onClick={() => { setEntidade('produto'); setItemSelecionado(null) }}
+                  className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'produto' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Produto</button>
+              </div>
+
+              {!itemSelecionado ? (
+                <div>
+                  <Label>Item</Label>
+                  <Input value={busca} onChange={e => setBusca(e.target.value)} className="mt-1" placeholder="Buscar..." />
+                  {busca && itens.length > 0 && (
+                    <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                      {itens.map((it: any) => (
+                        <button key={it.produtoId ?? it.insumoId} onClick={() => setItemSelecionado(it)}
+                          className="w-full px-3 py-2 hover:bg-gray-50 text-left text-sm">{it.nome}</button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                  <span className="text-sm font-medium text-gray-900">{itemSelecionado.nome}</span>
+                  <button onClick={() => setItemSelecionado(null)} className="text-xs text-gray-400 hover:text-gray-600">trocar</button>
+                </div>
+              )}
+
+              <div><Label>Quantidade</Label><Input type="number" min="0" step="0.001" value={quantidade} onChange={e => setQuantidade(e.target.value)} className="mt-1" /></div>
+
+              <div>
+                <Label>Motivo</Label>
+                <select value={motivo} onChange={e => setMotivo(e.target.value)} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm">
+                  {MOTIVOS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+              </div>
+
+              <div><Label>Observação</Label><Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1" /></div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button disabled={!itemSelecionado || !quantidade || registrarMut.isPending} onClick={() => registrarMut.mutate()}>
+                {registrarMut.isPending ? 'Salvando...' : 'Registrar'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+===== lib\db\schemas\estoque-avancado.ts =====
+import { pgTable, serial, integer, varchar, boolean, timestamp, date, numeric } from 'drizzle-orm/pg-core'
+import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
+
+const audit = {
+  modificationNum: integer('modification_num').notNull().default(0),
+  createdDt:  timestamp('created_dt', { withTimezone: true }).notNull().defaultNow(),
+  createdBy:  integer('created_by').notNull().default(1),
+  updatedDt:  timestamp('updated_dt', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy:  integer('updated_by').notNull().default(1),
+  activeFlag: boolean('active_flg').notNull().default(true),
+}
+
+// ── 1. Locais / Depósitos ───────────────────────────────────────────────────
+export const dbLocalEstoque = pgTable('t_local_estoque', {
+  localId:   serial('local_id').primaryKey(),
+  ...audit,
+  nome:      varchar('nome', { length: 150 }).notNull(),
+  descricao: varchar('descricao', { length: 300 }),
+  padrao:    boolean('padrao').notNull().default(false),
+})
+export type TpDbLocalEstoqueRow    = InferSelectModel<typeof dbLocalEstoque>
+export type TpDbLocalEstoqueInsert = InferInsertModel<typeof dbLocalEstoque>
+
+export const dbEstoqueLocal = pgTable('t_estoque_local', {
+  estoqueLocalId: serial('estoque_local_id').primaryKey(),
+  ...audit,
+  localId:        integer('local_id').notNull(),
+  entidade:       varchar('entidade', { length: 10 }).notNull(), // 'produto' | 'insumo'
+  entidadeId:     integer('entidade_id').notNull(),
+  quantidade:     numeric('quantidade', { precision: 10, scale: 3 }).notNull().default('0'),
+})
+export type TpDbEstoqueLocalRow    = InferSelectModel<typeof dbEstoqueLocal>
+export type TpDbEstoqueLocalInsert = InferInsertModel<typeof dbEstoqueLocal>
+
+export const dbTransferenciaEstoque = pgTable('t_transferencia_estoque', {
+  transferenciaId:    serial('transferencia_id').primaryKey(),
+  ...audit,
+  localOrigemId:      integer('local_origem_id').notNull(),
+  localDestinoId:     integer('local_destino_id').notNull(),
+  entidade:           varchar('entidade', { length: 10 }).notNull(),
+  entidadeId:         integer('entidade_id').notNull(),
+  nomeEntidade:       varchar('nome_entidade', { length: 200 }).notNull(),
+  quantidade:         numeric('quantidade', { precision: 10, scale: 3 }).notNull(),
+  dataTransferencia:  date('data_transferencia').notNull(),
+  observacao:         varchar('observacao', { length: 300 }),
+})
+export type TpDbTransferenciaEstoqueRow    = InferSelectModel<typeof dbTransferenciaEstoque>
+export type TpDbTransferenciaEstoqueInsert = InferInsertModel<typeof dbTransferenciaEstoque>
+
+// ── 2. Perda de Produto/Insumo ──────────────────────────────────────────────
+export const dbPerdaEstoque = pgTable('t_perda_estoque', {
+  perdaId:       serial('perda_id').primaryKey(),
+  ...audit,
+  entidade:      varchar('entidade', { length: 10 }).notNull(),
+  entidadeId:    integer('entidade_id').notNull(),
+  nomeEntidade:  varchar('nome_entidade', { length: 200 }).notNull(),
+  quantidade:    numeric('quantidade', { precision: 10, scale: 3 }).notNull(),
+  motivo:        varchar('motivo', { length: 30 }).notNull(), // vencimento|quebra|contaminacao|erro_producao|outro
+  dataPerda:     date('data_perda').notNull(),
+  observacao:    varchar('observacao', { length: 300 }),
+  localId:       integer('local_id'),
+  valorEstimado: integer('valor_estimado').notNull().default(0),
+})
+export type TpDbPerdaEstoqueRow    = InferSelectModel<typeof dbPerdaEstoque>
+export type TpDbPerdaEstoqueInsert = InferInsertModel<typeof dbPerdaEstoque>
+
+// ── 3. Contagem de Inventário ───────────────────────────────────────────────
+export const dbContagemInventario = pgTable('t_contagem_inventario', {
+  contagemId:   serial('contagem_id').primaryKey(),
+  ...audit,
+  descricao:    varchar('descricao', { length: 200 }),
+  dataContagem: date('data_contagem').notNull(),
+  status:       varchar('status', { length: 20 }).notNull().default('aberta'), // aberta|concluida
+  localId:      integer('local_id'),
+})
+export type TpDbContagemInventarioRow    = InferSelectModel<typeof dbContagemInventario>
+export type TpDbContagemInventarioInsert = InferInsertModel<typeof dbContagemInventario>
+
+export const dbContagemInventarioItem = pgTable('t_contagem_inventario_item', {
+  itemId:             serial('item_id').primaryKey(),
+  ...audit,
+  contagemId:         integer('contagem_id').notNull(),
+  entidade:           varchar('entidade', { length: 10 }).notNull(),
+  entidadeId:         integer('entidade_id').notNull(),
+  nomeEntidade:       varchar('nome_entidade', { length: 200 }).notNull(),
+  quantidadeSistema:  numeric('quantidade_sistema', { precision: 10, scale: 3 }).notNull().default('0'),
+  quantidadeContada:  numeric('quantidade_contada', { precision: 10, scale: 3 }),
+  diferenca:          numeric('diferenca', { precision: 10, scale: 3 }),
+})
+export type TpDbContagemInventarioItemRow    = InferSelectModel<typeof dbContagemInventarioItem>
+export type TpDbContagemInventarioItemInsert = InferInsertModel<typeof dbContagemInventarioItem>
+
+// ── 4. Entrada via XML de NF-e ──────────────────────────────────────────────
+export const dbEntradaNfe = pgTable('t_entrada_nfe', {
+  entradaId:       serial('entrada_id').primaryKey(),
+  ...audit,
+  chaveAcesso:     varchar('chave_acesso', { length: 44 }),
+  numeroNfe:       varchar('numero_nfe', { length: 20 }),
+  nomeFornecedor:  varchar('nome_fornecedor', { length: 200 }),
+  cnpjFornecedor:  varchar('cnpj_fornecedor', { length: 20 }),
+  dataEmissao:     date('data_emissao'),
+  valorTotal:      integer('valor_total').notNull().default(0),
+  status:          varchar('status', { length: 20 }).notNull().default('pendente'), // pendente|processada
+  pedidoId:        integer('pedido_id'),
+})
+export type TpDbEntradaNfeRow    = InferSelectModel<typeof dbEntradaNfe>
+export type TpDbEntradaNfeInsert = InferInsertModel<typeof dbEntradaNfe>
+
+export const dbEntradaNfeItem = pgTable('t_entrada_nfe_item', {
+  itemId:        serial('item_id').primaryKey(),
+  ...audit,
+  entradaId:     integer('entrada_id').notNull(),
+  codigoXml:     varchar('codigo_xml', { length: 60 }),
+  descricaoXml:  varchar('descricao_xml', { length: 300 }).notNull(),
+  ncm:           varchar('ncm', { length: 10 }),
+  quantidade:    numeric('quantidade', { precision: 10, scale: 3 }).notNull(),
+  valorUnitario: integer('valor_unitario').notNull(),
+  valorTotal:    integer('valor_total').notNull(),
+  insumoId:      integer('insumo_id'), // mapeado pelo usuário — null até confirmar
+})
+export type TpDbEntradaNfeItemRow    = InferSelectModel<typeof dbEntradaNfeItem>
+export type TpDbEntradaNfeItemInsert = InferInsertModel<typeof dbEntradaNfeItem>
+
+
+===== lib\db\schemas\estoque.ts =====
+import {
+  pgTable, serial, integer, varchar, boolean, timestamp,
+} from 'drizzle-orm/pg-core'
+import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
+
+const auditFields = {
+  modificationNum: integer('modification_num').notNull().default(0),
+  createdDt:       timestamp('created_dt', { withTimezone: true }).notNull(),
+  createdBy:       integer('created_by').notNull(),
+  updatedDt:       timestamp('updated_dt', { withTimezone: true }).notNull(),
+  updatedBy:       integer('updated_by').notNull(),
+  activeFlag:      boolean('active_flg').notNull().default(true),
+}
+
+export const dbMovimentacaoEstoque = pgTable('t_movimentacao_estoque', {
+  movimentacaoId:   serial('movimentacao_id').primaryKey(),
+  ...auditFields,
+  tipo:             varchar('tipo', { length: 20 }).notNull(), // entrada | saida | ajuste
+  entidade:         varchar('entidade', { length: 20 }).notNull(), // produto | insumo
+  entidadeId:       integer('entidade_id').notNull(),
+  quantidade:       integer('quantidade').notNull(), // positivo = entrada, negativo = saida
+  precoCusto:       integer('preco_custo').default(0),
+  observacao:       varchar('observacao', { length: 500 }),
+  dataMovimentacao: timestamp('data_movimentacao', { withTimezone: true }).notNull(),
+})
+
+export type TpDbMovimentacaoEstoqueRow    = InferSelectModel<typeof dbMovimentacaoEstoque>
+export type TpDbMovimentacaoEstoqueInsert = InferInsertModel<typeof dbMovimentacaoEstoque>
+
+
+===== lib\services\estoque\ContagemInventarioService.ts =====
+import { and, eq } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { dbContagemInventario, dbContagemInventarioItem } from '@/lib/db/schemas/estoque-avancado'
+import { dbProduto, dbInsumo } from '@/lib/db/schemas/cadastros'
+import { EstoqueService } from '@/lib/services/estoque/EstoqueService'
+
+export class ContagemInventarioService {
+  constructor(private db: AppDB) {}
+
+  /**
+   * Inicia uma contagem já populada com TODOS os produtos e insumos ativos,
+   * com o snapshot do estoque do sistema no momento — mais prático que
+   * selecionar item por item.
+   */
+  async iniciar({ descricao, localId, userId }: { descricao?: string; localId?: number; userId: number }) {
+    const now = new Date()
+    const [contagem] = await this.db.insert(dbContagemInventario).values({
+      descricao: descricao ?? `Contagem ${now.toLocaleDateString('pt-BR')}`,
+      dataContagem: now.toISOString().slice(0, 10),
+      status: 'aberta', localId,
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    }).returning({ contagemId: dbContagemInventario.contagemId })
+
+    const produtos = await this.db.select().from(dbProduto).where(eq(dbProduto.activeFlag, true))
+    const insumos  = await this.db.select().from(dbInsumo).where(eq(dbInsumo.activeFlag, true))
+
+    for (const p of produtos) {
+      await this.db.insert(dbContagemInventarioItem).values({
+        contagemId: contagem.contagemId, entidade: 'produto', entidadeId: p.produtoId,
+        nomeEntidade: p.nome, quantidadeSistema: String(p.estoqueAtual),
+        createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+      })
+    }
+    for (const i of insumos) {
+      await this.db.insert(dbContagemInventarioItem).values({
+        contagemId: contagem.contagemId, entidade: 'insumo', entidadeId: i.insumoId,
+        nomeEntidade: i.nome, quantidadeSistema: String(i.estoqueAtual),
+        createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+      })
+    }
+
+    return contagem
+  }
+
+  async list({ status }: { status?: string } = {}) {
+    const conds = [eq(dbContagemInventario.activeFlag, true)]
+    if (status && status !== 'todas') conds.push(eq(dbContagemInventario.status, status))
+    return this.db.select().from(dbContagemInventario).where(and(...conds)).orderBy(dbContagemInventario.dataContagem)
+  }
+
+  async findById(id: number) {
+    const [contagem] = await this.db.select().from(dbContagemInventario).where(eq(dbContagemInventario.contagemId, id))
+    if (!contagem) return null
+    const itens = await this.db.select().from(dbContagemInventarioItem)
+      .where(and(eq(dbContagemInventarioItem.contagemId, id), eq(dbContagemInventarioItem.activeFlag, true)))
+    return { ...contagem, itens }
+  }
+
+  /** Lança a quantidade contada de um item e calcula a diferença */
+  async lancarItem(itemId: number, quantidadeContada: number, userId: number) {
+    const [item] = await this.db.select().from(dbContagemInventarioItem).where(eq(dbContagemInventarioItem.itemId, itemId))
+    if (!item) throw new Error('Item não encontrado')
+    const diferenca = quantidadeContada - Number(item.quantidadeSistema)
+    await this.db.update(dbContagemInventarioItem).set({
+      quantidadeContada: String(quantidadeContada), diferenca: String(diferenca),
+      updatedDt: new Date(), updatedBy: userId,
+    }).where(eq(dbContagemInventarioItem.itemId, itemId))
+    return { ok: true, diferenca }
+  }
+
+  /**
+   * Finaliza a contagem: pra cada item com diferença ≠ 0, aplica um AJUSTE
+   * de estoque (reaproveita EstoqueService.movimentar, que já sabe lidar
+   * com ajuste sem disparar débito de insumo — ajuste é correção, não
+   * fabricação).
+   */
+  async finalizar(contagemId: number, userId: number) {
+    const contagem = await this.findById(contagemId)
+    if (!contagem) throw new Error('Contagem não encontrada')
+
+    const estoqueService = new EstoqueService(this.db)
+    let ajustesAplicados = 0
+
+    for (const item of contagem.itens) {
+      if (item.quantidadeContada === null) continue
+      const diferenca = Number(item.diferenca ?? 0)
+      if (diferenca === 0) continue
+
+      await estoqueService.movimentar({
+        entidade: item.entidade as 'produto' | 'insumo',
+        entidadeId: item.entidadeId,
+        tipo: 'ajuste',
+        quantidade: Number(item.quantidadeContada),
+        observacao: `Ajuste por Contagem de Inventário #${contagemId}`,
+        userId,
+      })
+      ajustesAplicados++
+    }
+
+    await this.db.update(dbContagemInventario).set({ status: 'concluida', updatedDt: new Date(), updatedBy: userId })
+      .where(eq(dbContagemInventario.contagemId, contagemId))
+
+    return { ok: true, ajustesAplicados }
+  }
+}
+
+
+===== lib\services\estoque\DebitoInsumoService.ts =====
+import type { AppDB } from '@/lib/db/connection'
+import { pool } from '@/lib/db/connection'
+import { converterUnidade } from '@/lib/unidades'
+
+
+
+export class DebitoInsumoService {
+  constructor(private db: AppDB, private schemaName: string) {}
+
+  async simular(produtoId: number, quantidade: number) {
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${this.schemaName}", public`)
+      // Componentes com insumo_id < 0 são produtos usados como insumo (produto-insumo):
+      // resolve nome/unidade/estoque em t_produto em vez de t_insumo.
+      const fichaRes = await client.query(
+        `SELECT pi.insumo_id,
+                pi.quantidade AS qtd_por_unidade_ficha,
+                pi.unidade AS unidade_ficha,
+                COALESCE(i.nome, p.nome)                 AS nome,
+                COALESCE(i.unidade, p.unidade)           AS unidade_estoque,
+                COALESCE(i.estoque_atual, p.estoque_atual) AS estoque_atual,
+                (pi.insumo_id < 0)                       AS eh_produto
+         FROM t_produto_insumo pi
+         LEFT JOIN t_insumo  i ON i.insumo_id = pi.insumo_id     AND pi.insumo_id > 0 AND i.active_flg = true
+         LEFT JOIN t_produto p ON (-pi.insumo_id) = p.produto_id AND pi.insumo_id < 0 AND p.active_flg = true
+         WHERE pi.produto_id = $1 AND pi.active_flg = true
+           AND (i.insumo_id IS NOT NULL OR p.produto_id IS NOT NULL)`,
+        [produtoId]
+      )
+      return fichaRes.rows.map((item: any) => {
+        const qtdFichaPorUnidade      = Number(item.qtd_por_unidade_ficha)
+        const unidadeFicha            = String(item.unidade_ficha)
+        const unidadeEstoque          = String(item.unidade_estoque)
+        const estoqueAtual            = Number(item.estoque_atual)
+        const qtdPorUnidadeConvertida = converterUnidade(qtdFichaPorUnidade, unidadeFicha, unidadeEstoque)
+        const qtdTotalDebitar         = qtdPorUnidadeConvertida * quantidade
+        const estoqueRestante         = estoqueAtual - qtdTotalDebitar
+        return {
+          insumoId: item.insumo_id, nome: item.nome,
+          ehProduto: item.eh_produto === true,
+          unidadeFicha, unidadeEstoque,
+          qtdFichaPorUnidade, qtdPorUnidadeConvertida, qtdTotalDebitar,
+          estoqueAtual, estoqueRestante,
+          insuficiente: estoqueAtual < qtdTotalDebitar,
+        }
+      })
+    } finally {
+      client.release()
+    }
+  }
+
+  async debitar(produtoId: number, quantidade: number, userId: number) {
+    if (quantidade <= 0) return { itens: [], teveInsuficiencia: false }
+    const simulacao = await this.simular(produtoId, quantidade)
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${this.schemaName}", public`)
+      const now = new Date()
+      for (const item of simulacao) {
+        const novoEstoque = Math.max(0, parseFloat(item.estoqueRestante.toFixed(4)))
+        if (item.ehProduto) {
+          // produto-insumo: debita em t_produto (produto_id = -insumo_id)
+          await client.query(
+            `UPDATE t_produto SET estoque_atual = $1, updated_dt = $2, updated_by = $3 WHERE produto_id = $4`,
+            [novoEstoque, now, userId, -item.insumoId]
+          )
+        } else {
+          await client.query(
+            `UPDATE t_insumo SET estoque_atual = $1, updated_dt = $2, updated_by = $3 WHERE insumo_id = $4`,
+            [novoEstoque, now, userId, item.insumoId]
+          )
+        }
+      }
+    } finally {
+      client.release()
+    }
+    return { itens: simulacao, teveInsuficiencia: simulacao.some(i => i.insuficiente) }
+  }
+}
+
+
+===== lib\services\estoque\EntradaNfeService.ts =====
+import { eq, and } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { dbEntradaNfe, dbEntradaNfeItem } from '@/lib/db/schemas/estoque-avancado'
+import { PedidoCompraService } from '@/lib/services/compras/PedidoCompraService'
+import { ConferenciaService } from '@/lib/services/compras/ConferenciaService'
+
+interface ItemNfeParsed {
+  codigoXml: string
+  descricaoXml: string
+  ncm: string
+  quantidade: number
+  valorUnitario: number // centavos
+  valorTotal: number    // centavos
+}
+
+interface NfeParsed {
+  chaveAcesso: string
+  numeroNfe: string
+  nomeFornecedor: string
+  cnpjFornecedor: string
+  dataEmissao: string
+  valorTotal: number // centavos
+  itens: ItemNfeParsed[]
+}
+
+/**
+ * EntradaNfeService — entrada de estoque via XML de NF-e.
+ *
+ * Parser por regex (estrutura da NFe é fixa/padronizada o suficiente pra
+ * isso funcionar sem dependência nova). Se no futuro houver XMLs com
+ * variações que quebrem o regex, vale trocar por uma lib tipo
+ * fast-xml-parser — mas exige `npm install`.
+ *
+ * Ao confirmar, reaproveita o fluxo de Compras já existente: gera um
+ * Pedido de Compra + Conferência já finalizada (entrada = já recebido),
+ * o que automaticamente dá entrada no estoque dos insumos mapeados e gera
+ * a Conta a Pagar — sem duplicar nenhuma lógica.
+ */
+export class EntradaNfeService {
+  constructor(private db: AppDB) {}
+
+  parseXml(xmlContent: string): NfeParsed {
+    const get = (regex: RegExp, source = xmlContent) => source.match(regex)?.[1]?.trim() ?? ''
+
+    const chaveAcesso = get(/Id="NFe(\d{44})"/)
+    const numeroNfe    = get(/<nNF>(\d+)<\/nNF>/)
+    const dataEmissaoRaw = get(/<dhEmi>([^<]+)<\/dhEmi>/) || get(/<dEmi>([^<]+)<\/dEmi>/)
+    const dataEmissao  = dataEmissaoRaw ? dataEmissaoRaw.slice(0, 10) : ''
+
+    const emitBlock = xmlContent.match(/<emit>([\s\S]*?)<\/emit>/)?.[1] ?? ''
+    const cnpjFornecedor  = get(/<CNPJ>(\d+)<\/CNPJ>/, emitBlock)
+    const nomeFornecedor  = get(/<xNome>([^<]+)<\/xNome>/, emitBlock)
+
+    const totalBlock = xmlContent.match(/<ICMSTot>([\s\S]*?)<\/ICMSTot>/)?.[1] ?? ''
+    const valorTotal  = Math.round(parseFloat(get(/<vNF>([\d.]+)<\/vNF>/, totalBlock) || '0') * 100)
+
+    const detBlocks = [...xmlContent.matchAll(/<det[^>]*>([\s\S]*?)<\/det>/g)].map(m => m[1])
+    const itens: ItemNfeParsed[] = detBlocks.map(block => {
+      const prodBlock = block.match(/<prod>([\s\S]*?)<\/prod>/)?.[1] ?? block
+      const quantidade    = parseFloat(get(/<qCom>([\d.]+)<\/qCom>/, prodBlock) || '0')
+      const valorUnitario = Math.round(parseFloat(get(/<vUnCom>([\d.]+)<\/vUnCom>/, prodBlock) || '0') * 100)
+      const valorTotalItem = Math.round(parseFloat(get(/<vProd>([\d.]+)<\/vProd>/, prodBlock) || '0') * 100)
+      return {
+        codigoXml:    get(/<cProd>([^<]+)<\/cProd>/, prodBlock),
+        descricaoXml: get(/<xProd>([^<]+)<\/xProd>/, prodBlock),
+        ncm:          get(/<NCM>([^<]+)<\/NCM>/, prodBlock),
+        quantidade, valorUnitario, valorTotal: valorTotalItem,
+      }
+    })
+
+    if (itens.length === 0) throw new Error('Não foi possível extrair itens do XML. Confira se é um arquivo de NF-e válido.')
+
+    return { chaveAcesso, numeroNfe, nomeFornecedor, cnpjFornecedor, dataEmissao, valorTotal, itens }
+  }
+
+  /** Salva a NF-e parseada com status 'pendente' — aguardando mapeamento de insumos */
+  async criar(parsed: NfeParsed, userId: number) {
+    const now = new Date()
+    const [entrada] = await this.db.insert(dbEntradaNfe).values({
+      chaveAcesso: parsed.chaveAcesso, numeroNfe: parsed.numeroNfe,
+      nomeFornecedor: parsed.nomeFornecedor, cnpjFornecedor: parsed.cnpjFornecedor,
+      dataEmissao: parsed.dataEmissao || now.toISOString().slice(0, 10),
+      valorTotal: parsed.valorTotal, status: 'pendente',
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    }).returning({ entradaId: dbEntradaNfe.entradaId })
+
+    for (const item of parsed.itens) {
+      await this.db.insert(dbEntradaNfeItem).values({
+        entradaId: entrada.entradaId, codigoXml: item.codigoXml, descricaoXml: item.descricaoXml,
+        ncm: item.ncm, quantidade: String(item.quantidade), valorUnitario: item.valorUnitario, valorTotal: item.valorTotal,
+        createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+      })
+    }
+    return entrada
+  }
+
+  async findById(id: number) {
+    const [entrada] = await this.db.select().from(dbEntradaNfe).where(eq(dbEntradaNfe.entradaId, id))
+    if (!entrada) return null
+    const itens = await this.db.select().from(dbEntradaNfeItem)
+      .where(and(eq(dbEntradaNfeItem.entradaId, id), eq(dbEntradaNfeItem.activeFlag, true)))
+    return { ...entrada, itens }
+  }
+
+  async list({ status }: { status?: string } = {}) {
+    const conds = [eq(dbEntradaNfe.activeFlag, true)]
+    if (status && status !== 'todas') conds.push(eq(dbEntradaNfe.status, status))
+    return this.db.select().from(dbEntradaNfe).where(and(...conds)).orderBy(dbEntradaNfe.dataEmissao)
+  }
+
+  /** Mapeia um item do XML pro insumo correspondente no cadastro */
+  async mapearItem(itemId: number, insumoId: number, userId: number) {
+    await this.db.update(dbEntradaNfeItem).set({ insumoId, updatedDt: new Date(), updatedBy: userId })
+      .where(eq(dbEntradaNfeItem.itemId, itemId))
+    return { ok: true }
+  }
+
+  /**
+   * Confirma a entrada: todos os itens precisam estar mapeados pra um
+   * insumo. Gera um Pedido de Compra + Conferência já finalizada (entrada
+   * de NF-e significa que a mercadoria já chegou de fato), o que dá
+   * entrada automática no estoque e gera a Conta a Pagar — reaproveitando
+   * o fluxo de Compras inteiro, sem duplicar lógica.
+   */
+  async confirmar(entradaId: number, userId: number) {
+    const entrada = await this.findById(entradaId)
+    if (!entrada) throw new Error('Entrada não encontrada')
+
+    const naoMapeados = entrada.itens.filter(i => !i.insumoId)
+    if (naoMapeados.length > 0) {
+      throw new Error(`${naoMapeados.length} item(ns) ainda não foram vinculados a um insumo.`)
+    }
+
+    const pedidoSvc = new PedidoCompraService(this.db)
+    const pedido = await pedidoSvc.criar({
+      nomeFornecedor: entrada.nomeFornecedor || 'Fornecedor (NF-e)',
+      observacao: `Gerado automaticamente da NF-e nº ${entrada.numeroNfe} (chave ${entrada.chaveAcesso})`,
+      itens: entrada.itens.map(i => ({
+        insumoId: i.insumoId!, nomeInsumo: i.descricaoXml,
+        quantidade: Number(i.quantidade), precoUnitario: i.valorUnitario / 100,
+      })),
+      userId,
+    })
+
+    const confSvc = new ConferenciaService(this.db)
+    const conferencia = await confSvc.iniciar(pedido.pedidoId, userId)
+
+    // Lança a quantidade total recebida = quantidade da nota (recebimento integral)
+    const confDetail = await confSvc.findById(conferencia.conferenciaId)
+    for (const item of confDetail!.itens) {
+      await confSvc.lancarItem(item.itemId, Number(item.quantidadePedida), userId)
+    }
+    const resultado = await confSvc.finalizar(conferencia.conferenciaId, { gerarContaPagar: true }, userId)
+
+    await this.db.update(dbEntradaNfe).set({
+      status: 'processada', pedidoId: pedido.pedidoId, updatedDt: new Date(), updatedBy: userId,
+    }).where(eq(dbEntradaNfe.entradaId, entradaId))
+
+    return { pedidoId: pedido.pedidoId, ...resultado }
+  }
+}
+
+
+===== lib\services\estoque\EstoqueService.ts =====
+import { and, eq, ilike, count, asc, desc, sql } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { dbProduto } from '@/lib/db/schemas/cadastros'
+import { dbInsumo } from '@/lib/db/schemas/cadastros'
+import { dbMovimentacaoEstoque } from '@/lib/db/schemas/estoque'
+import { DebitoInsumoService } from './DebitoInsumoService'
+
+export type StatusEstoque = 'normal' | 'atencao' | 'critico' | 'zerado'
+
+function getStatus(atual: number, minimo: number): StatusEstoque {
+  if (atual <= 0) return 'zerado'
+  if (atual <= minimo) return 'critico'
+  if (atual <= minimo * 1.5) return 'atencao'
+  return 'normal'
+}
+
+export class EstoqueService {
+  // CORRECAO: recebe schemaName para repassar ao DebitoInsumoService,
+  // que precisa setar o search_path corretamente via pool direto.
+  constructor(private db: AppDB, private schemaName: string = '') {}
+
+  async listProdutos({ page, limit, search, status }: {
+    page: number; limit: number; search?: string; status?: string
+  }) {
+    const offset = (page - 1) * limit
+    const conditions = [eq(dbProduto.activeFlag, true)]
+    if (search) conditions.push(ilike(dbProduto.nome, `%${search}%`))
+    const whereClause = and(...conditions)
+    const [data, totals] = await Promise.all([
+      this.db.select().from(dbProduto).where(whereClause).orderBy(asc(dbProduto.nome)).limit(limit).offset(offset),
+      this.db.select({ total: count() }).from(dbProduto).where(whereClause),
+    ])
+    const enriched = data.map(p => ({ ...p, status: getStatus(p.estoqueAtual, p.estoqueMinimo) }))
+    const filtered = status ? enriched.filter(p => p.status === status) : enriched
+    const total = Number(totals[0]?.total ?? 0)
+    const kpis = {
+      total,
+      normal:  enriched.filter(p => p.status === 'normal').length,
+      atencao: enriched.filter(p => p.status === 'atencao').length,
+      critico: enriched.filter(p => p.status === 'critico').length,
+      zerado:  enriched.filter(p => p.status === 'zerado').length,
+    }
+    return { data: filtered, meta: { total: filtered.length, page, limit, totalPages: Math.ceil(filtered.length / limit) }, kpis }
+  }
+
+  async listInsumos({ page, limit, search, status }: {
+    page: number; limit: number; search?: string; status?: string
+  }) {
+    const offset = (page - 1) * limit
+    const conditions = [eq(dbInsumo.activeFlag, true)]
+    if (search) conditions.push(ilike(dbInsumo.nome, `%${search}%`))
+    const whereClause = and(...conditions)
+    const [data, totals] = await Promise.all([
+      this.db.select().from(dbInsumo).where(whereClause).orderBy(asc(dbInsumo.nome)).limit(limit).offset(offset),
+      this.db.select({ total: count() }).from(dbInsumo).where(whereClause),
+    ])
+    const enriched = data.map(i => ({ ...i, status: getStatus(i.estoqueAtual, i.estoqueMinimo) }))
+    const filtered = status ? enriched.filter(i => i.status === status) : enriched
+    const total = Number(totals[0]?.total ?? 0)
+    const kpis = {
+      total,
+      normal:  enriched.filter(i => i.status === 'normal').length,
+      atencao: enriched.filter(i => i.status === 'atencao').length,
+      critico: enriched.filter(i => i.status === 'critico').length,
+      zerado:  enriched.filter(i => i.status === 'zerado').length,
+    }
+    return { data: filtered, meta: { total: filtered.length, page, limit, totalPages: Math.ceil(filtered.length / limit) }, kpis }
+  }
+
+  async movimentar({
+    entidade, entidadeId, tipo, quantidade, precoCusto, observacao, userId,
+  }: {
+    entidade: 'produto' | 'insumo'
+    entidadeId: number
+    tipo: 'entrada' | 'saida' | 'ajuste'
+    quantidade: number
+    precoCusto?: number
+    observacao?: string
+    userId: number
+  }) {
+    const now = new Date()
+
+    await this.db.insert(dbMovimentacaoEstoque).values({
+      tipo,
+      entidade,
+      entidadeId,
+      quantidade:       tipo === 'saida' ? -Math.abs(quantidade) : Math.abs(quantidade),
+      precoCusto:       precoCusto ?? 0,
+      observacao,
+      dataMovimentacao: now,
+      createdBy:        userId,
+      updatedBy:        userId,
+      createdDt:        now,
+      updatedDt:        now,
+    })
+
+    let debitoInsumos: Awaited<ReturnType<DebitoInsumoService['debitar']>> | null = null
+
+    if (entidade === 'produto') {
+      if (tipo === 'ajuste') {
+        await this.db.update(dbProduto).set({
+          estoqueAtual: quantidade, updatedDt: now, updatedBy: userId,
+        }).where(eq(dbProduto.produtoId, entidadeId))
+      } else {
+        const delta = tipo === 'saida' ? -Math.abs(quantidade) : Math.abs(quantidade)
+        await this.db.update(dbProduto).set({
+          estoqueAtual: sql`${dbProduto.estoqueAtual} + ${delta}`,
+          updatedDt: now, updatedBy: userId,
+        }).where(eq(dbProduto.produtoId, entidadeId))
+
+        // Débito automático de insumos via ficha técnica — só na ENTRADA.
+        // CORRECAO: passa schemaName para o DebitoInsumoService usar pool
+        // direto com SET search_path correto.
+        if (tipo === 'entrada' && quantidade > 0) {
+          debitoInsumos = await new DebitoInsumoService(this.db, this.schemaName)
+            .debitar(entidadeId, Math.abs(quantidade), userId)
+        }
+      }
+    } else {
+      if (tipo === 'ajuste') {
+        await this.db.update(dbInsumo).set({
+          estoqueAtual: quantidade, updatedDt: now, updatedBy: userId,
+        }).where(eq(dbInsumo.insumoId, entidadeId))
+      } else {
+        const delta = tipo === 'saida' ? -Math.abs(quantidade) : Math.abs(quantidade)
+        await this.db.update(dbInsumo).set({
+          estoqueAtual: sql`${dbInsumo.estoqueAtual} + ${delta}`,
+          updatedDt: now, updatedBy: userId,
+        }).where(eq(dbInsumo.insumoId, entidadeId))
+      }
+    }
+
+    return { ok: true, debitoInsumos }
+  }
+
+  async historico({ entidade, entidadeId, limit }: {
+    entidade: 'produto' | 'insumo'
+    entidadeId: number
+    limit?: number
+  }) {
+    const result = await this.db
+      .select()
+      .from(dbMovimentacaoEstoque)
+      .where(and(
+        eq(dbMovimentacaoEstoque.entidade, entidade),
+        eq(dbMovimentacaoEstoque.entidadeId, entidadeId),
+      ))
+      .orderBy(desc(dbMovimentacaoEstoque.dataMovimentacao))
+      .limit(limit ?? 20)
+    return result
+  }
+}
+
+
+===== lib\services\estoque\LocalEstoqueService.ts =====
+import { and, eq, sql } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { dbLocalEstoque, dbEstoqueLocal, dbTransferenciaEstoque } from '@/lib/db/schemas/estoque-avancado'
+import { dbProduto, dbInsumo } from '@/lib/db/schemas/cadastros'
+
+/**
+ * LocalEstoqueService — múltiplos locais/depósitos.
+ *
+ * Decisão de design: o local PADRÃO nunca tem linha própria em
+ * t_estoque_local. A quantidade dele é sempre calculada como:
+ *   agregado (estoque_atual do produto/insumo) − soma do que está
+ *   explicitamente alocado nos OUTROS locais.
+ *
+ * Isso evita ter dois números que podem ficar dessincronizados — o
+ * agregado em t_produto/t_insumo continua sendo a única fonte de verdade
+ * pro TOTAL (e por isso PDV, Vendas, Compras, Conferência, MRP etc.
+ * continuam funcionando exatamente como já funcionam, sem nenhuma mudança).
+ * Transferência nunca muda o agregado, só redistribui.
+ */
+export class LocalEstoqueService {
+  constructor(private db: AppDB) {}
+
+  async listLocais() {
+    return this.db.select().from(dbLocalEstoque).where(eq(dbLocalEstoque.activeFlag, true)).orderBy(dbLocalEstoque.nome)
+  }
+
+  async criarLocal(nome: string, descricao: string | undefined, userId: number) {
+    const now = new Date()
+    const [local] = await this.db.insert(dbLocalEstoque).values({
+      nome, descricao, padrao: false,
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    }).returning({ localId: dbLocalEstoque.localId })
+    return local
+  }
+
+  private async getEstoqueAgregado(entidade: 'produto' | 'insumo', entidadeId: number): Promise<number> {
+    if (entidade === 'produto') {
+      const [p] = await this.db.select({ v: dbProduto.estoqueAtual }).from(dbProduto).where(eq(dbProduto.produtoId, entidadeId))
+      return p?.v ?? 0
+    }
+    const [i] = await this.db.select({ v: dbInsumo.estoqueAtual }).from(dbInsumo).where(eq(dbInsumo.insumoId, entidadeId))
+    return i?.v ?? 0
+  }
+
+  /** Distribuição de um item entre todos os locais (padrão calculado por resíduo) */
+  async getDistribuicao(entidade: 'produto' | 'insumo', entidadeId: number) {
+    const locais   = await this.listLocais()
+    const agregado = await this.getEstoqueAgregado(entidade, entidadeId)
+
+    const outros = await this.db.select().from(dbEstoqueLocal).where(and(
+      eq(dbEstoqueLocal.entidade, entidade),
+      eq(dbEstoqueLocal.entidadeId, entidadeId),
+      eq(dbEstoqueLocal.activeFlag, true),
+    ))
+
+    const localPadrao = locais.find(l => l.padrao)
+    const somaOutros = outros
+      .filter(o => o.localId !== localPadrao?.localId)
+      .reduce((acc, o) => acc + Number(o.quantidade), 0)
+
+    return locais.map(local => {
+      if (local.padrao) {
+        return { localId: local.localId, nome: local.nome, quantidade: agregado - somaOutros, padrao: true }
+      }
+      const linha = outros.find(o => o.localId === local.localId)
+      return { localId: local.localId, nome: local.nome, quantidade: linha ? Number(linha.quantidade) : 0, padrao: false }
+    })
+  }
+
+  /** Transfere quantidade entre dois locais — NUNCA muda o agregado, só redistribui */
+  async transferir({
+    localOrigemId, localDestinoId, entidade, entidadeId, nomeEntidade, quantidade, observacao, userId,
+  }: {
+    localOrigemId: number; localDestinoId: number
+    entidade: 'produto' | 'insumo'; entidadeId: number; nomeEntidade: string
+    quantidade: number; observacao?: string; userId: number
+  }) {
+    if (quantidade <= 0) throw new Error('Quantidade deve ser maior que zero')
+    if (localOrigemId === localDestinoId) throw new Error('Local de origem e destino não podem ser iguais')
+
+    const locais = await this.listLocais()
+    const localPadrao = locais.find(l => l.padrao)
+
+    // Validação: não deixa transferir mais do que existe na origem
+    const distribuicao = await this.getDistribuicao(entidade, entidadeId)
+    const origemAtual = distribuicao.find(d => d.localId === localOrigemId)?.quantidade ?? 0
+    if (origemAtual < quantidade) {
+      throw new Error(`Estoque insuficiente no local de origem (disponível: ${origemAtual.toFixed(2)})`)
+    }
+
+    const now = new Date()
+
+    // Debita da origem (se não for o local padrão — padrão é resíduo automático)
+    if (localOrigemId !== localPadrao?.localId) {
+      await this.upsertEstoqueLocal(localOrigemId, entidade, entidadeId, -quantidade, userId)
+    }
+    // Credita no destino (se não for o local padrão)
+    if (localDestinoId !== localPadrao?.localId) {
+      await this.upsertEstoqueLocal(localDestinoId, entidade, entidadeId, quantidade, userId)
+    }
+
+    await this.db.insert(dbTransferenciaEstoque).values({
+      localOrigemId, localDestinoId, entidade, entidadeId, nomeEntidade, quantidade: String(quantidade),
+      dataTransferencia: now.toISOString().slice(0, 10), observacao,
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    })
+
+    return { ok: true }
+  }
+
+  private async upsertEstoqueLocal(localId: number, entidade: string, entidadeId: number, delta: number, userId: number) {
+    const now = new Date()
+    const [existing] = await this.db.select().from(dbEstoqueLocal).where(and(
+      eq(dbEstoqueLocal.localId, localId), eq(dbEstoqueLocal.entidade, entidade), eq(dbEstoqueLocal.entidadeId, entidadeId),
+    ))
+    if (existing) {
+      await this.db.update(dbEstoqueLocal).set({
+        quantidade: sql`${dbEstoqueLocal.quantidade} + ${delta}`, updatedDt: now, updatedBy: userId,
+      }).where(eq(dbEstoqueLocal.estoqueLocalId, existing.estoqueLocalId))
+    } else {
+      await this.db.insert(dbEstoqueLocal).values({
+        localId, entidade, entidadeId, quantidade: String(Math.max(0, delta)),
+        createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+      })
+    }
+  }
+
+  async listTransferencias(limit = 30) {
+    return this.db.select().from(dbTransferenciaEstoque)
+      .where(eq(dbTransferenciaEstoque.activeFlag, true))
+      .orderBy(sql`${dbTransferenciaEstoque.createdDt} DESC`).limit(limit)
+  }
+}
+
+
+===== lib\services\estoque\PerdaEstoqueService.ts =====
+import { and, eq, gte, lte, sql, desc } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { dbPerdaEstoque } from '@/lib/db/schemas/estoque-avancado'
+import { dbProduto, dbInsumo } from '@/lib/db/schemas/cadastros'
+
+export const MOTIVOS_PERDA = ['vencimento', 'quebra', 'contaminacao', 'erro_producao', 'outro'] as const
+
+export class PerdaEstoqueService {
+  constructor(private db: AppDB) {}
+
+  async registrar({
+    entidade, entidadeId, quantidade, motivo, dataPerda, observacao, localId, userId,
+  }: {
+    entidade: 'produto' | 'insumo'; entidadeId: number; quantidade: number
+    motivo: typeof MOTIVOS_PERDA[number]; dataPerda?: string; observacao?: string
+    localId?: number; userId: number
+  }) {
+    if (quantidade <= 0) throw new Error('Quantidade deve ser maior que zero')
+    const now = new Date()
+
+    let nomeEntidade = ''
+    let valorEstimado = 0
+
+    if (entidade === 'produto') {
+      const [p] = await this.db.select().from(dbProduto).where(eq(dbProduto.produtoId, entidadeId))
+      if (!p) throw new Error('Produto não encontrado')
+      nomeEntidade = p.nome
+      valorEstimado = (p.precoVarejo ?? 0) * quantidade
+      if (p.estoqueAtual < quantidade) throw new Error(`Estoque insuficiente (disponível: ${p.estoqueAtual})`)
+      await this.db.update(dbProduto).set({
+        estoqueAtual: sql`${dbProduto.estoqueAtual} - ${quantidade}`, updatedDt: now, updatedBy: userId,
+      }).where(eq(dbProduto.produtoId, entidadeId))
+    } else {
+      const [i] = await this.db.select().from(dbInsumo).where(eq(dbInsumo.insumoId, entidadeId))
+      if (!i) throw new Error('Insumo não encontrado')
+      nomeEntidade = i.nome
+      valorEstimado = (i.precoCusto ?? 0) * quantidade
+      if (i.estoqueAtual < quantidade) throw new Error(`Estoque insuficiente (disponível: ${i.estoqueAtual})`)
+      await this.db.update(dbInsumo).set({
+        estoqueAtual: sql`${dbInsumo.estoqueAtual} - ${quantidade}`, updatedDt: now, updatedBy: userId,
+      }).where(eq(dbInsumo.insumoId, entidadeId))
+    }
+
+    const [perda] = await this.db.insert(dbPerdaEstoque).values({
+      entidade, entidadeId, nomeEntidade, quantidade: String(quantidade), motivo,
+      dataPerda: dataPerda ?? now.toISOString().slice(0, 10), observacao, localId, valorEstimado,
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    }).returning({ perdaId: dbPerdaEstoque.perdaId })
+
+    return perda
+  }
+
+  async list({ entidade, dataInicio, dataFim, motivo }: {
+    entidade?: string; dataInicio?: string; dataFim?: string; motivo?: string
+  } = {}) {
+    const conds = [eq(dbPerdaEstoque.activeFlag, true)]
+    if (entidade) conds.push(eq(dbPerdaEstoque.entidade, entidade))
+    if (motivo)   conds.push(eq(dbPerdaEstoque.motivo, motivo))
+    if (dataInicio) conds.push(gte(dbPerdaEstoque.dataPerda, dataInicio))
+    if (dataFim)    conds.push(lte(dbPerdaEstoque.dataPerda, dataFim))
+
+    const rows = await this.db.select().from(dbPerdaEstoque).where(and(...conds)).orderBy(desc(dbPerdaEstoque.dataPerda))
+
+    const kpis = {
+      totalRegistros: rows.length,
+      valorTotal:     rows.reduce((a, r) => a + r.valorEstimado, 0),
+      porMotivo: MOTIVOS_PERDA.reduce((acc, m) => {
+        acc[m] = rows.filter(r => r.motivo === m).length
+        return acc
+      }, {} as Record<string, number>),
+    }
+
+    return { data: rows, kpis }
+  }
+
+  async excluir(id: number, userId: number) {
+    await this.db.update(dbPerdaEstoque).set({ activeFlag: false, updatedDt: new Date(), updatedBy: userId })
+      .where(eq(dbPerdaEstoque.perdaId, id))
+    return { ok: true }
+  }
+}
