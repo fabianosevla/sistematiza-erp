@@ -4,12 +4,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-import { fmtMoeda as fmt } from '@/lib/format'
   Search, X, Plus, Minus, Trash2, CheckCircle,
   ShoppingCart, LayoutGrid, ClipboardList,
   LogOut, ChevronLeft, AlertCircle, Loader2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 

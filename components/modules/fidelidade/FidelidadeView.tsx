@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-import { fmtMoeda as fmt } from '@/lib/format'
   Gift, ChevronDown, ChevronRight, Save, MessageCircle, Percent, Clock,
   Settings, Users, Receipt, Bell, ShieldCheck, Loader2, Send, Search,
   CheckCircle, AlertTriangle, ArrowUpCircle, ArrowDownCircle,
@@ -10,6 +9,7 @@ import { fmtMoeda as fmt } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 

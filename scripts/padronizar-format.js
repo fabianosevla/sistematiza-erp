@@ -146,10 +146,26 @@ function inserirImports(src, porModulo) {
 
     const linha = `import { ${nomes.join(', ')} } from '${modulo}'`
     const linhas = src.split('\n')
+
+    // Acha o FIM do último import, respeitando imports de várias linhas
+    // (`import {` ... `} from 'x'`). Inserir no meio de um desses blocos
+    // quebra a sintaxe — foi o bug da primeira versão deste script.
+    const COMPLETO = /^\s*import\s*\{[^}]*\}\s*from\s*['"][^'"]+['"];?\s*$/
+    const SIMPLES  = /^\s*import\s+[^{].*from\s*['"][^'"]+['"];?\s*$/
+    const ABRE     = /^\s*import\s*\{(?![^}]*\})/
+    const FECHA    = /^\s*\}\s*from\s*['"][^'"]+['"];?\s*$/
+
     let idx = -1
+    let aberto = false
     for (let i = 0; i < linhas.length; i++) {
-      if (/^import\s/.test(linhas[i])) idx = i
-      else if (idx !== -1 && linhas[i].trim() !== '' && !/^import\s/.test(linhas[i])) break
+      const l = linhas[i]
+      if (aberto) {
+        if (FECHA.test(l)) { aberto = false; idx = i }
+        continue
+      }
+      if (COMPLETO.test(l) || SIMPLES.test(l)) { idx = i; continue }
+      if (ABRE.test(l)) { aberto = true; continue }
+      if (l.trim() !== '' && idx !== -1) break
     }
     if (idx === -1) {
       // sem imports: entra depois do 'use client', se houver
