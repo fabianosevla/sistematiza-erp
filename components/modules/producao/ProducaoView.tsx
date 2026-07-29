@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Factory, AlertTriangle, CheckCircle, X } fro
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { fmtQtd, fmtDataCurta as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -18,7 +19,6 @@ function getWeekDates(offset = 0) {
   })
 }
 
-function fmtDate(d: Date) { return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) }
 function isoDate(d: Date) { return d.toISOString().slice(0, 10) }
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
@@ -26,13 +26,6 @@ const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 // à direita. Necessário porque a ficha técnica agora aceita quantidades
 // mínimas (ex.: orégano a 0,00027 kg por unidade) — com 3 casas fixas o
 // consumo de poucas unidades aparecia como "0.000".
-function fmtQtd(v: any) {
-  const n = parseFloat(String(v ?? 0))
-  if (!isFinite(n)) return '0.000'
-  const s = n.toFixed(6).replace(/0+$/, '')
-  const [inteiro, dec = ''] = s.split('.')
-  return `${inteiro}.${dec.padEnd(3, '0')}`
-}
 
 type CelulaKey = { produtoId: number; data: string; tipo: 'producao' | 'pedido' }
 

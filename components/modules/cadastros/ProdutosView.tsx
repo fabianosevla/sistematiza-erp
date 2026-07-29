@@ -14,19 +14,12 @@ import ImportacaoModal from '@/components/modules/importacao/ImportacaoModal'
 import Paginacao from '@/components/ui/Paginacao'
 import { useDominio } from '@/hooks/useDominio'
 import { AuditoriaInfo } from '@/components/ui/AuditoriaInfo'
-import { fmtMoeda as fmt, fmtMoedaInput as fmtInput } from '@/lib/format'
+import { fmtMoeda as fmt, fmtMoedaInput as fmtInput, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 
 
-function fmtQtd(v: any) {
-  const n = parseFloat(String(v ?? 0))
-  if (!isFinite(n)) return '0.000'
-  const s = n.toFixed(6).replace(/0+$/, '')
-  const [inteiro, dec = ''] = s.split('.')
-  return `${inteiro}.${dec.padEnd(3, '0')}`
-}
 
 type SortKey = 'nome' | 'tipo' | 'precoVarejo' | 'estoqueAtual'
 type SortDir  = 'asc' | 'desc'

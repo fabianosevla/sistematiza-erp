@@ -8,12 +8,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 
-function fmtDate(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—' }
 
 export default function ConciliacaoView({ tenantSlug }: Props) {
   const qc        = useQueryClient()

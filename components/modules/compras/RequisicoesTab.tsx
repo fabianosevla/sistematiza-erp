@@ -7,6 +7,7 @@ import { Plus, X, Trash2, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { fmtData as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -22,7 +23,6 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
   cancelada:{ label: 'Cancelada',cls: 'bg-gray-100 text-gray-500' },
 }
 
-function fmtDate(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—' }
 
 interface ItemForm { _key: string; insumoId: number; nomeInsumo: string; quantidade: string; unidade: string }
 

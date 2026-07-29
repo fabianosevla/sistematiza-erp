@@ -10,12 +10,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 
-function fmtDate(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—' }
 function isVencida(row: any) {
   return row.status === 'aberta' && row.dataVencimento < new Date().toISOString().slice(0, 10)
 }

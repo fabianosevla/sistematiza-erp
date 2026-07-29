@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 import { unidadesCompativeis } from '@/lib/unidades'
 
 interface Props { tenantSlug: string }
@@ -19,13 +19,6 @@ interface Props { tenantSlug: string }
 // Quantidade da ficha: até 6 casas decimais (insumos usados em quantidade
 // mínima, ex.: orégano a 0.00027 kg por bandeja). Mostra no mínimo 3 casas e
 // corta zeros à direita além disso.
-function fmtQtd(v: any) {
-  const n = parseFloat(String(v ?? 0))
-  if (!isFinite(n)) return '0.000'
-  const s = n.toFixed(6).replace(/0+$/, '')
-  const [inteiro, dec = ''] = s.split('.')
-  return `${inteiro}.${dec.padEnd(3, '0')}`
-}
 
 // Unidades compatíveis entre si (podem ser convertidas pelo DebitoInsumoService)
 

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/Toast'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -18,22 +18,8 @@ interface Props { tenantSlug: string }
 // nesse texto — gerando data inválida. Agora extraímos direto o trecho
 // AAAA-MM-DD do ISO, sem conversão de fuso (evita também mostrar um dia a
 // menos no Brasil). Se vier em outro formato, cai no parse normal.
-function fmtDate(date: any) {
-  if (!date) return '—'
-  const s = String(date)
-  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
-  if (m) return `${m[3]}/${m[2]}/${m[1]}`
-  const d = new Date(s)
-  return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR')
-}
 
 // Valor para <input type="date"> — precisa ser AAAA-MM-DD
-function toInputDate(date: any) {
-  if (!date) return ''
-  const s = String(date)
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})/)
-  return m ? m[1] : ''
-}
 
 const FLUXO: Record<string, { next: string; label: string; btnLabel: string; color: string }> = {
   pendente:  { next: 'producao', label: 'Pendente',    btnLabel: 'Iniciar Produção →', color: 'bg-amber-100 text-amber-700' },

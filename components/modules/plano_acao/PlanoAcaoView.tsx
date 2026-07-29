@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { fmtData as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function fmtDate(d: string) { return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') }
 
 export default function PlanoAcaoView({ tenantSlug }: Props) {
   const qc  = useQueryClient()

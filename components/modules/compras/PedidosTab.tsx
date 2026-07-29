@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
 
 interface Props {
   tenantSlug:           string
@@ -23,7 +23,6 @@ const STATUS_CFG: Record<string, { label: string; cls: string }> = {
 }
 
 
-function fmtDate(d: string) { return d ? new Date(d + 'T12:00:00').toLocaleDateString('pt-BR') : '—' }
 
 interface ItemForm { _key: string; insumoId?: number; nomeInsumo: string; quantidade: string; precoUnitario: string }
 
