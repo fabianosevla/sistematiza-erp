@@ -26,6 +26,17 @@ const HOJE = new Date().toISOString().slice(0, 10)
 
 type CelulaKey = { produtoId: number; data: string; tipo: 'producao' | 'pedido' }
 
+// Célula de PP que ainda não foi registrada — é o que o botão vai lançar.
+// Precisa ser tipada porque `produtos` vem da API como any e o TS não
+// consegue inferir o item do flatMap sozinho.
+interface CelulaPendente {
+  produtoId:  number
+  nome:       string
+  unidade:    string
+  data:       string
+  quantidade: number
+}
+
 export default function ProducaoView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
@@ -103,12 +114,18 @@ export default function ProducaoView({ tenantSlug }: Props) {
   // Entram apenas dias que já aconteceram (até hoje). O que está planejado
   // para os próximos dias continua editável e fora do lançamento — não faz
   // sentido dar baixa de insumo de uma produção que ainda não ocorreu.
-  const pendentes = produtos.flatMap((p: any) =>
+  const pendentes: CelulaPendente[] = produtos.flatMap((p: any) =>
     dias
       .map(d => isoDate(d))
-      .filter(d => d <= HOJE)
-      .map(d => ({ produtoId: p.produtoId, nome: p.nome, unidade: p.unidade, data: d, quantidade: celulas?.[p.produtoId]?.[d] ?? 0 }))
-      .filter(c => c.quantidade > 0 && !jaRegistrada(c.produtoId, c.data))
+      .filter((d: string) => d <= HOJE)
+      .map((d: string): CelulaPendente => ({
+        produtoId:  p.produtoId,
+        nome:       p.nome,
+        unidade:    p.unidade,
+        data:       d,
+        quantidade: celulas?.[p.produtoId]?.[d] ?? 0,
+      }))
+      .filter((c: CelulaPendente) => c.quantidade > 0 && !jaRegistrada(c.produtoId, c.data))
   )
 
   async function abrirRegistro() {
