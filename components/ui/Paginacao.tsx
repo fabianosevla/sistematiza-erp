@@ -1,36 +1,56 @@
 'use client'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
+/**
+ * components/ui/Paginacao.tsx
+ *
+ * Mudanças em relação à versão anterior — as duas compatíveis com quem já usa:
+ *
+ *  1. onLimit virou opcional. Sem ele, o seletor de "registros por página"
+ *     não aparece, mas a faixa "1–20 de 143" continua. Isso permite que o
+ *     DataTable use este componente mesmo em telas que ainda não controlam
+ *     o tamanho de página.
+ *  2. className opcional, para o DataTable ajustar o recuo quando a paginação
+ *     fica dentro do cartão da tabela. O padrão é o de sempre.
+ */
 interface Props {
   page:       number
   totalPages: number
   total:      number
   limit:      number
   onPage:     (page: number) => void
-  onLimit:    (limit: number) => void
+  onLimit?:   (limit: number) => void
+  className?: string
 }
 
 const OPCOES_LIMIT = [10, 20, 50, 100]
 
-export default function Paginacao({ page, totalPages, total, limit, onPage, onLimit }: Props) {
+export default function Paginacao({
+  page, totalPages, total, limit, onPage, onLimit,
+  className = 'px-1 mt-2',
+}: Props) {
   if (total === 0) return null
 
   const inicio = (page - 1) * limit + 1
   const fim    = Math.min(page * limit, total)
 
   return (
-    <div className="flex items-center justify-between px-1 py-3 border-t border-gray-100 mt-2">
+    <div className={`flex items-center justify-between py-3 border-t border-gray-100 ${className}`}>
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400">Registros por página:</span>
-        <select
-          value={limit}
-          onChange={e => { onLimit(Number(e.target.value)); onPage(1) }}
-          className="h-7 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:border-green-400"
-        >
-          {OPCOES_LIMIT.map(n => (
-            <option key={n} value={n}>{n}</option>
-          ))}
-        </select>
+        {onLimit && (
+          <>
+            <span className="text-xs text-gray-400">Registros por página:</span>
+            <select
+              value={limit}
+              onChange={e => { onLimit(Number(e.target.value)); onPage(1) }}
+              className="h-7 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:border-green-400"
+            >
+              {OPCOES_LIMIT.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </>
+        )}
         <span className="text-xs text-gray-400">
           {inicio}–{fim} de {total}
         </span>

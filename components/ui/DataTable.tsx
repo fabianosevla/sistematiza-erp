@@ -1,6 +1,6 @@
 'use client'
 import type { ReactNode } from 'react'
-import { Button } from '@/components/ui/button'
+import Paginacao from '@/components/ui/Paginacao'
 
 /**
  * components/ui/DataTable.tsx
@@ -44,8 +44,8 @@ export interface Coluna {
 export interface MetaPaginacao {
   page:       number
   totalPages: number
-  total?:     number
-  limit?:     number
+  total:      number
+  limit:      number
 }
 
 interface Props {
@@ -57,6 +57,8 @@ interface Props {
   acoes?:        (item: any) => ReactNode
   meta?:         MetaPaginacao | null
   onPageChange?: (page: number) => void
+  /** opcional: com ele, aparece o seletor de registros por página */
+  onLimitChange?: (limit: number) => void
   onLinhaClick?: (item: any) => void
   className?:    string
 }
@@ -67,7 +69,7 @@ export function DataTable({
   colunas, itens, chave,
   carregando = false,
   vazio = 'Nenhum registro encontrado.',
-  acoes, meta, onPageChange, onLinhaClick,
+  acoes, meta, onPageChange, onLimitChange, onLinhaClick,
   className = '',
 }: Props) {
   const totalColunas = colunas.length + (acoes ? 1 : 0)
@@ -135,26 +137,18 @@ export function DataTable({
         </tbody>
       </table>
 
-      {meta && meta.totalPages > 1 && onPageChange && (
-        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-          <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages}</p>
-          <div className="flex gap-2">
-            <Button
-              variant="outline" size="sm"
-              disabled={meta.page <= 1}
-              onClick={() => onPageChange(meta.page - 1)}
-            >
-              Anterior
-            </Button>
-            <Button
-              variant="outline" size="sm"
-              disabled={meta.page >= meta.totalPages}
-              onClick={() => onPageChange(meta.page + 1)}
-            >
-              Próximo
-            </Button>
-          </div>
-        </div>
+      {/* Paginação: usa o componente que o projeto já tem, para não existirem
+          duas paginações diferentes. mt-0 porque aqui ela fica dentro do cartão. */}
+      {meta && onPageChange && (
+        <Paginacao
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          limit={meta.limit}
+          onPage={onPageChange}
+          onLimit={onLimitChange}
+          className="px-4 mt-0"
+        />
       )}
     </div>
   )

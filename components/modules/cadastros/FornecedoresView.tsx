@@ -27,6 +27,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
   const { toast }   = useToast()
   const [search, setSearch]             = useState('')
   const [page, setPage]                 = useState(1)
+  const [limit, setLimit]               = useState(20)
   const [showForm, setShowForm]         = useState(false)
   const [showImport, setShowImport]     = useState(false)
   const [showHistorico, setShowHistorico] = useState<any>(null)
@@ -35,9 +36,9 @@ export default function FornecedoresView({ tenantSlug }: Props) {
   const apiBase = `/api/${tenantSlug}/cadastros/fornecedores`
 
   const { data, isLoading } = useQuery({
-    queryKey: ['fornecedores', tenantSlug, page, search],
+    queryKey: ['fornecedores', tenantSlug, page, limit, search],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: '20' })
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (search) params.set('search', search)
       const res = await fetch(`${apiBase}?${params}`)
       return res.json()
@@ -167,6 +168,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
         vazio="Nenhum fornecedor encontrado."
         meta={meta}
         onPageChange={setPage}
+        onLimitChange={setLimit}
         acoes={(item: any) => (
           <>
             <BotaoIcone titulo="Histórico" variante="destaque" onClick={() => setShowHistorico(item)}>
