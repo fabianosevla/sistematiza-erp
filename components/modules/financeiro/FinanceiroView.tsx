@@ -268,6 +268,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   // KPIs calculados do DRE
   const receitaMes  = kpis?.receitaMes  ?? 0
   const despesasMes = kpis?.despesasMes ?? 0
+  const taxasMes    = kpis?.taxasMes    ?? 0
   const resultado   = kpis?.resultado   ?? 0
   const margemPct   = receitaMes > 0 ? (resultado / receitaMes) * 100 : 0
 
@@ -293,9 +294,10 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         {[
           { label: 'Receita',   value: fmt(receitaMes),  color: 'text-green-600' },
+          { label: 'Taxas',     value: fmt(taxasMes),    color: 'text-red-400'   },
           { label: 'Despesas',  value: fmt(despesasMes), color: 'text-red-600'   },
           { label: 'Resultado', value: fmt(resultado),   color: resultado >= 0 ? 'text-green-600' : 'text-red-600' },
           { label: 'Margem',    value: fmtPct(margemPct), color: 'text-blue-600' },
@@ -415,6 +417,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           return Number(m.mesNum) >= mesInicio && Number(m.mesNum) <= mesFim
         })
         const receitaPeriodo  = mesesDoPeriodo.reduce((a: number, m: any) => a + m.receita, 0)
+        const taxasPeriodo    = mesesDoPeriodo.reduce((a: number, m: any) => a + (m.taxas ?? 0), 0)
         const despesasPeriodo = mesesDoPeriodo.reduce((a: number, m: any) => a + m.despesas + m.fixos, 0)
         // Resultado acumulado: soma de todos os resultados mensais (positivos e negativos)
         const resultadoAcumulado = mesesDoPeriodo.reduce((a: number, m: any) => a + m.resultado - m.fixos, 0)
@@ -453,14 +456,19 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">DRE — {periodo === 'mensal' ? `${MESES[mes-1]}/${ano}` : `${MESES[mesInicio-1]}–${MESES[mesFim-1]}/${ano}`}</h3>
                 <div className="space-y-3">
                   {(periodo === 'mensal' && dreExibir ? [
-                    { label: '(+) Receita Bruta',   value: dreExibir.receita      ?? 0, color: 'text-green-600' },
-                    { label: '(=) Receita Líquida',  value: dreExibir.receita      ?? 0, color: 'text-green-700', bold: true },
-                    { label: '(-) Total Despesas',   value: -(dreExibir.totalDespesas ?? 0), color: 'text-red-500' },
-                    { label: '(=) Resultado',        value: dreExibir.resultado    ?? 0, color: (dreExibir.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
+                    // Taxa de meio de pagamento é dedução de receita, não
+                    // despesa operacional — por isso entra entre a bruta e a
+                    // líquida, e não na lista de categorias de despesa.
+                    { label: '(+) Receita Bruta',     value: dreExibir.receita ?? 0, color: 'text-green-600' },
+                    { label: '(-) Taxas de pagamento', value: -(dreExibir.taxasPagamento ?? 0), color: 'text-red-500' },
+                    { label: '(=) Receita Líquida',    value: dreExibir.receitaLiquida ?? dreExibir.receita ?? 0, color: 'text-green-700', bold: true },
+                    { label: '(-) Total Despesas',     value: -(dreExibir.totalDespesas ?? 0), color: 'text-red-500' },
+                    { label: '(=) Resultado',          value: dreExibir.resultado ?? 0, color: (dreExibir.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
                   ] : [
-                    { label: '(+) Receita Bruta',   value: receitaPeriodo,       color: 'text-green-600' },
-                    { label: '(=) Receita Líquida',  value: receitaPeriodo,       color: 'text-green-700', bold: true },
-                    { label: '(-) Total Despesas',   value: -despesasPeriodo,     color: 'text-red-500' },
+                    { label: '(+) Receita Bruta',      value: receitaPeriodo,                  color: 'text-green-600' },
+                    { label: '(-) Taxas de pagamento', value: -taxasPeriodo,                   color: 'text-red-500' },
+                    { label: '(=) Receita Líquida',    value: receitaPeriodo - taxasPeriodo,   color: 'text-green-700', bold: true },
+                    { label: '(-) Total Despesas',     value: -despesasPeriodo,                color: 'text-red-500' },
                     { label: '(=) Resultado Acum.',  value: resultadoAcumulado,   color: resultadoAcumulado >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
                     { label: 'Margem',               value: margemPeriodo,        color: 'text-blue-600', isPct: true },
                   ]).map((item: any, i) => (
@@ -470,6 +478,21 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     </div>
                   ))}
                 </div>
+
+                {/* Taxas por meio de pagamento */}
+                {periodo === 'mensal' && (dre?.taxasPorForma ?? []).some((f: any) => f.valorTaxa > 0) && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-xs font-semibold text-gray-500 mb-2">Taxas por meio de pagamento</p>
+                    {dre.taxasPorForma.filter((f: any) => f.valorTaxa > 0).map((f: any, i: number) => (
+                      <div key={i} className="flex justify-between text-xs py-1">
+                        <span className="text-gray-500">
+                          {f.forma} <span className="text-gray-300">({f.taxaPct}% de {fmt(f.valorPago)})</span>
+                        </span>
+                        <span className="font-medium text-red-500">{fmt(f.valorTaxa)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Despesas por categoria */}
                 {dre?.porCategoria && Object.keys(dre.porCategoria).length > 0 && (
@@ -664,7 +687,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
-                      {['Mês', 'Receita', 'Despesas', 'Fixos', 'Resultado', 'Acumulado', 'Margem'].map((h, i) => (
+                      {['Mês', 'Receita', 'Taxas', 'Despesas', 'Fixos', 'Resultado', 'Acumulado', 'Margem'].map((h, i) => (
                         <th key={i} className={`text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                       ))}
                     </tr>
@@ -674,6 +697,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
                         <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{m.mes}</td>
                         <td className="px-4 py-2.5 text-right text-sm text-green-600">{m.receita > 0 ? fmt(m.receita) : '—'}</td>
+                        <td className="px-4 py-2.5 text-right text-sm text-red-400">{m.taxas > 0 ? fmt(m.taxas) : '—'}</td>
                         <td className="px-4 py-2.5 text-right text-sm text-red-500">{m.despesas > 0 ? fmt(m.despesas) : '—'}</td>
                         <td className="px-4 py-2.5 text-right text-sm text-red-400">{m.fixos > 0 ? fmt(m.fixos) : '—'}</td>
                         <td className={`px-4 py-2.5 text-right text-sm font-semibold ${m.resultado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
@@ -690,6 +714,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     <tr className="border-t-2 border-gray-200 bg-gray-50">
                       <td className="px-4 py-2.5 text-xs font-bold text-gray-700">Total</td>
                       <td className="px-4 py-2.5 text-right text-sm font-bold text-green-600">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.receita, 0))}</td>
+                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-400">{fmt(demoComAcum.reduce((a: number, m: any) => a + (m.taxas ?? 0), 0))}</td>
                       <td className="px-4 py-2.5 text-right text-sm font-bold text-red-500">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.despesas, 0))}</td>
                       <td className="px-4 py-2.5 text-right text-sm font-bold text-red-400">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.fixos, 0))}</td>
                       <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-900">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.resultado, 0))}</td>
@@ -702,7 +727,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 {/* Gráfico */}
                 <div className="p-5 border-t border-gray-100">
                   <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={demoComAcum.map((m: any) => ({ mes: m.mes, receita: m.receita/100, despesas: (m.despesas + m.fixos)/100 }))} margin={{ left: -20 }}>
+                    <BarChart data={demoComAcum.map((m: any) => ({ mes: m.mes, receita: m.receita/100, despesas: (m.despesas + m.fixos + (m.taxas ?? 0))/100 }))} margin={{ left: -20 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                       <XAxis dataKey="mes" tick={{ fontSize: 10 }} />
                       <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />

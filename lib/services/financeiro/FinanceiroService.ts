@@ -20,6 +20,82 @@ export class FinanceiroService {
     }
   }
 
+  /**
+   * TAXAS DE MEIO DE PAGAMENTO — dedução de receita.
+   *
+   * A taxa fica em t_forma_pagamento.taxa (percentual, ex.: 1.99 para débito).
+   * O pagamento da venda guarda a forma como TEXTO em t_venda_pagamento.forma,
+   * então o vínculo é feito pelo nome, ignorando maiúsculas e espaços.
+   *
+   * Consequência conhecida: se alguém renomear "Débito" para "Cartão de Débito"
+   * no cadastro, as vendas antigas param de casar e a taxa delas some do
+   * histórico. A correção definitiva é congelar a taxa aplicada dentro de
+   * t_venda_pagamento no momento da venda — fica como próximo passo.
+   *
+   * Cashback não é meio de pagamento com taxa; ele entra como 'Cashback
+   * (fidelidade)' e simplesmente não casa com nenhuma forma cadastrada,
+   * resultando em taxa zero. Correto.
+   */
+  private async taxasDoPeriodo(inicio: Date, fim: Date) {
+    return this.withSchema(async client => {
+      try {
+        const r = await client.query(`
+          SELECT COALESCE(vp.forma, 'Não informado')                       AS forma,
+                 COALESCE(fp.taxa, 0)                                      AS taxa_pct,
+                 COALESCE(SUM(vp.valor), 0)::bigint                        AS valor_pago,
+                 COALESCE(SUM(ROUND(vp.valor * COALESCE(fp.taxa, 0) / 100.0)), 0)::bigint AS valor_taxa
+          FROM t_venda_pagamento vp
+          JOIN t_venda v ON v.venda_id = vp.venda_id AND v.active_flg = true
+          LEFT JOIN t_forma_pagamento fp
+                 ON LOWER(TRIM(fp.nome)) = LOWER(TRIM(vp.forma))
+                AND fp.active_flg = true
+          WHERE v.vendida_em >= $1 AND v.vendida_em <= $2
+          GROUP BY vp.forma, fp.taxa
+          HAVING COALESCE(SUM(vp.valor), 0) > 0
+          ORDER BY 4 DESC
+        `, [inicio.toISOString(), fim.toISOString()])
+
+        const porForma = r.rows.map((row: any) => ({
+          forma:      row.forma,
+          taxaPct:    Number(row.taxa_pct),
+          valorPago:  Number(row.valor_pago),
+          valorTaxa:  Number(row.valor_taxa),
+        }))
+        return {
+          total: porForma.reduce((a: number, f: any) => a + f.valorTaxa, 0),
+          porForma,
+        }
+      } catch {
+        // Tenant sem t_venda_pagamento ou sem t_forma_pagamento — sem taxa.
+        return { total: 0, porForma: [] as any[] }
+      }
+    })
+  }
+
+  /** Taxas por mês do ano, para o demonstrativo. */
+  private async taxasPorMes(ano: number): Promise<Record<number, number>> {
+    return this.withSchema(async client => {
+      try {
+        const r = await client.query(`
+          SELECT EXTRACT(MONTH FROM v.vendida_em)::int AS mes,
+                 COALESCE(SUM(ROUND(vp.valor * COALESCE(fp.taxa, 0) / 100.0)), 0)::bigint AS total
+          FROM t_venda_pagamento vp
+          JOIN t_venda v ON v.venda_id = vp.venda_id AND v.active_flg = true
+          LEFT JOIN t_forma_pagamento fp
+                 ON LOWER(TRIM(fp.nome)) = LOWER(TRIM(vp.forma))
+                AND fp.active_flg = true
+          WHERE EXTRACT(YEAR FROM v.vendida_em) = $1
+          GROUP BY mes ORDER BY mes
+        `, [ano])
+        const mapa: Record<number, number> = {}
+        for (const row of r.rows) mapa[Number(row.mes)] = Number(row.total)
+        return mapa
+      } catch {
+        return {}
+      }
+    })
+  }
+
   async gerarRecorrentesDoMes(mes: number, ano: number, userId: number) {
     return this.withSchema(async client => {
       const originais = await client.query(`
@@ -115,11 +191,12 @@ export class FinanceiroService {
     const hoje   = new Date()
     const inicioHoje = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())
 
-    const [receitaMes, receitaHoje] = await Promise.all([
+    const [receitaMes, receitaHoje, taxas] = await Promise.all([
       this.db.select({ total: sql<number>`COALESCE(SUM(total), 0)` }).from(dbVenda)
         .where(and(eq(dbVenda.activeFlag, true), gte(dbVenda.vendidaEm, inicio), lte(dbVenda.vendidaEm, fim))),
       this.db.select({ total: sql<number>`COALESCE(SUM(total), 0)` }).from(dbVenda)
         .where(and(eq(dbVenda.activeFlag, true), gte(dbVenda.vendidaEm, inicioHoje))),
+      this.taxasDoPeriodo(inicio, fim),
     ])
 
     const despesasMes = await this.withSchema(async client => {
@@ -131,10 +208,14 @@ export class FinanceiroService {
     })
 
     const receita = Number(receitaMes[0]?.total ?? 0)
+    // O resultado agora considera a taxa dos meios de pagamento — ela sai do
+    // caixa igual a qualquer outro custo, só que como dedução de receita.
     return {
       receitaMes:  receita,
+      taxasMes:    taxas.total,
+      receitaLiquidaMes: receita - taxas.total,
       despesasMes,
-      resultado:   receita - despesasMes,
+      resultado:   receita - taxas.total - despesasMes,
       receitaHoje: Number(receitaHoje[0]?.total ?? 0),
       mes, ano,
     }
@@ -144,7 +225,7 @@ export class FinanceiroService {
     const inicio = new Date(ano, mes - 1, 1)
     const fim    = new Date(ano, mes, 0, 23, 59, 59, 999)
 
-    const [receitaData, despesasData, gastosFixosData] = await Promise.all([
+    const [receitaData, despesasData, gastosFixosData, taxas] = await Promise.all([
       this.db.select({ total: sql<number>`COALESCE(SUM(total), 0)`, qtd: count() }).from(dbVenda)
         .where(and(eq(dbVenda.activeFlag, true), gte(dbVenda.vendidaEm, inicio), lte(dbVenda.vendidaEm, fim))),
       this.withSchema(async client => {
@@ -166,6 +247,7 @@ export class FinanceiroService {
         )
         return r.rows
       }),
+      this.taxasDoPeriodo(inicio, fim),
     ])
 
     const receita       = Number(receitaData[0]?.total ?? 0)
@@ -184,11 +266,27 @@ export class FinanceiroService {
     }
 
     const totalDespesas = Object.values(porCategoria).reduce((a, b) => a + b, 0)
-    return { receita, qtdVendas, totalDespesas, resultado: receita - totalDespesas, porCategoria, mes, ano }
+
+    // Taxa de cartão é DEDUÇÃO DE RECEITA, não despesa operacional: ela não
+    // entra em porCategoria nem em totalDespesas, para não distorcer a
+    // comparação de custo entre categorias.
+    const receitaLiquida = receita - taxas.total
+
+    return {
+      receita,
+      qtdVendas,
+      taxasPagamento:      taxas.total,
+      taxasPorForma:       taxas.porForma,
+      receitaLiquida,
+      totalDespesas,
+      resultado:           receitaLiquida - totalDespesas,
+      porCategoria,
+      mes, ano,
+    }
   }
 
   async demonstrativo(ano: number) {
-    const [vendasData, despesasData, gastos] = await Promise.all([
+    const [vendasData, despesasData, gastos, taxasMes] = await Promise.all([
       this.withSchema(async client => {
         const r = await client.query(
           `SELECT EXTRACT(MONTH FROM vendida_em)::int as mes, COALESCE(SUM(total), 0)::bigint as receita, COUNT(*)::int as qtd FROM t_venda WHERE active_flg = true AND EXTRACT(YEAR FROM vendida_em) = $1 GROUP BY mes ORDER BY mes`,
@@ -205,6 +303,7 @@ export class FinanceiroService {
       }),
       this.db.select().from(dbGastoFixoValor)
         .where(and(eq(dbGastoFixoValor.ano, ano), eq(dbGastoFixoValor.activeFlag, true))),
+      this.taxasPorMes(ano),
     ])
 
     const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -215,9 +314,10 @@ export class FinanceiroService {
       const fixos = gastos.filter(g => g.mes === mesNum).reduce((a, g) => a + g.valor, 0)
       const receita   = Number(v?.receita ?? 0)
       const desp      = Number(d?.total_despesas ?? 0)
-      const resultado = receita - desp - fixos
+      const taxas     = Number(taxasMes[mesNum] ?? 0)
+      const resultado = receita - taxas - desp - fixos
       return {
-        mes: label, mesNum, receita, despesas: desp, fixos, resultado,
+        mes: label, mesNum, receita, taxas, despesas: desp, fixos, resultado,
         margem: receita > 0 ? ((resultado / receita) * 100).toFixed(1) : '0.0',
       }
     })
