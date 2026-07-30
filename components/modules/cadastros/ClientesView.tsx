@@ -20,6 +20,7 @@ import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { FormModal } from '@/components/ui/FormModal'
 import { Aviso } from '@/components/ui/Aviso'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { TIPOS_PRECO } from '@/lib/constants'
 
 interface Props { tenantSlug: string }
 
@@ -103,7 +104,7 @@ export default function ClientesView({ tenantSlug }: Props) {
   })
 
   function handleNew() {
-    form.reset({ tipoPessoa: 'PF' }); setEditItem(null); setFormError(''); setShowForm(true)
+    form.reset({ tipoPessoa: 'PF', tabelaPreco: 'varejo' }); setEditItem(null); setFormError(''); setShowForm(true)
   }
 
   function handleEdit(item: any) {
@@ -113,6 +114,7 @@ export default function ClientesView({ tenantSlug }: Props) {
       documento: item.documento, email: item.email, telefone: item.telefone, celular: item.celular,
       cep: item.cep, endereco: item.endereco, numero: item.numero, complemento: item.complemento,
       bairro: item.bairro, cidade: item.cidade, uf: item.uf, observacao: item.observacao,
+      tabelaPreco: item.tabelaPreco ?? 'varejo',
     })
     setShowForm(true)
   }
@@ -156,6 +158,13 @@ export default function ClientesView({ tenantSlug }: Props) {
       render: (c: any) => <Badge variant={c.tipoPessoa === 'PJ' ? 'secondary' : 'outline'}>{c.tipoPessoa}</Badge>,
     },
     { chave: 'email', titulo: 'E-mail', esconderAte: 'lg', render: (c: any) => c.email ?? '—' },
+    {
+      chave: 'tabelaPreco', titulo: 'Tabela', esconderAte: 'md', alinhamento: 'center',
+      // Varejo é o padrão e não precisa de destaque; atacado sim.
+      render: (c: any) => c.tabelaPreco && c.tabelaPreco !== 'varejo'
+        ? <Badge variant="secondary">{(TIPOS_PRECO as any)[c.tabelaPreco] ?? c.tabelaPreco}</Badge>
+        : <span className="text-gray-300">—</span>,
+    },
     {
       chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg',
       render: (c: any) => c.cidade ? `${c.cidade}/${c.uf ?? ''}` : '—',
@@ -232,6 +241,28 @@ export default function ClientesView({ tenantSlug }: Props) {
                 </select>
               </div>
               <div><Label>Documento (CPF/CNPJ)</Label><Input {...form.register('documento')} className="mt-1" placeholder="000.000.000-00" /></div>
+            </div>
+
+            {/* Tabela de preço — define qual coluna de preço do produto vale
+                para este cliente no PDV e nas vendas. Um campo aqui evita um
+                campo em Pedido, PDV e Venda. */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Tabela de preço
+                  <InfoTip titulo="Tabela de preço">
+                    Define qual preço do produto é usado para este cliente: o de varejo
+                    ou uma das cinco faixas de atacado. O PDV aplica sozinho ao selecionar
+                    o cliente na venda.
+                  </InfoTip>
+                </Label>
+                <select {...form.register('tabelaPreco')}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                  {Object.entries(TIPOS_PRECO).map(([valor, rotulo]) => (
+                    <option key={valor} value={valor}>{rotulo}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div>
               <Label>Nome completo / Razão social *</Label>

@@ -3,6 +3,7 @@ import {
   pgTable, serial, integer, varchar, boolean, timestamp,
 } from 'drizzle-orm/pg-core'
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
+
 const auditFields = {
   modificationNum: integer('modification_num').notNull().default(0),
   createdDt:       timestamp('created_dt', { withTimezone: true }).notNull(),
@@ -11,6 +12,7 @@ const auditFields = {
   updatedBy:       integer('updated_by').notNull(),
   activeFlag:      boolean('active_flg').notNull().default(true),
 }
+
 // ─── Clientes ─────────────────────────────────────────────────────────────────
 export const dbCliente = pgTable('t_cliente', {
   clienteId:    serial('cliente_id').primaryKey(),
@@ -30,15 +32,11 @@ export const dbCliente = pgTable('t_cliente', {
   cidade:       varchar('cidade', { length: 100 }),
   uf:           varchar('uf', { length: 2 }),
   observacao:   varchar('observacao', { length: 500 }),
-  // Tabela de preço padrão do cliente: varejo | atacado_a … atacado_e.
-  // O PDV e o VendaService leem daqui para escolher o preço do produto —
-  // ver TIPOS_PRECO em lib/constants.ts e scripts/migrate-cliente-tabela-preco.js
-  tabelaPreco:  varchar('tabela_preco', { length: 20 }).notNull().default('varejo'),
 })
-
 export type TpDbClienteRow    = InferSelectModel<typeof dbCliente>
 export type TpDbClienteInsert = InferInsertModel<typeof dbCliente>
 export type TpDbClienteUpdate = Partial<Omit<TpDbClienteInsert, 'clienteId' | 'createdDt' | 'createdBy'>>
+
 // ─── Fornecedores ─────────────────────────────────────────────────────────────
 export const dbFornecedor = pgTable('t_fornecedor', {
   fornecedorId: serial('fornecedor_id').primaryKey(),
@@ -63,6 +61,7 @@ export const dbFornecedor = pgTable('t_fornecedor', {
 export type TpDbFornecedorRow    = InferSelectModel<typeof dbFornecedor>
 export type TpDbFornecedorInsert = InferInsertModel<typeof dbFornecedor>
 export type TpDbFornecedorUpdate = Partial<Omit<TpDbFornecedorInsert, 'fornecedorId' | 'createdDt' | 'createdBy'>>
+
 // ─── Produtos ─────────────────────────────────────────────────────────────────
 export const dbProduto = pgTable('t_produto', {
   produtoId:      serial('produto_id').primaryKey(),
@@ -95,6 +94,7 @@ export const dbProduto = pgTable('t_produto', {
 export type TpDbProdutoRow    = InferSelectModel<typeof dbProduto>
 export type TpDbProdutoInsert = InferInsertModel<typeof dbProduto>
 export type TpDbProdutoUpdate = Partial<Omit<TpDbProdutoInsert, 'produtoId' | 'createdDt' | 'createdBy'>>
+
 // ─── Insumos ──────────────────────────────────────────────────────────────────
 export const dbInsumo = pgTable('t_insumo', {
   insumoId:      serial('insumo_id').primaryKey(),
@@ -112,6 +112,7 @@ export const dbInsumo = pgTable('t_insumo', {
 export type TpDbInsumoRow    = InferSelectModel<typeof dbInsumo>
 export type TpDbInsumoInsert = InferInsertModel<typeof dbInsumo>
 export type TpDbInsumoUpdate = Partial<Omit<TpDbInsumoInsert, 'insumoId' | 'createdDt' | 'createdBy'>>
+
 // ─── Usuários ─────────────────────────────────────────────────────────────────
 export const dbUsuario = pgTable('t_usuario', {
   usuarioId:  serial('usuario_id').primaryKey(),

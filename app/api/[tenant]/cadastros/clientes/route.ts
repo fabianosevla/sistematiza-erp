@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         client.query(`
           SELECT cliente_id, tipo_pessoa, nome_completo, nome_fantasia, documento,
                  email, telefone, celular, cep, endereco, numero, complemento,
-                 bairro, cidade, uf, observacao,
+                 bairro, cidade, uf, observacao, tabela_preco,
                  active_flg, modification_num, created_dt, created_by, updated_dt, updated_by
           FROM t_cliente ${where}
           ORDER BY nome_completo ASC
@@ -75,6 +75,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         cidade:          r.cidade,
         uf:              r.uf,
         observacao:      r.observacao,
+        // Tabela de preço do cliente — o PDV usa para escolher varejo/atacado
+        tabelaPreco:     r.tabela_preco ?? 'varejo',
         activeFlag:      r.active_flg,
         modificationNum: r.modification_num,
         createdDt:       r.created_dt,
@@ -125,9 +127,9 @@ export async function POST(req: NextRequest, { params }: Params) {
       const res = await client.query(`
         INSERT INTO t_cliente (
           tipo_pessoa, nome_completo, nome_fantasia, documento, email, telefone, celular,
-          cep, endereco, numero, complemento, bairro, cidade, uf, observacao,
+          cep, endereco, numero, complemento, bairro, cidade, uf, observacao, tabela_preco,
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true,0,1,1,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,0,1,1,NOW(),NOW())
         RETURNING cliente_id as "clienteId"
       `, [
         body.tipoPessoa?.trim() || 'PF',
@@ -145,6 +147,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         body.cidade?.trim() || null,
         body.uf?.trim()?.toUpperCase().slice(0, 2) || null,
         body.observacao?.trim() || null,
+        // Valor fora da lista vira 'varejo' — nunca grava lixo na coluna
+        (['varejo','atacado_a','atacado_b','atacado_c','atacado_d','atacado_e']
+          .includes(String(body.tabelaPreco)) ? body.tabelaPreco : 'varejo'),
       ])
       return created(res.rows[0])
     } finally {

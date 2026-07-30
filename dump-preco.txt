@@ -1,7 +1,95 @@
+
+
+===== lib\constants.ts =====
+/**
+ * lib/constants.ts
+ * Vocabulário do domínio — fonte única.
+ *
+ * IMPORTANTE: estes valores são os que JÁ existem no banco e no código.
+ * Nada aqui muda comportamento sozinho; o arquivo serve para as telas novas
+ * pararem de escrever strings soltas ('pendente', 'atacado_a'…) e para quem
+ * chega no time descobrir o vocabulário em um lugar só.
+ */
+
+// ── Pedidos (produção) ──────────────────────────────────────────────────────
+
+export const STATUS_PEDIDO = {
+  pendente:  { label: 'Pendente',  tom: 'neutro'   },
+  producao:  { label: 'Produção',  tom: 'info'     },
+  pronto:    { label: 'Pronto',    tom: 'sucesso'  },
+  entregue:  { label: 'Entregue',  tom: 'sucesso'  },
+  cancelado: { label: 'Cancelado', tom: 'erro'     },
+} as const
+
+export type StatusPedido = keyof typeof STATUS_PEDIDO
+
+/** Só nestes status o pedido pode ser editado: depois disso o estoque já andou. */
+export const STATUS_PEDIDO_EDITAVEIS: StatusPedido[] = ['pendente', 'producao']
+
+// ── Vendas ──────────────────────────────────────────────────────────────────
+
+export const STATUS_VENDA = {
+  concluida: { label: 'Concluída', tom: 'sucesso' },
+  cancelada: { label: 'Cancelada', tom: 'erro'    },
+} as const
+
+export const ORIGEM_VENDA = {
+  direta:  'Direta',
+  comanda: 'Comanda',
+  mesa:    'Mesa',
+} as const
+
+export const TIPOS_ENTREGA = ['Retirada', 'Entrega', 'Transportadora'] as const
+
+// ── Preços ──────────────────────────────────────────────────────────────────
+
+export const TIPOS_PRECO = {
+  varejo:    'Varejo',
+  atacado_a: 'Atacado A',
+  atacado_b: 'Atacado B',
+  atacado_c: 'Atacado C',
+  atacado_d: 'Atacado D',
+  atacado_e: 'Atacado E',
+} as const
+
+export type TipoPreco = keyof typeof TIPOS_PRECO
+
+// ── Produto-insumo ──────────────────────────────────────────────────────────
+//
+// Convenção do projeto, e a regra que mais pega quem está chegando:
+// em t_produto_insumo, o campo insumo_id guarda DOIS tipos de referência.
+//   insumo_id > 0  → insumo de verdade  (t_insumo.insumo_id)
+//   insumo_id < 0  → produto usado como insumo (t_produto.produto_id = -insumo_id)
+// Nunca comparar insumo_id diretamente com produto_id sem passar por aqui.
+
+export function ehProdutoInsumo(insumoId: number): boolean {
+  return Number(insumoId) < 0
+}
+
+/** Converte o insumo_id negativo no produto_id correspondente. */
+export function produtoIdDoInsumo(insumoId: number): number {
+  return Math.abs(Number(insumoId))
+}
+
+/** Converte um produto_id na referência negativa usada em t_produto_insumo. */
+export function insumoIdDoProduto(produtoId: number): number {
+  return -Math.abs(Number(produtoId))
+}
+
+// ── Paginação ───────────────────────────────────────────────────────────────
+
+export const PAGINA_TAMANHO_PADRAO = 20
+export const PAGINA_TAMANHO_MAX    = 500
+
+
+===== components\modules\pedidos\PedidosTab.tsx (NAO ENCONTRADO) =====
+
+
+===== app\(dashboard)\[tenant]\pdv\PdvBalcao.tsx =====
 'use client'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp, Gift, Tag } from 'lucide-react'
+import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp, Gift } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,7 +97,6 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { fmtMoeda as fmt } from '@/lib/format'
-import { TIPOS_PRECO } from '@/lib/constants'
 
 // modo: 'balcao' = venda de balcão (retirada). 'delivery' = venda para entrega:
 // mesma tela do balcão, mas com endereço em destaque/obrigatório e tipo de
@@ -29,47 +116,15 @@ interface ItemCarrinho {
   subtotal:      number   // já líquido do desconto do item
 }
 
-// ── Tabela de preço ─────────────────────────────────────────────────────────
-// Cada cliente tem uma tabela padrão (t_cliente.tabela_preco). Ao selecionar o
-// cliente na venda, o PDV passa a usar a coluna de preço correspondente.
-//
-// A cadeia de fallback é a MESMA de VendaService.resolverPreco(): se a faixa de
-// atacado escolhida estiver zerada no produto, cai no atacado legado e depois
-// no varejo. Assim a tela nunca mostra R$ 0,00 num produto que tem preço.
-const CAMPOS_PRECO: Record<string, string[]> = {
-  varejo:    ['precoVarejo', 'preco_varejo'],
-  atacado_a: ['precoAtacadoA', 'preco_atacado_a'],
-  atacado_b: ['precoAtacadoB', 'preco_atacado_b'],
-  atacado_c: ['precoAtacadoC', 'preco_atacado_c'],
-  atacado_d: ['precoAtacadoD', 'preco_atacado_d'],
-  atacado_e: ['precoAtacadoE', 'preco_atacado_e'],
-}
 
-function numeroDe(v: any): number {
-  if (v === null || v === undefined) return 0
+
+// Preço do produto em centavos.
+// A listagem pode chegar mapeada (precoVarejo), crua do Postgres (preco_varejo)
+// ou com o número em texto — aqui os três casos caem no mesmo lugar.
+function precoDoProduto(p: any): number {
+  const v = p?.precoVarejo ?? p?.preco_varejo ?? p?.precoVenda ?? p?.preco_venda ?? 0
   const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v)
   return Number.isFinite(n) ? Math.round(n) : 0
-}
-
-// Preço do produto em centavos, na tabela informada.
-// A listagem pode chegar mapeada (precoVarejo), crua do Postgres (preco_varejo)
-// ou com o número em texto — os três casos caem no mesmo lugar.
-function precoDoProduto(p: any, tabela: string = 'varejo'): number {
-  const campos = CAMPOS_PRECO[tabela] ?? CAMPOS_PRECO.varejo
-  for (const campo of campos) {
-    const v = numeroDe(p?.[campo])
-    if (v > 0) return v
-  }
-  if (tabela !== 'varejo') {
-    // Atacado legado, depois varejo — igual ao servidor
-    const legado = numeroDe(p?.precoAtacado ?? p?.preco_atacado)
-    if (legado > 0) return legado
-    for (const campo of CAMPOS_PRECO.varejo) {
-      const v = numeroDe(p?.[campo])
-      if (v > 0) return v
-    }
-  }
-  return numeroDe(p?.precoVenda ?? p?.preco_venda)
 }
 
 const TODAS = 'Todas'
@@ -104,7 +159,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [valorRecebido, setValorRecebido] = useState('')
   const [confirmLimpar, setConfirmLimpar] = useState(false)
   const [vendaOk, setVendaOk]             = useState(false)
-
   // Fluxo de finalização: "Finalizar" abre "Deseja confirmar a venda?" (Sim/Não).
   // Após registrar, abre "Deseja imprimir cupom?" (Sim/Não) com os dados da
   // venda congelados em cupomVenda (o carrinho já foi resetado nesse ponto).
@@ -115,8 +169,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   // Campos extras — iguais ao modal Nova Venda do gerencial
   const [clienteId, setClienteId]             = useState('')
   const [clienteNomeDisplay, setClienteNomeDisplay] = useState('')
-  // Tabela de preço em vigor nesta venda. Sem cliente = varejo.
-  const [tabelaPreco, setTabelaPreco]         = useState<string>('varejo')
   const [showCadastrarCliente, setShowCadastrarCliente] = useState(false)
   const CLI_VAZIO = { tipoPessoa: 'PF', documento: '', nomeCompleto: '', nomeFantasia: '', email: '', celular: '', cidade: '', uf: '', observacao: '' }
   const [novoCli, setNovoCli] = useState(CLI_VAZIO)
@@ -127,13 +179,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [observacao, setObservacao]           = useState('')
   const [dataEntrega, setDataEntrega]         = useState('')
   const [enderecoEntrega, setEnderecoEntrega] = useState('')
-
   // Fidelidade / cashback
   const [usarCashback, setUsarCashback]       = useState(false)
 
   const dens = DENSIDADES[densidade]
-  const rotuloTabela = (TIPOS_PRECO as any)[tabelaPreco] ?? 'Varejo'
-  const ehAtacado    = tabelaPreco !== 'varejo'
 
   useEffect(() => { searchRef.current?.focus() }, [])
 
@@ -144,7 +193,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       if (salvo && salvo in DENSIDADES) setDensidade(salvo)
     } catch {}
   }, [])
-
   function mudarDensidade(d: Densidade) {
     setDensidade(d)
     try { window.localStorage.setItem('pdv-densidade', d) } catch {}
@@ -209,9 +257,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       if (cli?.clienteId) {
         setClienteId(String(cli.clienteId))
         setClienteNomeDisplay(novoCli.nomeCompleto.trim())
-        // Cliente criado aqui nasce em varejo. Para outra tabela, use o
-        // cadastro completo em Cadastros → Clientes.
-        setTabelaPreco('varejo')
       }
       setShowCadastrarCliente(false)
       setNovoCli(CLI_VAZIO)
@@ -244,14 +289,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           vendedor:       vendedor || undefined,
           observacao:     observacao || undefined,
           // O desconto de cada linha vai no próprio item; o servidor soma tudo
-          // no desconto da venda. tipoPrecao diz ao VendaService qual coluna de
-          // preço usar — e fica gravado em t_venda_item para o histórico.
-          itens:      carrinho.map(i => ({
-            produtoId:  i.produtoId,
-            quantidade: i.quantidade,
-            desconto:   i.desconto,
-            tipoPrecao: tabelaPreco,
-          })),
+          // no desconto da venda. Se a coluna ainda não existir no banco, o
+          // campo é simplesmente ignorado.
+          itens:      carrinho.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade, desconto: i.desconto })),
           // Acréscimo embutido no total via "desconto líquido": o servidor faz
           // total = subtotal - desconto, então enviamos (desconto - acréscimo).
           // Assim não há linha de frete tributável e o banco não muda.
@@ -269,14 +309,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     onSuccess: (d) => {
       const usado = d?.data?.cashbackUsado ?? 0
       const ganho = d?.data?.cashbackCreditado ?? 0
-
       // Congela os dados da venda ANTES do reset, para o cupom
       const dVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
       const aVal = Math.round(parseFloat(acrescimo.replace(',', '.') || '0') * 100)
       const tot  = Math.max(0, Math.max(0, subtotal - dVal + aVal) - usado)
       const trocoVal = (formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && valorRecebido
         ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - tot) : 0
-
       setCupomVenda({
         vendaId:   d?.data?.vendaId ?? d?.data?.id ?? null,
         itens:     [...carrinho],
@@ -285,18 +323,15 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         forma:     formaPgto || formasNomes[0] || 'PIX',
         troco:     trocoVal,
         cliente:   clienteNomeDisplay,
-        tabela:    ehAtacado ? rotuloTabela : '',
         enderecoEntrega: isDelivery ? enderecoEntrega : '',
         dataHora:  new Date().toLocaleString('pt-BR'),
       })
-
       setCarrinho([])
       setDesconto('0')
       setAcrescimo('0')
       setValorRecebido('')
       setClienteId('')
       setClienteNomeDisplay('')
-      setTabelaPreco('varejo')
       setBuscaCliente('')
       setVendedor('')
       setTipoEntrega(isDelivery ? 'Entrega' : 'Retirada')
@@ -307,13 +342,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       setShowExtras(false)
       setVendaOk(true)
       setTimeout(() => { setVendaOk(false); searchRef.current?.focus() }, 2000)
-
       qc.invalidateQueries({ queryKey: ['vendas', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['pdv-cashback', tenantSlug] })
-
       if (usado > 0 || ganho > 0) {
         toast(`Venda registrada! ${usado > 0 ? `Cashback usado: ${fmt(usado)}. ` : ''}${ganho > 0 ? `Ganhou ${fmt(ganho)} de cashback.` : ''}`)
       } else {
@@ -331,7 +364,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   }
 
   function addProduto(produto: any) {
-    const preco = precoDoProduto(produto, tabelaPreco)
+    const preco = precoDoProduto(produto)
     setCarrinho(prev => {
       const existing = prev.find(i => i.produtoId === produto.produtoId)
       if (existing) {
@@ -373,21 +406,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     setCarrinho(prev => prev.filter(i => i.produtoId !== produtoId))
   }
 
-  function selecionarCliente(c: any) {
-    setClienteId(String(c.clienteId))
-    setClienteNomeDisplay(c.nomeCompleto)
-    // É aqui que a tabela de preço do cliente entra em vigor.
-    setTabelaPreco(c.tabelaPreco ?? 'varejo')
-    setBuscaCliente('')
-    if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
-    if (c.tabelaPreco && c.tabelaPreco !== 'varejo') {
-      toast(`Preço de ${(TIPOS_PRECO as any)[c.tabelaPreco]} aplicado.`)
-    }
-  }
-
   function limparCliente() {
     setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setUsarCashback(false)
-    setTabelaPreco('varejo')
   }
 
   function handleBuscaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -402,28 +422,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     : Array.isArray(produtosRaw?.data) ? produtosRaw.data : [])
     .filter((p: any) => !p.insumoFlg)
 
-  // Trocar a tabela de preço com itens já no carrinho recalcula todas as linhas.
-  // Sem isto, escolher o cliente depois de montar o carrinho fecharia a venda no
-  // preço de varejo para um cliente de atacado — erro caro e silencioso.
-  useEffect(() => {
-    setCarrinho(prev => {
-      if (prev.length === 0) return prev
-      let mudou = false
-      const novo = prev.map(i => {
-        const p = todosProdutos.find((x: any) => x.produtoId === i.produtoId)
-        if (!p) return i
-        const novoPreco = precoDoProduto(p, tabelaPreco)
-        if (!novoPreco || novoPreco === i.precoUnitario) return i
-        mudou = true
-        return recalc({ ...i, precoUnitario: novoPreco })
-      })
-      return mudou ? novo : prev
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabelaPreco])
-
   const clientes  = Array.isArray(clientesRaw?.data?.data) ? clientesRaw.data.data
     : Array.isArray(clientesRaw?.data) ? clientesRaw.data : []
+
   const usuarios  = Array.isArray(usuariosRaw?.data?.data) ? usuariosRaw.data.data
     : Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
 
@@ -468,6 +469,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
   const enderecoOk = !isDelivery || enderecoEntrega.trim().length > 0
   const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk
+
   const qtdItens = carrinho.reduce((a, i) => a + i.quantidade, 0)
 
   // Atalhos: F2 busca · F3 cliente · F6 desconto · F8 pagamento · F10 finalizar
@@ -529,7 +531,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         ${v.troco > 0 ? `<tr><td>Troco</td><td class="r">${fmt(v.troco)}</td></tr>` : ''}
       </table>
       ${v.cliente ? `<hr/><p>Cliente: ${v.cliente}</p>` : ''}
-      ${v.tabela ? `<p>Tabela: ${v.tabela}</p>` : ''}
       ${v.enderecoEntrega ? `<p>Entrega: ${v.enderecoEntrega}</p>` : ''}
       <hr/>
       <p class="c">Obrigado pela preferência!</p>
@@ -541,6 +542,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full min-h-0">
+
       {/* Catálogo */}
       <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
         <div className="flex items-start justify-between gap-3">
@@ -549,12 +551,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             <p className="text-sm text-gray-400 mt-0.5">{isDelivery ? 'Venda para entrega — informe o endereço do cliente' : 'Selecione uma categoria ou busque o produto'}</p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Tabela de preço em vigor — só aparece quando não é varejo */}
-            {ehAtacado && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                <Tag size={12} /> {rotuloTabela}
-              </span>
-            )}
             {/* Tamanho da tela neste computador */}
             <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
               {([
@@ -623,7 +619,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             // seja qual for o notebook ou a escala do Windows.
             <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${dens.card}px, 1fr))` }}>
               {produtosFiltrados.map((p: any) => {
-                const precoCard = precoDoProduto(p, tabelaPreco)
+                const precoCard = precoDoProduto(p)
                 return (
                   <button key={p.produtoId} onClick={() => addProduto(p)}
                     className="bg-white rounded-lg border border-gray-100 hover:border-green-300 hover:shadow-sm p-3 text-left transition-all active:scale-95 group">
@@ -712,12 +708,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
           {carrinho.length > 0 && (
             <div className="border-t border-gray-100 px-4 py-3 space-y-1.5 flex-shrink-0">
-              {ehAtacado && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-amber-600 font-medium">Tabela aplicada</span>
-                  <span className="text-amber-700 font-semibold">{rotuloTabela}</span>
-                </div>
-              )}
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Sub-total</span>
                 <span className="font-medium text-gray-900">{fmt(subtotalBruto)}</span>
@@ -752,21 +742,13 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
         {carrinho.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3 flex-shrink-0">
-            {/* Cliente — sempre visível (necessário para o cashback e para a tabela de preço) */}
+
+            {/* Cliente — sempre visível (necessário para o cashback) */}
             <div>
-              <Label className="text-xs inline-flex items-center gap-1">
-                Cliente <span className="text-gray-300">(F3)</span>
-                <InfoTip titulo="Tabela de preço">
-                  O preço aplicado vem da tabela cadastrada no cliente. Ao selecionar,
-                  os itens já no carrinho são recalculados.
-                </InfoTip>
-              </Label>
+              <Label className="text-xs">Cliente <span className="text-gray-300">(F3)</span></Label>
               {clienteId && clienteNomeDisplay ? (
                 <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                  <span className="text-sm font-medium text-green-800 truncate">
-                    {clienteNomeDisplay}
-                    {ehAtacado && <span className="ml-1.5 text-[10px] font-semibold text-amber-700">· {rotuloTabela}</span>}
-                  </span>
+                  <span className="text-sm font-medium text-green-800 truncate">{clienteNomeDisplay}</span>
                   <button onClick={limparCliente} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
                 </div>
               ) : (
@@ -776,14 +758,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   {buscaCliente.length > 1 && clientes.length > 0 && (
                     <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
                       {clientes.map((c: any) => (
-                        <button key={c.clienteId} onClick={() => selecionarCliente(c)}
-                          className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                        <button key={c.clienteId} onClick={() => {
+                          setClienteId(String(c.clienteId))
+                          setClienteNomeDisplay(c.nomeCompleto)
+                          setBuscaCliente('')
+                          if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+                        }} className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
                           <span className="text-sm font-medium text-gray-900">{c.nomeCompleto}</span>
-                          <span className="text-[10px] text-gray-400">
-                            {c.tabelaPreco && c.tabelaPreco !== 'varejo'
-                              ? (TIPOS_PRECO as any)[c.tabelaPreco]
-                              : (c.cpfCnpj ?? '')}
-                          </span>
+                          <span className="text-[10px] text-gray-400">{c.cpfCnpj ?? ''}</span>
                         </button>
                       ))}
                     </div>
@@ -964,13 +946,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
             <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
-            <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-900">{fmt(totalAPagar)}</span></p>
-            {ehAtacado && (
-              <p className="text-xs text-amber-600 mt-1">
-                Preço de {rotuloTabela}{clienteNomeDisplay ? ` — ${clienteNomeDisplay}` : ''}
-              </p>
-            )}
-            <div className="flex justify-center gap-3 mt-5">
+            <p className="text-sm text-gray-500 mb-5">Total: <span className="font-bold text-gray-900">{fmt(totalAPagar)}</span></p>
+            <div className="flex justify-center gap-3">
               <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
               <Button className="w-24" onClick={() => { setConfirmVenda(false); venderMut.mutate() }}>Sim</Button>
             </div>
@@ -1025,8 +1002,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   <Input value={novoCli.documento} onChange={e => setCli('documento', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Somente números" />
                 </div>
                 <div>
-                  {/* Obrigatório: a rota de clientes exige telefone ou celular no cadastro novo */}
-                  <Label className="text-xs">Celular *</Label>
+                  <Label className="text-xs">Celular</Label>
                   <Input value={novoCli.celular} onChange={e => setCli('celular', e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 00000-0000" />
                 </div>
               </div>
@@ -1054,7 +1030,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
                   Cancelar
                 </button>
-                <button onClick={() => criarClienteMut.mutate()} disabled={!novoCli.nomeCompleto.trim() || !novoCli.celular.trim() || criarClienteMut.isPending}
+                <button onClick={() => criarClienteMut.mutate()} disabled={!novoCli.nomeCompleto.trim() || criarClienteMut.isPending}
                   className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
                   style={{ backgroundColor: '#2ecc71' }}>
                   {criarClienteMut.isPending ? 'Salvando...' : 'Salvar e usar'}
@@ -1066,4 +1042,307 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       )}
     </div>
   )
+}
+
+
+===== lib\services\vendas\VendaService.ts =====
+import { and, eq, gte, lte, desc, count, sql } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { pool } from '@/lib/db/connection'
+import { dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
+import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
+import { FiscalService } from '@/lib/services/fiscal/FiscalService'
+import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
+import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
+import { converterUnidade } from '@/lib/unidades'
+
+function resolverPreco(produto: any, tipoPrecao: string): number {
+  switch (tipoPrecao) {
+    case 'atacado_a': return produto.precoAtacadoA || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_b': return produto.precoAtacadoB || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_c': return produto.precoAtacadoC || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_d': return produto.precoAtacadoD || produto.precoAtacado || produto.precoVarejo || 0
+    case 'atacado_e': return produto.precoAtacadoE || produto.precoAtacado || produto.precoVarejo || 0
+    default:          return produto.precoVarejo || 0
+  }
+}
+
+/**
+ * Converte quantidade da ficha técnica para a unidade do estoque.
+ * Mesma lógica do DebitoInsumoService — centralizada aqui para uso interno.
+ */
+
+
+export class VendaService {
+  constructor(private db: AppDB, private schemaName: string = '') {}
+
+  async list({ page, limit, dataInicio, dataFim, origem, tipoEntrega }: {
+    page: number; limit: number; dataInicio?: string; dataFim?: string; origem?: string; tipoEntrega?: string
+  }) {
+    const offset = (page - 1) * limit
+    const conditions = [eq(dbVenda.activeFlag, true)]
+    if (dataInicio) conditions.push(gte(dbVenda.vendidaEm, new Date(dataInicio)))
+    if (dataFim) {
+      const fim = new Date(dataFim); fim.setHours(23, 59, 59, 999)
+      conditions.push(lte(dbVenda.vendidaEm, fim))
+    }
+    if (origem)      conditions.push(eq(dbVenda.origem, origem))
+    if (tipoEntrega) conditions.push(eq(dbVenda.tipoEntrega, tipoEntrega))
+    const whereClause = and(...conditions)
+
+    const [vendas, totals] = await Promise.all([
+      this.db.select().from(dbVenda).where(whereClause).orderBy(desc(dbVenda.vendidaEm)).limit(limit).offset(offset),
+      this.db.select({ total: count() }).from(dbVenda).where(whereClause),
+    ])
+
+    const clienteIds = [...new Set(vendas.filter(v => v.clienteId).map(v => v.clienteId!))]
+    const clienteMap: Record<number, string> = {}
+    if (clienteIds.length > 0) {
+      const clientes = await this.db.select({ clienteId: dbCliente.clienteId, nome: dbCliente.nomeCompleto }).from(dbCliente)
+      for (const c of clientes) clienteMap[c.clienteId] = c.nome
+    }
+
+    const total = Number(totals[0]?.total ?? 0)
+    const data = vendas.map(v => ({
+      ...v,
+      clienteNome: v.clienteId ? (clienteMap[v.clienteId] ?? '—') : 'Consumidor Final',
+    }))
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } }
+  }
+
+  async findById(id: number) {
+    const [venda] = await this.db.select().from(dbVenda).where(eq(dbVenda.vendaId, id))
+    if (!venda) return null
+    const [itens, pagamentos] = await Promise.all([
+      this.db.select().from(dbVendaItem).where(eq(dbVendaItem.vendaId, id)),
+      this.db.select().from(dbVendaPagamento).where(eq(dbVendaPagamento.vendaId, id)),
+    ])
+    let cliente = null
+    if (venda.clienteId) {
+      const [c] = await this.db.select().from(dbCliente).where(eq(dbCliente.clienteId, venda.clienteId))
+      cliente = c ?? null
+    }
+    return { ...venda, itens, pagamentos, cliente }
+  }
+
+  async kpis() {
+    const now    = new Date()
+    const hoje   = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const semana = new Date(hoje); semana.setDate(semana.getDate() - semana.getDay())
+    const mes    = new Date(now.getFullYear(), now.getMonth(), 1)
+    const base   = eq(dbVenda.activeFlag, true)
+
+    const [hojeData, semanaData, mesData, entregasHoje] = await Promise.all([
+      this.db.select({ total: sql<number>`COALESCE(SUM(total), 0)`, qtd: count() }).from(dbVenda).where(and(base, gte(dbVenda.vendidaEm, hoje))),
+      this.db.select({ total: sql<number>`COALESCE(SUM(total), 0)` }).from(dbVenda).where(and(base, gte(dbVenda.vendidaEm, semana))),
+      this.db.select({ total: sql<number>`COALESCE(SUM(total), 0)`, qtd: count(), ticketMedio: sql<number>`CASE WHEN COUNT(*) > 0 THEN COALESCE(SUM(total), 0) / COUNT(*) ELSE 0 END` }).from(dbVenda).where(and(base, gte(dbVenda.vendidaEm, mes))),
+      this.db.select({ qtd: count() }).from(dbVenda).where(and(base, eq(dbVenda.tipoEntrega, 'entrega'), gte(dbVenda.dataEntrega, hoje), lte(dbVenda.dataEntrega, new Date(hoje.getTime() + 86400000)))),
+    ])
+
+    return {
+      receitaHoje:   Number(hojeData[0]?.total ?? 0),
+      qtdHoje:       Number(hojeData[0]?.qtd ?? 0),
+      receitaSemana: Number(semanaData[0]?.total ?? 0),
+      receitaMes:    Number(mesData[0]?.total ?? 0),
+      qtdMes:        Number(mesData[0]?.qtd ?? 0),
+      ticketMedio:   Number(mesData[0]?.ticketMedio ?? 0),
+      entregasHoje:  Number(entregasHoje[0]?.qtd ?? 0),
+    }
+  }
+
+  /**
+   * Debita os insumos da ficha técnica de cada produto vendido.
+   * Usa pool direto com search_path para garantir schema correto.
+   */
+  private async debitarInsumosDaVenda(itens: { produtoId: number; quantidade: number }[], userId: number) {
+    if (!this.schemaName) return // sem schema, pula silenciosamente
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${this.schemaName}", public`)
+      const now = new Date()
+
+      for (const item of itens) {
+        // Busca ficha técnica do produto
+        const ficha = await client.query(`
+          SELECT pi.insumo_id, pi.quantidade AS qtd_por_unidade, pi.unidade AS unidade_ficha,
+                 i.unidade AS unidade_estoque, i.estoque_atual
+          FROM t_produto_insumo pi
+          JOIN t_insumo i ON i.insumo_id = pi.insumo_id AND i.active_flg = true
+          WHERE pi.produto_id = $1 AND pi.active_flg = true
+        `, [item.produtoId])
+
+        for (const fi of ficha.rows) {
+          const qtdPorUnidade = Number(fi.qtd_por_unidade)
+          const qtdTotal      = converterUnidade(qtdPorUnidade * item.quantidade, fi.unidade_ficha, fi.unidade_estoque)
+          const estoqueAtual  = Number(fi.estoque_atual)
+          const novoEstoque   = Math.max(0, parseFloat((estoqueAtual - qtdTotal).toFixed(4)))
+
+          await client.query(`
+            UPDATE t_insumo SET estoque_atual = $1, updated_dt = $2, updated_by = $3
+            WHERE insumo_id = $4
+          `, [novoEstoque, now, userId, fi.insumo_id])
+        }
+      }
+    } finally {
+      client.release()
+    }
+  }
+
+  async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
+    itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
+    clienteId?:         number
+    desconto:           number   // desconto geral da venda (no PDV já vem líquido do acréscimo)
+    pagamentos:         { forma: string; valor: number }[]
+    tipoEntrega?:       string
+    dataEntrega?:       string
+    enderecoEntrega?:   string
+    observacao?:        string
+    observacaoInterna?: string
+    vendedor?:          string
+    usarCashback?:      number   // centavos que o cliente quer resgatar
+    userId:             number
+  }) {
+    const now = new Date()
+    let subtotal = 0          // bruto (soma de preço x quantidade, sem descontos)
+    let descontoItens = 0     // soma dos descontos aplicados linha a linha
+    const itemsDetalhados: any[] = []
+
+    for (const item of itens) {
+      const [produto] = await this.db.select().from(dbProduto)
+        .where(and(eq(dbProduto.produtoId, item.produtoId), eq(dbProduto.activeFlag, true)))
+      if (!produto) throw new Error(`Produto ${item.produtoId} não encontrado ou inativo`)
+
+      const tipoPrecao    = item.tipoPrecao ?? 'varejo'
+      const precoUnitario = resolverPreco(produto, tipoPrecao)
+      const itemBruto     = precoUnitario * item.quantidade
+      // Desconto do item nunca passa do valor do próprio item
+      const descontoItem  = Math.max(0, Math.min(item.desconto ?? 0, itemBruto))
+      const itemSubtotal  = itemBruto - descontoItem
+
+      subtotal      += itemBruto
+      descontoItens += descontoItem
+
+      const labelTipo: Record<string, string> = {
+        varejo: 'Varejo', atacado_a: 'Atacado A', atacado_b: 'Atacado B',
+        atacado_c: 'Atacado C', atacado_d: 'Atacado D', atacado_e: 'Atacado E',
+      }
+
+      itemsDetalhados.push({
+        produtoId: produto.produtoId, nomeProduto: produto.nome,
+        quantidade: item.quantidade, tipoPrecao,
+        nomeTipoPrecao: labelTipo[tipoPrecao] ?? 'Varejo',
+        precoUnitario, desconto: descontoItem, subtotal: itemSubtotal,
+      })
+    }
+
+    // O desconto gravado na venda soma os descontos de item com o desconto geral,
+    // pra que subtotal - desconto = total continue verdadeiro nos relatórios.
+    const descontoTotal = descontoItens + desconto
+    const total = Math.max(0, subtotal - descontoTotal)
+
+    const [venda] = await this.db.insert(dbVenda).values({
+      origem:            'direta',
+      clienteId:         clienteId ?? null,
+      status:            'concluida',
+      tipoEntrega:       tipoEntrega || 'Retirada',
+      dataEntrega:       dataEntrega ? new Date(dataEntrega) : null,
+      enderecoEntrega:   enderecoEntrega || null,
+      subtotal, desconto: descontoTotal, total,
+      observacao:        observacao || null,
+      observacaoInterna: observacaoInterna || null,
+      vendedor:          vendedor || null,
+      vendidaEm:         now,
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    }).returning({ vendaId: dbVenda.vendaId })
+
+    for (const item of itemsDetalhados) {
+      try {
+        await this.db.execute(sql`
+          INSERT INTO t_venda_item (
+            venda_id, produto_id, nome_produto, quantidade,
+            tipo_precao, nome_tipo_precao, preco_unitario, desconto, subtotal,
+            created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
+          ) VALUES (
+            ${venda.vendaId}, ${item.produtoId}, ${item.nomeProduto}, ${item.quantidade},
+            ${item.tipoPrecao}, ${item.nomeTipoPrecao}, ${item.precoUnitario}, ${item.desconto}, ${item.subtotal},
+            ${userId}, ${userId}, ${now.toISOString()}, ${now.toISOString()}, true, 0
+          )
+        `)
+      } catch {
+        await this.db.insert(dbVendaItem).values({
+          vendaId: venda.vendaId, produtoId: item.produtoId, nomeProduto: item.nomeProduto,
+          quantidade: item.quantidade, precoUnitario: item.precoUnitario,
+          desconto: item.desconto, subtotal: item.subtotal,
+          createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+        })
+      }
+    }
+
+    for (const pag of pagamentos) {
+      await this.db.insert(dbVendaPagamento).values({
+        vendaId: venda.vendaId, forma: pag.forma, valor: pag.valor,
+        createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+      })
+    }
+
+    // Debita estoque do produto acabado
+    for (const item of itemsDetalhados) {
+      await this.db.update(dbProduto).set({
+        estoqueAtual: sql`${dbProduto.estoqueAtual} - ${item.quantidade}`,
+        updatedDt: now, updatedBy: userId,
+      }).where(eq(dbProduto.produtoId, item.produtoId))
+    }
+
+    // Debita insumos da ficha técnica via pool direto com search_path
+    try {
+      await this.debitarInsumosDaVenda(
+        itemsDetalhados.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
+        userId
+      )
+    } catch (_) {
+      // Não bloqueia a venda se o débito de insumos falhar
+    }
+
+    // ── Fidelidade / Cashback ────────────────────────────────────────────────
+    // Nunca deixa o cashback quebrar a venda: tudo dentro de try/catch.
+    let cashbackUsado = 0
+    let cashbackCreditado = 0
+    try {
+      const cash = new CashbackService(this.db)
+      // 1. Resgate: usa saldo do cliente, se pedido. Registra como um pagamento
+      //    "Cashback (fidelidade)" pra reconciliar o total.
+      if (clienteId && usarCashback && usarCashback > 0) {
+        cashbackUsado = await cash.usar({ clienteId, vendaId: venda.vendaId, total, solicitado: usarCashback, userId })
+        if (cashbackUsado > 0) {
+          await this.db.insert(dbVendaPagamento).values({
+            vendaId: venda.vendaId, forma: 'Cashback (fidelidade)', valor: cashbackUsado,
+            createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+          })
+        }
+      }
+      // 2. Crédito: gera cashback pela venda (sobre o valor efetivamente pago).
+      cashbackCreditado = await cash.creditar({
+        clienteId, vendaId: venda.vendaId, subtotal, total, cashbackUsado, userId,
+      })
+    } catch (_) {
+      // fidelidade não configurada / tabelas ausentes — ignora
+    }
+
+    // Gera rascunho fiscal se módulo ativo
+    try {
+      const cfg = await new ConfiguracoesService(this.db).get()
+      if (cfg?.fiscalAtivo) {
+        await new FiscalService(this.db).criarNota({
+          tipo: 'NFC-e', valorTotal: total, vendaId: venda.vendaId,
+          itens: itemsDetalhados.map(item => ({
+            descricao: item.nomeProduto, quantidade: item.quantidade, precoUnitario: item.precoUnitario,
+          })),
+          userId,
+        })
+      }
+    } catch (_) {}
+
+    return { vendaId: venda.vendaId, cashbackUsado, cashbackCreditado }
+  }
 }

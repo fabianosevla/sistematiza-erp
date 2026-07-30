@@ -38,6 +38,9 @@ export const clienteInsertSchema = z.object({
   cidade:       z.string().max(100).optional().nullable(),
   uf:           ufOpcional,
   observacao:   z.string().max(500).optional().nullable(),
+  // Tabela de preço padrão do cliente. O PDV usa para escolher entre varejo e
+  // as cinco faixas de atacado — ver TIPOS_PRECO em lib/constants.ts.
+  tabelaPreco:  z.enum(['varejo','atacado_a','atacado_b','atacado_c','atacado_d','atacado_e']).default('varejo'),
 })
 
 /**
