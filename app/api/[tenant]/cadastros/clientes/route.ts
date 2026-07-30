@@ -34,7 +34,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 
       if (search) {
         // Busca por nome OU documento (CPF/CNPJ)
-        conditions.push(`(LOWER(nome_completo) LIKE $${idx} OR LOWER(COALESCE(documento, '')) LIKE $${idx})`)
+        // Busca também pelo nome fantasia — é o nome que aparece na listagem,
+        // então procurar por ele tem que funcionar.
+        conditions.push(`(LOWER(nome_completo) LIKE $${idx} OR LOWER(COALESCE(nome_fantasia, '')) LIKE $${idx} OR LOWER(COALESCE(documento, '')) LIKE $${idx})`)
         values.push(`%${search.toLowerCase()}%`)
         idx++
       }

@@ -145,13 +145,26 @@ export default function ClientesView({ tenantSlug }: Props) {
 
   const colunas: Coluna[] = [
     {
+      // Mostra o nome fantasia quando existe — é como o cliente é conhecido no
+      // dia a dia. A razão social fica embaixo, menor, porque ainda é
+      // necessária para nota fiscal e conferência de cadastro.
       chave: 'nomeCompleto', titulo: 'Nome', principal: true,
-      render: (c: any) => (
-        <span className="flex items-center gap-2">
-          {c.nomeCompleto}
-          {c.activeFlag === false && <Badge variant="outline" className="text-gray-400">Inativo</Badge>}
-        </span>
-      ),
+      render: (c: any) => {
+        const fantasia = (c.nomeFantasia ?? '').trim()
+        const razao    = (c.nomeCompleto ?? '').trim()
+        const usaFantasia = fantasia.length > 0 && fantasia !== razao
+        return (
+          <div className="min-w-0">
+            <span className="flex items-center gap-2">
+              {usaFantasia ? fantasia : razao}
+              {c.activeFlag === false && <Badge variant="outline" className="text-gray-400">Inativo</Badge>}
+            </span>
+            {usaFantasia && (
+              <span className="block text-xs text-gray-400 truncate">{razao}</span>
+            )}
+          </div>
+        )
+      },
     },
     {
       chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md',
@@ -196,7 +209,7 @@ export default function ClientesView({ tenantSlug }: Props) {
       <SearchInput
         valor={search}
         onChange={v => { setSearch(v); setPage(1) }}
-        placeholder="Buscar clientes..."
+        placeholder="Buscar por nome, fantasia ou CPF/CNPJ..."
       />
 
       <DataTable
@@ -333,7 +346,7 @@ export default function ClientesView({ tenantSlug }: Props) {
       {confirmDelete && (
         <ConfirmModal
           title="Excluir cliente"
-          message={`Excluir "${confirmDelete.nomeCompleto}"? Se ele tiver vendas associadas, será apenas inativado (histórico preservado).`}
+          message={`Excluir "${(confirmDelete.nomeFantasia ?? '').trim() || confirmDelete.nomeCompleto}"? Se ele tiver vendas associadas, será apenas inativado (histórico preservado).`}
           confirmLabel="Excluir"
           danger
           onConfirm={() => deleteMutation.mutate(confirmDelete.clienteId)}
@@ -346,7 +359,7 @@ export default function ClientesView({ tenantSlug }: Props) {
           tenantSlug={tenantSlug}
           entidade="cliente"
           entidadeId={showHistorico.clienteId}
-          titulo={showHistorico.nomeCompleto}
+          titulo={(showHistorico.nomeFantasia ?? '').trim() || showHistorico.nomeCompleto}
           onClose={() => setShowHistorico(null)}
         />
       )}
