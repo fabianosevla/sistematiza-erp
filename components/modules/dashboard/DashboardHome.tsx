@@ -7,9 +7,89 @@ import {
 
 interface Props { tenantSlug: string }
 
-function fmt(v: number) { return `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}` }
+// Os valores do dashboard vêm da API em REAIS (não em centavos, ao contrário
+// do resto do sistema) — por isso este arquivo não usa lib/format.ts.
+function fmt(v: number) {
+  const n = Number(v ?? 0)
+  if (!Number.isFinite(n)) return 'R$ 0,00'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 const COLORS = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#95a5a6']
 const tooltipFmt = (v: unknown) => fmt(Number(v ?? 0))
+
+// ── Escala dinâmica dos eixos ───────────────────────────────────────────────
+//
+// O formatador antigo era fixo: `R$${(v/1000).toFixed(0)}k`. Com faturamento
+// de R$ 357, todas as marcas caíam em "R$0k" — quatro rótulos idênticos e
+// nenhuma informação. Com R$ 12.400 daria "R$12k" em tudo acima de 11,5 mil.
+//
+// Aqui o topo e o passo do eixo são calculados a partir dos próprios dados,
+// e a unidade (reais, mil, milhão) é escolhida pela grandeza do momento.
+
+const PASSOS_BASE = [1, 2, 2.5, 5, 10]
+
+/**
+ * Calcula domínio, marcas e formatador a partir dos valores presentes.
+ * Garante rótulos distintos: o passo nunca é menor que a precisão exibida.
+ */
+function escala(valores: number[], opts: { moeda?: boolean; inteiro?: boolean } = {}) {
+  const limpos = valores.map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0)
+  const max = limpos.length ? Math.max(...limpos) : 0
+
+  // Sem dados positivos: eixo mínimo, sem inventar grandeza.
+  if (max <= 0) {
+    return {
+      dominio: [0, opts.inteiro ? 1 : 10] as [number, number],
+      marcas:  opts.inteiro ? [0, 1] : [0, 5, 10],
+      formatar: (v: any) => (opts.moeda ? fmtEixo(Number(v), 10) : String(Number(v))),
+    }
+  }
+
+  // Passo "redondo" que produza cerca de 4 intervalos.
+  const magnitude = Math.pow(10, Math.floor(Math.log10(max)))
+  let passo = magnitude
+  for (const base of PASSOS_BASE) {
+    const candidato = base * magnitude
+    if (max / candidato <= 4) { passo = candidato; break }
+    passo = 10 * magnitude
+  }
+  if (opts.inteiro) passo = Math.max(1, Math.ceil(passo))
+
+  const topo   = passo * Math.ceil(max / passo)
+  const marcas: number[] = []
+  for (let v = 0; v <= topo + passo / 2; v += passo) {
+    marcas.push(Number(v.toFixed(6)))
+  }
+
+  return {
+    dominio: [0, topo] as [number, number],
+    marcas,
+    formatar: (v: any) => {
+      const n = Number(v)
+      if (!Number.isFinite(n)) return ''
+      if (opts.inteiro) return String(Math.round(n))
+      return opts.moeda ? fmtEixo(n, topo) : String(n)
+    },
+  }
+}
+
+/**
+ * Rótulo curto de eixo, com a unidade escolhida pela grandeza do gráfico
+ * inteiro (o `topo`), não de cada marca — senão a mesma coluna misturaria
+ * "800" com "1,2 mil".
+ */
+function fmtEixo(n: number, topo: number): string {
+  if (topo >= 1_000_000) {
+    const v = n / 1_000_000
+    return `${v.toLocaleString('pt-BR', { maximumFractionDigits: v < 10 ? 1 : 0 })} mi`
+  }
+  if (topo >= 10_000) {
+    const v = n / 1_000
+    return `${v.toLocaleString('pt-BR', { maximumFractionDigits: v < 10 ? 1 : 0 })} mil`
+  }
+  return `R$ ${n.toLocaleString('pt-BR', { maximumFractionDigits: topo < 10 ? 2 : 0 })}`
+}
 
 export default function DashboardHome({ tenantSlug }: Props) {
   const { data, isLoading } = useQuery({
@@ -55,6 +135,17 @@ export default function DashboardHome({ tenantSlug }: Props) {
   const totalMes  = raw.receitaMes  ?? faturamento6m[faturamento6m.length - 1]?.valor ?? 0
   const qtdMes    = raw.qtdMes ?? 0
 
+  // Uma escala por gráfico, recalculada a cada render com os dados do momento.
+  const escFaturamento = escala(faturamento6m.map((d: any) => Number(d.valor)), { moeda: true })
+  const escVendasDia   = escala(vendasDia.map((d: any) => Number(d.valor)),     { moeda: true })
+  const escTopProdutos = escala(topProdutos.map((d: any) => Number(d.qtd)),     { inteiro: true })
+  const escReceitaDesp = escala(
+    // As duas séries dividem o mesmo eixo — o topo tem que considerar ambas,
+    // senão a barra maior estoura para fora da área do gráfico.
+    receitaVsDespesas.flatMap((d: any) => [Number(d.receita), Number(d.despesas)]),
+    { moeda: true },
+  )
+
   return (
     <div className="space-y-6">
       <div>
@@ -86,10 +177,16 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={faturamento6m} margin={{ left: -20 }}>
+              <BarChart data={faturamento6m} margin={{ left: 4, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `R$${(Number(v) / 1000).toFixed(0)}k`} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  width={62}
+                  domain={escFaturamento.dominio}
+                  ticks={escFaturamento.marcas}
+                  tickFormatter={escFaturamento.formatar}
+                />
                 <Tooltip formatter={tooltipFmt} labelStyle={{ fontSize: 12 }} />
                 <Bar dataKey="valor" fill="#2ecc71" radius={[4, 4, 0, 0]} name="Faturamento" />
               </BarChart>
@@ -103,12 +200,21 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={vendasDia} margin={{ left: -20 }}>
+              <LineChart data={vendasDia} margin={{ left: 4, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `R$${(Number(v) / 1000).toFixed(0)}k`} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  width={62}
+                  domain={escVendasDia.dominio}
+                  ticks={escVendasDia.marcas}
+                  tickFormatter={escVendasDia.formatar}
+                />
                 <Tooltip formatter={tooltipFmt} />
-                <Line type="monotone" dataKey="valor" stroke="#2ecc71" strokeWidth={2} dot={false} name="Vendas" />
+                {/* Com um único dia registrado a linha não tem o que ligar —
+                    o ponto garante que o dado apareça mesmo assim. */}
+                <Line type="monotone" dataKey="valor" stroke="#2ecc71" strokeWidth={2}
+                  dot={vendasDia.length <= 2} name="Vendas" />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -125,7 +231,14 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topProdutos} layout="vertical" margin={{ left: 10, right: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis type="number" tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  domain={escTopProdutos.dominio}
+                  ticks={escTopProdutos.marcas}
+                  tickFormatter={escTopProdutos.formatar}
+                  allowDecimals={false}
+                />
                 <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: '#6b7280' }} width={100}
                   tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + '…' : v} />
                 <Tooltip formatter={(v: unknown, name: unknown) => [
@@ -144,10 +257,16 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={receitaVsDespesas} margin={{ left: -20 }}>
+              <BarChart data={receitaVsDespesas} margin={{ left: 4, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#9ca3af' }} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} tickFormatter={v => `R$${(Number(v) / 1000).toFixed(0)}k`} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  width={62}
+                  domain={escReceitaDesp.dominio}
+                  ticks={escReceitaDesp.marcas}
+                  tickFormatter={escReceitaDesp.formatar}
+                />
                 <Tooltip formatter={tooltipFmt} />
                 <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
                 <Bar dataKey="receita"  fill="#2ecc71" radius={[4, 4, 0, 0]} name="Receita" />
@@ -167,7 +286,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={porForma} dataKey="valor" nameKey="forma" cx="50%" cy="50%" outerRadius={75}
+                <Pie data={porForma} dataKey="valor" nameKey="forma" cx="50%" cy="50%" outerRadius={70}
                   label={({ forma, percent }: any) => `${forma} ${(percent * 100).toFixed(0)}%`}
                   labelLine={false}>
                   {porForma.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
