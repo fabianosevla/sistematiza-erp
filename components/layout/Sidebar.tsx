@@ -132,9 +132,12 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
         recolhida ? 'px-3 justify-center' : 'px-5 justify-between'
       )}>
         {!recolhida && (
-          <div className="flex items-baseline">
-            <span className="text-[19px] font-bold text-white tracking-tight">Sistematiza</span>
-            <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.AI</span>
+          <div className="flex items-center gap-2 min-w-0">
+            <img src="/apple-icon.png" alt="" className="h-7 w-7 flex-shrink-0 rounded object-contain" />
+            <div className="flex items-baseline">
+              <span className="text-[19px] font-bold text-white tracking-tight">Sistematiza</span>
+              <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
+            </div>
           </div>
         )}
         <div className="flex items-center gap-1">

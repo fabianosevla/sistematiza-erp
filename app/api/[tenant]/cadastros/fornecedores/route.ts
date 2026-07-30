@@ -1,7 +1,9 @@
-﻿import type { NextRequest } from 'next/server'
+﻿// ESTE ARQUIVO VAI EM: app/api/[tenant]/cadastros/fornecedores/route.ts
+import type { NextRequest } from 'next/server'
 import { sql } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { fornecedorInsertSchema } from '@/lib/validations/cadastros'
 import { FornecedorService } from '@/lib/services/cadastros/FornecedorService'
 import { ok, created, serverError, badRequest } from '@/lib/api/responses'
@@ -48,8 +50,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         if (dup.rows.length > 0) return badRequest('Registro já existente')
       }
 
+      const uid     = await usuarioAtualIdDb(db)   // antes: literal 1
       const service = new FornecedorService(db)
-      const result  = await service.create(payload, 1)
+      const result  = await service.create(payload, uid)
       return created(result)
     } finally {
       release()

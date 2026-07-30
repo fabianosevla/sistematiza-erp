@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { PerfisService } from '@/lib/services/perfis/PerfisService'
 import { ok, created, serverError } from '@/lib/api/responses'
 
@@ -55,11 +56,12 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const payload = schema.parse(await req.json())
+      const uid = await usuarioAtualIdDb(db)   // antes: literal 1
       return created(await new PerfisService(db).criar({
         ...payload,
         percDescontoMax: String(payload.percDescontoMax),
         activeFlag: true,
-      }, 1))
+      }, uid))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

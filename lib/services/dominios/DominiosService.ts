@@ -1,3 +1,4 @@
+// ESTE ARQUIVO VAI EM: lib/services/dominios/DominiosService.ts
 import { eq, and, asc, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbDominio, dbDominioValor } from '@/lib/db/schemas/dominios'
@@ -56,16 +57,19 @@ export class DominiosService {
     return result
   }
 
-  async deleteValor(valorId: number) {
+  // userId opcional com padrão 1: as rotas que ainda não passam o usuário
+  // continuam compilando e se comportando como antes. Quando a rota passa,
+  // a auditoria registra quem de fato mexeu.
+  async deleteValor(valorId: number, userId = 1) {
     await this.db.update(dbDominioValor)
-      .set({ activeFlag: false, updatedDt: new Date(), updatedBy: 1 })
+      .set({ activeFlag: false, updatedDt: new Date(), updatedBy: userId })
       .where(eq(dbDominioValor.valorId, valorId))
     return { ok: true }
   }
 
-  async updateValor(valorId: number, novoValor: string) {
+  async updateValor(valorId: number, novoValor: string, userId = 1) {
     await this.db.update(dbDominioValor)
-      .set({ valor: novoValor, updatedDt: new Date(), updatedBy: 1 })
+      .set({ valor: novoValor, updatedDt: new Date(), updatedBy: userId })
       .where(eq(dbDominioValor.valorId, valorId))
     return { ok: true }
   }

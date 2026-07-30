@@ -7,6 +7,7 @@
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
+import { usuarioAtualId } from '@/lib/auth/usuarioAtual'
 import { ok, created, serverError, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
@@ -112,6 +113,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
+      // Quem está cadastrando. Antes era o literal 1 dentro do SQL.
+      const uid = await usuarioAtualId(client)
+
       // Impede cadastro duplicado: chave = documento (CPF/CNPJ), comparando só dígitos.
       const doc = body.documento?.trim() || null
       if (doc) {
@@ -131,7 +135,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           tipo_pessoa, nome_completo, nome_fantasia, documento, email, telefone, celular,
           cep, endereco, numero, complemento, bairro, cidade, uf, observacao, tabela_preco,
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,0,1,1,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,0,$17,$17,NOW(),NOW())
         RETURNING cliente_id as "clienteId"
       `, [
         body.tipoPessoa?.trim() || 'PF',
@@ -152,6 +156,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         // Valor fora da lista vira 'varejo' — nunca grava lixo na coluna
         (['varejo','atacado_a','atacado_b','atacado_c','atacado_d','atacado_e']
           .includes(String(body.tabelaPreco)) ? body.tabelaPreco : 'varejo'),
+        uid,
       ])
       return created(res.rows[0])
     } finally {
@@ -174,6 +179,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
+      // Inativar é uma alteração: quem inativou tem que ficar registrado.
+      const uid = await usuarioAtualId(client)
+
       // Está associado a alguma venda ou pedido? Se sim, só inativa (preserva histórico).
       let associado = false
       const vend = await client
@@ -190,8 +198,8 @@ export async function DELETE(req: NextRequest, { params }: Params) {
 
       if (associado) {
         await client.query(
-          `UPDATE t_cliente SET active_flg = false, updated_dt = NOW() WHERE cliente_id = $1`,
-          [id]
+          `UPDATE t_cliente SET active_flg = false, updated_dt = NOW(), updated_by = $2 WHERE cliente_id = $1`,
+          [id, uid]
         )
         return ok({ inativado: true, message: 'Cliente inativado — possui vendas associadas, histórico preservado.' })
       }

@@ -1,8 +1,10 @@
 // @ts-nocheck
+// ESTE ARQUIVO VAI EM: app/api/[tenant]/dominios/route.ts
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { DominiosService } from '@/lib/services/dominios/DominiosService'
 import { ok, created, serverError } from '@/lib/api/responses'
 
@@ -29,7 +31,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { codigo, nome, descricao } = schema.parse(await req.json())
-      return created(await new DominiosService(db).criarDominio(codigo, nome, descricao, 1))
+      const uid = await usuarioAtualIdDb(db)   // antes: literal 1
+      return created(await new DominiosService(db).criarDominio(codigo, nome, descricao, uid))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

@@ -785,11 +785,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                       </td>
                       <td className="px-1 py-2 text-right text-gray-600 whitespace-nowrap">{fmt(item.precoUnitario)}</td>
                       <td className="px-1 py-2">
-                        <input type="number" min="0" step="0.01"
+                        <input type="number" min="0" step="0.01" inputMode="decimal"
                           value={item.desconto ? (item.desconto / 100).toFixed(2) : ''}
                           onChange={e => definirDescontoItem(item.produtoId, e.target.value)}
                           placeholder="0,00"
-                          className="w-16 h-6 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-green-400" />
+                          className="sem-spinner w-16 h-6 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-green-400" />
                       </td>
                       <td className="px-2 py-2 text-right font-bold whitespace-nowrap" style={{ color: '#2ecc71' }}>{fmt(item.subtotal)}</td>
                       <td className="px-1 py-2 text-center align-top">
@@ -907,7 +907,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             {/* Desconto */}
             <div>
               <Label className="text-xs">Desconto geral (R$) <span className="text-gray-300">(F6)</span></Label>
-              <Input ref={descontoRef} type="number" min="0" step="0.01" value={desconto} onChange={e => setDesconto(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
+              <Input ref={descontoRef} type="number" min="0" step="0.01" inputMode="decimal" value={desconto} onChange={e => setDesconto(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
             </div>
             <div className="flex gap-1.5">
               {[0, 5, 10, 15].map(pct => (
@@ -921,7 +921,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             {/* Acréscimo (R$) — taxa de entrega embutida no total, sem linha de frete */}
             <div>
               <Label className="text-xs">Acréscimo{isDelivery ? ' — taxa de entrega' : ''} (R$)</Label>
-              <Input type="number" min="0" step="0.01" value={acrescimo} onChange={e => setAcrescimo(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
+              <Input type="number" min="0" step="0.01" inputMode="decimal" value={acrescimo} onChange={e => setAcrescimo(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
             </div>
 
             {/* Cashback / Fidelidade */}
@@ -963,7 +963,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             {(formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && (
               <div>
                 <Label className="text-xs">Valor recebido (R$)</Label>
-                <Input type="number" min="0" step="0.01" value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
+                <Input type="number" min="0" step="0.01" inputMode="decimal" value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
                 {troco > 0 && (
                   <div className="flex justify-between mt-2 px-1">
                     <span className="text-sm text-amber-600">Troco</span>

@@ -15,6 +15,7 @@
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
+import { usuarioAtualId } from '@/lib/auth/usuarioAtual'
 import { ok, created, serverError, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
@@ -46,7 +47,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         ? `(
             SELECT insumo_id AS id, nome, descricao, codigo_barras, unidade, tipo,
                    estoque_atual::numeric AS estoque_atual, estoque_minimo::numeric AS estoque_minimo,
-                   preco_custo, fornecedor_id, 'insumo'::text AS origem
+                   preco_custo, fornecedor_id, 'insumo'::text AS origem,
+                   created_dt, created_by, updated_dt, updated_by
             FROM t_insumo WHERE active_flg = true
             UNION ALL
             SELECT (-p.produto_id) AS id, p.nome, p.descricao, p.codigo_barras, p.unidade, 'Produto'::varchar AS tipo,
@@ -58,13 +60,15 @@ export async function GET(req: NextRequest, { params }: Params) {
                      LEFT JOIN t_produto p2 ON (-pi.insumo_id) = p2.produto_id AND pi.insumo_id < 0 AND p2.active_flg = true
                      WHERE pi.produto_id = p.produto_id AND pi.active_flg = true
                    ), p.preco_custo, 0) AS preco_custo,
-                   NULL::integer AS fornecedor_id, 'produto'::text AS origem
+                   NULL::integer AS fornecedor_id, 'produto'::text AS origem,
+                   p.created_dt, p.created_by, p.updated_dt, p.updated_by
             FROM t_produto p WHERE p.active_flg = true AND p.insumo_flg = true
           )`
         : `(
             SELECT insumo_id AS id, nome, descricao, codigo_barras, unidade, tipo,
                    estoque_atual::numeric AS estoque_atual, estoque_minimo::numeric AS estoque_minimo,
-                   preco_custo, fornecedor_id, 'insumo'::text AS origem
+                   preco_custo, fornecedor_id, 'insumo'::text AS origem,
+                   created_dt, created_by, updated_dt, updated_by
             FROM t_insumo WHERE active_flg = true
           )`
 
@@ -101,6 +105,11 @@ export async function GET(req: NextRequest, { params }: Params) {
         fornecedorId:   r.fornecedor_id,
         activeFlag:     true,
         modificationNum: 0,
+        // Auditoria — a tela traduz o ID em nome via AuditoriaInfo.
+        createdDt:      r.created_dt,
+        createdBy:      r.created_by,
+        updatedDt:      r.updated_dt,
+        updatedBy:      r.updated_by,
       }))
 
       return ok({ data, meta: { total, page, limit, totalPages } })
@@ -120,6 +129,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
+      // Quem está cadastrando. Antes era o literal 1 dentro do SQL.
+      const uid = await usuarioAtualId(client)
+
       // Impede cadastro duplicado: chave = nome (insumo ativo).
       const dup = await client.query(
         `SELECT insumo_id FROM t_insumo
@@ -133,7 +145,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           nome, descricao, codigo_barras, unidade, tipo,
           estoque_atual, estoque_minimo, preco_custo, fornecedor_id,
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,0,1,1,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,0,$10,$10,NOW(),NOW())
         RETURNING insumo_id as "insumoId"
       `, [
         body.nome.trim(),
@@ -148,6 +160,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         Number(body.estoqueMinimo ?? 0),
         Number(body.precoCusto ?? 0),
         body.fornecedorId ? Number(body.fornecedorId) : null,
+        uid,
       ])
       return created(res.rows[0])
     } finally {
