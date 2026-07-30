@@ -330,7 +330,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
           <table className="w-full min-w-max text-xs">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left text-xs font-medium text-gray-500 px-3 py-2 w-36 sticky left-0 bg-gray-50">Produto</th>
+                <th className="text-left text-xs font-medium text-gray-500 px-3 py-2 w-56 sticky left-0 bg-gray-50">Produto</th>
                 <th className="text-center text-xs font-medium text-gray-500 px-2 py-2 w-16">Estoque</th>
                 {DIAS.map((d, i) => (
                   <th key={d} className="text-center text-xs font-medium text-gray-400 px-0 py-1" colSpan={2}>
@@ -356,9 +356,16 @@ export default function ProducaoView({ tenantSlug }: Props) {
 
                 return (
                   <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/30 last:border-0">
-                    <td className="px-3 py-2 text-xs font-medium text-gray-900 sticky left-0 bg-white whitespace-nowrap max-w-[140px] truncate">{p.nome}</td>
-                    <td className="px-2 py-2 text-center">
-                      <span className={`text-xs font-semibold ${estoque <= (p.estoqueMinimo ?? 0) ? 'text-red-600' : 'text-gray-700'}`}>{estoque}</span>
+                    {/* Nome quebra em até duas linhas em vez de ser cortado com
+                        reticências. A linha cresce junto, o que também deixa a
+                        grade mais legível. O title mostra o nome inteiro. */}
+                    <td
+                      title={p.nome}
+                      className="px-3 py-3 text-xs font-medium text-gray-900 sticky left-0 bg-white align-middle w-56 max-w-[224px] leading-snug">
+                      {p.nome}
+                    </td>
+                    <td className="px-2 py-3 text-center align-middle">
+                      <span className={`text-sm font-semibold ${estoque <= (p.estoqueMinimo ?? 0) ? 'text-red-600' : 'text-gray-700'}`}>{estoque}</span>
                     </td>
                     {dias.map(dia => {
                       const d    = isoDate(dia)
@@ -368,7 +375,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                       totalPed  += ped
                       totalPrev += prev
                       return (
-                        <td key={`dia-${d}`} className="px-0 py-1" colSpan={2}>
+                        <td key={`dia-${d}`} className="px-0 py-2 align-middle" colSpan={2}>
                           <div className="grid grid-cols-2">
                             <span className="text-center"><CelulaPedido valor={ped} /></span>
                             <span className="text-center">
@@ -378,19 +385,19 @@ export default function ProducaoView({ tenantSlug }: Props) {
                         </td>
                       )
                     })}
-                    <td className="px-2 py-2 text-center">
-                      <span className={`text-xs font-semibold ${totalPed > 0 ? 'text-blue-700' : 'text-gray-200'}`}>{totalPed > 0 ? totalPed : '—'}</span>
+                    <td className="px-2 py-3 text-center align-middle">
+                      <span className={`text-sm font-semibold ${totalPed > 0 ? 'text-blue-700' : 'text-gray-200'}`}>{totalPed > 0 ? totalPed : '—'}</span>
                     </td>
-                    <td className="px-2 py-2 text-center">
+                    <td className="px-2 py-3 text-center align-middle">
                       {(() => {
                         const prevEst = estoque + totalPrev - totalPed
-                        return <span className={`text-xs font-semibold ${prevEst < 0 ? 'text-red-600' : 'text-gray-700'}`}>{prevEst}</span>
+                        return <span className={`text-sm font-semibold ${prevEst < 0 ? 'text-red-600' : 'text-gray-700'}`}>{prevEst}</span>
                       })()}
                     </td>
-                    <td className="px-2 py-2 text-center bg-orange-50">
+                    <td className="px-2 py-3 text-center align-middle bg-orange-50">
                       {(() => {
                         const ps = prevSemanal[p.produtoId] ?? 0
-                        return <span className={`text-xs font-bold ${ps > 0 ? 'text-orange-600' : 'text-gray-300'}`}>{ps > 0 ? ps : '—'}</span>
+                        return <span className={`text-sm font-bold ${ps > 0 ? 'text-orange-600' : 'text-gray-300'}`}>{ps > 0 ? ps : '—'}</span>
                       })()}
                     </td>
                   </tr>
@@ -400,8 +407,8 @@ export default function ProducaoView({ tenantSlug }: Props) {
             {produtos.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
-                  <td className="px-3 py-2 text-xs font-bold text-gray-600 sticky left-0 bg-gray-50">Total Geral ({produtos.length})</td>
-                  <td className="px-2 py-2 text-center text-xs font-bold text-gray-700">
+                  <td className="px-3 py-3 text-xs font-bold text-gray-600 sticky left-0 bg-gray-50">Total Geral ({produtos.length})</td>
+                  <td className="px-2 py-3 text-center text-sm font-bold text-gray-700">
                     {produtos.reduce((a: number, p: any) => a + (p.estoqueAtual ?? 0), 0)}
                   </td>
                   {dias.map(dia => {
