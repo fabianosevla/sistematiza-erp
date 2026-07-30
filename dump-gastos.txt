@@ -1,0 +1,221 @@
+
+
+===== app\api\[tenant]\financeiro\gastos-fixos\categorias\route.ts =====
+// @ts-nocheck
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { dbGastoFixoCategoria } from '@/lib/db/schemas/financeiro'
+import { ok, created, serverError } from '@/lib/api/responses'
+import { desc } from 'drizzle-orm'
+
+type Params = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const categorias = await db.select().from(dbGastoFixoCategoria).orderBy(dbGastoFixoCategoria.ordem)
+      return ok(categorias)
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body = await req.json()
+      const { nome, ordem } = body
+      if (!nome?.trim()) return serverError(new Error('Nome é obrigatório'))
+      const now = new Date()
+      const [result] = await db.insert(dbGastoFixoCategoria).values({
+        nome:      nome.trim(),
+        ordem:     ordem ?? 99,
+        createdBy: 1, updatedBy: 1, createdDt: now, updatedDt: now,
+      }).returning({ categoriaId: dbGastoFixoCategoria.categoriaId })
+      return created(result)
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+
+===== app\api\[tenant]\financeiro\gastos-fixos\route.ts =====
+// @ts-nocheck
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { pool } from '@/lib/db/connection'
+import { ok, serverError } from '@/lib/api/responses'
+
+type Params = { params: { tenant: string } }
+
+export async function GET(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { searchParams } = new URL(req.url)
+    const ano = Number(searchParams.get('ano') ?? new Date().getFullYear())
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      const [catsRes, valsRes] = await Promise.all([
+        client.query(`SELECT * FROM t_gasto_fixo_categoria WHERE active_flg = true ORDER BY ordem`),
+        client.query(`SELECT * FROM t_gasto_fixo_valor WHERE ano = $1 AND active_flg = true`, [ano]),
+      ])
+
+      const categorias = catsRes.rows.map(r => ({
+        categoriaId: r.categoria_id,
+        nome:        r.nome,
+        ordem:       r.ordem,
+      }))
+
+      // grade[categoriaId][mes] = valor
+      const grade: Record<number, Record<number, number>> = {}
+      for (const cat of categorias) grade[cat.categoriaId] = {}
+      for (const val of valsRes.rows) {
+        if (!grade[val.categoria_id]) grade[val.categoria_id] = {}
+        grade[val.categoria_id][val.mes] = Number(val.valor)
+      }
+
+      return ok({ categorias, grade, ano })
+    } finally {
+      client.release()
+    }
+  } catch (err) {
+    return serverError(err)
+  }
+}
+
+export async function POST(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const body   = await req.json()
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+
+      // Copiar do mês anterior
+      if (body.acao === 'copiarMesAnterior') {
+        const { mes, ano } = body
+        const mesPrev = mes === 1 ? 12 : mes - 1
+        const anoPrev = mes === 1 ? ano - 1 : ano
+        const prev = await client.query(
+          `SELECT categoria_id, valor FROM t_gasto_fixo_valor WHERE ano = $1 AND mes = $2 AND active_flg = true AND valor > 0`,
+          [anoPrev, mesPrev]
+        )
+        let copiados = 0
+        for (const row of prev.rows) {
+          await client.query(`
+            INSERT INTO t_gasto_fixo_valor (categoria_id, ano, mes, valor, created_dt, updated_dt, created_by, updated_by, active_flg, modification_num)
+            VALUES ($1, $2, $3, $4, NOW(), NOW(), 1, 1, true, 0)
+            ON CONFLICT (categoria_id, ano, mes) DO UPDATE SET valor = $4, updated_dt = NOW()
+          `, [row.categoria_id, ano, mes, row.valor])
+          copiados++
+        }
+        return ok({ copiados })
+      }
+
+      // Propagar valor de janeiro para todos os meses da linha
+      if (body.acao === 'propagarAnual') {
+        const { categoriaId, ano, valor } = body
+        for (let mes = 1; mes <= 12; mes++) {
+          await client.query(`
+            INSERT INTO t_gasto_fixo_valor (categoria_id, ano, mes, valor, created_dt, updated_dt, created_by, updated_by, active_flg, modification_num)
+            VALUES ($1, $2, $3, $4, NOW(), NOW(), 1, 1, true, 0)
+            ON CONFLICT (categoria_id, ano, mes) DO UPDATE SET valor = $4, updated_dt = NOW()
+          `, [categoriaId, ano, mes, valor])
+        }
+        return ok({ propagado: true })
+      }
+
+      // Salvar célula individual
+      const { categoriaId, ano, mes, valor } = body
+      await client.query(`
+        INSERT INTO t_gasto_fixo_valor (categoria_id, ano, mes, valor, created_dt, updated_dt, created_by, updated_by, active_flg, modification_num)
+        VALUES ($1, $2, $3, $4, NOW(), NOW(), 1, 1, true, 0)
+        ON CONFLICT (categoria_id, ano, mes) DO UPDATE SET valor = $4, updated_dt = NOW()
+      `, [categoriaId, ano, mes, valor])
+      return ok({ ok: true })
+    } finally {
+      client.release()
+    }
+  } catch (err) {
+    return serverError(err)
+  }
+}
+
+
+===== lib\services\financeiro\GastosFixosService.ts =====
+import { and, eq, asc } from 'drizzle-orm'
+import type { AppDB } from '@/lib/db/connection'
+import { dbGastoFixoCategoria, dbGastoFixoValor } from '@/lib/db/schemas/financeiro'
+
+export class GastosFixosService {
+  constructor(private db: AppDB) {}
+
+  async getCategorias() {
+    return this.db.select().from(dbGastoFixoCategoria)
+      .where(eq(dbGastoFixoCategoria.activeFlag, true))
+      .orderBy(asc(dbGastoFixoCategoria.ordem))
+  }
+
+  async criarCategoria(nome: string, userId: number) {
+    const now = new Date()
+    const todas = await this.getCategorias()
+    const [result] = await this.db.insert(dbGastoFixoCategoria).values({
+      nome, ordem: todas.length + 1,
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    }).returning({ categoriaId: dbGastoFixoCategoria.categoriaId })
+    return result
+  }
+
+  async getGrade(ano: number) {
+    const [categorias, valores] = await Promise.all([
+      this.getCategorias(),
+      this.db.select().from(dbGastoFixoValor).where(
+        and(eq(dbGastoFixoValor.ano, ano), eq(dbGastoFixoValor.activeFlag, true))
+      ),
+    ])
+
+    const grade: Record<number, Record<number, number>> = {}
+    for (const v of valores) {
+      if (!grade[v.categoriaId]) grade[v.categoriaId] = {}
+      grade[v.categoriaId][v.mes] = v.valor
+    }
+
+    return { categorias, grade, ano }
+  }
+
+  async salvarValor({ categoriaId, ano, mes, valor, userId }: {
+    categoriaId: number; ano: number; mes: number; valor: number; userId: number
+  }) {
+    const now = new Date()
+    const [existing] = await this.db.select().from(dbGastoFixoValor)
+      .where(and(
+        eq(dbGastoFixoValor.categoriaId, categoriaId),
+        eq(dbGastoFixoValor.ano, ano),
+        eq(dbGastoFixoValor.mes, mes),
+      ))
+
+    if (existing) {
+      await this.db.update(dbGastoFixoValor).set({ valor, updatedDt: now, updatedBy: userId })
+        .where(eq(dbGastoFixoValor.valorId, existing.valorId))
+      return { valorId: existing.valorId }
+    }
+
+    const [result] = await this.db.insert(dbGastoFixoValor).values({
+      categoriaId, ano, mes, valor,
+      createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
+    }).returning({ valorId: dbGastoFixoValor.valorId })
+    return result
+  }
+
+  async getTotalMes(ano: number, mes: number): Promise<number> {
+    const valores = await this.db.select().from(dbGastoFixoValor)
+      .where(and(eq(dbGastoFixoValor.ano, ano), eq(dbGastoFixoValor.mes, mes), eq(dbGastoFixoValor.activeFlag, true)))
+    return valores.reduce((a, v) => a + v.valor, 0)
+  }
+}
