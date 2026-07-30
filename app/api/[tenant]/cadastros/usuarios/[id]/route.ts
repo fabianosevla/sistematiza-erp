@@ -1,10 +1,11 @@
 // @ts-nocheck
-// app/api/[tenant]/cadastros/usuarios/[id]/route.ts
+// ESTE ARQUIVO VAI EM: app/api/[tenant]/cadastros/usuarios/[id]/route.ts
 import type { NextRequest } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { dbUsuario } from '@/lib/db/schemas/cadastros'
 import { clerkClient } from '@clerk/nextjs/server'
 import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
@@ -25,7 +26,11 @@ export async function PUT(req: NextRequest, { params }: Params) {
         .from(dbUsuario)
         .where(eq(dbUsuario.usuarioId, id))
       if (!usuario) return notFound('Usuário não encontrado')
-      const updates: any = { updatedDt: new Date() }
+
+      // Quem está alterando. Antes o updated_by nem era tocado aqui.
+      const uid = await usuarioAtualIdDb(db)
+
+      const updates: any = { updatedDt: new Date(), updatedBy: uid }
       if (nome?.trim())        updates.nome    = nome.trim()
       if (email?.trim())       updates.email   = email.trim()
       if (perfilId !== undefined) updates.perfilId = perfilId

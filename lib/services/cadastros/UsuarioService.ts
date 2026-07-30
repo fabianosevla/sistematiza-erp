@@ -1,3 +1,4 @@
+// ESTE ARQUIVO VAI EM: lib/services/cadastros/UsuarioService.ts
 import { and, eq, count, asc, ilike } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbUsuario } from '@/lib/db/schemas/cadastros'
@@ -48,13 +49,22 @@ export class UsuarioService {
     return result
   }
 
-  async update(id: number, payload: { nome?: string; email?: string; clerkId?: string; perfil?: string; perfilId?: number | null }) {
+  // userId opcional: este método é chamado tanto por rota (onde há usuário
+  // logado) quanto pelo fluxo de convite, que roda antes de existir sessão
+  // daquela pessoa. Quando não vier, não mexe em updated_by — melhor não
+  // gravar do que gravar errado.
+  async update(
+    id: number,
+    payload: { nome?: string; email?: string; clerkId?: string; perfil?: string; perfilId?: number | null },
+    userId?: number,
+  ) {
     const updates: any = { updatedDt: new Date() }
     if (payload.nome    != null) updates.nome    = payload.nome
     if (payload.email   != null) updates.email   = payload.email
     if (payload.clerkId != null) updates.clerkId = payload.clerkId
     if (payload.perfil  != null) updates.perfil  = payload.perfil
     if (payload.perfilId !== undefined) updates.perfilId = payload.perfilId
+    if (userId != null) updates.updatedBy = userId
     const [result] = await this.db
       .update(dbUsuario)
       .set(updates)

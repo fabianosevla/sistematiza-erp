@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
 import type { Config } from './ClientShell'
 
 interface Props {
@@ -247,9 +248,12 @@ export default function Header({
           {logoPreview ? (
             <img src={logoPreview} alt="Logo" className="h-7 w-auto object-contain" />
           ) : (
-            <div className="flex items-baseline">
-              <span className="text-sm font-bold text-gray-900">sistematiza</span>
-              <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+            <div className="flex items-center gap-2">
+              <img src="/apple-icon.png" alt="" className="h-6 w-6 object-contain rounded" />
+              <div className="flex items-baseline">
+                <span className="text-sm font-bold text-gray-900">Sistematiza</span>
+                <span className="text-sm font-bold" style={{ color: '#2ecc71' }}>.ai</span>
+              </div>
             </div>
           )}
         </div>
@@ -334,11 +338,6 @@ export default function Header({
               </div>
             ))}
           </div>
-          {notifs.length > 0 && (
-            <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-50">
-              Alertas em cinza já foram vistos. Se a situação piorar, voltam a aparecer.
-            </p>
-          )}
         </div>
       )}
 
@@ -367,6 +366,12 @@ export default function Header({
                 Habilitações de módulos
                 {modulosPendentes > 0 && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
               </button>
+              {/* Fora do <button> da aba: botão dentro de botão é HTML inválido. */}
+              {aba === 'modulos' && (
+                <InfoTip className="mb-1.5">
+                  Define o que aparece no menu lateral. As mudanças só valem depois de salvar.
+                </InfoTip>
+              )}
             </div>
 
             {/* ══ ABA 1 — CONFIGURAÇÕES DE CONTA ══════════════════════════ */}
@@ -502,10 +507,7 @@ export default function Header({
                   </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-between gap-3">
-                  <p className="text-xs text-gray-400">
-                    {contaPendente ? 'Alterações ainda não salvas.' : 'Tudo salvo.'}
-                  </p>
+                <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-end gap-3">
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={fecharModal}>Fechar</Button>
                     <Button size="sm"
@@ -522,10 +524,6 @@ export default function Header({
             {aba === 'modulos' && (
               <>
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                  <p className="text-xs text-gray-400 -mb-2">
-                    Escolha o que aparece no menu lateral. As mudanças só valem depois de salvar.
-                  </p>
-
                   {grupos.map(grupo => (
                     <div key={grupo}>
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{grupo}</p>
@@ -537,7 +535,8 @@ export default function Header({
                             <div key={modulo.key} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                               <span className="text-sm text-gray-700">
                                 {modulo.label}
-                                {alterado && <span className="ml-2 text-[10px] text-amber-500 font-medium">alterado</span>}
+                                {/* Marca o que ainda não foi salvo sem escrever nada. */}
+                                {alterado && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
                               </span>
                               <button
                                 onClick={() => handleToggle(modulo.key)}
@@ -553,12 +552,7 @@ export default function Header({
                   ))}
                 </div>
 
-                <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-between gap-3">
-                  <p className="text-xs text-gray-400">
-                    {modulosPendentes > 0
-                      ? `${modulosPendentes} alteração(ões) pendente(s).`
-                      : 'Tudo salvo.'}
-                  </p>
+                <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-end gap-3">
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm"
                       onClick={() => setModulosLocal({})}

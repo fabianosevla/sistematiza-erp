@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { useClerk } from '@clerk/nextjs'
 import { useQuery } from '@tanstack/react-query'
-import { ShoppingCart, LayoutGrid, ClipboardList, Bike, LogOut, Code2, Sun, Moon } from 'lucide-react'
+import { ShoppingCart, LayoutGrid, ClipboardList, Bike, LogOut, Sun, Moon } from 'lucide-react'
 import ComandasView from '@/components/modules/comandas/ComandasView'
 import PdvBalcao from './PdvBalcao'
 import PdvMesas from './PdvMesas'
@@ -30,6 +30,10 @@ const ABAS = [
 // seguida de atributos. Esta forma evita o problema por completo.
 const Anchor = 'a' as const
 
+// Mesma cor do menu lateral do gerencial. É a mesma aplicação — o PDV não
+// pode parecer outro produto.
+const COR_BARRA = '#0F1117'
+
 export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props) {
   const [aba, setAba] = useState<Aba>('balcao')
   const { signOut } = useClerk()
@@ -43,27 +47,34 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-gray-50">
-      <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0">
+      <header
+        className="h-14 flex items-center justify-between px-4 flex-shrink-0 border-b border-white/5"
+        style={{ backgroundColor: COR_BARRA }}
+      >
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <Code2 size={18} style={{ color: '#2ecc71' }} />
+          {/* Marca idêntica à do menu lateral do gerencial: mesmo ícone,
+              mesma grafia, mesmo tamanho. */}
+          <div className="flex items-center gap-2">
+            <img src="/apple-icon.png" alt="" className="h-7 w-7 flex-shrink-0 rounded object-contain" />
             <div className="flex items-baseline">
-              <span className="text-lg font-bold text-gray-900">sistematiza</span>
-              <span className="text-lg font-bold" style={{ color: '#2ecc71' }}>.ai</span>
+              <span className="text-[19px] font-bold text-white tracking-tight">Sistematiza</span>
+              <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
             </div>
           </div>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500 uppercase tracking-wide">
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 text-white/60 uppercase tracking-wide">
             PDV
           </span>
         </div>
 
-        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+        <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1">
           {ABAS.map(item => (
             <button
               key={item.key}
               onClick={() => setAba(item.key)}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                aba === item.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                aba === item.key
+                  ? 'bg-[#2ecc71]/15 text-white'
+                  : 'text-white/50 hover:text-white/80 hover:bg-white/5'
               }`}
             >
               <item.icon size={14} />
@@ -75,7 +86,7 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
         <div className="flex items-center gap-1">
           <button
             onClick={toggleDarkMode}
-            className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-2 text-white/60 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
             title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
@@ -84,7 +95,7 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
           {temGerencial && (
             <Anchor
               href={`/${tenantSlug}`}
-              className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-700 transition-colors px-3 py-2 rounded-lg hover:bg-gray-50"
+              className="flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors px-3 py-2 rounded-lg hover:bg-white/10"
               title="Voltar ao gerencial"
             >
               Gerencial
@@ -92,7 +103,7 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
           )}
           <button
             onClick={() => signOut({ redirectUrl: '/sign-in' })}
-            className="flex items-center gap-2 text-sm text-gray-400 hover:text-red-500 transition-colors px-3 py-2 rounded-lg hover:bg-red-50"
+            className="flex items-center gap-2 text-sm text-white/60 hover:text-red-400 transition-colors px-3 py-2 rounded-lg hover:bg-white/10"
             title="Sair do sistema"
           >
             <LogOut size={15} />
