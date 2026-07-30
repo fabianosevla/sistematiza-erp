@@ -1,17 +1,16 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, ChevronRight, Clock, CheckCircle, XCircle, Package, ArrowRight, Pencil } from 'lucide-react'
+import { Plus, X, Trash2, ChevronRight, Clock, CheckCircle, XCircle, Package, ArrowRight, Pencil, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
+import { TIPOS_PRECO } from '@/lib/constants'
 
 interface Props { tenantSlug: string }
-
-
 
 // CORREÇÃO ("Invalid Date"): a API devolve timestamp completo
 // ("2026-07-30T00:00:00.000Z"), e a versão anterior concatenava 'T12:00:00'
@@ -40,6 +39,49 @@ const PERIODOS = [
   { value: 'tudo',     label: 'Tudo' },
 ]
 
+// ── Tabela de preço ─────────────────────────────────────────────────────────
+// O preço de cada item é definido AQUI, no front: a rota e o PedidoService
+// gravam o precoUnitario que a tela envia. Então é aqui que a tabela do
+// cliente precisa ser aplicada.
+//
+// Guardamos todas as faixas de preço no próprio item ao adicioná-lo. Assim,
+// ao trocar de cliente, dá para recalcular sem consultar o catálogo de novo —
+// a busca de produtos aqui é sob demanda e não teria o produto em mãos.
+//
+// Itens carregados na EDIÇÃO de um pedido antigo não têm `precos`, e por isso
+// mantêm o valor que foi negociado na época. Trocar o cliente não reprecifica
+// um pedido já registrado.
+function numeroDe(v: any): number {
+  if (v === null || v === undefined) return 0
+  const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v)
+  return Number.isFinite(n) ? Math.round(n) : 0
+}
+
+function precosDoProduto(p: any) {
+  return {
+    varejo:    numeroDe(p?.precoVarejo   ?? p?.preco_varejo),
+    atacado_a: numeroDe(p?.precoAtacadoA ?? p?.preco_atacado_a),
+    atacado_b: numeroDe(p?.precoAtacadoB ?? p?.preco_atacado_b),
+    atacado_c: numeroDe(p?.precoAtacadoC ?? p?.preco_atacado_c),
+    atacado_d: numeroDe(p?.precoAtacadoD ?? p?.preco_atacado_d),
+    atacado_e: numeroDe(p?.precoAtacadoE ?? p?.preco_atacado_e),
+    legado:    numeroDe(p?.precoAtacado  ?? p?.preco_atacado),
+  }
+}
+
+// Mesma cadeia de fallback de VendaService.resolverPreco():
+// faixa escolhida → atacado legado → varejo.
+function precoNaTabela(precos: any, tabela: string): number {
+  if (!precos) return 0
+  const escolhido = numeroDe(precos[tabela])
+  if (escolhido > 0) return escolhido
+  if (tabela !== 'varejo') {
+    if (precos.legado > 0) return precos.legado
+    if (precos.varejo > 0) return precos.varejo
+  }
+  return numeroDe(precos.varejo)
+}
+
 export default function PedidosView({ tenantSlug }: Props) {
   const qc = useQueryClient()
   const { toast } = useToast()
@@ -52,6 +94,8 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [editandoPedidoId, setEditandoPedidoId] = useState<number | null>(null)
   const [buscaCliente, setBuscaCliente]   = useState('')
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
+  // Tabela de preço em vigor no formulário. Sem cliente = varejo.
+  const [tabelaPreco, setTabelaPreco]     = useState<string>('varejo')
   const [buscaProduto, setBuscaProduto]   = useState('')
   const [itens, setItens]                 = useState<any[]>([])
   const [tipoVenda, setTipoVenda]         = useState('entrega')
@@ -63,6 +107,9 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [valorEntregaEdit, setValorEntregaEdit] = useState(0)
   const [qtdProduto, setQtdProduto]       = useState(1)
   const [editandoItem, setEditandoItem]   = useState<number | null>(null)
+
+  const rotuloTabela = (TIPOS_PRECO as any)[tabelaPreco] ?? 'Varejo'
+  const ehAtacado    = tabelaPreco !== 'varejo'
 
   const { data: listData, isLoading } = useQuery({
     queryKey: ['pedidos', tenantSlug, filtroStatus, periodo],
@@ -184,6 +231,34 @@ export default function PedidosView({ tenantSlug }: Props) {
     setEnderecoEntrega(''); setObservacao(''); setQtdProduto(1)
     setValorEntregaEdit(0)
     setEditandoPedidoId(null)
+    setTabelaPreco('varejo')
+  }
+
+  // Reprecifica apenas os itens que foram adicionados nesta sessão (têm
+  // `precos` guardados). Itens vindos de um pedido salvo mantêm o valor
+  // original — trocar o cliente não reescreve um preço já acordado.
+  function reprecificar(novaTabela: string) {
+    setItens(prev => prev.map(i => {
+      if (!i.precos) return i
+      const novo = precoNaTabela(i.precos, novaTabela)
+      return novo > 0 ? { ...i, precoUnitario: novo } : i
+    }))
+  }
+
+  function selecionarCliente(c: any) {
+    setClienteSelecionado(c)
+    setBuscaCliente('')
+    const nova = c.tabelaPreco ?? 'varejo'
+    setTabelaPreco(nova)
+    reprecificar(nova)
+    if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+    if (nova !== 'varejo') toast(`Preço de ${(TIPOS_PRECO as any)[nova]} aplicado.`)
+  }
+
+  function limparCliente() {
+    setClienteSelecionado(null)
+    setTabelaPreco('varejo')
+    reprecificar('varejo')
   }
 
   // Abre o modal em modo edição, pré-preenchido com os dados do pedido
@@ -200,17 +275,24 @@ export default function PedidosView({ tenantSlug }: Props) {
 
       // Busca o nome do cliente para exibir no formulário
       let clienteNome = ''
+      let clienteTabela = 'varejo'
       if (ped.clienteId) {
         try {
           const cr = await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=1000`)
           const cd = await cr.json()
           const lista = cd?.data?.data ?? cd?.data ?? []
-          clienteNome = lista.find((c: any) => c.clienteId === ped.clienteId)?.nomeCompleto ?? `Cliente #${ped.clienteId}`
+          const achado = lista.find((c: any) => c.clienteId === ped.clienteId)
+          clienteNome   = achado?.nomeCompleto ?? `Cliente #${ped.clienteId}`
+          clienteTabela = achado?.tabelaPreco ?? 'varejo'
         } catch { clienteNome = `Cliente #${ped.clienteId}` }
       }
 
       setEditandoPedidoId(ped.pedidoId)
-      setClienteSelecionado(ped.clienteId ? { clienteId: ped.clienteId, nomeCompleto: clienteNome } : null)
+      setClienteSelecionado(ped.clienteId ? { clienteId: ped.clienteId, nomeCompleto: clienteNome, tabelaPreco: clienteTabela } : null)
+      // A tabela serve para precificar itens NOVOS adicionados nesta edição.
+      // Os itens já gravados abaixo não têm `precos`, então mantêm o valor
+      // original — reprecificar() não os toca.
+      setTabelaPreco(clienteTabela)
       setBuscaCliente('')
       setTipoVenda(ped.tipoVenda ?? 'entrega')
       setDataPedido(toInputDate(ped.dataPedido) || new Date().toISOString().slice(0, 10))
@@ -232,10 +314,16 @@ export default function PedidosView({ tenantSlug }: Props) {
   }
 
   function addItem(produto: any) {
+    const precos = precosDoProduto(produto)
+    const preco  = precoNaTabela(precos, tabelaPreco)
     setItens(prev => {
       const existing = prev.find(i => i.produtoId === produto.produtoId)
       if (existing) return prev.map(i => i.produtoId === produto.produtoId ? { ...i, quantidade: i.quantidade + qtdProduto } : i)
-      return [...prev, { produtoId: produto.produtoId, nomeProduto: produto.nome, quantidade: qtdProduto, precoUnitario: produto.precoVarejo, unidade: produto.unidade }]
+      return [...prev, {
+        produtoId: produto.produtoId, nomeProduto: produto.nome,
+        quantidade: qtdProduto, precoUnitario: preco,
+        unidade: produto.unidade, precos,
+      }]
     })
     setBuscaProduto(''); setQtdProduto(1)
   }
@@ -347,7 +435,15 @@ export default function PedidosView({ tenantSlug }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold">{editandoPedidoId ? `Editar pedido #${editandoPedidoId}` : 'Novo pedido'}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold">{editandoPedidoId ? `Editar pedido #${editandoPedidoId}` : 'Novo pedido'}</h2>
+                {/* Tabela em vigor — só aparece quando não é varejo */}
+                {ehAtacado && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                    <Tag size={11} /> {rotuloTabela}
+                  </span>
+                )}
+              </div>
               <button onClick={() => { setShowNovo(false); resetForm() }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -356,8 +452,11 @@ export default function PedidosView({ tenantSlug }: Props) {
                 <Label>Cliente (opcional)</Label>
                 {clienteSelecionado ? (
                   <div className="mt-1 flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                    <span className="text-sm font-medium text-green-800">{clienteSelecionado.nomeCompleto}</span>
-                    <button onClick={() => setClienteSelecionado(null)} className="text-green-400 hover:text-green-600"><X size={14} /></button>
+                    <span className="text-sm font-medium text-green-800">
+                      {clienteSelecionado.nomeCompleto}
+                      {ehAtacado && <span className="ml-1.5 text-[10px] font-semibold text-amber-700">· {rotuloTabela}</span>}
+                    </span>
+                    <button onClick={limparCliente} className="text-green-400 hover:text-green-600"><X size={14} /></button>
                   </div>
                 ) : (
                   <>
@@ -366,10 +465,14 @@ export default function PedidosView({ tenantSlug }: Props) {
                     {buscaCliente.length > 1 && clientes.length > 0 && (
                       <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
                         {clientes.map((c: any) => (
-                          <button key={c.clienteId} onClick={() => { setClienteSelecionado(c); setBuscaCliente(''); if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`) }}
+                          <button key={c.clienteId} onClick={() => selecionarCliente(c)}
                             className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
                             <span className="text-sm font-medium text-gray-900">{c.nomeCompleto}</span>
-                            <span className="text-xs text-gray-400">{c.cpfCnpj ?? c.cidade}</span>
+                            <span className="text-xs text-gray-400">
+                              {c.tabelaPreco && c.tabelaPreco !== 'varejo'
+                                ? (TIPOS_PRECO as any)[c.tabelaPreco]
+                                : (c.cpfCnpj ?? c.cidade)}
+                            </span>
                           </button>
                         ))}
                       </div>
@@ -424,13 +527,17 @@ export default function PedidosView({ tenantSlug }: Props) {
                 </div>
                 {buscaProduto && produtos.length > 0 && (
                   <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
-                    {produtos.slice(0, 6).map((p: any) => (
-                      <button key={p.produtoId} onClick={() => addItem(p)}
-                        className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                        <span className="text-sm font-medium text-gray-900">{p.nome}</span>
-                        <span className="text-sm text-gray-500">{fmt(p.precoVarejo)}/{p.unidade}</span>
-                      </button>
-                    ))}
+                    {produtos.slice(0, 6).map((p: any) => {
+                      // Mostra o preço da tabela do cliente, não o varejo fixo
+                      const precoLista = precoNaTabela(precosDoProduto(p), tabelaPreco)
+                      return (
+                        <button key={p.produtoId} onClick={() => addItem(p)}
+                          className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                          <span className="text-sm font-medium text-gray-900">{p.nome}</span>
+                          <span className="text-sm text-gray-500">{fmt(precoLista)}/{p.unidade}</span>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -442,6 +549,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                     <div key={item.produtoId} className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-50 last:border-0">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900">{item.nomeProduto}</p>
+                        <p className="text-[11px] text-gray-400">{fmt(item.precoUnitario)} un</p>
                       </div>
                       <div className="flex items-center gap-1">
                         <button onClick={() => updateQtdItem(item.produtoId, item.quantidade - 1)} className="w-6 h-6 rounded border border-gray-200 flex items-center justify-center text-xs hover:bg-gray-50">−</button>
@@ -453,7 +561,9 @@ export default function PedidosView({ tenantSlug }: Props) {
                     </div>
                   ))}
                   <div className="flex justify-between px-3 py-2 bg-gray-50 border-t border-gray-100">
-                    <span className="text-sm font-semibold text-gray-600">Total</span>
+                    <span className="text-sm font-semibold text-gray-600">
+                      Total{ehAtacado ? <span className="ml-1.5 text-[11px] font-medium text-amber-600">({rotuloTabela})</span> : null}
+                    </span>
                     <span className="text-sm font-bold text-gray-900">{fmt(totalPedidos)}</span>
                   </div>
                 </div>
@@ -526,7 +636,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                   <div key={item.itemId} className="flex justify-between py-2 border-b border-gray-50 last:border-0">
                     <div>
                       <p className="text-sm font-medium text-gray-900">{item.nomeProduto}</p>
-                      <p className="text-xs text-gray-400">{item.quantidade} un</p>
+                      <p className="text-xs text-gray-400">{item.quantidade} un · {fmt(item.precoUnitario)}</p>
                     </div>
                     <p className="text-sm font-semibold">{fmt(item.subtotal)}</p>
                   </div>
