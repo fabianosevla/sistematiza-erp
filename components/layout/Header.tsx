@@ -111,6 +111,23 @@ export default function Header({
     refetchInterval: 60000,
   })
 
+  // Marcar como lidas. O servidor recalcula os alertas e grava a leitura do
+  // usuário atual — o cliente não manda lista nenhuma.
+  const marcarLidasMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/notificacoes`, { method: 'POST' })
+      return res.json()
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notificacoes', tenantSlug] }),
+  })
+
+  // Abrir o sino é o gesto de "vi". Fechar não desmarca.
+  function abrirNotifs() {
+    const abrindo = !showNotifs
+    setShowNotifs(abrindo)
+    if (abrindo && unread > 0) marcarLidasMut.mutate()
+  }
+
   async function gravar(body: Record<string, any>) {
     const res = await fetch(`/api/${tenantSlug}/configuracoes`, {
       method:  'PUT',
@@ -262,7 +279,7 @@ export default function Header({
 
           {/* Notificações */}
           <button
-            onClick={() => setShowNotifs(p => !p)}
+            onClick={abrirNotifs}
             className="relative p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
           >
             <Bell size={18} />
@@ -297,7 +314,10 @@ export default function Header({
       {showNotifs && (
         <div className="fixed right-4 top-16 z-50 w-80 bg-white rounded-xl shadow-xl border border-gray-100">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-semibold text-gray-900">Notificações</p>
+            <p className="text-sm font-semibold text-gray-900">
+              Notificações
+              {unread > 0 && <span className="ml-2 text-xs font-normal text-gray-400">{unread} nova(s)</span>}
+            </p>
             <button onClick={() => setShowNotifs(false)} className="text-gray-400 hover:text-gray-600">
               <X size={16} />
             </button>
@@ -306,12 +326,19 @@ export default function Header({
             {notifs.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-8">Sem notificações</p>
             ) : notifs.slice(0, 10).map((n: any) => (
-              <div key={n.id} className={`px-4 py-3 border-b border-gray-50 ${!n.lida ? 'bg-green-50/50' : ''}`}>
-                <p className="text-sm text-gray-900">{n.titulo}</p>
+              // Lida fica esmaecida, não some. O alerta continua verdadeiro —
+              // o estoque segue baixo — só deixou de ser novidade.
+              <div key={n.id} className={`px-4 py-3 border-b border-gray-50 ${!n.lida ? 'bg-green-50/50' : 'opacity-60'}`}>
+                <p className={`text-sm ${n.lida ? 'text-gray-500' : 'text-gray-900 font-medium'}`}>{n.titulo}</p>
                 <p className="text-xs text-gray-400 mt-0.5">{n.mensagem}</p>
               </div>
             ))}
           </div>
+          {notifs.length > 0 && (
+            <p className="px-4 py-2 text-[11px] text-gray-400 border-t border-gray-50">
+              Alertas em cinza já foram vistos. Se a situação piorar, voltam a aparecer.
+            </p>
+          )}
         </div>
       )}
 
