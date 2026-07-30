@@ -156,6 +156,15 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     staleTime: 60000,
   })
 
+  // Dados da empresa para o cabeçalho do cupom. Vêm de Configurações →
+  // Dados da empresa; campo em branco simplesmente não é impresso.
+  const { data: empresaRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 300000,
+  })
+  const empresa = empresaRaw?.data ?? {}
+
   const { data: formasRaw } = useQuery({
     queryKey: ['pdv-formas', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/formas-pagamento`)).json(),
@@ -285,7 +294,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         forma:     formaPgto || formasNomes[0] || 'PIX',
         troco:     trocoVal,
         cliente:   clienteNomeDisplay,
+        vendedor,
         tabela:    ehAtacado ? rotuloTabela : '',
+        empresa,
+        qtdItens:  carrinho.reduce((a, i) => a + i.quantidade, 0),
         enderecoEntrega: isDelivery ? enderecoEntrega : '',
         dataHora:  new Date().toLocaleString('pt-BR'),
       })
@@ -494,49 +506,129 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, showCadastrarCliente])
 
-  // Cupom (não fiscal) — abre janela de impressão formatada para bobina 80mm
+  // ── Cupom (NÃO FISCAL) ────────────────────────────────────────────────────
+  // Formatado para bobina de 80mm. Traz cabeçalho da empresa, itens com
+  // código/quantidade/unidade/valor unitário/total e o resumo de pagamento.
+  //
+  // O que NÃO existe aqui, e não pode existir: chave de acesso, protocolo de
+  // autorização, QR code fiscal ou o texto "Documento Auxiliar da NFC-e".
+  // Esses dados são emitidos pela SEFAZ e só aparecem quando a nota é
+  // realmente transmitida. Imprimi-los num cupom não fiscal seria simular
+  // documento fiscal.
   function imprimirCupom(v: any) {
-    const win = window.open('', '_blank', 'width=380,height=600')
+    const win = window.open('', '_blank', 'width=380,height=640')
     if (!win) { toast('Habilite pop-ups para imprimir o cupom.', 'error'); return }
-    const nomeLoja = tenantSlug.replace(/-/g, ' ').toUpperCase()
-    const linhas = v.itens.map((i: any) =>
-      `<tr><td>${i.quantidade}x ${i.nomeProduto}${i.desconto > 0 ? ` (-${fmt(i.desconto)})` : ''}</td><td class="r">${fmt(i.subtotal)}</td></tr>`).join('')
-    win.document.write(`<!doctype html><html><head><title>Cupom</title><style>
+
+    const e = v.empresa ?? {}
+    const esc = (t: any) => String(t ?? '').replace(/[&<>]/g, (c: string) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))
+
+    // Cabeçalho: usa o que estiver preenchido. Sem razão social, cai no nome
+    // do tenant para o cupom nunca sair sem identificação.
+    const razao    = esc(e.nomeEmpresa || tenantName(tenantSlug))
+    const fantasia = esc(e.nomeFantasia || '')
+    const linhaEndereco = [
+      esc(e.endereco), e.numero ? esc(e.numero) : '', esc(e.bairro),
+    ].filter(Boolean).join(', ')
+    const linhaCidade = [esc(e.cidade), esc(e.uf)].filter(Boolean).join('/')
+    const linhaFone   = e.telefone ? `FONE: ${esc(e.telefone)}` : ''
+    const linhaDoc    = [
+      e.cnpj ? `CNPJ:${esc(e.cnpj)}` : '',
+      e.inscricaoEstadual ? `IE:${esc(e.inscricaoEstadual)}` : '',
+    ].filter(Boolean).join('   ')
+
+    const linhas = (v.itens ?? []).map((i: any, idx: number) => {
+      const cod  = esc(i.codigoBarras || i.produtoId)
+      const qtd  = Number(i.quantidade).toLocaleString('pt-BR', { minimumFractionDigits: 3 })
+      const un   = esc(i.unidade || 'UN')
+      const unit = (i.precoUnitario / 100).toFixed(2).replace('.', ',')
+      const tot  = (i.subtotal / 100).toFixed(2).replace('.', ',')
+      const desc = i.desconto > 0
+        ? `<tr><td colspan="4" class="desc">desconto -${(i.desconto / 100).toFixed(2).replace('.', ',')}</td></tr>`
+        : ''
+      return `
+        <tr class="it"><td colspan="4">${String(idx + 1).padStart(3, '0')} ${cod} ${esc(i.nomeProduto)}</td></tr>
+        <tr><td class="q">${qtd}</td><td class="u">${un}</td><td class="r">${unit}</td><td class="r">${tot}</td></tr>
+        ${desc}`
+    }).join('')
+
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cupom</title><style>
       * { font-family: 'Courier New', monospace; font-size: 12px; color: #000; }
-      body { width: 72mm; margin: 0; padding: 8px; }
-      h1 { font-size: 14px; text-align: center; margin: 0 0 2px; }
-      p { margin: 2px 0; }
-      .c { text-align: center; } .r { text-align: right; }
+      body { width: 72mm; margin: 0; padding: 6px; }
+      h1 { font-size: 13px; text-align: center; margin: 0; font-weight: bold; }
+      p  { margin: 1px 0; }
+      .c { text-align: center; } .r { text-align: right; } .b { font-weight: bold; }
+      .peq { font-size: 11px; }
       table { width: 100%; border-collapse: collapse; }
-      td { padding: 1px 0; vertical-align: top; }
-      hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
-      .tot { font-weight: bold; font-size: 13px; }
+      td { padding: 0; vertical-align: top; }
+      td.q { width: 22%; } td.u { width: 14%; }
+      tr.it td { padding-top: 3px; }
+      .desc { font-size: 10px; padding-left: 8px; }
+      hr { border: none; border-top: 1px dashed #000; margin: 5px 0; }
+      .tot { font-weight: bold; font-size: 14px; }
+      .aviso { font-size: 10px; text-align: center; margin-top: 6px; }
     </style></head><body>
-      <h1>${nomeLoja}</h1>
-      <p class="c">CUPOM NÃO FISCAL</p>
-      <p class="c">${v.dataHora}</p>
-      ${v.vendaId ? `<p class="c">Venda nº ${v.vendaId}</p>` : ''}
+
+      <h1>${razao}</h1>
+      ${fantasia ? `<p class="c peq">${fantasia}</p>` : ''}
+      ${linhaEndereco ? `<p class="c peq">${linhaEndereco}</p>` : ''}
+      ${linhaCidade || linhaFone ? `<p class="c peq">${[linhaCidade, linhaFone].filter(Boolean).join('  ')}</p>` : ''}
+      ${linhaDoc ? `<p class="c peq">${linhaDoc}</p>` : ''}
+
+      <hr/>
+      <p class="c b">CUPOM NÃO FISCAL</p>
+      <p class="c peq">Sem valor fiscal · não substitui a NFC-e</p>
+      <hr/>
+
+      <table class="peq">
+        <tr><td>${v.vendaId ? `VENDA Nº ${String(v.vendaId).padStart(6, '0')}` : ''}</td>
+            <td class="r">${esc(v.dataHora)}</td></tr>
+        ${v.vendedor ? `<tr><td colspan="2">OPERADOR: ${esc(v.vendedor)}</td></tr>` : ''}
+      </table>
+
+      <hr/>
+      <table class="peq">
+        <tr class="b"><td colspan="4">CÓDIGO  DESCRIÇÃO</td></tr>
+        <tr class="b"><td class="q">QTDE</td><td class="u">UN</td><td class="r">VL UNIT</td><td class="r">VL TOTAL</td></tr>
+      </table>
       <hr/>
       <table>${linhas}</table>
       <hr/>
+
       <table>
-        <tr><td>Subtotal</td><td class="r">${fmt(v.subtotal)}</td></tr>
-        ${v.desconto > 0 ? `<tr><td>Desconto</td><td class="r">-${fmt(v.desconto)}</td></tr>` : ''}
-        ${v.acrescimo > 0 ? `<tr><td>Acréscimo</td><td class="r">+${fmt(v.acrescimo)}</td></tr>` : ''}
-        ${v.cashbackUsado > 0 ? `<tr><td>Cashback</td><td class="r">-${fmt(v.cashbackUsado)}</td></tr>` : ''}
-        <tr><td class="tot">TOTAL</td><td class="r tot">${fmt(v.total)}</td></tr>
-        <tr><td>Pagamento</td><td class="r">${v.forma}</td></tr>
-        ${v.troco > 0 ? `<tr><td>Troco</td><td class="r">${fmt(v.troco)}</td></tr>` : ''}
+        <tr><td>Qtde. total de itens</td><td class="r">${v.qtdItens ?? (v.itens ?? []).length}</td></tr>
+        <tr><td>Subtotal</td><td class="r">${(v.subtotal / 100).toFixed(2).replace('.', ',')}</td></tr>
+        ${v.desconto > 0 ? `<tr><td>Descontos</td><td class="r">-${(v.desconto / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
+        ${v.acrescimo > 0 ? `<tr><td>Acréscimo</td><td class="r">+${(v.acrescimo / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
+        ${v.cashbackUsado > 0 ? `<tr><td>Cashback</td><td class="r">-${(v.cashbackUsado / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
+        <tr><td class="tot">VALOR A PAGAR R$</td><td class="r tot">${(v.total / 100).toFixed(2).replace('.', ',')}</td></tr>
       </table>
-      ${v.cliente ? `<hr/><p>Cliente: ${v.cliente}</p>` : ''}
-      ${v.tabela ? `<p>Tabela: ${v.tabela}</p>` : ''}
-      ${v.enderecoEntrega ? `<p>Entrega: ${v.enderecoEntrega}</p>` : ''}
+
       <hr/>
-      <p class="c">Obrigado pela preferência!</p>
+      <table class="peq">
+        <tr><td>FORMA DE PAGAMENTO</td><td class="r">VALOR R$</td></tr>
+        <tr class="b"><td>${esc(v.forma).toUpperCase()}</td><td class="r">${(v.total / 100).toFixed(2).replace('.', ',')}</td></tr>
+        ${v.troco > 0 ? `<tr><td>TROCO</td><td class="r">${(v.troco / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
+      </table>
+
+      <hr/>
+      <p class="peq">CONSUMIDOR: ${v.cliente ? esc(v.cliente) : 'NÃO IDENTIFICADO'}</p>
+      ${v.tabela ? `<p class="peq">TABELA DE PREÇO: ${esc(v.tabela)}</p>` : ''}
+      ${v.enderecoEntrega ? `<p class="peq">ENTREGA: ${esc(v.enderecoEntrega)}</p>` : ''}
+
+      <hr/>
+      <p class="c">${esc(e.mensagemCupom || 'Obrigado pela preferência!')}</p>
+      <p class="aviso">Este documento não é válido como comprovante fiscal.</p>
+
     </body></html>`)
     win.document.close()
     win.focus()
     setTimeout(() => { win.print(); win.close() }, 300)
+  }
+
+  // Nome legível a partir do slug, só como último recurso de identificação
+  function tenantName(slug: string) {
+    return slug.replace(/-/g, ' ').toUpperCase()
   }
 
   return (

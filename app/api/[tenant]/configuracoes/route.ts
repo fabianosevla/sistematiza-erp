@@ -40,16 +40,23 @@ export async function GET(req: NextRequest, { params }: Params) {
         // Aparência
         logoBase64: r.logo_base64 ?? null,
         darkMode:   r.dark_mode   ?? false,
-        // Dados do tenant
-        nomeEmpresa:  r.nome_empresa  ?? '',
-        nomeFantasia: r.nome_fantasia ?? '',
-        cnpj:         r.cnpj          ?? '',
-        telefone:     r.telefone      ?? '',
-        email:        r.email         ?? '',
-        endereco:     r.endereco      ?? '',
-        cidade:       r.cidade        ?? '',
-        uf:           r.uf            ?? '',
-        cep:          r.cep           ?? '',
+        // Dados da empresa — usados no cabeçalho do cupom e em documentos
+        nomeEmpresa:        r.nome_empresa        ?? '',
+        nomeFantasia:       r.nome_fantasia       ?? '',
+        cnpj:               r.cnpj                ?? '',
+        inscricaoEstadual:  r.inscricao_estadual  ?? '',
+        inscricaoMunicipal: r.inscricao_municipal ?? '',
+        telefone:           r.telefone            ?? '',
+        email:              r.email               ?? '',
+        cep:                r.cep                 ?? '',
+        endereco:           r.endereco            ?? '',
+        numero:             r.numero              ?? '',
+        complemento:        r.complemento         ?? '',
+        bairro:             r.bairro              ?? '',
+        cidade:             r.cidade              ?? '',
+        uf:                 r.uf                  ?? '',
+        // Frase livre impressa no rodapé do cupom
+        mensagemCupom:      r.mensagem_cupom      ?? '',
       })
     } finally { client.release() }
   } catch (err) { return serverError(err) }
@@ -99,16 +106,22 @@ export async function PUT(req: NextRequest, { params }: Params) {
         // Aparência
         ['logo_base64', body.logoBase64],
         ['dark_mode',   body.darkMode],
-        // Dados do tenant
-        ['nome_empresa',  body.nomeEmpresa],
-        ['nome_fantasia', body.nomeFantasia],
-        ['cnpj',          body.cnpj],
-        ['telefone',      body.telefone],
-        ['email',         body.email],
-        ['endereco',      body.endereco],
-        ['cidade',        body.cidade],
-        ['uf',            body.uf],
-        ['cep',           body.cep],
+        // Dados da empresa
+        ['nome_empresa',        body.nomeEmpresa],
+        ['nome_fantasia',       body.nomeFantasia],
+        ['cnpj',                body.cnpj],
+        ['inscricao_estadual',  body.inscricaoEstadual],
+        ['inscricao_municipal', body.inscricaoMunicipal],
+        ['telefone',            body.telefone],
+        ['email',               body.email],
+        ['cep',                 body.cep],
+        ['endereco',            body.endereco],
+        ['numero',              body.numero],
+        ['complemento',         body.complemento],
+        ['bairro',              body.bairro],
+        ['cidade',              body.cidade],
+        ['uf',                  body.uf],
+        ['mensagem_cupom',      body.mensagemCupom],
       ]
 
       for (const [col, val] of updates) {

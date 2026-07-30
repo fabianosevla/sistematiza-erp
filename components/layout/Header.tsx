@@ -1,9 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store } from 'lucide-react'
 import { useClerk } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
 import type { Config } from './ClientShell'
 
@@ -61,6 +63,10 @@ export default function Header({
   const [showNotifs, setShowNotifs]       = useState(false)
   const [localConfig, setLocalConfig]     = useState<Record<string, boolean>>({})
   const [logoPreview, setLogoPreview]     = useState<string | null>(logoBase64)
+  // Dados cadastrais da empresa. Cada cliente que compra a ferramenta informa
+  // os seus aqui; é o que alimenta o cabeçalho do cupom e dos documentos.
+  const [empresa, setEmpresa]             = useState<Record<string, string>>({})
+  const [empresaTocada, setEmpresaTocada] = useState(false)
 
   // Estado real das flags via API. Serve de baseline dos toggles.
   const { data: configApiRaw } = useQuery({
@@ -68,6 +74,35 @@ export default function Header({
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
   })
   const configApi = configApiRaw?.data
+
+  // Carrega os dados da empresa uma vez, sem sobrescrever o que está sendo
+  // digitado — por isso o guarda `empresaTocada`.
+  useEffect(() => {
+    if (!configApi || empresaTocada) return
+    setEmpresa({
+      nomeEmpresa:        configApi.nomeEmpresa        ?? '',
+      nomeFantasia:       configApi.nomeFantasia       ?? '',
+      cnpj:               configApi.cnpj               ?? '',
+      inscricaoEstadual:  configApi.inscricaoEstadual  ?? '',
+      inscricaoMunicipal: configApi.inscricaoMunicipal ?? '',
+      telefone:           configApi.telefone           ?? '',
+      email:              configApi.email              ?? '',
+      cep:                configApi.cep                ?? '',
+      endereco:           configApi.endereco           ?? '',
+      numero:             configApi.numero             ?? '',
+      complemento:        configApi.complemento        ?? '',
+      bairro:             configApi.bairro             ?? '',
+      cidade:             configApi.cidade             ?? '',
+      uf:                 configApi.uf                 ?? '',
+      mensagemCupom:      configApi.mensagemCupom      ?? '',
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configApi])
+
+  const setEmp = (k: string, v: string) => {
+    setEmpresaTocada(true)
+    setEmpresa(p => ({ ...p, [k]: v }))
+  }
 
   const { data: notifsRaw } = useQuery({
     queryKey: ['notificacoes', tenantSlug],
@@ -94,6 +129,28 @@ export default function Header({
       }
     },
     onError: () => toast('Erro ao salvar.', 'error'),
+  })
+
+  // Salvar dados da empresa é uma ação explícita, com botão. Diferente dos
+  // toggles de módulo, aqui não faz sentido gravar a cada tecla nem recarregar
+  // a página — o menu lateral não depende destes campos.
+  const salvarEmpresaMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/${tenantSlug}/configuracoes`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(empresa),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao salvar')
+      return d
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
+      setEmpresaTocada(false)
+      toast('Dados da empresa salvos!')
+    },
+    onError: () => toast('Erro ao salvar os dados da empresa.', 'error'),
   })
 
   const notifs    = Array.isArray(notifsRaw?.data) ? notifsRaw.data : []
@@ -230,7 +287,7 @@ export default function Header({
       {/* Modal configurações */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
               <div>
                 <h2 className="text-lg font-semibold">Configurações</h2>
@@ -242,6 +299,113 @@ export default function Header({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Dados da empresa — cabeçalho de cupom e documentos */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Dados da empresa</p>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Razão social</Label>
+                      <Input value={empresa.nomeEmpresa ?? ''} onChange={e => setEmp('nomeEmpresa', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="Nome registrado" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Nome fantasia</Label>
+                      <Input value={empresa.nomeFantasia ?? ''} onChange={e => setEmp('nomeFantasia', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="Nome conhecido" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">CNPJ</Label>
+                      <Input value={empresa.cnpj ?? ''} onChange={e => setEmp('cnpj', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="00.000.000/0000-00" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Inscrição estadual</Label>
+                      <Input value={empresa.inscricaoEstadual ?? ''} onChange={e => setEmp('inscricaoEstadual', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="Isento, se não tiver" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Inscrição municipal</Label>
+                      <Input value={empresa.inscricaoMunicipal ?? ''} onChange={e => setEmp('inscricaoMunicipal', e.target.value)}
+                        className="mt-1 h-9 text-sm" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Telefone</Label>
+                      <Input value={empresa.telefone ?? ''} onChange={e => setEmp('telefone', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="(00) 0000-0000" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">E-mail</Label>
+                      <Input type="email" value={empresa.email ?? ''} onChange={e => setEmp('email', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="contato@empresa.com" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <Label className="text-xs">CEP</Label>
+                      <Input value={empresa.cep ?? ''} onChange={e => setEmp('cep', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="00000-000" />
+                    </div>
+                    <div className="col-span-3">
+                      <Label className="text-xs">Endereço</Label>
+                      <Input value={empresa.endereco ?? ''} onChange={e => setEmp('endereco', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="Rua, avenida…" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">Número</Label>
+                      <Input value={empresa.numero ?? ''} onChange={e => setEmp('numero', e.target.value)}
+                        className="mt-1 h-9 text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Complemento</Label>
+                      <Input value={empresa.complemento ?? ''} onChange={e => setEmp('complemento', e.target.value)}
+                        className="mt-1 h-9 text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Bairro</Label>
+                      <Input value={empresa.bairro ?? ''} onChange={e => setEmp('bairro', e.target.value)}
+                        className="mt-1 h-9 text-sm" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="col-span-3">
+                      <Label className="text-xs">Cidade</Label>
+                      <Input value={empresa.cidade ?? ''} onChange={e => setEmp('cidade', e.target.value)}
+                        className="mt-1 h-9 text-sm" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">UF</Label>
+                      <Input maxLength={2} value={empresa.uf ?? ''} onChange={e => setEmp('uf', e.target.value.toUpperCase())}
+                        className="mt-1 h-9 text-sm" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs">Mensagem do cupom</Label>
+                    <Input value={empresa.mensagemCupom ?? ''} onChange={e => setEmp('mensagemCupom', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="Obrigado pela preferência!" />
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button size="sm" onClick={() => salvarEmpresaMut.mutate()}
+                      disabled={!empresaTocada || salvarEmpresaMut.isPending}>
+                      {salvarEmpresaMut.isPending ? 'Salvando...' : 'Salvar dados'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
               {/* Logo */}
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Logo</p>
