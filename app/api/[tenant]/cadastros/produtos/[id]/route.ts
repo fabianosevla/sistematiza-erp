@@ -1,24 +1,29 @@
-// @ts-nocheck
-// ESTE ARQUIVO VAI EM: app/api/[tenant]/cadastros/produtos/[id]/ficha/route.ts
+// ESTE ARQUIVO VAI EM: app/api/[tenant]/cadastros/produtos/[id]/route.ts
 import type { NextRequest } from 'next/server'
-import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
-import { FichaTecnicaService } from '@/lib/services/cadastros/FichaTecnicaService'
-import { ok, created, serverError } from '@/lib/api/responses'
+import { produtoUpdateSchema } from '@/lib/validations/cadastros'
+import { ProdutoService } from '@/lib/services/cadastros/ProdutoService'
+import { ok, serverError, notFound, conflict } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
 
-export async function GET(req: NextRequest, { params }: Params) {
+export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      const service = new FichaTecnicaService(db)
-      const result  = await service.getByProduto(Number(params.id))
-      const custo   = await service.calcularCusto(Number(params.id))
-      return ok({ itens: result, custoProdução: custo })
+      const body    = await req.json()
+      const payload = produtoUpdateSchema.parse(body)
+      const uid     = await usuarioAtualIdDb(db)   // antes: literal 1
+      const service = new ProdutoService(db)
+      const result  = await service.update(Number(params.id), payload, uid)
+      if ('error' in result) {
+        if (result.error === 'NOT_FOUND') return notFound('Produto não encontrado')
+        return conflict('Registro alterado por outro usuário', result.modificationNum)
+      }
+      return ok(result)
     } finally {
       release()
     }
@@ -27,24 +32,15 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 }
 
-const addItemSchema = z.object({
-  insumoId:   z.number().int(),
-  quantidade: z.number().positive(),
-  unidade:    z.string().max(20),
-  observacao: z.string().max(200).optional(),
-})
-
-export async function POST(req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      const body    = await req.json()
-      const payload = addItemSchema.parse(body)
-      const uid     = await usuarioAtualIdDb(db)   // antes: literal 1
-      const service = new FichaTecnicaService(db)
-      const result  = await service.addItem({ produtoId: Number(params.id), ...payload, userId: uid })
-      return created(result)
+      const uid     = await usuarioAtualIdDb(db)
+      const service = new ProdutoService(db)
+      await service.softDelete(Number(params.id), uid)
+      return ok({ deleted: true })
     } finally {
       release()
     }
