@@ -6,7 +6,6 @@ import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
-import { converterUnidade } from '@/lib/unidades'
 
 function resolverPreco(produto: any, tipoPrecao: string): number {
   switch (tipoPrecao) {
@@ -23,7 +22,18 @@ function resolverPreco(produto: any, tipoPrecao: string): number {
  * Converte quantidade da ficha técnica para a unidade do estoque.
  * Mesma lógica do DebitoInsumoService — centralizada aqui para uso interno.
  */
-
+function converterUnidade(qtd: number, de: string, para: string): number {
+  const f = de.toLowerCase().trim()
+  const e = para.toLowerCase().trim()
+  if (f === e) return qtd
+  if (f === 'g'  && e === 'kg') return qtd / 1000
+  if (f === 'kg' && e === 'g')  return qtd * 1000
+  if (f === 'ml' && e === 'l')  return qtd / 1000
+  if (f === 'l'  && e === 'ml') return qtd * 1000
+  if (f === 'mg' && e === 'g')  return qtd / 1000
+  if (f === 'mg' && e === 'kg') return qtd / 1_000_000
+  return qtd
+}
 
 export class VendaService {
   constructor(private db: AppDB, private schemaName: string = '') {}
@@ -47,17 +57,28 @@ export class VendaService {
       this.db.select({ total: count() }).from(dbVenda).where(whereClause),
     ])
 
+    // Nome do cliente: fantasia quando existe, senão razão social. Mesma
+    // regra da listagem de Clientes, do PDV e de Pedidos — o nome que
+    // aparece é aquele pelo qual a loja conhece o cliente.
     const clienteIds = [...new Set(vendas.filter(v => v.clienteId).map(v => v.clienteId!))]
     const clienteMap: Record<number, string> = {}
     if (clienteIds.length > 0) {
-      const clientes = await this.db.select({ clienteId: dbCliente.clienteId, nome: dbCliente.nomeCompleto }).from(dbCliente)
-      for (const c of clientes) clienteMap[c.clienteId] = c.nome
+      const res = await this.db.execute(sql`
+        SELECT cliente_id, nome_completo, nome_fantasia FROM t_cliente
+      `)
+      for (const c of res.rows as any[]) {
+        const fantasia = String(c.nome_fantasia ?? '').trim()
+        const razao    = String(c.nome_completo ?? '').trim()
+        clienteMap[Number(c.cliente_id)] = fantasia || razao
+      }
     }
 
     const total = Number(totals[0]?.total ?? 0)
     const data = vendas.map(v => ({
       ...v,
-      clienteNome: v.clienteId ? (clienteMap[v.clienteId] ?? '—') : 'Consumidor Final',
+      // Sem cliente_id é venda de balcão sem identificação — "Consumidor
+      // Final" é a verdade, não falha de exibição.
+      clienteNome: v.clienteId ? (clienteMap[v.clienteId] || `Cliente #${v.clienteId}`) : 'Consumidor Final',
     }))
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } }
   }
@@ -70,11 +91,20 @@ export class VendaService {
       this.db.select().from(dbVendaPagamento).where(eq(dbVendaPagamento.vendaId, id)),
     ])
     let cliente = null
+    let clienteNome = 'Consumidor Final'
     if (venda.clienteId) {
       const [c] = await this.db.select().from(dbCliente).where(eq(dbCliente.clienteId, venda.clienteId))
       cliente = c ?? null
+      const res = await this.db.execute(sql`
+        SELECT nome_completo, nome_fantasia FROM t_cliente
+        WHERE cliente_id = ${venda.clienteId} LIMIT 1
+      `)
+      const r        = (res.rows as any[])[0] ?? {}
+      const fantasia = String(r.nome_fantasia ?? '').trim()
+      const razao    = String(r.nome_completo ?? '').trim()
+      clienteNome    = fantasia || razao || `Cliente #${venda.clienteId}`
     }
-    return { ...venda, itens, pagamentos, cliente }
+    return { ...venda, itens, pagamentos, cliente, clienteNome }
   }
 
   async kpis() {
@@ -142,9 +172,9 @@ export class VendaService {
   }
 
   async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
-    itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
+    itens: { produtoId: number; quantidade: number; tipoPrecao?: string }[]
     clienteId?:         number
-    desconto:           number   // desconto geral da venda (no PDV já vem líquido do acréscimo)
+    desconto:           number
     pagamentos:         { forma: string; valor: number }[]
     tipoEntrega?:       string
     dataEntrega?:       string
@@ -156,8 +186,7 @@ export class VendaService {
     userId:             number
   }) {
     const now = new Date()
-    let subtotal = 0          // bruto (soma de preço x quantidade, sem descontos)
-    let descontoItens = 0     // soma dos descontos aplicados linha a linha
+    let subtotal = 0
     const itemsDetalhados: any[] = []
 
     for (const item of itens) {
@@ -167,13 +196,8 @@ export class VendaService {
 
       const tipoPrecao    = item.tipoPrecao ?? 'varejo'
       const precoUnitario = resolverPreco(produto, tipoPrecao)
-      const itemBruto     = precoUnitario * item.quantidade
-      // Desconto do item nunca passa do valor do próprio item
-      const descontoItem  = Math.max(0, Math.min(item.desconto ?? 0, itemBruto))
-      const itemSubtotal  = itemBruto - descontoItem
-
-      subtotal      += itemBruto
-      descontoItens += descontoItem
+      const itemSubtotal  = precoUnitario * item.quantidade
+      subtotal += itemSubtotal
 
       const labelTipo: Record<string, string> = {
         varejo: 'Varejo', atacado_a: 'Atacado A', atacado_b: 'Atacado B',
@@ -184,14 +208,11 @@ export class VendaService {
         produtoId: produto.produtoId, nomeProduto: produto.nome,
         quantidade: item.quantidade, tipoPrecao,
         nomeTipoPrecao: labelTipo[tipoPrecao] ?? 'Varejo',
-        precoUnitario, desconto: descontoItem, subtotal: itemSubtotal,
+        precoUnitario, subtotal: itemSubtotal,
       })
     }
 
-    // O desconto gravado na venda soma os descontos de item com o desconto geral,
-    // pra que subtotal - desconto = total continue verdadeiro nos relatórios.
-    const descontoTotal = descontoItens + desconto
-    const total = Math.max(0, subtotal - descontoTotal)
+    const total = Math.max(0, subtotal - desconto)
 
     const [venda] = await this.db.insert(dbVenda).values({
       origem:            'direta',
@@ -200,7 +221,7 @@ export class VendaService {
       tipoEntrega:       tipoEntrega || 'Retirada',
       dataEntrega:       dataEntrega ? new Date(dataEntrega) : null,
       enderecoEntrega:   enderecoEntrega || null,
-      subtotal, desconto: descontoTotal, total,
+      subtotal, desconto, total,
       observacao:        observacao || null,
       observacaoInterna: observacaoInterna || null,
       vendedor:          vendedor || null,
@@ -213,19 +234,18 @@ export class VendaService {
         await this.db.execute(sql`
           INSERT INTO t_venda_item (
             venda_id, produto_id, nome_produto, quantidade,
-            tipo_precao, nome_tipo_precao, preco_unitario, desconto, subtotal,
+            tipo_precao, nome_tipo_precao, preco_unitario, subtotal,
             created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
           ) VALUES (
             ${venda.vendaId}, ${item.produtoId}, ${item.nomeProduto}, ${item.quantidade},
-            ${item.tipoPrecao}, ${item.nomeTipoPrecao}, ${item.precoUnitario}, ${item.desconto}, ${item.subtotal},
+            ${item.tipoPrecao}, ${item.nomeTipoPrecao}, ${item.precoUnitario}, ${item.subtotal},
             ${userId}, ${userId}, ${now.toISOString()}, ${now.toISOString()}, true, 0
           )
         `)
       } catch {
         await this.db.insert(dbVendaItem).values({
           vendaId: venda.vendaId, produtoId: item.produtoId, nomeProduto: item.nomeProduto,
-          quantidade: item.quantidade, precoUnitario: item.precoUnitario,
-          desconto: item.desconto, subtotal: item.subtotal,
+          quantidade: item.quantidade, precoUnitario: item.precoUnitario, subtotal: item.subtotal,
           createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
         })
       }

@@ -325,15 +325,23 @@ export default function ProducaoView({ tenantSlug }: Props) {
       </div>
 
       {/* Grade */}
+      {/* A rolagem vertical acontece AQUI dentro, não na página.
+          É o que permite o cabeçalho ficar fixo: `sticky top-0` gruda no
+          contêiner que rola, e um contêiner com overflow-x já rola nos dois
+          eixos. Sem a altura máxima, quem rolaria seria a janela e o
+          cabeçalho subiria junto com as linhas. */}
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[calc(100vh-260px)] min-h-[240px]">
           <table className="w-full min-w-max text-xs">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left text-xs font-medium text-gray-500 px-3 py-2 w-56 sticky left-0 bg-gray-50">Produto</th>
-                <th className="text-center text-xs font-medium text-gray-500 px-2 py-2 w-16">Estoque</th>
+              {/* Cada célula do cabeçalho precisa de fundo próprio e z-index:
+                  transparente deixaria as linhas passarem por baixo.
+                  O canto (Produto) é fixo nos dois eixos, por isso z maior. */}
+              <tr className="bg-gray-50">
+                <th className="sticky top-0 left-0 z-30 text-left text-xs font-medium text-gray-500 px-3 py-2 w-56 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Produto</th>
+                <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-16 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Estoque</th>
                 {DIAS.map((d, i) => (
-                  <th key={d} className="text-center text-xs font-medium text-gray-400 px-0 py-1" colSpan={2}>
+                  <th key={d} className="sticky top-0 z-20 text-center text-xs font-medium text-gray-400 px-0 py-1 bg-gray-50 border-b border-gray-200" colSpan={2}>
                     <div className="font-semibold text-gray-600">{d}</div>
                     <div className="text-[10px] text-gray-400">{fmtDate(dias[i])}</div>
                     <div className="grid grid-cols-2 text-[9px] text-gray-300 mt-0.5">
@@ -342,9 +350,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
                     </div>
                   </th>
                 ))}
-                <th className="text-center text-xs font-medium text-blue-600 px-2 py-2 w-20">Total Ped.</th>
-                <th className="text-center text-xs font-medium text-gray-500 px-2 py-2 w-20">Prev. Est.</th>
-                <th className="text-center text-xs font-bold text-orange-600 px-2 py-2 w-24 bg-orange-50">Prod. Semanal Necessária</th>
+                <th className="sticky top-0 z-20 text-center text-xs font-medium text-blue-600 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Total Ped.</th>
+                <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prev. Est.</th>
+                <th className="sticky top-0 z-20 text-center text-xs font-bold text-orange-600 px-2 py-2 w-24 bg-orange-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prod. Semanal Necessária</th>
               </tr>
             </thead>
             <tbody>
@@ -361,7 +369,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                         grade mais legível. O title mostra o nome inteiro. */}
                     <td
                       title={p.nome}
-                      className="px-3 py-3 text-xs font-medium text-gray-900 sticky left-0 bg-white align-middle w-56 max-w-[224px] leading-snug">
+                      className="px-3 py-3 text-xs font-medium text-gray-900 sticky left-0 z-10 bg-white align-middle w-56 max-w-[224px] leading-snug">
                       {p.nome}
                     </td>
                     <td className="px-2 py-3 text-center align-middle">
@@ -407,7 +415,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
             {produtos.length > 0 && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200 bg-gray-50">
-                  <td className="px-3 py-3 text-xs font-bold text-gray-600 sticky left-0 bg-gray-50">Total Geral ({produtos.length})</td>
+                  <td className="px-3 py-3 text-xs font-bold text-gray-600 sticky left-0 z-10 bg-gray-50">Total Geral ({produtos.length})</td>
                   <td className="px-2 py-3 text-center text-sm font-bold text-gray-700">
                     {produtos.reduce((a: number, p: any) => a + (p.estoqueAtual ?? 0), 0)}
                   </td>

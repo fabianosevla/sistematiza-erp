@@ -173,10 +173,17 @@ export default function ClientesView({ tenantSlug }: Props) {
     { chave: 'email', titulo: 'E-mail', esconderAte: 'lg', render: (c: any) => c.email ?? '—' },
     {
       chave: 'tabelaPreco', titulo: 'Tabela', esconderAte: 'md', alinhamento: 'center',
-      // Varejo é o padrão e não precisa de destaque; atacado sim.
-      render: (c: any) => c.tabelaPreco && c.tabelaPreco !== 'varejo'
-        ? <Badge variant="secondary">{(TIPOS_PRECO as any)[c.tabelaPreco] ?? c.tabelaPreco}</Badge>
-        : <span className="text-gray-300">—</span>,
+      // Todo cliente tem tabela — quem não escolheu está em varejo. Mostrar
+      // travessão dava a impressão de campo vazio. Varejo usa o estilo neutro
+      // e atacado o de destaque, então dá para separar os dois de relance.
+      render: (c: any) => {
+        const tabela = c.tabelaPreco || 'varejo'
+        return (
+          <Badge variant={tabela === 'varejo' ? 'outline' : 'secondary'}>
+            {(TIPOS_PRECO as any)[tabela] ?? tabela}
+          </Badge>
+        )
+      },
     },
     {
       chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg',

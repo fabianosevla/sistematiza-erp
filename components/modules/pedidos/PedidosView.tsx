@@ -39,6 +39,22 @@ const PERIODOS = [
   { value: 'tudo',     label: 'Tudo' },
 ]
 
+// ── Nome do cliente ─────────────────────────────────────────────────────────
+// A busca do servidor procura em razão social, nome fantasia E documento.
+// Exibir só a razão social fazia o resultado parecer aleatório: quem digitava
+// "za" encontrava a loja pelo fantasia e via na lista um nome sem essas
+// letras. Estas duas funções mantêm a exibição coerente com a busca e com a
+// listagem de Clientes, que já mostra o fantasia.
+function nomeExibicao(c: any): string {
+  return c?.nomeFantasia?.trim() || c?.nomeCompleto || ''
+}
+
+function nomeSecundario(c: any): string {
+  const fantasia = c?.nomeFantasia?.trim()
+  if (fantasia && fantasia !== c?.nomeCompleto) return c?.nomeCompleto ?? ''
+  return c?.cpfCnpj ?? c?.documento ?? c?.cidade ?? ''
+}
+
 // ── Tabela de preço ─────────────────────────────────────────────────────────
 // O preço de cada item é definido AQUI, no front: a rota e o PedidoService
 // gravam o precoUnitario que a tela envia. Então é aqui que a tabela do
@@ -274,7 +290,8 @@ export default function PedidosView({ tenantSlug }: Props) {
       }
 
       // Busca o nome do cliente para exibir no formulário
-      let clienteNome = ''
+      let clienteNome   = ''
+      let clienteRazao  = ''
       let clienteTabela = 'varejo'
       if (ped.clienteId) {
         try {
@@ -282,13 +299,16 @@ export default function PedidosView({ tenantSlug }: Props) {
           const cd = await cr.json()
           const lista = cd?.data?.data ?? cd?.data ?? []
           const achado = lista.find((c: any) => c.clienteId === ped.clienteId)
-          clienteNome   = achado?.nomeCompleto ?? `Cliente #${ped.clienteId}`
+          clienteNome   = achado ? nomeExibicao(achado) : `Cliente #${ped.clienteId}`
+          clienteRazao  = achado?.nomeCompleto ?? ''
           clienteTabela = achado?.tabelaPreco ?? 'varejo'
         } catch { clienteNome = `Cliente #${ped.clienteId}` }
       }
 
       setEditandoPedidoId(ped.pedidoId)
-      setClienteSelecionado(ped.clienteId ? { clienteId: ped.clienteId, nomeCompleto: clienteNome, tabelaPreco: clienteTabela } : null)
+      setClienteSelecionado(ped.clienteId
+        ? { clienteId: ped.clienteId, nomeCompleto: clienteRazao || clienteNome, nomeFantasia: clienteNome, tabelaPreco: clienteTabela }
+        : null)
       // A tabela serve para precificar itens NOVOS adicionados nesta edição.
       // Os itens já gravados abaixo não têm `precos`, então mantêm o valor
       // original — reprecificar() não os toca.
@@ -453,7 +473,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                 {clienteSelecionado ? (
                   <div className="mt-1 flex items-center justify-between px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
                     <span className="text-sm font-medium text-green-800">
-                      {clienteSelecionado.nomeCompleto}
+                      {nomeExibicao(clienteSelecionado)}
                       {ehAtacado && <span className="ml-1.5 text-[10px] font-semibold text-amber-700">· {rotuloTabela}</span>}
                     </span>
                     <button onClick={limparCliente} className="text-green-400 hover:text-green-600"><X size={14} /></button>
@@ -464,15 +484,22 @@ export default function PedidosView({ tenantSlug }: Props) {
                       placeholder="Buscar por nome ou CPF..." className="mt-1" />
                     {buscaCliente.length > 1 && clientes.length > 0 && (
                       <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
+                        {/* Nome fantasia em cima, razão social embaixo: a busca
+                            casa nos dois, então os dois têm que aparecer. */}
                         {clientes.map((c: any) => (
                           <button key={c.clienteId} onClick={() => selecionarCliente(c)}
-                            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                            <span className="text-sm font-medium text-gray-900">{c.nomeCompleto}</span>
-                            <span className="text-xs text-gray-400">
-                              {c.tabelaPreco && c.tabelaPreco !== 'varejo'
-                                ? (TIPOS_PRECO as any)[c.tabelaPreco]
-                                : (c.cpfCnpj ?? c.cidade)}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-gray-900 truncate">{nomeExibicao(c)}</span>
+                              {nomeSecundario(c) && (
+                                <span className="block text-[11px] text-gray-400 truncate">{nomeSecundario(c)}</span>
+                              )}
                             </span>
+                            {c.tabelaPreco && c.tabelaPreco !== 'varejo' && (
+                              <span className="text-[11px] font-semibold text-amber-700 flex-shrink-0">
+                                {(TIPOS_PRECO as any)[c.tabelaPreco]}
+                              </span>
+                            )}
                           </button>
                         ))}
                       </div>

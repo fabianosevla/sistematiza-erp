@@ -387,7 +387,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
   function selecionarCliente(c: any) {
     setClienteId(String(c.clienteId))
-    setClienteNomeDisplay(c.nomeCompleto)
+    // Mostra o nome pelo qual a loja conhece o cliente, igual à listagem
+    // de Clientes e à lista de resultados aqui em cima.
+    setClienteNomeDisplay(c.nomeFantasia?.trim() || c.nomeCompleto)
     // É aqui que a tabela de preço do cliente entra em vigor.
     setTabelaPreco(c.tabelaPreco ?? 'varejo')
     setBuscaCliente('')
@@ -867,17 +869,35 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     placeholder="Nome ou CPF..." className="h-9 text-sm" />
                   {buscaCliente.length > 1 && clientes.length > 0 && (
                     <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
-                      {clientes.map((c: any) => (
-                        <button key={c.clienteId} onClick={() => selecionarCliente(c)}
-                          className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                          <span className="text-sm font-medium text-gray-900">{c.nomeCompleto}</span>
-                          <span className="text-[10px] text-gray-400">
-                            {c.tabelaPreco && c.tabelaPreco !== 'varejo'
-                              ? (TIPOS_PRECO as any)[c.tabelaPreco]
-                              : (c.cpfCnpj ?? '')}
-                          </span>
-                        </button>
-                      ))}
+                      {/* A busca do servidor procura em nome fantasia, razão
+                          social E documento. Mostrar só a razão social fazia
+                          o resultado parecer errado: quem digitava "za"
+                          achava a "Zaghi Massas" e via na lista a razão
+                          social, que não tem essas letras. Agora aparecem os
+                          dois nomes, e dá para ver por que aquele registro
+                          entrou no resultado. */}
+                      {clientes.map((c: any) => {
+                        const principal  = c.nomeFantasia?.trim() || c.nomeCompleto
+                        const secundario = c.nomeFantasia?.trim() && c.nomeFantasia.trim() !== c.nomeCompleto
+                          ? c.nomeCompleto
+                          : (c.cpfCnpj ?? '')
+                        return (
+                          <button key={c.clienteId} onClick={() => selecionarCliente(c)}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-gray-900 truncate">{principal}</span>
+                              {secundario && (
+                                <span className="block text-[10px] text-gray-400 truncate">{secundario}</span>
+                              )}
+                            </span>
+                            {c.tabelaPreco && c.tabelaPreco !== 'varejo' && (
+                              <span className="text-[10px] font-semibold text-amber-700 flex-shrink-0">
+                                {(TIPOS_PRECO as any)[c.tabelaPreco]}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
                     </div>
                   )}
                   <button

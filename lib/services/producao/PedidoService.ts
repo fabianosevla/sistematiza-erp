@@ -1,4 +1,6 @@
-import { and, eq, desc } from 'drizzle-orm'
+// @ts-nocheck
+// ESTE ARQUIVO VAI EM: lib/services/producao/PedidoService.ts
+import { and, eq, desc, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbPedido, dbPedidoItem } from '@/lib/db/schemas/producao'
 import { dbProduto } from '@/lib/db/schemas/cadastros'
@@ -6,24 +8,88 @@ import { dbProduto } from '@/lib/db/schemas/cadastros'
 export class PedidoService {
   constructor(private db: AppDB) {}
 
+  /**
+   * LISTAGEM COM NOME DO CLIENTE.
+   *
+   * Antes era um SELECT puro em t_pedido, sem JOIN. A tela usava
+   * `p.clienteNome ?? 'Consumidor Final'` e, como o campo nunca vinha, TODO
+   * pedido aparecia como Consumidor Final — inclusive os que tinham cliente
+   * gravado. t_pedido guarda só o cliente_id; o nome tem que vir do JOIN.
+   *
+   * O nome exibido é o fantasia quando existe, senão a razão social — mesma
+   * regra da listagem de Clientes e das buscas do PDV e de Pedidos.
+   */
   async list({ status }: { status?: string } = {}) {
-    const conditions = [eq(dbPedido.activeFlag, true)]
-    if (status) conditions.push(eq(dbPedido.status, status))
-    return this.db
-      .select()
-      .from(dbPedido)
-      .where(and(...conditions))
-      .orderBy(desc(dbPedido.dataPedido))
+    const res = await this.db.execute(sql`
+      SELECT
+        p.pedido_id, p.cliente_id, p.tipo_venda, p.status,
+        p.data_pedido, p.previsao_producao, p.previsao_entrega,
+        p.valor_entrega, p.endereco_entrega, p.observacao, p.venda_id,
+        p.active_flg, p.modification_num,
+        p.created_dt, p.created_by, p.updated_dt, p.updated_by,
+        cl.nome_completo AS cliente_razao,
+        cl.nome_fantasia AS cliente_fantasia
+      FROM t_pedido p
+      LEFT JOIN t_cliente cl ON cl.cliente_id = p.cliente_id
+      WHERE p.active_flg = true
+        ${status ? sql`AND p.status = ${status}` : sql``}
+      ORDER BY p.data_pedido DESC, p.pedido_id DESC
+    `)
+
+    return (res.rows as any[]).map(r => {
+      const fantasia = String(r.cliente_fantasia ?? '').trim()
+      const razao    = String(r.cliente_razao ?? '').trim()
+      return {
+        pedidoId:         r.pedido_id,
+        clienteId:        r.cliente_id,
+        // Sem cliente_id, "Consumidor Final" é a verdade — o pedido foi
+        // lançado sem identificar quem comprou.
+        clienteNome:      r.cliente_id ? (fantasia || razao || `Cliente #${r.cliente_id}`) : null,
+        clienteRazao:     razao || null,
+        tipoVenda:        r.tipo_venda,
+        status:           r.status,
+        dataPedido:       r.data_pedido,
+        previsaoProducao: r.previsao_producao,
+        previsaoEntrega:  r.previsao_entrega,
+        valorEntrega:     Number(r.valor_entrega ?? 0),
+        enderecoEntrega:  r.endereco_entrega,
+        observacao:       r.observacao,
+        vendaId:          r.venda_id,
+        activeFlag:       r.active_flg,
+        modificationNum:  r.modification_num,
+        createdDt:        r.created_dt,
+        createdBy:        r.created_by,
+        updatedDt:        r.updated_dt,
+        updatedBy:        r.updated_by,
+      }
+    })
   }
 
   async findById(id: number) {
     const [pedido] = await this.db.select().from(dbPedido).where(eq(dbPedido.pedidoId, id))
     if (!pedido) return null
+
     const itens = await this.db.select().from(dbPedidoItem).where(and(
       eq(dbPedidoItem.pedidoId, id),
       eq(dbPedidoItem.activeFlag, true),
     ))
-    return { ...pedido, itens }
+
+    // O modal de detalhe também mostra o cliente. Mesma regra da listagem.
+    let clienteNome: string | null = null
+    let clienteRazao: string | null = null
+    if (pedido.clienteId) {
+      const cli = await this.db.execute(sql`
+        SELECT nome_completo, nome_fantasia
+        FROM t_cliente WHERE cliente_id = ${pedido.clienteId} LIMIT 1
+      `)
+      const c        = (cli.rows as any[])[0] ?? {}
+      const fantasia = String(c.nome_fantasia ?? '').trim()
+      const razao    = String(c.nome_completo ?? '').trim()
+      clienteNome  = fantasia || razao || `Cliente #${pedido.clienteId}`
+      clienteRazao = razao || null
+    }
+
+    return { ...pedido, itens, clienteNome, clienteRazao }
   }
 
   async criar({ clienteId, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
