@@ -1,111 +1,158 @@
-import { and, eq, gte, lte, desc, inArray, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
-import { dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
-import { dbCliente, dbProduto, dbInsumo } from '@/lib/db/schemas/cadastros'
-import { dbProducaoSemanal } from '@/lib/db/schemas/producao'
 
+/**
+ * CONSULTAS — RELATÓRIOS POR PERÍODO.
+ *
+ * A versão anterior tinha quatro consultas de naturezas diferentes: duas por
+ * período (vendas, vendas por produto) e duas que eram simplesmente a listagem
+ * de cadastro (insumos, produtos) — estas últimas já existem em Estoque e em
+ * Cadastros, e aqui só duplicavam informação sem recorte de data.
+ *
+ * Ficaram duas, ambas com a mesma assinatura de período:
+ *
+ *   vendasPorPeriodo          — o que saiu
+ *   entradasEstoquePorPeriodo — o que entrou
+ *
+ * As duas devolvem `{ itens, kpis }` no mesmo formato, para a tela tratar as
+ * abas de maneira idêntica.
+ *
+ * Datas: a tela envia YYYY-MM-DD. O fim do período é empurrado para 23:59:59
+ * aqui no service — sem isso, consultar "hoje até hoje" perderia tudo que foi
+ * registrado depois da meia-noite, que é o dia inteiro.
+ */
 export class ConsultasService {
   constructor(private db: AppDB) {}
 
-  async listVendas({ dataInicio, dataFim, page = 1, limit = 20 }: { dataInicio?: string; dataFim?: string; page?: number; limit?: number }) {
-    const conditions = [eq(dbVenda.activeFlag, true)]
-    if (dataInicio) conditions.push(gte(dbVenda.vendidaEm, new Date(dataInicio)))
-    if (dataFim) { const fim = new Date(dataFim); fim.setHours(23,59,59,999); conditions.push(lte(dbVenda.vendidaEm, fim)) }
-
-    const offset = (page - 1) * limit
-    const [vendas, clientes] = await Promise.all([
-      this.db.select().from(dbVenda).where(and(...conditions))
-        .orderBy(desc(dbVenda.vendidaEm)).limit(limit).offset(offset),
-      this.db.select({ clienteId: dbCliente.clienteId, nome: dbCliente.nomeCompleto }).from(dbCliente),
-    ])
-
-    if (vendas.length === 0) return { data: [], meta: { total: 0, page, limit, totalPages: 0 } }
-
-    const vendaIds = vendas.map(v => v.vendaId)
-    const [itens, pagamentos] = await Promise.all([
-      this.db.select().from(dbVendaItem).where(inArray(dbVendaItem.vendaId, vendaIds)),
-      this.db.select().from(dbVendaPagamento).where(inArray(dbVendaPagamento.vendaId, vendaIds)),
-    ])
-
-    const clienteMap = Object.fromEntries(clientes.map(c => [c.clienteId, c.nome]))
-    const data = vendas.map(v => ({
-      ...v,
-      clienteNome: v.clienteId ? clienteMap[v.clienteId] ?? '—' : 'Consumidor Final',
-      itens:       itens.filter(i => i.vendaId === v.vendaId),
-      pagamentos:  pagamentos.filter(p => p.vendaId === v.vendaId),
-    }))
-
-    const [countResult] = await this.db.select({ total: sql<number>`COUNT(*)` }).from(dbVenda).where(and(...conditions))
-    const total = Number(countResult?.total ?? 0)
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } }
+  private limites(dataInicio?: string, dataFim?: string) {
+    const inicio = dataInicio ? new Date(`${dataInicio}T00:00:00`) : new Date('1970-01-01T00:00:00')
+    const fim    = dataFim    ? new Date(`${dataFim}T23:59:59.999`) : new Date('2999-12-31T23:59:59.999')
+    return { inicio, fim }
   }
 
-  async listVendasPorProduto({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
-    const result = await this.db.execute(sql`
-      SELECT vi.produto_id, vi.nome_produto,
-             SUM(vi.quantidade)::int as total_qtd,
-             SUM(vi.subtotal)::bigint as total_valor,
-             COUNT(DISTINCT vi.venda_id)::int as total_vendas,
-             MAX(v.vendida_em) as ultima_venda
-      FROM t_venda_item vi
-      JOIN t_venda v ON vi.venda_id = v.venda_id
+  // ── VENDAS POR PERÍODO ────────────────────────────────────────────────────
+  async vendasPorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+    const { inicio, fim } = this.limites(dataInicio, dataFim)
+
+    const res = await this.db.execute(sql`
+      SELECT
+        v.venda_id,
+        v.vendida_em,
+        v.total,
+        v.desconto,
+        v.origem,
+        v.cliente_id,
+        v.nome_cliente_avulso,
+        cl.nome_completo  AS cliente_razao,
+        cl.nome_fantasia  AS cliente_fantasia,
+        COALESCE((
+          SELECT STRING_AGG(DISTINCT vp.forma, ' + ')
+          FROM t_venda_pagamento vp
+          WHERE vp.venda_id = v.venda_id
+        ), '—') AS formas,
+        COALESCE((
+          SELECT SUM(vi.quantidade)
+          FROM t_venda_item vi
+          WHERE vi.venda_id = v.venda_id
+        ), 0)::numeric AS qtd_itens
+      FROM t_venda v
+      LEFT JOIN t_cliente cl ON cl.cliente_id = v.cliente_id
       WHERE v.active_flg = true
-        ${dataInicio ? sql`AND v.vendida_em >= ${new Date(dataInicio)}` : sql``}
-        ${dataFim    ? sql`AND v.vendida_em <= ${new Date(dataFim)}` : sql``}
-      GROUP BY vi.produto_id, vi.nome_produto
-      ORDER BY total_qtd DESC
+        AND v.vendida_em >= ${inicio}
+        AND v.vendida_em <= ${fim}
+      ORDER BY v.vendida_em DESC, v.venda_id DESC
     `)
-    return (result.rows as any[]).map(r => ({
-      produtoId:   r.produto_id,
-      nome:        r.nome_produto,
-      totalQtd:    Number(r.total_qtd),
-      totalValor:  Number(r.total_valor),
-      totalVendas: Number(r.total_vendas),
-      ultimaVenda: r.ultima_venda,
-    }))
-  }
 
-  async listInsumos() {
-    return this.db.select({
-      insumoId:     dbInsumo.insumoId,
-      nome:         dbInsumo.nome,
-      estoqueAtual: dbInsumo.estoqueAtual,
-      estoqueMinimo: dbInsumo.estoqueMinimo,
-      unidade:      dbInsumo.unidade,
-      tipo:         dbInsumo.tipo,
-      precoCusto:   dbInsumo.precoCusto,
-    }).from(dbInsumo).where(eq(dbInsumo.activeFlag, true)).orderBy(dbInsumo.nome)
-  }
+    const itens = (res.rows as any[]).map(r => {
+      const fantasia = String(r.cliente_fantasia ?? '').trim()
+      const razao    = String(r.cliente_razao ?? '').trim()
+      const avulso   = String(r.nome_cliente_avulso ?? '').trim()
+      return {
+        vendaId:     Number(r.venda_id),
+        data:        r.vendida_em,
+        // Mesma ordem de preferência do resto do sistema: como a loja conhece
+        // o cliente → razão social → nome digitado na hora → não identificado.
+        clienteNome: r.cliente_id
+          ? (fantasia || razao || `Cliente #${r.cliente_id}`)
+          : (avulso || 'Consumidor Final'),
+        clienteAvulso: !r.cliente_id && !!avulso,
+        origem:      r.origem ?? 'pdv',
+        formas:      r.formas ?? '—',
+        qtdItens:    Number(r.qtd_itens ?? 0),
+        desconto:    Number(r.desconto ?? 0),
+        total:       Number(r.total ?? 0),
+      }
+    })
 
-  async listProdutos() {
-    const agora = new Date()
-    const inicioSemana = new Date(agora)
-    inicioSemana.setDate(agora.getDate() - agora.getDay() + 1)
-    const fimSemana = new Date(inicioSemana)
-    fimSemana.setDate(inicioSemana.getDate() + 5)
+    const totalVendido = itens.reduce((a, i) => a + i.total, 0)
+    const totalDesc    = itens.reduce((a, i) => a + i.desconto, 0)
 
-    const [produtos, producoes] = await Promise.all([
-      this.db.select({
-        produtoId:     dbProduto.produtoId,
-        nome:          dbProduto.nome,
-        estoqueAtual:  dbProduto.estoqueAtual,
-estoqueMinimo: dbProduto.estoqueMinimo,
-        unidade:       dbProduto.unidade,
-        activeFlag:    dbProduto.activeFlag,
-      }).from(dbProduto).where(eq(dbProduto.activeFlag, true)).orderBy(dbProduto.nome),
-      this.db.select().from(dbProducaoSemanal).where(and(
-        eq(dbProducaoSemanal.activeFlag, true),
-        gte(dbProducaoSemanal.dataProducao, inicioSemana.toISOString().slice(0,10)),
-        lte(dbProducaoSemanal.dataProducao, fimSemana.toISOString().slice(0,10)),
-      )),
-    ])
-
-    const gradeMap: Record<number, Record<string, number>> = {}
-    for (const p of producoes) {
-      if (!gradeMap[p.produtoId]) gradeMap[p.produtoId] = {}
-      gradeMap[p.produtoId][p.dataProducao] = p.quantidade
+    return {
+      itens,
+      kpis: {
+        quantidade:  itens.length,
+        totalVendido,
+        totalDesconto: totalDesc,
+        ticketMedio: itens.length > 0 ? Math.round(totalVendido / itens.length) : 0,
+      },
     }
+  }
 
-    return produtos.map(p => ({ ...p, producaoSemana: gradeMap[p.produtoId] ?? {} }))
+  // ── ENTRADA DE ESTOQUE POR PERÍODO ────────────────────────────────────────
+  //
+  // Só movimentações de tipo 'entrada'. O nome vem de t_produto ou t_insumo
+  // conforme a coluna `entidade` — a movimentação guarda apenas o id, então
+  // sem esse join a consulta mostraria "entidade 14" para o operador.
+  async entradasEstoquePorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+    const { inicio, fim } = this.limites(dataInicio, dataFim)
+
+    const res = await this.db.execute(sql`
+      SELECT
+        m.movimentacao_id,
+        m.data_movimentacao,
+        m.entidade,
+        m.entidade_id,
+        m.quantidade,
+        m.preco_custo,
+        m.observacao,
+        COALESCE(p.nome,    i.nome)    AS nome,
+        COALESCE(p.unidade, i.unidade) AS unidade
+      FROM t_movimentacao_estoque m
+      LEFT JOIN t_produto p ON m.entidade = 'produto' AND p.produto_id = m.entidade_id
+      LEFT JOIN t_insumo  i ON m.entidade = 'insumo'  AND i.insumo_id  = m.entidade_id
+      WHERE m.active_flg = true
+        AND m.tipo = 'entrada'
+        AND m.data_movimentacao >= ${inicio}
+        AND m.data_movimentacao <= ${fim}
+      ORDER BY m.data_movimentacao DESC, m.movimentacao_id DESC
+    `)
+
+    const itens = (res.rows as any[]).map(r => {
+      // quantidade é NUMERIC(12,3) — o driver devolve string. Sem o Number
+      // aqui, a soma dos KPIs viraria concatenação de texto.
+      const qtd   = Number(r.quantidade ?? 0)
+      const custo = Number(r.preco_custo ?? 0)
+      return {
+        movimentacaoId: Number(r.movimentacao_id),
+        data:      r.data_movimentacao,
+        entidade:  r.entidade,
+        nome:      r.nome ?? `${r.entidade} #${r.entidade_id}`,
+        unidade:   r.unidade ?? '',
+        quantidade: qtd,
+        precoCusto: custo,
+        valorTotal: Math.round(qtd * custo),
+        observacao: r.observacao ?? '',
+      }
+    })
+
+    return {
+      itens,
+      kpis: {
+        quantidade:   itens.length,
+        totalProdutos: itens.filter(i => i.entidade === 'produto').length,
+        totalInsumos:  itens.filter(i => i.entidade === 'insumo').length,
+        valorTotal:    itens.reduce((a, i) => a + i.valorTotal, 0),
+      },
+    }
   }
 }

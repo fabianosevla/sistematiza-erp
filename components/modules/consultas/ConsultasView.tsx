@@ -1,274 +1,346 @@
 'use client'
-import { useState } from 'react'
+// ESTE ARQUIVO VAI EM: components/modules/consultas/ConsultasView.tsx
+//
+// CONSULTAS — RELATÓRIOS POR PERÍODO.
+//
+// Duas consultas: o que saiu (vendas) e o que entrou (estoque). As antigas
+// "Insumos" e "Produtos" saíram porque eram a listagem de cadastro, que já
+// existe em Estoque e em Cadastros, sem recorte de data — não eram consulta.
+//
+// A BARRA DE PERÍODO FICA ACIMA DAS ABAS, de propósito: o período vale para as
+// duas consultas. Se ele vivesse dentro da aba, trocar de aba perderia o
+// recorte, e seria preciso reescolher a data para comparar entrada com saída
+// do mesmo intervalo — que é justamente o uso desta tela.
+//
+// A periodicidade define o TAMANHO do salto das setas. O seletor de semana
+// antigo virou um caso particular: só continua semanal quando a periodicidade
+// é semanal.
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { fmtMoeda as fmt, fmtDataLocal as fmtDate } from '@/lib/format'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { useToast } from '@/components/ui/Toast'
+import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
+type Periodicidade = 'diaria' | 'semanal' | 'mensal' | 'trimestral' | 'semestral' | 'anual'
+type Aba           = 'vendas' | 'entradas-estoque'
 
-function getMesAtual() {
-  const now = new Date()
-  return {
-    inicio: new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10),
-    fim:    new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10),
-  }
+const PERIODICIDADES: { valor: Periodicidade; rotulo: string }[] = [
+  { valor: 'diaria',     rotulo: 'Diária' },
+  { valor: 'semanal',    rotulo: 'Semanal' },
+  { valor: 'mensal',     rotulo: 'Mensal' },
+  { valor: 'trimestral', rotulo: 'Trimestral' },
+  { valor: 'semestral',  rotulo: 'Semestral' },
+  { valor: 'anual',      rotulo: 'Anual' },
+]
+
+const ABAS: { valor: Aba; rotulo: string; icone: any }[] = [
+  { valor: 'vendas',           rotulo: 'Venda por período',              icone: ShoppingCart },
+  { valor: 'entradas-estoque', rotulo: 'Entrada de estoque por período', icone: PackagePlus },
+]
+
+const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
+
+// ── Cálculo do intervalo ────────────────────────────────────────────────────
+//
+// Toda a navegação (setas, "Hoje", escolha manual de data) move APENAS a
+// âncora. O intervalo é sempre derivado dela, nunca guardado em estado — assim
+// é impossível a tela ficar com início e fim inconsistentes entre si.
+
+function iso(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export default function ConsultasView({ tenantSlug }: Props) {
-  const api      = `/api/${tenantSlug}/consultas`
-  const mesAtual = getMesAtual()
+function intervaloDe(periodicidade: Periodicidade, ancora: Date) {
+  const a = new Date(ancora.getFullYear(), ancora.getMonth(), ancora.getDate())
+  let inicio: Date
+  let fim: Date
+  let rotulo: string
 
-  const [aba, setAba]               = useState<'vendas' | 'por-produto' | 'insumos' | 'produtos'>('vendas')
-  const [dataInicio, setDataInicio] = useState(mesAtual.inicio)
-  const [dataFim, setDataFim]       = useState(mesAtual.fim)
-  const [page, setPage]             = useState(1)
-  const [expandidos, setExpandidos] = useState<Set<number>>(new Set())
-
-  function toggleExpand(id: number) {
-    setExpandidos(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+  switch (periodicidade) {
+    case 'diaria': {
+      inicio = new Date(a)
+      fim    = new Date(a)
+      rotulo = a.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+      break
+    }
+    case 'semanal': {
+      // Segunda a domingo. getDay() devolve 0 para domingo, por isso o domingo
+      // recua 6 dias em vez de avançar — senão ele cairia na semana seguinte.
+      const diaSemana = a.getDay()
+      const recuo     = diaSemana === 0 ? 6 : diaSemana - 1
+      inicio = new Date(a); inicio.setDate(a.getDate() - recuo)
+      fim    = new Date(inicio); fim.setDate(inicio.getDate() + 6)
+      rotulo = `${inicio.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a ${fim.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+      break
+    }
+    case 'mensal': {
+      inicio = new Date(a.getFullYear(), a.getMonth(), 1)
+      fim    = new Date(a.getFullYear(), a.getMonth() + 1, 0)
+      rotulo = `${MESES[a.getMonth()]} de ${a.getFullYear()}`
+      break
+    }
+    case 'trimestral': {
+      const t = Math.floor(a.getMonth() / 3)
+      inicio = new Date(a.getFullYear(), t * 3, 1)
+      fim    = new Date(a.getFullYear(), t * 3 + 3, 0)
+      rotulo = `${t + 1}º trimestre de ${a.getFullYear()}`
+      break
+    }
+    case 'semestral': {
+      const s = a.getMonth() < 6 ? 0 : 1
+      inicio = new Date(a.getFullYear(), s * 6, 1)
+      fim    = new Date(a.getFullYear(), s * 6 + 6, 0)
+      rotulo = `${s + 1}º semestre de ${a.getFullYear()}`
+      break
+    }
+    case 'anual':
+    default: {
+      inicio = new Date(a.getFullYear(), 0, 1)
+      fim    = new Date(a.getFullYear(), 11, 31)
+      rotulo = String(a.getFullYear())
+      break
+    }
   }
 
-  const { data: vendasRaw, isLoading: vendasLoading } = useQuery({
-    queryKey: ['consultas-vendas', tenantSlug, dataInicio, dataFim, page],
-    queryFn:  async () => (await fetch(`${api}?tipo=vendas&dataInicio=${dataInicio}&dataFim=${dataFim}&page=${page}&limit=20`)).json(),
-    enabled:  aba === 'vendas',
+  return { inicio: iso(inicio), fim: iso(fim), rotulo }
+}
+
+/** Move a âncora um período inteiro para frente ou para trás. */
+function deslocar(periodicidade: Periodicidade, ancora: Date, passo: 1 | -1) {
+  const d = new Date(ancora)
+  switch (periodicidade) {
+    case 'diaria':     d.setDate(d.getDate() + passo); break
+    case 'semanal':    d.setDate(d.getDate() + passo * 7); break
+    case 'mensal':     d.setMonth(d.getMonth() + passo); break
+    case 'trimestral': d.setMonth(d.getMonth() + passo * 3); break
+    case 'semestral':  d.setMonth(d.getMonth() + passo * 6); break
+    case 'anual':      d.setFullYear(d.getFullYear() + passo); break
+  }
+  return d
+}
+
+const fmtDataHora = (d: any) =>
+  d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+
+export default function ConsultasView({ tenantSlug }: Props) {
+  const { toast } = useToast()
+
+  const [aba, setAba]                     = useState<Aba>('vendas')
+  const [periodicidade, setPeriodicidade] = useState<Periodicidade>('semanal')  // padrão
+  const [ancora, setAncora]               = useState<Date>(() => new Date())
+
+  const periodo = useMemo(() => intervaloDe(periodicidade, ancora), [periodicidade, ancora])
+
+  const { data: raw, isLoading } = useQuery({
+    queryKey: ['consultas', tenantSlug, aba, periodo.inicio, periodo.fim],
+    queryFn: async () => {
+      const p = new URLSearchParams({ tipo: aba, dataInicio: periodo.inicio, dataFim: periodo.fim })
+      return (await fetch(`/api/${tenantSlug}/consultas?${p}`)).json()
+    },
   })
 
-  const { data: porProdRaw, isLoading: ppLoading } = useQuery({
-    queryKey: ['consultas-por-produto', tenantSlug, dataInicio, dataFim],
-    queryFn:  async () => (await fetch(`${api}?tipo=por-produto&dataInicio=${dataInicio}&dataFim=${dataFim}`)).json(),
-    enabled:  aba === 'por-produto',
-  })
+  const itens: any[] = Array.isArray(raw?.data?.itens) ? raw.data.itens : []
+  const kpis         = raw?.data?.kpis ?? {}
 
-  const { data: insumosRaw, isLoading: insumosLoading } = useQuery({
-    queryKey: ['consultas-insumos', tenantSlug],
-    queryFn:  async () => (await fetch(`${api}?tipo=insumos`)).json(),
-    enabled:  aba === 'insumos',
-  })
+  // ── Exportação ────────────────────────────────────────────────────────────
+  function exportarCSV() {
+    if (itens.length === 0) { toast('Nada para exportar neste período.', 'error'); return }
 
-  const { data: produtosRaw, isLoading: produtosLoading } = useQuery({
-    queryKey: ['consultas-produtos', tenantSlug],
-    queryFn:  async () => (await fetch(`${api}?tipo=produtos`)).json(),
-    enabled:  aba === 'produtos',
-  })
+    const linhas = aba === 'vendas'
+      ? [
+          ['Venda', 'Data', 'Cliente', 'Origem', 'Itens', 'Pagamento', 'Desconto', 'Total'],
+          ...itens.map(i => [
+            String(i.vendaId), fmtDataHora(i.data), i.clienteNome, i.origem,
+            String(i.qtdItens), i.formas,
+            (i.desconto / 100).toFixed(2), (i.total / 100).toFixed(2),
+          ]),
+        ]
+      : [
+          ['Data', 'Tipo', 'Item', 'Quantidade', 'Unidade', 'Custo unit.', 'Valor total', 'Observação'],
+          ...itens.map(i => [
+            fmtDataHora(i.data), i.entidade, i.nome,
+            String(i.quantidade), i.unidade,
+            (i.precoCusto / 100).toFixed(2), (i.valorTotal / 100).toFixed(2),
+            i.observacao,
+          ]),
+        ]
 
-  // FIX: extração correta dos dados da API { data: [...] }
-  const vendas     = Array.isArray(vendasRaw?.data?.data) ? vendasRaw.data.data : []
-  const metaVendas = vendasRaw?.data?.meta ?? null
-  const porProd    = Array.isArray(porProdRaw?.data)  ? porProdRaw.data  : []
-  const insumos    = Array.isArray(insumosRaw?.data)  ? insumosRaw.data  : []
-  const produtos   = Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
+    const csv = linhas.map(l => l.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `${aba}-${periodo.inicio}-a-${periodo.fim}.csv`
+    a.click()
+  }
 
-  const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+  // ── Colunas ───────────────────────────────────────────────────────────────
+  const colunasVendas: Coluna[] = [
+    { chave: 'vendaId', titulo: 'Venda', render: (i: any) => <span className="font-mono text-xs text-gray-500">#{String(i.vendaId).padStart(5, '0')}</span> },
+    { chave: 'data',    titulo: 'Data',  render: (i: any) => fmtDataHora(i.data) },
+    {
+      chave: 'clienteNome', titulo: 'Cliente',
+      classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
+      render: (i: any) => (
+        <span className="inline-flex items-center gap-1.5">
+          {i.clienteNome}
+          {i.clienteAvulso && <Badge variant="secondary" className="text-[9px] px-1 py-0">avulso</Badge>}
+        </span>
+      ),
+    },
+    { chave: 'origem',   titulo: 'Origem',    esconderAte: 'md', render: (i: any) => i.origem },
+    { chave: 'qtdItens', titulo: 'Itens',     alinhamento: 'right', esconderAte: 'md', render: (i: any) => fmtQtd(i.qtdItens) },
+    { chave: 'formas',   titulo: 'Pagamento', esconderAte: 'lg', render: (i: any) => i.formas },
+    { chave: 'desconto', titulo: 'Desconto',  alinhamento: 'right', render: (i: any) => i.desconto > 0 ? <span className="text-red-600">-{fmt(i.desconto)}</span> : <span className="text-gray-300">—</span> },
+    { chave: 'total',    titulo: 'Total',     alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
+  ]
+
+  const colunasEntradas: Coluna[] = [
+    { chave: 'data',     titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
+    { chave: 'entidade', titulo: 'Tipo', render: (i: any) => <Badge variant="secondary">{i.entidade}</Badge> },
+    {
+      chave: 'nome', titulo: 'Item',
+      classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
+      render: (i: any) => i.nome,
+    },
+    { chave: 'quantidade', titulo: 'Quantidade', alinhamento: 'right', render: (i: any) => <>{fmtQtd(i.quantidade)} <span className="text-gray-400">{i.unidade}</span></> },
+    { chave: 'precoCusto', titulo: 'Custo unit.', alinhamento: 'right', esconderAte: 'md', render: (i: any) => i.precoCusto > 0 ? fmt(i.precoCusto) : <span className="text-gray-300">—</span> },
+    { chave: 'valorTotal', titulo: 'Valor total', alinhamento: 'right', render: (i: any) => i.valorTotal > 0 ? <span className="font-semibold text-gray-900">{fmt(i.valorTotal)}</span> : <span className="text-gray-300">—</span> },
+    { chave: 'observacao', titulo: 'Observação', esconderAte: 'xl', render: (i: any) => i.observacao || <span className="text-gray-300">—</span> },
+  ]
+
+  const cartoes = aba === 'vendas'
+    ? [
+        { rotulo: 'Vendas',        valor: String(kpis.quantidade ?? 0) },
+        { rotulo: 'Total vendido', valor: fmt(kpis.totalVendido ?? 0) },
+        { rotulo: 'Ticket médio',  valor: fmt(kpis.ticketMedio ?? 0) },
+        { rotulo: 'Descontos',     valor: fmt(kpis.totalDesconto ?? 0) },
+      ]
+    : [
+        { rotulo: 'Entradas',    valor: String(kpis.quantidade ?? 0) },
+        { rotulo: 'Produtos',    valor: String(kpis.totalProdutos ?? 0) },
+        { rotulo: 'Insumos',     valor: String(kpis.totalInsumos ?? 0) },
+        { rotulo: 'Valor total', valor: fmt(kpis.valorTotal ?? 0) },
+      ]
 
   return (
     <div>
-      <PageHeader titulo="Consultas" />
+      <PageHeader
+        titulo="Consultas"
+        acoes={
+          <Button variant="outline" size="sm" onClick={exportarCSV} disabled={itens.length === 0}>
+            <Download size={13} className="mr-1.5" /> Exportar CSV
+          </Button>
+        }
+      />
 
-      <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit overflow-x-auto">
-        {([
-          { value: 'vendas',      label: 'Animação/Venda' },
-          { value: 'por-produto', label: 'Por Produto' },
-          { value: 'insumos',     label: 'Insumos' },
-          { value: 'produtos',    label: 'Produtos' },
-        ] as const).map(a => (
-          <button key={a.value} onClick={() => setAba(a.value)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {a.label}
+      {/* ── BARRA DE PERÍODO — acima das abas, vale para as duas ──────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Periodicidade</span>
+          <select
+            value={periodicidade}
+            onChange={e => setPeriodicidade(e.target.value as Periodicidade)}
+            className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+          >
+            {PERIODICIDADES.map(p => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
+          </select>
+          <InfoTip titulo="Periodicidade">
+            Define o tamanho do salto das setas e o intervalo consultado.
+            Em <strong>Diária</strong> o recorte é o próprio dia; em <strong>Semanal</strong>,
+            de segunda a domingo; nas demais, o mês, trimestre, semestre ou ano fechado.
+          </InfoTip>
+        </div>
+
+        {/* Navegador do período */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setAncora(a => deslocar(periodicidade, a, -1))}
+            title="Período anterior"
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <ChevronLeft size={16} />
           </button>
+          <div className="min-w-[190px] h-9 px-3 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+            <span className="text-sm font-medium text-gray-800">{periodo.rotulo}</span>
+          </div>
+          <button
+            onClick={() => setAncora(a => deslocar(periodicidade, a, 1))}
+            title="Próximo período"
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+
+        {/* Salto direto por data — substitui o antigo seletor de semanas */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Ir para</span>
+          <Input
+            type="date"
+            value={iso(ancora)}
+            onChange={e => { if (e.target.value) setAncora(new Date(`${e.target.value}T12:00:00`)) }}
+            className="h-9 w-[150px] text-sm"
+          />
+        </div>
+
+        <Button variant="outline" size="sm" onClick={() => setAncora(new Date())}>
+          Hoje
+        </Button>
+
+        <span className="ml-auto text-xs text-gray-400">
+          {periodo.inicio.split('-').reverse().join('/')} — {periodo.fim.split('-').reverse().join('/')}
+        </span>
+      </div>
+
+      {/* ── ABAS ─────────────────────────────────────────────────────────── */}
+      <div className="border-b border-gray-100 mb-4">
+        <div className="flex items-stretch">
+          {ABAS.map(item => {
+            const Icone = item.icone
+            const ativa = aba === item.valor
+            return (
+              <button
+                key={item.valor}
+                onClick={() => setAba(item.valor)}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                  ativa ? 'border-green-500 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Icone size={14} />
+                {item.rotulo}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── KPIs do período ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        {cartoes.map((c, i) => (
+          <div key={i} className="bg-white rounded-xl border border-gray-100 px-4 py-3.5">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{c.rotulo}</p>
+            <p className="text-xl font-semibold text-gray-900 mt-1.5 truncate">{c.valor}</p>
+          </div>
         ))}
       </div>
 
-      {(aba === 'vendas' || aba === 'por-produto') && (
-        <div className="flex flex-wrap gap-3 mb-4">
-          <div className="flex items-center gap-2"><Label className="text-xs">De:</Label><Input type="date" value={dataInicio} onChange={e => { setDataInicio(e.target.value); setPage(1) }} className="h-9 text-sm w-36" /></div>
-          <div className="flex items-center gap-2"><Label className="text-xs">Até:</Label><Input type="date" value={dataFim}    onChange={e => { setDataFim(e.target.value);    setPage(1) }} className="h-9 text-sm w-36" /></div>
-        </div>
-      )}
-
-      {/* Animação/Venda */}
-      {aba === 'vendas' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="w-8 px-2 py-3" />
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Cliente</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Data Venda</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Forma Pgto</th>
-                <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendasLoading ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-              ) : vendas.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma venda encontrada.</td></tr>
-              ) : vendas.map((v: any) => (
-                <>
-                  <tr key={v.vendaId} className="border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer"
-                    onClick={() => toggleExpand(v.vendaId)}>
-                    <td className="px-2 py-3 text-gray-400">
-                      {expandidos.has(v.vendaId) ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                    </td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{v.clienteNome}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{fmtDate(v.vendidaEm)}</td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {(v.pagamentos ?? []).map((p: any, i: number) => <Badge key={i} variant="outline" className="mr-1 text-xs">{p.forma}</Badge>)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold">{fmt(v.total)}</td>
-                  </tr>
-                  {expandidos.has(v.vendaId) && (
-                    <tr key={`${v.vendaId}-detail`} className="bg-gray-50/50">
-                      <td colSpan={5} className="px-8 py-3">
-                        <table className="w-full text-xs">
-                          <thead><tr>{['Produto', 'Qtd', 'Subtotal'].map(h => <th key={h} className="text-left font-medium text-gray-400 pr-8 pb-1">{h}</th>)}</tr></thead>
-                          <tbody>
-                            {(v.itens ?? []).map((item: any) => (
-                              <tr key={item.itemId}>
-                                <td className="pr-8 text-gray-700">{item.nomeProduto}</td>
-                                <td className="pr-8 text-gray-600">{item.quantidade}</td>
-                                <td className="text-gray-700 font-medium">{fmt(item.subtotal)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        {v.desconto > 0 && <p className="text-xs text-gray-400 mt-1">Desconto: {fmt(v.desconto)}</p>}
-                        {v.vendedor && <p className="text-xs text-gray-400">Vendedor: {v.vendedor}</p>}
-                      </td>
-                    </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
-          {metaVendas && metaVendas.totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-              <p className="text-xs text-gray-400">Página {metaVendas.page} de {metaVendas.totalPages} ({metaVendas.total} vendas)</p>
-              <div className="flex gap-2">
-                <button disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="px-3 py-1 text-xs border rounded disabled:opacity-40">Anterior</button>
-                <button disabled={page >= metaVendas.totalPages} onClick={() => setPage(p => p + 1)} className="px-3 py-1 text-xs border rounded disabled:opacity-40">Próximo</button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Por Produto */}
-      {aba === 'por-produto' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Produto</th>
-                <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Qtd Total</th>
-                <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Valor Total</th>
-                <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Nº Vendas</th>
-                <th className="text-right text-xs font-medium text-gray-400 px-4 py-3 hidden lg:table-cell">Última Venda</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ppLoading ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-              ) : porProd.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Sem dados no período.</td></tr>
-              ) : porProd.map((p: any, i: number) => (
-                <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-gray-700">{p.totalQtd}</td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-green-600">{fmt(p.totalValor)}</td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-500 hidden md:table-cell">{p.totalVendas}</td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-400 hidden lg:table-cell">{p.ultimaVenda ? fmtDate(p.ultimaVenda) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Insumos */}
-      {aba === 'insumos' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                {['Insumo', 'Est. Atual', 'Est. Mínimo', 'Unidade', 'Preço Custo'].map((h, i) => (
-                  <th key={h} className={`text-${i === 0 ? 'left' : 'right'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {insumosLoading ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-              ) : insumos.length === 0 ? (
-                <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum insumo encontrado.</td></tr>
-              ) : insumos.map((ins: any) => (
-                <tr key={ins.insumoId} className={`border-b border-gray-50 ${ins.estoqueAtual <= ins.estoqueMinimo ? 'bg-red-50/30' : ''}`}>
-                  <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{ins.nome}</td>
-                  <td className="px-4 py-2.5 text-right text-sm">
-                    <span className={`font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-gray-700'}`}>{ins.estoqueAtual}</span>
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-sm text-gray-500">{ins.estoqueMinimo}</td>
-                  <td className="px-4 py-2.5 text-right text-sm text-gray-500">{ins.unidade}</td>
-                  <td className="px-4 py-2.5 text-right text-sm font-medium text-gray-700">{ins.precoCusto ? fmt(ins.precoCusto) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Produtos */}
-      {aba === 'produtos' && (
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-max">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-48">Produto</th>
-                  <th className="text-right text-xs font-medium text-gray-400 px-3 py-3 w-20">Est. Atual</th>
-                  <th className="text-right text-xs font-medium text-gray-400 px-3 py-3 w-20">Est. Mín.</th>
-                  {DIAS.map(d => <th key={d} className="text-center text-xs font-medium text-gray-400 px-2 py-3 w-16">{d}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {produtosLoading ? (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">Carregando...</td></tr>
-                ) : produtos.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto encontrado.</td></tr>
-                ) : produtos.map((p: any) => {
-                  const semana = p.producaoSemana ?? {}
-                  const diasVals = Object.values(semana)
-                  return (
-                    <tr key={p.produtoId} className="border-b border-gray-50">
-                      <td className="px-4 py-2.5 text-sm font-medium text-gray-900 truncate max-w-48">{p.nome}</td>
-                      <td className="px-3 py-2.5 text-right text-sm">
-                        <span className={`font-semibold ${p.estoqueAtual <= p.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>{p.estoqueAtual}</span>
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-sm text-gray-400">{p.estoqueMinimo}</td>
-                      {Array.from({ length: 6 }, (_, i) => i).map(i => {
-                        const val = diasVals[i] as number | undefined
-                        return (
-                          <td key={i} className="px-2 py-2.5 text-center">
-                            {val && Number(val) > 0
-                              ? <span className="text-xs font-semibold bg-green-100 text-green-800 px-1.5 py-0.5 rounded">{val}</span>
-                              : <span className="text-gray-300 text-xs">—</span>}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* ── LISTAGEM ─────────────────────────────────────────────────────── */}
+      <DataTable
+        colunas={aba === 'vendas' ? colunasVendas : colunasEntradas}
+        itens={itens}
+        chave={(i: any) => i.vendaId ?? i.movimentacaoId}
+        carregando={isLoading}
+        vazio={aba === 'vendas'
+          ? 'Nenhuma venda neste período.'
+          : 'Nenhuma entrada de estoque neste período.'}
+      />
     </div>
   )
 }
