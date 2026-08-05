@@ -10,7 +10,8 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Loader2, Users } from 'lucide-react'
+import { Plus, Loader2, Users } from 'lucide-react'
+import { FormModal } from '@/components/ui/FormModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -181,18 +182,13 @@ export default function PdvMesas({ tenantSlug, onAbrirComanda }: Props) {
         </div>
       )}
 
-      {/* Modal nova comanda */}
+      {/* Painel nova comanda */}
       {showNova && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">
-                {mesaSelecionada ? `Nova comanda — Mesa ${mesaSelecionada}` : 'Nova comanda'}
-              </h2>
-              <button onClick={() => setShowNova(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={18} />
-              </button>
-            </div>
+        <FormModal
+          titulo={mesaSelecionada ? `Nova comanda — Mesa ${mesaSelecionada}` : 'Nova comanda'}
+          onClose={() => setShowNova(false)}
+          largura="max-w-sm"
+        >
             <div className="p-6 space-y-4">
               {mesaSelecionada && (porMesa[mesaSelecionada]?.length ?? 0) > 0 && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -209,7 +205,6 @@ export default function PdvMesas({ tenantSlug, onAbrirComanda }: Props) {
                   placeholder="Ex: Mesa 5, Balcão, João..."
                   autoFocus
                 />
-                <p className="text-xs text-gray-400 mt-1">Mesa, número ou nome do cliente</p>
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setShowNova(false)}>Cancelar</Button>
@@ -224,8 +219,7 @@ export default function PdvMesas({ tenantSlug, onAbrirComanda }: Props) {
                 </Button>
               </div>
             </div>
-          </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )

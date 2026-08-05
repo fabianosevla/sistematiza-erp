@@ -1,10 +1,11 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Check, RefreshCw, Trash2, Pencil } from 'lucide-react'
+import { Plus, Check, RefreshCw, Trash2, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FormModal } from '@/components/ui/FormModal'
 import { Badge } from '@/components/ui/badge'
 import { fmtData as fmtDate } from '@/lib/format'
 
@@ -156,12 +157,11 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">{editando ? 'Editar Ação' : 'Nova Ação'}</h2>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
+        <FormModal
+          titulo={editando ? 'Editar Ação' : 'Nova Ação'}
+          onClose={fecharModal}
+          largura="max-w-lg"
+        >
             <div className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Data *</Label><Input type="date" value={dataAcao} onChange={e => setDataAcao(e.target.value)} className="mt-1" /></div>
@@ -181,8 +181,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
                 </Button>
               </div>
             </div>
-          </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )

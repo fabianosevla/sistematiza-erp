@@ -4,7 +4,8 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, CheckCircle, Pencil } from 'lucide-react'
+import { Plus, Trash2, CheckCircle, Pencil } from 'lucide-react'
+import { FormModal } from '@/components/ui/FormModal'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -283,20 +284,13 @@ export default function ContasReceberView({ tenantSlug }: Props) {
 
       {/* Modal nova conta / edição */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  {editando ? 'Editar conta a receber' : 'Nova conta a receber'}
-                </h2>
-                {editando?.origem === 'pedido' && (
-                  <p className="text-xs text-gray-400 mt-0.5">Gerada pela entrega de um pedido</p>
-                )}
-              </div>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <FormModal
+          titulo={editando ? 'Editar conta a receber' : 'Nova conta a receber'}
+          subtitulo={editando?.origem === 'pedido' ? 'Gerada pela entrega de um pedido' : undefined}
+          onClose={fecharModal}
+          largura="max-w-lg"
+        >
+            <div className="p-6 space-y-4">
               <div>
                 <Label>Descrição *</Label>
                 <Input value={form.descricao} onChange={e => setF('descricao', e.target.value)} className="mt-1" autoFocus />
@@ -354,21 +348,17 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                 {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Criar conta'}
               </Button>
             </div>
-          </div>
-        </div>
+        </FormModal>
       )}
 
-      {/* Modal baixa */}
+      {/* Painel de baixa */}
       {showBaixa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold">Registrar recebimento</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{showBaixa.descricao}</p>
-              </div>
-              <button onClick={() => setShowBaixa(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
+        <FormModal
+          titulo="Registrar recebimento"
+          subtitulo={showBaixa.descricao}
+          onClose={() => setShowBaixa(null)}
+          largura="max-w-sm"
+        >
             <div className="p-6 space-y-4">
               <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between">
                 <span className="text-sm text-gray-500">Saldo a receber</span>
@@ -387,15 +377,14 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                 <Label>Forma de recebimento</Label>
                 <Input value={baixaForm.formaRecebimento} onChange={e => setBF('formaRecebimento', e.target.value)} className="mt-1" placeholder="PIX, Transferência..." />
               </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <Button variant="outline" onClick={() => setShowBaixa(null)}>Cancelar</Button>
+                <Button onClick={() => baixarMut.mutate()} disabled={!baixaForm.valorRecebido || baixarMut.isPending}>
+                  {baixarMut.isPending ? 'Registrando...' : 'Confirmar recebimento'}
+                </Button>
+              </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
-              <Button variant="outline" onClick={() => setShowBaixa(null)}>Cancelar</Button>
-              <Button onClick={() => baixarMut.mutate()} disabled={!baixaForm.valorRecebido || baixarMut.isPending}>
-                {baixarMut.isPending ? 'Registrando...' : 'Confirmar recebimento'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </FormModal>
       )}
 
       {confirmDel && (

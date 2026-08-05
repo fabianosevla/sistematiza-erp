@@ -233,7 +233,7 @@ export default function FiscalView({ tenantSlug }: Props) {
             </div>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setShowCancelar(null)}>Voltar</Button>
-              <Button className="bg-red-500 hover:bg-red-600" onClick={() => cancelarMut.mutate(showCancelar)}
+              <Button variant="destructive" onClick={() => cancelarMut.mutate(showCancelar)}
                 disabled={motivoCancelamento.length < 15 || cancelarMut.isPending}>
                 Confirmar cancelamento
               </Button>

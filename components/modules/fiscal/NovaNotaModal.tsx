@@ -8,10 +8,11 @@
 
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { X, Trash2, Loader2 } from 'lucide-react'
+import { Trash2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt } from '@/lib/format'
 
@@ -91,14 +92,20 @@ export default function NovaNotaModal({ tenantSlug, tipoInicial, onClose }: Prop
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-lg font-semibold">Nova nota fiscal</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+    <SidePanel
+      titulo="Nova nota fiscal"
+      onClose={onClose}
+      largura="w-[30vw] min-w-[520px]"
+      rodape={
+        <>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => criarMut.mutate()} disabled={itens.length === 0 || criarMut.isPending}>
+            {criarMut.isPending ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Criando...</> : 'Criar nota (pendente)'}
+          </Button>
+        </>
+      }
+    >
+        <div className="p-6 space-y-4">
           <div>
             <Label>Tipo *</Label>
             <select value={tipo} onChange={e => setTipo(e.target.value as any)}
@@ -154,14 +161,6 @@ export default function NovaNotaModal({ tenantSlug, tipoInicial, onClose }: Prop
             </div>
           )}
         </div>
-
-        <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
-          <Button variant="outline" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => criarMut.mutate()} disabled={itens.length === 0 || criarMut.isPending}>
-            {criarMut.isPending ? <><Loader2 size={14} className="animate-spin mr-1.5" /> Criando...</> : 'Criar nota (pendente)'}
-          </Button>
-        </div>
-      </div>
-    </div>
+    </SidePanel>
   )
 }

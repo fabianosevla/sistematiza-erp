@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { SidePanel } from '@/components/ui/SidePanel'
 import type { Config } from './ClientShell'
 
 interface Props {
@@ -341,23 +342,41 @@ export default function Header({
         </div>
       )}
 
-      {/* Modal configurações */}
+      {/* Painel de configurações.
+          O rodapé é fixo e muda com a aba: cada uma tem o próprio Salvar, e
+          nada aqui grava sozinho. */}
       {showSettings && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
-            {/* Cabeçalho */}
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 flex-shrink-0">
-              <div>
-                <h2 className="text-lg font-semibold">Configurações</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{tenantName}</p>
-              </div>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600">
-                <X size={18} />
-              </button>
-            </div>
-
+        <SidePanel
+          titulo="Configurações"
+          subtitulo={tenantName}
+          onClose={fecharModal}
+          largura="w-[34vw] min-w-[560px]"
+          rodape={aba === 'conta' ? (
+            <>
+              <Button variant="outline" size="sm" onClick={fecharModal}>Fechar</Button>
+              <Button size="sm"
+                onClick={() => salvarContaMut.mutate()}
+                disabled={!contaPendente || salvarContaMut.isPending}>
+                {salvarContaMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm"
+                onClick={() => setModulosLocal({})}
+                disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
+                Desfazer
+              </Button>
+              <Button size="sm"
+                onClick={() => salvarModulosMut.mutate()}
+                disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
+                {salvarModulosMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </>
+          )}
+        >
             {/* Abas */}
-            <div className="flex items-center gap-1 px-6 border-b border-gray-100 flex-shrink-0">
+            <div className="flex items-center gap-1 px-6 border-b border-gray-100 flex-shrink-0 sticky top-0 bg-white z-10">
               <button className={abaCls('conta')} onClick={() => setAba('conta')}>
                 Configurações de conta
                 {contaPendente && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
@@ -376,8 +395,7 @@ export default function Header({
 
             {/* ══ ABA 1 — CONFIGURAÇÕES DE CONTA ══════════════════════════ */}
             {aba === 'conta' && (
-              <>
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="p-6 space-y-6">
                   {/* Dados da empresa — cabeçalho de cupom e documentos */}
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Dados da empresa</p>
@@ -507,23 +525,11 @@ export default function Header({
                   </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-end gap-3">
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={fecharModal}>Fechar</Button>
-                    <Button size="sm"
-                      onClick={() => salvarContaMut.mutate()}
-                      disabled={!contaPendente || salvarContaMut.isPending}>
-                      {salvarContaMut.isPending ? 'Salvando...' : 'Salvar'}
-                    </Button>
-                  </div>
-                </div>
-              </>
             )}
 
             {/* ══ ABA 2 — HABILITAÇÕES DE MÓDULOS ═════════════════════════ */}
             {aba === 'modulos' && (
-              <>
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="p-6 space-y-6">
                   {grupos.map(grupo => (
                     <div key={grupo}>
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{grupo}</p>
@@ -552,24 +558,8 @@ export default function Header({
                   ))}
                 </div>
 
-                <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 flex items-center justify-end gap-3">
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm"
-                      onClick={() => setModulosLocal({})}
-                      disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
-                      Desfazer
-                    </Button>
-                    <Button size="sm"
-                      onClick={() => salvarModulosMut.mutate()}
-                      disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
-                      {salvarModulosMut.isPending ? 'Salvando...' : 'Salvar'}
-                    </Button>
-                  </div>
-                </div>
-              </>
             )}
-          </div>
-        </div>
+        </SidePanel>
       )}
     </>
   )

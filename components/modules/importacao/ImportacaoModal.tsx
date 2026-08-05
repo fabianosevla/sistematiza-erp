@@ -1,7 +1,8 @@
 'use client'
 import { useState, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { Upload, Download, X, CheckCircle, AlertCircle, FileText } from 'lucide-react'
+import { Upload, Download, CheckCircle, AlertCircle, FileText } from 'lucide-react'
+import { SidePanel } from '@/components/ui/SidePanel'
 import { Button } from '@/components/ui/button'
 import { gerarCSV, parseCSV, TEMPLATES, type EntidadeImportacao } from '@/lib/importacao/templates'
 
@@ -94,24 +95,44 @@ export default function ImportacaoModal({ tenantSlug, entidade, queryKey, onClos
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
-
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Importar {LABEL[entidade]}</h2>
-            <p className="text-sm text-gray-400 mt-0.5">
-              {step === 'upload' && 'Faça upload de um arquivo CSV'}
-              {step === 'preview' && `${rows.length} registro${rows.length !== 1 ? 's' : ''} encontrado${rows.length !== 1 ? 's' : ''}`}
-              {step === 'resultado' && 'Importação concluída'}
-            </p>
+    <SidePanel
+      titulo={`Importar ${LABEL[entidade]}`}
+      subtitulo={
+        step === 'upload'   ? 'Faça upload de um arquivo CSV'
+      : step === 'preview'  ? `${rows.length} registro${rows.length !== 1 ? 's' : ''} encontrado${rows.length !== 1 ? 's' : ''}`
+      :                       'Importação concluída'
+      }
+      onClose={onClose}
+      largura="w-[36vw] min-w-[600px]"
+      rodape={
+        <>
+          {/* flex-1 empurra os botões para a direita e deixa a contagem à esquerda,
+              como era no rodapé antigo. */}
+          <div className="flex-1">
+            {step === 'preview' && (
+              <p className="text-xs text-gray-400">
+                {rows.length} registro{rows.length !== 1 ? 's' : ''} serão importados
+              </p>
+            )}
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-        </div>
+          {step === 'resultado' ? (
+            <Button onClick={onClose}>Fechar</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose}>Cancelar</Button>
+              {step === 'preview' && (
+                <Button onClick={confirmarImportacao} disabled={loading || rows.length === 0}>
+                  {loading ? 'Importando...' : `Importar ${rows.length} registro${rows.length !== 1 ? 's' : ''}`}
+                </Button>
+              )}
+            </>
+          )}
+        </>
+      }
+    >
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="p-6">
 
           {/* STEP 1 — Upload */}
           {step === 'upload' && (
@@ -269,32 +290,6 @@ export default function ImportacaoModal({ tenantSlug, entidade, queryKey, onClos
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-between items-center p-6 border-t border-gray-100 flex-shrink-0">
-          <div>
-            {step === 'preview' && (
-              <p className="text-xs text-gray-400">
-                {rows.length} registro{rows.length !== 1 ? 's' : ''} serão importados
-              </p>
-            )}
-          </div>
-          <div className="flex gap-3">
-            {step === 'resultado' ? (
-              <Button onClick={onClose}>Fechar</Button>
-            ) : (
-              <>
-                <Button variant="outline" onClick={onClose}>Cancelar</Button>
-                {step === 'preview' && (
-                  <Button onClick={confirmarImportacao} disabled={loading || rows.length === 0}>
-                    {loading ? 'Importando...' : `Importar ${rows.length} registro${rows.length !== 1 ? 's' : ''}`}
-                  </Button>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    </SidePanel>
   )
 }
