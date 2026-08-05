@@ -249,12 +249,25 @@ export class FinanceiroService {
       this.taxasDoPeriodo(inicio, fim),
     ])
 
+    // Despesas avulsas E gastos fixos.
+    //
+    // O KPI subtraía só t_despesa e ignorava t_gasto_fixo_valor — aluguel, luz
+    // e salário ficavam de fora. O DRE, na mesma tela, já os incluía. O
+    // resultado do mês aparecia mais alto do que era, e as duas telas
+    // discordavam sobre o mesmo mês.
     const despesasMes = await this.withSchema(async client => {
-      const r = await client.query(
+      const avulsas = await client.query(
         `SELECT COALESCE(SUM(valor), 0) as total FROM t_despesa WHERE active_flg = true AND mes_competencia = $1 AND ano_competencia = $2`,
         [mes, ano]
       )
-      return Number(r.rows[0]?.total ?? 0)
+      const fixos = await client.query(
+        `SELECT COALESCE(SUM(gv.valor), 0) as total
+           FROM t_gasto_fixo_valor gv
+           JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
+          WHERE gv.active_flg = true AND gv.mes = $1 AND gv.ano = $2`,
+        [mes, ano]
+      ).catch(() => ({ rows: [{ total: 0 }] }))
+      return Number(avulsas.rows[0]?.total ?? 0) + Number(fixos.rows[0]?.total ?? 0)
     })
 
     const receita = Number(receitaMes[0]?.total ?? 0)

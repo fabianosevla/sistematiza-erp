@@ -121,7 +121,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
   // filtrada, escolher "PIX" apagaria as outras formas e não daria mais para
   // trocar de escolha sem limpar antes.
   const opcoesFiltro = useMemo(() => {
-    const chaves = ['clienteNome', 'formas', 'produtos', 'nome', 'categoria', 'unidade']
+    const chaves = ['clienteNome', 'formas', 'produtos', 'nome', 'categoria', 'unidade', 'origem']
     const mapa: Record<string, string[]> = {}
     for (const k of chaves) {
       const set = new Set<string>()
@@ -261,6 +261,10 @@ export default function ConsultasView({ tenantSlug }: Props) {
       ),
     },
     { chave: 'categoria',  titulo: 'Categoria', filtravel: true, render: (i: any) => i.categoria },
+    {
+      chave: 'origem', titulo: 'Origem', filtravel: true,
+      render: (i: any) => <Badge variant="secondary">{i.origem}</Badge>,
+    },
     { chave: 'observacao', titulo: 'Observação', esconderAte: 'xl', render: (i: any) => i.observacao || <span className="text-gray-300">—</span> },
     { chave: 'valor',      titulo: 'Valor', alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valor)}</span> },
   ]
@@ -294,8 +298,8 @@ export default function ConsultasView({ tenantSlug }: Props) {
     : [
         { rotulo: 'Despesas',    valor: String(kpis.quantidade ?? 0) },
         { rotulo: 'Total',       valor: fmt(kpis.valorTotal ?? 0) },
-        { rotulo: 'Recorrentes', valor: String(kpis.recorrentes ?? 0) },
-        { rotulo: 'Maior valor', valor: fmt(kpis.maiorValor ?? 0) },
+        { rotulo: 'De compras',  valor: String(kpis.deCompras ?? 0) },
+        { rotulo: 'Gastos fixos',   valor: fmt(kpis.fixos ?? 0) },
       ]
 
   return (

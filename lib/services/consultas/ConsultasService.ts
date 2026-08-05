@@ -190,33 +190,90 @@ export class ConsultasService {
   async despesasPorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
     const { inicio, fim } = this.limites(dataInicio, dataFim)
 
-    const res = await this.db.execute(sql`
-      SELECT
-        d.despesa_id,
-        d.data_despesa,
-        d.nome,
-        d.categoria,
-        d.valor,
-        d.recorrente,
-        d.gerada_automaticamente,
-        d.observacao
-      FROM t_despesa d
-      WHERE d.active_flg = true
-        AND d.data_despesa >= ${inicio}
-        AND d.data_despesa <= ${fim}
-      ORDER BY d.data_despesa DESC, d.despesa_id DESC
-    `)
+    // t_compra só existe depois de scripts/migrate-compra-rapida-v2.js. Sem
+    // esta checagem, um tenant que ainda não migrou receberia "relation
+    // t_compra does not exist" e a aba inteira morreria — trocar um relatório
+    // que funciona por um erro, só para exibir uma coluna a mais, é péssimo
+    // negócio.
+    const chk = await this.db.execute(sql`SELECT to_regclass('t_compra') IS NOT NULL AS existe`)
+    const temCompra = (chk.rows[0] as any)?.existe === true
 
-    const itens = (res.rows as any[]).map(r => ({
+    const res = temCompra
+      ? await this.db.execute(sql`
+          SELECT d.despesa_id, d.data_despesa, d.nome, d.categoria, d.valor,
+                 d.recorrente, d.gerada_automaticamente, d.observacao,
+                 c.compra_id
+          FROM t_despesa d
+          LEFT JOIN t_compra c ON c.despesa_id = d.despesa_id AND c.active_flg = true
+          WHERE d.active_flg = true
+            AND d.data_despesa >= ${inicio}
+            AND d.data_despesa <= ${fim}
+          ORDER BY d.data_despesa DESC, d.despesa_id DESC
+        `)
+      : await this.db.execute(sql`
+          SELECT d.despesa_id, d.data_despesa, d.nome, d.categoria, d.valor,
+                 d.recorrente, d.gerada_automaticamente, d.observacao,
+                 NULL::int AS compra_id
+          FROM t_despesa d
+          WHERE d.active_flg = true
+            AND d.data_despesa >= ${inicio}
+            AND d.data_despesa <= ${fim}
+          ORDER BY d.data_despesa DESC, d.despesa_id DESC
+        `)
+
+    const avulsas = (res.rows as any[]).map(r => ({
       despesaId:  Number(r.despesa_id),
       data:       r.data_despesa,
       nome:       r.nome,
       categoria:  r.categoria ?? '—',
       valor:      Number(r.valor ?? 0),
       recorrente: r.recorrente === true,
-      automatica: r.gerada_automaticamente === true,
+      compraId:   r.compra_id ? Number(r.compra_id) : null,
+      origem:     r.compra_id ? 'Compra'
+                : r.gerada_automaticamente === true ? 'Recorrente'
+                : 'Manual',
       observacao: r.observacao ?? '',
     }))
+
+    // ── GASTOS FIXOS ────────────────────────────────────────────────────────
+    //
+    // Aluguel, luz, salário. Moram em t_gasto_fixo_valor, que é uma GRADE
+    // (categoria × ano × mês) e não tem data — por isso ficavam de fora deste
+    // relatório enquanto o DRE já os contava. "Quanto gastei em agosto" tinha
+    // resposta diferente conforme a tela.
+    //
+    // Convenção adotada: o gasto fixo do mês conta como lançado no DIA 1º.
+    // Então ele entra quando o período consultado contém o dia 1º daquele mês.
+    // Consultar agosto inteiro traz o aluguel; consultar 3 a 5 de agosto não
+    // traz — e é proposital, senão três dias apareceriam com o aluguel cheio.
+    const fixosRes = await this.db.execute(sql`
+      SELECT gv.valor_id, gv.ano, gv.mes, gv.valor, gc.nome AS categoria
+      FROM t_gasto_fixo_valor gv
+      JOIN t_gasto_fixo_categoria gc
+        ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
+      WHERE gv.active_flg = true
+        AND gv.valor > 0
+        AND MAKE_DATE(gv.ano, gv.mes, 1) >= ${inicio}::date
+        AND MAKE_DATE(gv.ano, gv.mes, 1) <= ${fim}::date
+      ORDER BY gv.ano DESC, gv.mes DESC, gc.ordem, gc.nome
+    `).catch(() => ({ rows: [] as any[] }))
+
+    const fixos = (fixosRes.rows as any[]).map(r => ({
+      // Id negativo para não colidir com despesa_id na chave da tabela.
+      despesaId:  -Number(r.valor_id),
+      data:       new Date(Number(r.ano), Number(r.mes) - 1, 1).toISOString(),
+      nome:       r.categoria,
+      categoria:  'Gasto fixo',
+      valor:      Number(r.valor ?? 0),
+      recorrente: true,
+      compraId:   null as number | null,
+      origem:     'Fixo',
+      observacao: `Gasto fixo de ${String(r.mes).padStart(2, '0')}/${r.ano}`,
+    }))
+
+    const itens = [...avulsas, ...fixos].sort(
+      (a, b) => new Date(b.data).getTime() - new Date(a.data).getTime(),
+    )
 
     const total = itens.reduce((a, i) => a + i.valor, 0)
     return {
@@ -224,8 +281,9 @@ export class ConsultasService {
       kpis: {
         quantidade:  itens.length,
         valorTotal:  total,
-        recorrentes: itens.filter(i => i.recorrente).length,
-        maiorValor:  itens.length > 0 ? Math.max(...itens.map(i => i.valor)) : 0,
+        deCompras:   itens.filter(i => i.origem === 'Compra').length,
+        fixos:       fixos.reduce((a, i) => a + i.valor, 0),
+        manuais:     itens.filter(i => i.origem === 'Manual').length,
       },
     }
   }
