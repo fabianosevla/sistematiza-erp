@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { SidePanel } from '@/components/ui/SidePanel'
 import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 import { TIPOS_PRECO } from '@/lib/constants'
 
@@ -110,6 +112,9 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [editandoPedidoId, setEditandoPedidoId] = useState<number | null>(null)
   const [buscaCliente, setBuscaCliente]   = useState('')
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
+  // Nome digitado para quem não é cadastrado. Só vale quando nenhum cliente
+  // foi selecionado — com cadastro, o cadastro manda.
+  const [nomeAvulso, setNomeAvulso]       = useState('')
   // Tabela de preço em vigor no formulário. Sem cliente = varejo.
   const [tabelaPreco, setTabelaPreco]     = useState<string>('varejo')
   const [buscaProduto, setBuscaProduto]   = useState('')
@@ -161,6 +166,7 @@ export default function PedidosView({ tenantSlug }: Props) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clienteId:        clienteSelecionado?.clienteId,
+          nomeClienteAvulso: clienteSelecionado ? undefined : (nomeAvulso.trim() || undefined),
           tipoVenda, dataPedido,
           previsaoProducao: previsaoProducao || undefined,
           previsaoEntrega:  previsaoEntrega  || undefined,
@@ -190,6 +196,7 @@ export default function PedidosView({ tenantSlug }: Props) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clienteId:        clienteSelecionado?.clienteId,
+          nomeClienteAvulso: clienteSelecionado ? undefined : (nomeAvulso.trim() || undefined),
           tipoVenda, dataPedido,
           previsaoProducao: previsaoProducao || undefined,
           previsaoEntrega:  previsaoEntrega  || undefined,
@@ -250,7 +257,7 @@ export default function PedidosView({ tenantSlug }: Props) {
   })
 
   function resetForm() {
-    setClienteSelecionado(null); setBuscaCliente(''); setItens([])
+    setClienteSelecionado(null); setBuscaCliente(''); setNomeAvulso(''); setItens([])
     setBuscaProduto(''); setTipoVenda('entrega')
     setDataPedido(new Date().toISOString().slice(0, 10))
     setPrevisaoProducao(''); setPrevisaoEntrega('')
@@ -274,6 +281,8 @@ export default function PedidosView({ tenantSlug }: Props) {
   function selecionarCliente(c: any) {
     setClienteSelecionado(c)
     setBuscaCliente('')
+    // Escolher um cliente de verdade descarta o nome solto.
+    setNomeAvulso('')
     const nova = c.tabelaPreco ?? 'varejo'
     setTabelaPreco(nova)
     reprecificar(nova)
@@ -316,6 +325,7 @@ export default function PedidosView({ tenantSlug }: Props) {
       }
 
       setEditandoPedidoId(ped.pedidoId)
+      setNomeAvulso(ped.clienteId ? '' : (ped.nomeClienteAvulso ?? ''))
       setClienteSelecionado(ped.clienteId
         ? { clienteId: ped.clienteId, nomeCompleto: clienteRazao || clienteNome, nomeFantasia: clienteNome, tabelaPreco: clienteTabela }
         : null)
@@ -428,6 +438,11 @@ export default function PedidosView({ tenantSlug }: Props) {
                   </div>
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {p.clienteNome ?? 'Consumidor Final'}
+                    {p.clienteAvulso && (
+                      <span className="ml-2 text-[10px] font-normal text-gray-400 border border-gray-200 rounded-full px-1.5 py-0.5 align-middle">
+                        não cadastrado
+                      </span>
+                    )}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     Pedido: {fmtDate(p.dataPedido)}
@@ -460,23 +475,30 @@ export default function PedidosView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {/* Modal Novo/Editar Pedido */}
+      {/* Painel novo / editar pedido */}
       {showNovo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold">{editandoPedidoId ? `Editar pedido #${editandoPedidoId}` : 'Novo pedido'}</h2>
-                {/* Tabela em vigor — só aparece quando não é varejo */}
-                {ehAtacado && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                    <Tag size={11} /> {rotuloTabela}
-                  </span>
-                )}
-              </div>
-              <button onClick={() => { setShowNovo(false); resetForm() }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+        <SidePanel
+          titulo={editandoPedidoId ? `Editar pedido #${editandoPedidoId}` : 'Novo pedido'}
+          onClose={() => { setShowNovo(false); resetForm() }}
+          largura="w-[36vw] min-w-[600px]"
+          cabecalho={
+            /* Tabela em vigor — só aparece quando não é varejo */
+            ehAtacado ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                <Tag size={11} /> {rotuloTabela}
+              </span>
+            ) : undefined
+          }
+          rodape={
+            <>
+              <Button variant="outline" onClick={() => { setShowNovo(false); resetForm() }}>Fechar</Button>
+              <Button onClick={() => (editandoPedidoId ? editarMut.mutate() : criarMut.mutate())} disabled={itens.length === 0 || salvando}>
+                {salvando ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </>
+          }
+        >
+            <div className="p-6 space-y-4">
               {/* Cliente */}
               <div>
                 <Label>Cliente (opcional)</Label>
@@ -492,6 +514,20 @@ export default function PedidosView({ tenantSlug }: Props) {
                   <>
                     <Input value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
                       placeholder="Buscar por nome ou CPF..." className="mt-1" />
+
+                    {/* Cliente avulso: quem compra uma vez e não vale
+                        cadastrar. Só aparece enquanto ninguém foi
+                        selecionado da lista acima. */}
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input value={nomeAvulso} onChange={e => setNomeAvulso(e.target.value)}
+                        placeholder="Ou digite o nome (cliente não cadastrado)"
+                        className="flex-1 h-9 text-sm" />
+                      <InfoTip titulo="Cliente avulso">
+                        Guarda só o nome, no pedido e na conta a receber. Não cria cliente:
+                        sem histórico, sem tabela de preço, e a cobrança não fica vinculada
+                        a ninguém. Para quem volta a comprar, cadastre em Cadastros → Clientes.
+                      </InfoTip>
+                    </div>
                     {buscaCliente.length > 1 && clientes.length > 0 && (
                       <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
                         {/* Nome fantasia em cima, razão social embaixo: a busca
@@ -612,27 +648,17 @@ export default function PedidosView({ tenantSlug }: Props) {
                   className="mt-1 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none resize-none" />
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
-              <Button variant="outline" onClick={() => { setShowNovo(false); resetForm() }}>Cancelar</Button>
-              <Button onClick={() => (editandoPedidoId ? editarMut.mutate() : criarMut.mutate())} disabled={itens.length === 0 || salvando}>
-                {salvando ? 'Salvando...' : editandoPedidoId ? 'Salvar alterações' : 'Criar pedido'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </SidePanel>
       )}
 
-      {/* Modal Detalhe */}
+      {/* Painel de detalhe — leitura. Abre ao clicar em Ver na listagem. */}
       {showDetalhe && detalhe && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <div>
-                <h2 className="text-lg font-semibold">Pedido #{detalhe.pedidoId}</h2>
-                <p className="text-sm text-gray-400">{fmtDate(detalhe.dataPedido)}</p>
-              </div>
-              <button onClick={() => setShowDetalhe(null)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
+        <SidePanel
+          titulo={`Pedido #${detalhe.pedidoId}`}
+          subtitulo={fmtDate(detalhe.dataPedido)}
+          onClose={() => setShowDetalhe(null)}
+          largura="w-[28vw] min-w-[460px]"
+        >
             <div className="p-6 space-y-4">
               {/* Status flow */}
               <div className="flex items-center gap-1 text-xs flex-wrap">
@@ -706,8 +732,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                 )}
               </div>
             </div>
-          </div>
-        </div>
+        </SidePanel>
       )}
     </div>
   )

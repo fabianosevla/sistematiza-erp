@@ -32,9 +32,9 @@ const MODULOS = [
     descricao: 'Vendas, mesas e comandas',
     icon: ShoppingCart,
     href: (slug: string) => `/${slug}/pdv`,
-    iconBg: 'bg-blue-100',
-    iconColor: 'text-blue-600',
-    borderHover: 'hover:border-blue-300',
+    iconBg: 'bg-gray-100',
+    iconColor: 'text-gray-600',
+    borderHover: 'hover:border-gray-300',
   },
 ]
 
@@ -56,12 +56,18 @@ export default function SelecionarModuloClient({ tenantSlug, acessos, darkModeIn
         {darkMode ? <Sun size={18} /> : <Moon size={18} />}
       </button>
 
+      {/* Marca idêntica à do menu lateral do gerencial e à do PDV: mesmo
+          ícone, mesma grafia "Sistematiza.ai". Aqui ela aparece maior por
+          ser a primeira tela depois do login. */}
       <div className="text-center mb-10">
-        <div className="flex items-baseline justify-center gap-0.5">
-          <span className="text-2xl font-bold text-gray-900">sistematiza</span>
-          <span className="text-2xl font-bold" style={{ color: '#2ecc71' }}>.ai</span>
+        <div className="flex items-center justify-center gap-2.5">
+          <img src="/apple-icon.png" alt="" className="h-9 w-9 rounded-lg object-contain" />
+          <div className="flex items-baseline">
+            <span className="text-2xl font-bold text-gray-900 tracking-tight">Sistematiza</span>
+            <span className="text-2xl font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
+          </div>
         </div>
-        <p className="text-gray-400 text-sm mt-2">Selecione o ambiente de trabalho</p>
+        <p className="text-gray-400 text-sm mt-3">Selecione o ambiente de trabalho</p>
       </div>
 
       <div className={`grid gap-4 w-full ${disponiveis.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-2 max-w-lg'}`}>

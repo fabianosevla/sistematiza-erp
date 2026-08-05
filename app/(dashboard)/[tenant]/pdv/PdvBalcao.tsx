@@ -1,11 +1,12 @@
 'use client'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp, Gift, Tag } from 'lucide-react'
+import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Gift, Tag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { fmtMoeda as fmt } from '@/lib/format'
@@ -84,6 +85,15 @@ const DENSIDADES = {
 } as const
 type Densidade = keyof typeof DENSIDADES
 
+// Grafite do menu lateral. É a cor de ação do sistema: a interface é cinza e a
+// cor fica reservada para o que muda a decisão do operador — valor negativo e
+// impedimento. Ver PdvShell.tsx / Sidebar.tsx.
+const ACAO = 'bg-[#0F1117] hover:bg-[#232733] text-white'
+
+// Etapa 1 = montar o carrinho na tela cheia. Etapa 2 = painel lateral, que por
+// sua vez tem duas partes: conferir os itens e depois pagar.
+type EtapaPainel = 'itens' | 'pagamento'
+
 export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
@@ -104,6 +114,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [valorRecebido, setValorRecebido] = useState('')
   const [confirmLimpar, setConfirmLimpar] = useState(false)
   const [vendaOk, setVendaOk]             = useState(false)
+
+  // Painel de finalização (etapa 2)
+  const [painelAberto, setPainelAberto]   = useState(false)
+  const [etapa, setEtapa]                 = useState<EtapaPainel>('itens')
 
   // Fluxo de finalização: "Finalizar" abre "Deseja confirmar a venda?" (Sim/Não).
   // Após registrar, abre "Deseja imprimir cupom?" (Sim/Não) com os dados da
@@ -322,6 +336,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       setEnderecoEntrega('')
       setUsarCashback(false)
       setShowExtras(false)
+      setShowCadastrarCliente(false)
+      // Venda fechada devolve o operador ao catálogo, pronto para a próxima.
+      // É a única situação em que este painel fecha sozinho.
+      setPainelAberto(false)
+      setEtapa('itens')
       setVendaOk(true)
       setTimeout(() => { setVendaOk(false); searchRef.current?.focus() }, 2000)
 
@@ -492,29 +511,55 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk
   const qtdItens = carrinho.reduce((a, i) => a + i.quantidade, 0)
 
-  // Atalhos: F2 busca · F3 cliente · F6 desconto · F8 pagamento · F10 finalizar
-  // Ctrl+Delete limpa o carrinho · Esc fecha o que estiver aberto.
+  function abrirPainel(destino: EtapaPainel = 'itens') {
+    if (carrinho.length === 0) return
+    setEtapa(destino)
+    setPainelAberto(true)
+  }
+
+  // Atalhos: F2 busca · F3 cliente · F6 desconto · F8 pagamento · F10 avança
+  // Ctrl+Delete limpa o carrinho · Esc volta uma etapa.
+  //
+  // O ouvinte roda na fase de captura e interrompe a propagação quando há um
+  // modal de confirmação aberto. Sem isso, o Esc que fecha a confirmação
+  // chegaria também ao SidePanel e fecharia o painel de finalização junto.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const algumModal = confirmVenda || !!cupomVenda || confirmLimpar || showCadastrarCliente
-      if (e.key === 'Escape') {
+      const algumModal = confirmVenda || !!cupomVenda || confirmLimpar
+      if (e.key === 'Escape' && algumModal) {
+        e.stopImmediatePropagation()
         if (confirmVenda) setConfirmVenda(false)
         else if (cupomVenda) setCupomVenda(null)
         else if (confirmLimpar) setConfirmLimpar(false)
-        else if (showCadastrarCliente) setShowCadastrarCliente(false)
+        return
+      }
+      if (e.key === 'Escape' && painelAberto && etapa === 'pagamento') {
+        e.stopImmediatePropagation()
+        setEtapa('itens')
         return
       }
       if (algumModal) return
-      if (e.key === 'F2')  { e.preventDefault(); searchRef.current?.focus(); searchRef.current?.select() }
-      if (e.key === 'F3')  { e.preventDefault(); clienteRef.current?.focus() }
-      if (e.key === 'F6')  { e.preventDefault(); descontoRef.current?.focus(); descontoRef.current?.select() }
-      if (e.key === 'F8')  { e.preventDefault(); pgtoRef.current?.focus() }
-      if (e.key === 'F10') { e.preventDefault(); if (podeVender) setConfirmVenda(true) }
+      if (e.key === 'F2')  { e.preventDefault(); setPainelAberto(false); setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select() }, 60) }
+      if (e.key === 'F3')  { e.preventDefault(); abrirPainel('pagamento'); setTimeout(() => clienteRef.current?.focus(), 120) }
+      if (e.key === 'F6')  { e.preventDefault(); abrirPainel('pagamento'); setTimeout(() => { descontoRef.current?.focus(); descontoRef.current?.select() }, 120) }
+      if (e.key === 'F8')  { e.preventDefault(); abrirPainel('pagamento'); setTimeout(() => pgtoRef.current?.focus(), 120) }
+      if (e.key === 'F10') {
+        e.preventDefault()
+        if (carrinho.length === 0) return
+        if (!painelAberto)        { abrirPainel('itens'); return }
+        if (etapa === 'itens')    { setEtapa('pagamento'); return }
+        if (podeVender)           { setConfirmVenda(true) }
+      }
       if (e.key === 'Delete' && e.ctrlKey) { e.preventDefault(); if (carrinho.length > 0) setConfirmLimpar(true) }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, showCadastrarCliente])
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, painelAberto, etapa])
+
+  // Carrinho esvaziado com o painel aberto: não há o que conferir nem pagar.
+  useEffect(() => {
+    if (painelAberto && carrinho.length === 0) { setPainelAberto(false); setEtapa('itens') }
+  }, [carrinho.length, painelAberto])
 
   // ── Cupom (NÃO FISCAL) ────────────────────────────────────────────────────
   // Formatado para bobina de 80mm. Traz cabeçalho da empresa, itens com
@@ -669,450 +714,626 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     return slug.replace(/-/g, ' ').toUpperCase()
   }
 
+  // ── Resumo de valores — reaproveitado nas duas etapas do painel ────────────
+  const resumoValores = (
+    <div className="space-y-1.5">
+      {ehAtacado && (
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-500">Tabela aplicada</span>
+          <span className="font-semibold text-gray-700">{rotuloTabela}</span>
+        </div>
+      )}
+      <div className="flex justify-between text-sm">
+        <span className="text-gray-500">Sub-total</span>
+        <span className="font-medium text-gray-900">{fmt(subtotalBruto)}</span>
+      </div>
+      {descontoGeralExibido > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-500">
+            Descontos <span className="text-xs text-gray-400">({descontoPct.toFixed(2)}%)</span>
+          </span>
+          <span className="font-medium text-red-600">-{fmt(descontoGeralExibido)}</span>
+        </div>
+      )}
+      {acrescimoVal > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-500">Acréscimo{isDelivery ? ' (entrega)' : ''}</span>
+          <span className="font-medium text-gray-900">+{fmt(acrescimoVal)}</span>
+        </div>
+      )}
+      {cashbackAplicar > 0 && (
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-500">Cashback</span>
+          <span className="font-medium text-red-600">-{fmt(cashbackAplicar)}</span>
+        </div>
+      )}
+      <div className="flex justify-between items-baseline border-t border-gray-100 pt-2">
+        <span className="text-sm font-bold text-gray-900">Total da venda</span>
+        <span className="text-2xl font-bold text-gray-900">{fmt(totalAPagar)}</span>
+      </div>
+    </div>
+  )
+
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-full min-h-0">
-      {/* Catálogo */}
-      <div className="flex-1 flex flex-col gap-3 min-w-0 min-h-0">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">{isDelivery ? 'Delivery' : 'Pedido Balcão'}</h1>
-            <p className="text-sm text-gray-400 mt-0.5">{isDelivery ? 'Venda para entrega — informe o endereço do cliente' : 'Selecione uma categoria ou busque o produto'}</p>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Tabela de preço em vigor — só aparece quando não é varejo */}
-            {ehAtacado && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                <Tag size={12} /> {rotuloTabela}
-              </span>
-            )}
-            {/* Tamanho da tela neste computador */}
-            <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
-              {([
-                { k: 'compacto', l: 'A−' },
-                { k: 'normal',   l: 'A'  },
-                { k: 'grande',   l: 'A+' },
-              ] as const).map(o => (
-                <button key={o.k} onClick={() => mudarDensidade(o.k)}
-                  title="Tamanho da tela neste computador"
-                  className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                    densidade === o.k ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
-                  }`}>
-                  {o.l}
-                </button>
-              ))}
-            </div>
-            <InfoTip titulo="Atalhos" ariaLabel="Atalhos de teclado">
-              <span className="block">F2 — buscar produto</span>
-              <span className="block">F3 — cliente</span>
-              <span className="block">F6 — desconto</span>
-              <span className="block">F8 — forma de pagamento</span>
-              <span className="block">F10 — finalizar venda</span>
-              <span className="block">Ctrl + Delete — limpar carrinho</span>
-              <span className="block">Esc — fechar</span>
-            </InfoTip>
-          </div>
-        </div>
+    <div className="h-full flex flex-col min-h-0 gap-3">
 
-        <div className="relative">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <Input ref={searchRef} value={busca} onChange={e => setBusca(e.target.value)}
-            onKeyDown={handleBuscaKeyDown} placeholder="Digite o nome ou bipe o código de barras…   (F2)"
-            className="pl-9 pr-9 h-12 text-base" />
-          {busca && (
-            <button onClick={() => { setBusca(''); searchRef.current?.focus() }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X size={14} />
-            </button>
+      {/* ── ETAPA 1 — CATÁLOGO EM TELA CHEIA ─────────────────────────────── */}
+
+      <div className="flex items-start justify-between gap-3 flex-shrink-0">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">{isDelivery ? 'Delivery' : 'Pedido Balcão'}</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{isDelivery ? 'Venda para entrega — informe o endereço do cliente' : 'Selecione uma categoria ou busque o produto'}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Tabela de preço em vigor — só aparece quando não é varejo */}
+          {ehAtacado && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+              <Tag size={12} /> {rotuloTabela}
+            </span>
           )}
-        </div>
-
-        {categorias.length > 1 && (
-          <div className="flex gap-1.5 overflow-x-auto pb-1 flex-shrink-0">
-            {categorias.map(cat => (
-              <button key={cat} onClick={() => setCategoria(cat)}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors border ${
-                  categoria === cat ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+          {/* Tamanho da tela neste computador */}
+          <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+            {([
+              { k: 'compacto', l: 'A−' },
+              { k: 'normal',   l: 'A'  },
+              { k: 'grande',   l: 'A+' },
+            ] as const).map(o => (
+              <button key={o.k} onClick={() => mudarDensidade(o.k)}
+                title="Tamanho da tela neste computador"
+                className={`px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                  densidade === o.k ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
                 }`}>
-                {cat}
+                {o.l}
               </button>
             ))}
           </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {loadingProd ? (
-            <div className="flex items-center justify-center h-32"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
-          ) : produtosFiltrados.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-              <ShoppingCart size={28} className="text-gray-200 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">{busca ? `Nenhum produto para "${busca}"` : 'Nenhum produto nesta categoria'}</p>
-            </div>
-          ) : (
-            // Colunas calculadas pela largura real da tela (auto-fill), não por
-            // breakpoint fixo: o card nunca fica menor que o mínimo legível,
-            // seja qual for o notebook ou a escala do Windows.
-            <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${dens.card}px, 1fr))` }}>
-              {produtosFiltrados.map((p: any) => {
-                const precoCard = precoDoProduto(p, tabelaPreco)
-                return (
-                  <button key={p.produtoId} onClick={() => addProduto(p)}
-                    className="bg-white rounded-lg border border-gray-100 hover:border-green-300 hover:shadow-sm p-3 text-left transition-all active:scale-95 group">
-                    <p className={`${dens.titulo} font-medium text-gray-900 leading-tight group-hover:text-green-700 line-clamp-2`}>{p.nome}</p>
-                    <p className={`${dens.preco} font-bold mt-1`} style={{ color: '#2ecc71' }}>{precoCard ? fmt(precoCard) : '—'}</p>
-                    <p className="text-xs text-gray-400">{p.unidade}{p.codigoBarras ? ` · ${p.codigoBarras}` : ''}</p>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+          <InfoTip titulo="Atalhos" ariaLabel="Atalhos de teclado">
+            <span className="block">F2 — buscar produto</span>
+            <span className="block">F3 — cliente</span>
+            <span className="block">F6 — desconto</span>
+            <span className="block">F8 — forma de pagamento</span>
+            <span className="block">F10 — avançar / finalizar</span>
+            <span className="block">Ctrl + Delete — limpar carrinho</span>
+            <span className="block">Esc — voltar</span>
+          </InfoTip>
         </div>
       </div>
 
-      {/* Carrinho */}
-      {/* A coluna inteira rola; a tabela de itens tem altura mínima garantida
-          para nunca ser espremida a zero pelos campos de pagamento. */}
-      <div className="flex flex-col gap-3 flex-shrink-0 min-h-0 overflow-y-auto" style={{ width: 'clamp(360px, 34vw, 620px)' }}>
-        <div className="bg-white rounded-xl border border-gray-100 flex flex-col overflow-hidden flex-shrink-0" style={{ minHeight: 280 }}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-            <p className="text-sm font-semibold text-gray-700">
-              {carrinho.length === 0 ? 'Nenhum item' : `${carrinho.length} produto(s) · ${qtdItens} un`}
-            </p>
-            {carrinho.length > 0 && (
-              <button onClick={() => setConfirmLimpar(true)} className="text-xs text-red-400 hover:text-red-600">Limpar</button>
-            )}
-          </div>
+      <div className="relative flex-shrink-0">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Input ref={searchRef} value={busca} onChange={e => setBusca(e.target.value)}
+          onKeyDown={handleBuscaKeyDown} placeholder="Digite o nome ou bipe o código de barras…   (F2)"
+          className="pl-9 pr-9 h-12 text-base" />
+        {busca && (
+          <button onClick={() => { setBusca(''); searchRef.current?.focus() }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+            <X size={14} />
+          </button>
+        )}
+      </div>
 
-          <div className="flex-1 overflow-auto min-h-0" style={{ maxHeight: '45vh' }}>
-            {carrinho.length === 0 ? (
-              <div className="flex items-center justify-center py-12">
-                <p className="text-sm text-gray-300">Adicione produtos à esquerda</p>
-              </div>
-            ) : (
-              <table className={`w-full ${dens.tabela}`}>
-                <thead className="sticky top-0 bg-gray-50 z-10">
-                  <tr className="border-b border-gray-100">
-                    <th className="text-left   text-xs font-medium text-gray-400 px-2 py-2 w-7">#</th>
-                    <th className="text-left   text-xs font-medium text-gray-400 px-1 py-2">Descrição</th>
-                    <th className="text-center text-xs font-medium text-gray-400 px-1 py-2 w-24">Qtde</th>
-                    <th className="text-right  text-xs font-medium text-gray-400 px-1 py-2 w-20">Unit.</th>
-                    <th className="text-right  text-xs font-medium text-gray-400 px-1 py-2 w-20">Desconto</th>
-                    <th className="text-right  text-xs font-medium text-gray-400 px-2 py-2 w-24">Total</th>
-                    <th className="w-8" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {carrinho.map((item, idx) => (
-                    <tr key={item.produtoId} className="border-b border-gray-50 hover:bg-gray-50/60">
-                      <td className="px-2 py-2 text-xs text-gray-300 align-top">{idx + 1}</td>
-                      <td className="px-1 py-2">
-                        <p className="font-medium text-gray-900 leading-tight">{item.nomeProduto}</p>
-                        <p className="text-[11px] text-gray-400">
-                          {item.unidade}{item.codigoBarras ? ` · cód. ${item.codigoBarras}` : ''}
-                        </p>
-                      </td>
-                      <td className="px-1 py-2">
-                        <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => alterarQtd(item.produtoId, -1)}
-                            className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Minus size={10} /></button>
-                          <input type="number" min="1" value={item.quantidade}
-                            onChange={e => definirQtd(item.produtoId, e.target.value)}
-                            className="w-10 h-6 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-green-400" />
-                          <button onClick={() => alterarQtd(item.produtoId, 1)}
-                            className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Plus size={10} /></button>
-                        </div>
-                      </td>
-                      <td className="px-1 py-2 text-right text-gray-600 whitespace-nowrap">{fmt(item.precoUnitario)}</td>
-                      <td className="px-1 py-2">
-                        <input type="number" min="0" step="0.01" inputMode="decimal"
-                          value={item.desconto ? (item.desconto / 100).toFixed(2) : ''}
-                          onChange={e => definirDescontoItem(item.produtoId, e.target.value)}
-                          placeholder="0,00"
-                          className="sem-spinner w-16 h-6 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-green-400" />
-                      </td>
-                      <td className="px-2 py-2 text-right font-bold whitespace-nowrap" style={{ color: '#2ecc71' }}>{fmt(item.subtotal)}</td>
-                      <td className="px-1 py-2 text-center align-top">
-                        <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {carrinho.length > 0 && (
-            <div className="border-t border-gray-100 px-4 py-3 space-y-1.5 flex-shrink-0">
-              {ehAtacado && (
-                <div className="flex justify-between text-xs">
-                  <span className="text-amber-600 font-medium">Tabela aplicada</span>
-                  <span className="text-amber-700 font-semibold">{rotuloTabela}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Sub-total</span>
-                <span className="font-medium text-gray-900">{fmt(subtotalBruto)}</span>
-              </div>
-              {descontoGeralExibido > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">
-                    Descontos <span className="text-xs text-gray-400">({descontoPct.toFixed(2)}%)</span>
-                  </span>
-                  <span className="font-medium text-red-500">-{fmt(descontoGeralExibido)}</span>
-                </div>
-              )}
-              {acrescimoVal > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Acréscimo{isDelivery ? ' (entrega)' : ''}</span>
-                  <span className="font-medium text-gray-900">+{fmt(acrescimoVal)}</span>
-                </div>
-              )}
-              {cashbackAplicar > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Cashback</span>
-                  <span className="font-medium text-green-600">-{fmt(cashbackAplicar)}</span>
-                </div>
-              )}
-              <div className="flex justify-between items-baseline border-t border-gray-100 pt-2">
-                <span className="text-sm font-bold text-gray-900">Total da venda</span>
-                <span className="text-2xl font-bold" style={{ color: '#2ecc71' }}>{fmt(totalAPagar)}</span>
-              </div>
-            </div>
-          )}
+      {categorias.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1 flex-shrink-0">
+          {categorias.map(cat => (
+            <button key={cat} onClick={() => setCategoria(cat)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-colors border ${
+                categoria === cat ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+              }`}>
+              {cat}
+            </button>
+          ))}
         </div>
+      )}
 
-        {carrinho.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3 flex-shrink-0">
-            {/* Cliente — sempre visível (necessário para o cashback e para a tabela de preço) */}
-            <div>
-              <Label className="text-xs inline-flex items-center gap-1">
-                Cliente <span className="text-gray-300">(F3)</span>
-                <InfoTip titulo="Tabela de preço">
-                  O preço aplicado vem da tabela cadastrada no cliente. Ao selecionar,
-                  os itens já no carrinho são recalculados.
-                </InfoTip>
-              </Label>
-              {clienteId && clienteNomeDisplay ? (
-                <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
-                  <span className="text-sm font-medium text-green-800 truncate">
-                    {clienteNomeDisplay}
-                    {ehAtacado && <span className="ml-1.5 text-[10px] font-semibold text-amber-700">· {rotuloTabela}</span>}
-                  </span>
-                  <button onClick={limparCliente} className="text-green-400 hover:text-green-600 ml-1 flex-shrink-0"><X size={12} /></button>
-                </div>
-              ) : (
-                <div className="relative mt-1">
-                  <Input ref={clienteRef} value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
-                    placeholder="Nome ou CPF..." className="h-9 text-sm" />
-                  {buscaCliente.length > 1 && clientes.length > 0 && (
-                    <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
-                      {/* A busca do servidor procura em nome fantasia, razão
-                          social E documento. Mostrar só a razão social fazia
-                          o resultado parecer errado: quem digitava "za"
-                          achava a "Zaghi Massas" e via na lista a razão
-                          social, que não tem essas letras. Agora aparecem os
-                          dois nomes, e dá para ver por que aquele registro
-                          entrou no resultado. */}
-                      {clientes.map((c: any) => {
-                        const principal  = c.nomeFantasia?.trim() || c.nomeCompleto
-                        const secundario = c.nomeFantasia?.trim() && c.nomeFantasia.trim() !== c.nomeCompleto
-                          ? c.nomeCompleto
-                          : (c.cpfCnpj ?? '')
-                        return (
-                          <button key={c.clienteId} onClick={() => selecionarCliente(c)}
-                            className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
-                            <span className="min-w-0">
-                              <span className="block text-sm font-medium text-gray-900 truncate">{principal}</span>
-                              {secundario && (
-                                <span className="block text-[10px] text-gray-400 truncate">{secundario}</span>
-                              )}
-                            </span>
-                            {c.tabelaPreco && c.tabelaPreco !== 'varejo' && (
-                              <span className="text-[10px] font-semibold text-amber-700 flex-shrink-0">
-                                {(TIPOS_PRECO as any)[c.tabelaPreco]}
-                              </span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {/* Cliente avulso: quem compra uma vez e não vale cadastrar.
-                      Vai para a venda e sai no cupom. Sem cliente_id não há
-                      cashback nem histórico. */}
-                  <div className="mt-1.5 flex items-center gap-1.5">
-                    <Input value={nomeAvulso} onChange={e => setNomeAvulso(e.target.value)}
-                      placeholder="Ou digite o nome (não cadastrado)"
-                      className="h-8 text-xs flex-1" />
-                    <InfoTip titulo="Cliente avulso">
-                      Guarda só o nome na venda e no cupom. Não cria cliente: sem histórico,
-                      sem tabela de preço e sem cashback, porque o programa de fidelidade
-                      precisa de um cadastro. Para quem volta, use Cadastrar novo cliente.
-                    </InfoTip>
-                  </div>
-
-                  <button
-                    onClick={() => setShowCadastrarCliente(true)}
-                    className="mt-1.5 w-full text-xs text-green-600 hover:text-green-700 text-left flex items-center gap-1">
-                    <Plus size={11} /> Cadastrar novo cliente
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Entrega — em destaque no modo delivery */}
-            {isDelivery && (
-              <div className="space-y-2">
-                <div>
-                  <Label className="text-xs">Endereço de entrega *</Label>
-                  <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)}
-                    className="mt-1 h-9 text-sm" placeholder="Rua, número, bairro, cidade" />
-                </div>
-                <div>
-                  <Label className="text-xs">Data de entrega</Label>
-                  <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
-                </div>
-              </div>
-            )}
-
-            {/* Desconto */}
-            <div>
-              <Label className="text-xs">Desconto geral (R$) <span className="text-gray-300">(F6)</span></Label>
-              <Input ref={descontoRef} type="number" min="0" step="0.01" inputMode="decimal" value={desconto} onChange={e => setDesconto(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
-            </div>
-            <div className="flex gap-1.5">
-              {[0, 5, 10, 15].map(pct => (
-                <button key={pct} onClick={() => setDesconto(pct === 0 ? '0' : ((subtotal * pct / 100) / 100).toFixed(2))}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium border ${descontoVal === Math.round(subtotal * pct / 100) && pct > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'}`}>
-                  {pct === 0 ? 'Sem' : `${pct}%`}
-                </button>
-              ))}
-            </div>
-
-            {/* Acréscimo (R$) — taxa de entrega embutida no total, sem linha de frete */}
-            <div>
-              <Label className="text-xs">Acréscimo{isDelivery ? ' — taxa de entrega' : ''} (R$)</Label>
-              <Input type="number" min="0" step="0.01" inputMode="decimal" value={acrescimo} onChange={e => setAcrescimo(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
-            </div>
-
-            {/* Cashback / Fidelidade */}
-            {clienteId && cashback?.programaAtivo && saldoCashback > 0 && (
-              <div className="rounded-lg border border-green-200 bg-green-50/50 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-green-700">
-                    <Gift size={13} /> Cashback disponível
-                  </span>
-                  <span className="text-sm font-bold text-green-700">{fmt(saldoCashback)}</span>
-                </div>
-                {cashbackElegivel ? (
-                  <label className="mt-2 flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={usarCashback} onChange={e => setUsarCashback(e.target.checked)} className="w-4 h-4 rounded" />
-                    <span className="text-xs text-gray-700">
-                      Usar {fmt(Math.min(saldoCashback, limiteCashback, total))} nesta venda
+      {/* A grade agora usa a largura inteira: o carrinho saiu da lateral e virou
+          a barra de baixo + o painel de finalização. */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {loadingProd ? (
+          <div className="flex items-center justify-center h-32"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
+        ) : produtosFiltrados.length === 0 ? (
+          <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+            <ShoppingCart size={28} className="text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">{busca ? `Nenhum produto para "${busca}"` : 'Nenhum produto nesta categoria'}</p>
+          </div>
+        ) : (
+          // Colunas calculadas pela largura real da tela (auto-fill), não por
+          // breakpoint fixo: o card nunca fica menor que o mínimo legível,
+          // seja qual for o notebook ou a escala do Windows.
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${dens.card}px, 1fr))` }}>
+            {produtosFiltrados.map((p: any) => {
+              const precoCard = precoDoProduto(p, tabelaPreco)
+              const noCarrinho = carrinho.find(i => i.produtoId === p.produtoId)
+              return (
+                <button key={p.produtoId} onClick={() => addProduto(p)}
+                  className={`relative bg-white rounded-lg border p-3 text-left transition-all active:scale-95 hover:shadow-sm ${
+                    noCarrinho ? 'border-gray-900' : 'border-gray-100 hover:border-gray-400'
+                  }`}>
+                  {noCarrinho && (
+                    <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gray-900 text-white text-[10px] font-bold flex items-center justify-center">
+                      {noCarrinho.quantidade}
                     </span>
-                  </label>
-                ) : (
-                  <p className="text-[11px] text-gray-400 mt-1">
-                    Saldo mínimo para usar: {fmt(cashback?.saldoMinimoUsoCentavos ?? 0)}
-                  </p>
+                  )}
+                  <p className={`${dens.titulo} font-medium text-gray-900 leading-tight line-clamp-2 pr-5`}>{p.nome}</p>
+                  <p className={`${dens.preco} font-bold mt-1 text-gray-900`}>{precoCard ? fmt(precoCard) : '—'}</p>
+                  <p className="text-xs text-gray-400">{p.unidade}{p.codigoBarras ? ` · ${p.codigoBarras}` : ''}</p>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── BARRA DO CARRINHO — sempre visível, fecha a etapa 1 ───────────── */}
+      <div className="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-4">
+        {vendaOk ? (
+          <div className="flex items-center gap-2 flex-1">
+            <CheckCircle size={18} className="text-gray-900" />
+            <span className="text-sm font-semibold text-gray-900">Venda registrada.</span>
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={() => abrirPainel('itens')}
+              disabled={carrinho.length === 0}
+              className="flex items-center gap-3 min-w-0 text-left disabled:cursor-default group"
+            >
+              <div className="relative flex-shrink-0">
+                <ShoppingCart size={22} className={carrinho.length > 0 ? 'text-gray-900' : 'text-gray-300'} />
+                {carrinho.length > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-gray-900 text-white text-[10px] font-bold flex items-center justify-center">
+                    {qtdItens}
+                  </span>
                 )}
               </div>
-            )}
-
-            {/* Forma de pagamento — combobox (economiza espaço) */}
-            <div>
-              <Label className="text-xs">Forma de pagamento <span className="text-gray-300">(F8)</span></Label>
-              <select ref={pgtoRef} value={formaPgto} onChange={e => setFormaPgto(e.target.value)}
-                className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                <option value="">Selecionar...</option>
-                {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).map((f: string) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </div>
-
-            {(formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && (
-              <div>
-                <Label className="text-xs">Valor recebido (R$)</Label>
-                <Input type="number" min="0" step="0.01" inputMode="decimal" value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
-                {troco > 0 && (
-                  <div className="flex justify-between mt-2 px-1">
-                    <span className="text-sm text-amber-600">Troco</span>
-                    <span className="text-sm font-bold text-amber-600">{fmt(troco)}</span>
-                  </div>
-                )}
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate group-enabled:group-hover:underline">
+                  {carrinho.length === 0 ? 'Carrinho vazio' : `${carrinho.length} produto(s) · ${qtdItens} un`}
+                </p>
+                <p className="text-xs text-gray-400 truncate">
+                  {carrinho.length === 0
+                    ? 'Clique num produto para começar'
+                    : (clienteNomeDisplay || nomeAvulso.trim() || 'Consumidor não identificado')}
+                </p>
               </div>
-            )}
-
-            {/* Campos extras — recolhíveis */}
-            <button onClick={() => setShowExtras(v => !v)}
-              className="w-full flex items-center justify-between py-2 text-xs text-gray-400 hover:text-gray-600 border-t border-gray-100 pt-3">
-              <span>Dados adicionais (vendedor{isDelivery ? '' : ', entrega'}...)</span>
-              {showExtras ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
             </button>
 
-            {showExtras && (
-              <div className="space-y-2 pt-1">
-                <div>
-                  <Label className="text-xs">Vendedor</Label>
-                  <select value={vendedor} onChange={e => setVendedor(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="">Selecionar...</option>
-                    {usuarios.map((u: any) => <option key={u.usuarioId} value={u.nome}>{u.nome}</option>)}
-                  </select>
-                </div>
-                {/* No modo delivery, tipo/data/endereço de entrega já aparecem em destaque acima. */}
-                {!isDelivery && (
-                  <>
-                    <div>
-                      <Label className="text-xs">Tipo de entrega</Label>
-                      <select value={tipoEntrega} onChange={e => setTipoEntrega(e.target.value)}
-                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                        {['Retirada', 'Entrega', 'Transportadora'].map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Data de entrega</Label>
-                      <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
-                    </div>
-                    <div>
-                      <Label className="text-xs">Endereço de entrega</Label>
-                      <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
-                    </div>
-                  </>
-                )}
-                <div>
-                  <Label className="text-xs">Observação</Label>
-                  <Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" />
-                </div>
+            <div className="ml-auto flex items-center gap-4 flex-shrink-0">
+              {carrinho.length > 0 && (
+                <button onClick={() => setConfirmLimpar(true)}
+                  className="text-xs text-gray-400 hover:text-red-600 transition-colors">
+                  Limpar
+                </button>
+              )}
+              <div className="text-right">
+                <p className="text-[11px] text-gray-400 leading-none">Total</p>
+                <p className="text-2xl font-bold text-gray-900 leading-tight">{fmt(totalAPagar)}</p>
               </div>
-            )}
-
-            {isDelivery && !enderecoOk && (
-              <p className="text-[11px] text-amber-600">Informe o endereço de entrega para finalizar.</p>
-            )}
-
-            {vendaOk ? (
-              <div className="flex items-center justify-center gap-2 py-3 rounded-xl bg-green-50 border border-green-200">
-                <CheckCircle size={16} className="text-green-600" />
-                <span className="text-sm font-semibold text-green-700">Venda registrada!</span>
-              </div>
-            ) : (
-              <Button className="w-full h-12 text-base font-bold" onClick={() => setConfirmVenda(true)} disabled={!podeVender}>
-                {venderMut.isPending
-                  ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
-                  : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(totalAPagar)} <span className="ml-2 text-xs font-normal opacity-70">(F10)</span></>
-                }
+              <Button
+                onClick={() => abrirPainel('itens')}
+                disabled={carrinho.length === 0}
+                className={`h-12 px-6 text-base font-bold ${ACAO}`}
+              >
+                Revisar e finalizar
+                <span className="ml-2 text-xs font-normal opacity-70">(F10)</span>
+                <ChevronRight size={16} className="ml-1" />
               </Button>
-            )}
-
-            {/* Contexto da venda */}
-            <div className="flex items-center justify-between pt-1 text-[11px] text-gray-400 border-t border-gray-100 mt-1">
-              <span>{isDelivery ? 'Delivery' : 'Balcão'} · {new Date().toLocaleDateString('pt-BR')}</span>
-              <span>{qtdItens} item(s)</span>
             </div>
-          </div>
+          </>
         )}
       </div>
+
+      {/* ── ETAPA 2 — PAINEL LATERAL ─────────────────────────────────────── */}
+      {painelAberto && (
+        <SidePanel
+          titulo={etapa === 'itens' ? 'Conferir itens' : 'Pagamento'}
+          subtitulo={etapa === 'itens'
+            ? `${carrinho.length} produto(s) · ${qtdItens} un`
+            : `Total ${fmt(totalAPagar)}${ehAtacado ? ` · ${rotuloTabela}` : ''}`}
+          largura="w-[38vw] min-w-[640px]"
+          onClose={() => setPainelAberto(false)}
+          cabecalho={
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-400">
+              <span className={etapa === 'itens' ? 'text-gray-900' : ''}>1 Itens</span>
+              <ChevronRight size={11} />
+              <span className={etapa === 'pagamento' ? 'text-gray-900' : ''}>2 Pagamento</span>
+            </span>
+          }
+          rodape={
+            etapa === 'itens' ? (
+              <>
+                <Button variant="outline" onClick={() => setPainelAberto(false)}>
+                  <ChevronLeft size={15} className="mr-1" /> Voltar ao catálogo
+                </Button>
+                <Button
+                  onClick={() => setEtapa('pagamento')}
+                  disabled={carrinho.length === 0}
+                  className={`h-11 px-6 font-bold ${ACAO}`}
+                >
+                  Ir para pagamento <ChevronRight size={16} className="ml-1" />
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setEtapa('itens')}>
+                  <ChevronLeft size={15} className="mr-1" /> Itens
+                </Button>
+                <Button
+                  onClick={() => setConfirmVenda(true)}
+                  disabled={!podeVender}
+                  className={`h-11 px-6 font-bold ${ACAO}`}
+                >
+                  {venderMut.isPending
+                    ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
+                    : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(totalAPagar)} <span className="ml-2 text-xs font-normal opacity-70">(F10)</span></>
+                  }
+                </Button>
+              </>
+            )
+          }
+        >
+          {/* ── PAINEL, PARTE 1: ITENS ───────────────────────────────────── */}
+          {etapa === 'itens' && (
+            <div className="p-6 space-y-4">
+              {carrinho.length === 0 ? (
+                <p className="text-sm text-gray-300 text-center py-12">Carrinho vazio</p>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                    <div className="overflow-auto" style={{ maxHeight: '52vh' }}>
+                      <table className={`w-full ${dens.tabela}`}>
+                        <thead>
+                          <tr>
+                            <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left   text-xs font-medium text-gray-400 px-2 py-2 w-7">#</th>
+                            <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left   text-xs font-medium text-gray-400 px-1 py-2">Descrição</th>
+                            <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-center text-xs font-medium text-gray-400 px-1 py-2 w-24">Qtde</th>
+                            <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-right  text-xs font-medium text-gray-400 px-1 py-2 w-20">Unit.</th>
+                            <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-right  text-xs font-medium text-gray-400 px-1 py-2 w-20">Desconto</th>
+                            <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-right  text-xs font-medium text-gray-400 px-2 py-2 w-24">Total</th>
+                            <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] w-8" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {carrinho.map((item, idx) => (
+                            <tr key={item.produtoId} className="border-b border-gray-50 hover:bg-gray-50/60">
+                              <td className="px-2 py-2 text-xs text-gray-300 align-top">{idx + 1}</td>
+                              <td className="px-1 py-2">
+                                <p className="font-medium text-gray-900 leading-tight">{item.nomeProduto}</p>
+                                <p className="text-[11px] text-gray-400">
+                                  {item.unidade}{item.codigoBarras ? ` · cód. ${item.codigoBarras}` : ''}
+                                </p>
+                              </td>
+                              <td className="px-1 py-2">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button onClick={() => alterarQtd(item.produtoId, -1)}
+                                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Minus size={10} /></button>
+                                  <input type="number" min="1" value={item.quantidade}
+                                    onChange={e => definirQtd(item.produtoId, e.target.value)}
+                                    className="sem-spinner w-10 h-6 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-gray-500" />
+                                  <button onClick={() => alterarQtd(item.produtoId, 1)}
+                                    className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Plus size={10} /></button>
+                                </div>
+                              </td>
+                              <td className="px-1 py-2 text-right text-gray-600 whitespace-nowrap">{fmt(item.precoUnitario)}</td>
+                              <td className="px-1 py-2">
+                                <input type="number" min="0" step="0.01" inputMode="decimal"
+                                  value={item.desconto ? (item.desconto / 100).toFixed(2) : ''}
+                                  onChange={e => definirDescontoItem(item.produtoId, e.target.value)}
+                                  placeholder="0,00"
+                                  className="sem-spinner w-16 h-6 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-gray-500" />
+                              </td>
+                              <td className="px-2 py-2 text-right font-bold text-gray-900 whitespace-nowrap">{fmt(item.subtotal)}</td>
+                              <td className="px-1 py-2 text-center align-top">
+                                <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-100 px-4 py-3">
+                    {resumoValores}
+                  </div>
+
+                  <button onClick={() => setConfirmLimpar(true)}
+                    className="text-xs text-gray-400 hover:text-red-600 transition-colors">
+                    Limpar carrinho <span className="text-gray-300">(Ctrl + Delete)</span>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── PAINEL, PARTE 2: PAGAMENTO ───────────────────────────────── */}
+          {etapa === 'pagamento' && (
+            <div className="p-6 space-y-4">
+
+              {/* Cliente — necessário para o cashback e para a tabela de preço */}
+              <div>
+                <Label className="text-xs inline-flex items-center gap-1">
+                  Cliente <span className="text-gray-300">(F3)</span>
+                  <InfoTip titulo="Tabela de preço">
+                    O preço aplicado vem da tabela cadastrada no cliente. Ao selecionar,
+                    os itens já no carrinho são recalculados.
+                  </InfoTip>
+                </Label>
+                {clienteId && clienteNomeDisplay ? (
+                  <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-gray-100 border border-gray-200 rounded-lg">
+                    <span className="text-sm font-medium text-gray-900 truncate">
+                      {clienteNomeDisplay}
+                      {ehAtacado && <span className="ml-1.5 text-[10px] font-semibold text-gray-500">· {rotuloTabela}</span>}
+                    </span>
+                    <button onClick={limparCliente} className="text-gray-400 hover:text-gray-700 ml-1 flex-shrink-0"><X size={12} /></button>
+                  </div>
+                ) : (
+                  <div className="relative mt-1">
+                    <Input ref={clienteRef} value={buscaCliente} onChange={e => setBuscaCliente(e.target.value)}
+                      placeholder="Nome ou CPF..." className="h-9 text-sm" />
+                    {buscaCliente.length > 1 && clientes.length > 0 && (
+                      <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
+                        {/* A busca do servidor procura em nome fantasia, razão
+                            social E documento. Mostrar só a razão social fazia
+                            o resultado parecer errado: quem digitava "za"
+                            achava a "Zaghi Massas" e via na lista a razão
+                            social, que não tem essas letras. Agora aparecem os
+                            dois nomes, e dá para ver por que aquele registro
+                            entrou no resultado. */}
+                        {clientes.map((c: any) => {
+                          const principal  = c.nomeFantasia?.trim() || c.nomeCompleto
+                          const secundario = c.nomeFantasia?.trim() && c.nomeFantasia.trim() !== c.nomeCompleto
+                            ? c.nomeCompleto
+                            : (c.cpfCnpj ?? '')
+                          return (
+                            <button key={c.clienteId} onClick={() => selecionarCliente(c)}
+                              className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                              <span className="min-w-0">
+                                <span className="block text-sm font-medium text-gray-900 truncate">{principal}</span>
+                                {secundario && (
+                                  <span className="block text-[10px] text-gray-400 truncate">{secundario}</span>
+                                )}
+                              </span>
+                              {c.tabelaPreco && c.tabelaPreco !== 'varejo' && (
+                                <span className="text-[10px] font-semibold text-gray-500 flex-shrink-0">
+                                  {(TIPOS_PRECO as any)[c.tabelaPreco]}
+                                </span>
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {/* Cliente avulso: quem compra uma vez e não vale cadastrar.
+                        Vai para a venda e sai no cupom. Sem cliente_id não há
+                        cashback nem histórico. */}
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <Input value={nomeAvulso} onChange={e => setNomeAvulso(e.target.value)}
+                        placeholder="Ou digite o nome (não cadastrado)"
+                        className="h-8 text-xs flex-1" />
+                      <InfoTip titulo="Cliente avulso">
+                        Guarda só o nome na venda e no cupom. Não cria cliente: sem histórico,
+                        sem tabela de preço e sem cashback, porque o programa de fidelidade
+                        precisa de um cadastro. Para quem volta, use Cadastrar novo cliente.
+                      </InfoTip>
+                    </div>
+
+                    <button
+                      onClick={() => setShowCadastrarCliente(v => !v)}
+                      className="mt-1.5 w-full text-xs text-gray-600 hover:text-gray-900 text-left flex items-center gap-1">
+                      {showCadastrarCliente ? <ChevronUp size={11} /> : <Plus size={11} />} Cadastrar novo cliente
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Cadastro rápido de cliente — sem modal: abre aqui dentro */}
+              {showCadastrarCliente && !clienteId && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 space-y-3">
+                  <div>
+                    <Label className="text-xs">Tipo de pessoa</Label>
+                    <select value={novoCli.tipoPessoa} onChange={e => setCli('tipoPessoa', e.target.value)}
+                      className="mt-1 w-full h-9 text-sm rounded-md border border-gray-200 px-2 bg-white">
+                      <option value="PF">Pessoa Física</option>
+                      <option value="PJ">Pessoa Jurídica</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Nome completo *</Label>
+                      <Input value={novoCli.nomeCompleto} onChange={e => setCli('nomeCompleto', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nome do cliente" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">{novoCli.tipoPessoa === 'PJ' ? 'Nome fantasia' : 'Apelido'}</Label>
+                      <Input value={novoCli.nomeFantasia} onChange={e => setCli('nomeFantasia', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Opcional" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">{novoCli.tipoPessoa === 'PJ' ? 'CNPJ' : 'CPF'}</Label>
+                      <Input value={novoCli.documento} onChange={e => setCli('documento', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Somente números" />
+                    </div>
+                    <div>
+                      {/* Obrigatório: a rota de clientes exige telefone ou celular no cadastro novo */}
+                      <Label className="text-xs">Celular *</Label>
+                      <Input value={novoCli.celular} onChange={e => setCli('celular', e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 00000-0000" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">E-mail</Label>
+                    <Input type="email" value={novoCli.email} onChange={e => setCli('email', e.target.value)} className="mt-1 h-9 text-sm" placeholder="email@exemplo.com" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <Label className="text-xs">Cidade</Label>
+                      <Input value={novoCli.cidade} onChange={e => setCli('cidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Cidade" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">UF</Label>
+                      <Input maxLength={2} value={novoCli.uf} onChange={e => setCli('uf', e.target.value.toUpperCase())} className="mt-1 h-9 text-sm" placeholder="UF" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Observação</Label>
+                    <textarea value={novoCli.observacao} onChange={e => setCli('observacao', e.target.value)}
+                      className="mt-1 w-full text-sm rounded-md border border-gray-200 px-2 py-1.5 resize-none" rows={2} placeholder="Opcional" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={() => { setShowCadastrarCliente(false); setNovoCli(CLI_VAZIO) }}>
+                      Cancelar
+                    </Button>
+                    <Button className={`flex-1 ${ACAO}`}
+                      onClick={() => criarClienteMut.mutate()}
+                      disabled={!novoCli.nomeCompleto.trim() || !novoCli.celular.trim() || criarClienteMut.isPending}>
+                      {criarClienteMut.isPending ? 'Salvando...' : 'Salvar e usar'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Entrega — em destaque no modo delivery */}
+              {isDelivery && (
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">Endereço de entrega *</Label>
+                    <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="Rua, número, bairro, cidade" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Data de entrega</Label>
+                    <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                  </div>
+                </div>
+              )}
+
+              {/* Desconto */}
+              <div>
+                <Label className="text-xs">Desconto geral (R$) <span className="text-gray-300">(F6)</span></Label>
+                <Input ref={descontoRef} type="number" min="0" step="0.01" inputMode="decimal" value={desconto} onChange={e => setDesconto(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
+              </div>
+              <div className="flex gap-1.5">
+                {[0, 5, 10, 15].map(pct => (
+                  <button key={pct} onClick={() => setDesconto(pct === 0 ? '0' : ((subtotal * pct / 100) / 100).toFixed(2))}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                      descontoVal === Math.round(subtotal * pct / 100) && pct > 0
+                        ? 'bg-gray-900 border-gray-900 text-white'
+                        : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
+                    }`}>
+                    {pct === 0 ? 'Sem' : `${pct}%`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Acréscimo (R$) — taxa de entrega embutida no total, sem linha de frete */}
+              <div>
+                <Label className="text-xs">Acréscimo{isDelivery ? ' — taxa de entrega' : ''} (R$)</Label>
+                <Input type="number" min="0" step="0.01" inputMode="decimal" value={acrescimo} onChange={e => setAcrescimo(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
+              </div>
+
+              {/* Cashback / Fidelidade */}
+              {clienteId && cashback?.programaAtivo && saldoCashback > 0 && (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-xs font-medium text-gray-600">
+                      <Gift size={13} /> Cashback disponível
+                    </span>
+                    <span className="text-sm font-bold text-gray-900">{fmt(saldoCashback)}</span>
+                  </div>
+                  {cashbackElegivel ? (
+                    <label className="mt-2 flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={usarCashback} onChange={e => setUsarCashback(e.target.checked)} className="w-4 h-4 rounded" />
+                      <span className="text-xs text-gray-700">
+                        Usar {fmt(Math.min(saldoCashback, limiteCashback, total))} nesta venda
+                      </span>
+                    </label>
+                  ) : (
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Saldo mínimo para usar: {fmt(cashback?.saldoMinimoUsoCentavos ?? 0)}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Forma de pagamento */}
+              <div>
+                <Label className="text-xs">Forma de pagamento <span className="text-gray-300">(F8)</span></Label>
+                <select ref={pgtoRef} value={formaPgto} onChange={e => setFormaPgto(e.target.value)}
+                  className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="">Selecionar...</option>
+                  {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).map((f: string) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </div>
+
+              {(formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && (
+                <div>
+                  <Label className="text-xs">Valor recebido (R$)</Label>
+                  <Input type="number" min="0" step="0.01" inputMode="decimal" value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
+                  {troco > 0 && (
+                    <div className="flex justify-between items-baseline mt-2 px-3 py-2 rounded-lg bg-gray-100 border border-gray-200">
+                      <span className="text-sm font-semibold text-gray-700">Troco</span>
+                      <span className="text-xl font-bold text-gray-900">{fmt(troco)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Campos extras — recolhíveis */}
+              <button onClick={() => setShowExtras(v => !v)}
+                className="w-full flex items-center justify-between py-2 text-xs text-gray-400 hover:text-gray-600 border-t border-gray-100 pt-3">
+                <span>Dados adicionais (vendedor{isDelivery ? '' : ', entrega'}...)</span>
+                {showExtras ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </button>
+
+              {showExtras && (
+                <div className="space-y-2 pt-1">
+                  <div>
+                    <Label className="text-xs">Vendedor</Label>
+                    <select value={vendedor} onChange={e => setVendedor(e.target.value)}
+                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      <option value="">Selecionar...</option>
+                      {usuarios.map((u: any) => <option key={u.usuarioId} value={u.nome}>{u.nome}</option>)}
+                    </select>
+                  </div>
+                  {/* No modo delivery, tipo/data/endereço de entrega já aparecem em destaque acima. */}
+                  {!isDelivery && (
+                    <>
+                      <div>
+                        <Label className="text-xs">Tipo de entrega</Label>
+                        <select value={tipoEntrega} onChange={e => setTipoEntrega(e.target.value)}
+                          className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                          {['Retirada', 'Entrega', 'Transportadora'].map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Data de entrega</Label>
+                        <Input type="date" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Endereço de entrega</Label>
+                        <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <Label className="text-xs">Observação</Label>
+                    <Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" />
+                  </div>
+                </div>
+              )}
+
+              {/* Impedimento real: sem endereço a venda de delivery não fecha. */}
+              {isDelivery && !enderecoOk && (
+                <p className="text-[11px] font-medium text-red-600">Informe o endereço de entrega para finalizar.</p>
+              )}
+
+              <div className="rounded-xl border border-gray-100 px-4 py-3">
+                {resumoValores}
+              </div>
+            </div>
+          )}
+        </SidePanel>
+      )}
 
       {confirmLimpar && (
         <ConfirmModal title="Limpar carrinho" message="Remover todos os itens do carrinho?"
@@ -1123,18 +1344,18 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
       {/* Confirmação da venda (Sim/Não) */}
       {confirmVenda && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
             <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
             <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-900">{fmt(totalAPagar)}</span></p>
             {ehAtacado && (
-              <p className="text-xs text-amber-600 mt-1">
+              <p className="text-xs text-gray-500 mt-1">
                 Preço de {rotuloTabela}{clienteNomeDisplay ? ` — ${clienteNomeDisplay}` : ''}
               </p>
             )}
             <div className="flex justify-center gap-3 mt-5">
               <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
-              <Button className="w-24" onClick={() => { setConfirmVenda(false); venderMut.mutate() }}>Sim</Button>
+              <Button className={`w-24 ${ACAO}`} onClick={() => { setConfirmVenda(false); venderMut.mutate() }}>Sim</Button>
             </div>
           </div>
         </div>
@@ -1142,86 +1363,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
       {/* Impressão do cupom (Sim/Não) — aparece depois que a venda foi registrada */}
       {cupomVenda && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
-            <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
+            <CheckCircle size={28} className="mx-auto text-gray-900 mb-2" />
             <p className="text-base font-semibold text-gray-900 mb-1">Venda registrada!</p>
             <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
             <div className="flex justify-center gap-3">
               <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
-              <Button className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showCadastrarCliente && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h3 className="text-base font-semibold">Cadastrar cliente</h3>
-              <button onClick={() => setShowCadastrarCliente(false)} className="text-gray-400 hover:text-gray-600"><X size={16} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <Label className="text-xs">Tipo de pessoa</Label>
-                <select value={novoCli.tipoPessoa} onChange={e => setCli('tipoPessoa', e.target.value)}
-                  className="mt-1 w-full h-9 text-sm rounded-md border border-gray-200 px-2 bg-white">
-                  <option value="PF">Pessoa Física</option>
-                  <option value="PJ">Pessoa Jurídica</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">Nome completo *</Label>
-                  <Input value={novoCli.nomeCompleto} onChange={e => setCli('nomeCompleto', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nome do cliente" autoFocus />
-                </div>
-                <div>
-                  <Label className="text-xs">{novoCli.tipoPessoa === 'PJ' ? 'Nome fantasia' : 'Apelido'}</Label>
-                  <Input value={novoCli.nomeFantasia} onChange={e => setCli('nomeFantasia', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Opcional" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">{novoCli.tipoPessoa === 'PJ' ? 'CNPJ' : 'CPF'}</Label>
-                  <Input value={novoCli.documento} onChange={e => setCli('documento', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Somente números" />
-                </div>
-                <div>
-                  {/* Obrigatório: a rota de clientes exige telefone ou celular no cadastro novo */}
-                  <Label className="text-xs">Celular *</Label>
-                  <Input value={novoCli.celular} onChange={e => setCli('celular', e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 00000-0000" />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs">E-mail</Label>
-                <Input type="email" value={novoCli.email} onChange={e => setCli('email', e.target.value)} className="mt-1 h-9 text-sm" placeholder="email@exemplo.com" />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="col-span-2">
-                  <Label className="text-xs">Cidade</Label>
-                  <Input value={novoCli.cidade} onChange={e => setCli('cidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Cidade" />
-                </div>
-                <div>
-                  <Label className="text-xs">UF</Label>
-                  <Input maxLength={2} value={novoCli.uf} onChange={e => setCli('uf', e.target.value.toUpperCase())} className="mt-1 h-9 text-sm" placeholder="UF" />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs">Observação</Label>
-                <textarea value={novoCli.observacao} onChange={e => setCli('observacao', e.target.value)}
-                  className="mt-1 w-full text-sm rounded-md border border-gray-200 px-2 py-1.5 resize-none" rows={2} placeholder="Opcional" />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => setShowCadastrarCliente(false)}
-                  className="flex-1 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-                  Cancelar
-                </button>
-                <button onClick={() => criarClienteMut.mutate()} disabled={!novoCli.nomeCompleto.trim() || !novoCli.celular.trim() || criarClienteMut.isPending}
-                  className="flex-1 py-2 rounded-xl text-sm font-medium text-white disabled:opacity-50"
-                  style={{ backgroundColor: '#2ecc71' }}>
-                  {criarClienteMut.isPending ? 'Salvando...' : 'Salvar e usar'}
-                </button>
-              </div>
+              <Button className={`w-24 ${ACAO}`} onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
             </div>
           </div>
         </div>

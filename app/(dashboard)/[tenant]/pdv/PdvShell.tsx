@@ -113,8 +113,11 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
       </header>
 
       <main className="flex-1 overflow-hidden">
+        {/* Balcão e Delivery têm rolagem própria (a grade de produtos rola, a
+            barra do carrinho fica fixa embaixo), então aqui não pode haver
+            um segundo contêiner rolável por fora. */}
         <div className={`h-full ${aba === 'balcao' ? 'block' : 'hidden'}`}>
-          <div className="h-full overflow-y-auto p-6">
+          <div className="h-full overflow-hidden p-6">
             <PdvBalcao tenantSlug={tenantSlug} modo="balcao" />
           </div>
         </div>
@@ -132,7 +135,7 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
         </div>
 
         <div className={`h-full ${aba === 'delivery' ? 'block' : 'hidden'}`}>
-          <div className="h-full overflow-y-auto p-6">
+          <div className="h-full overflow-hidden p-6">
             <PdvBalcao tenantSlug={tenantSlug} modo="delivery" />
           </div>
         </div>

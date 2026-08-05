@@ -1,108 +1,151 @@
 'use client'
-import { useEffect, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+// components/ui/SidePanel.tsx
+//
+// ─── PAINEL LATERAL — SUBSTITUI OS MODAIS DE CADASTRO ────────────────────────
+//
+// Regra do sistema: criação e edição de registro acontecem AQUI, não em modal.
+// Modal continua valendo só para confirmação (ConfirmModal).
+//
+// Por quê: modal de formulário rouba a tela inteira para mostrar oito campos,
+// e o operador perde a lista de referência. O painel encosta na direita, ocupa
+// um quarto da largura e deixa a listagem visível atrás — dá para conferir
+// outro registro sem fechar o que está editando.
+//
+// COMPORTAMENTO
+// • Altura total da tela, encostado à direita.
+// • Um quarto da largura, com piso de 420px para não espremer formulário.
+// • Botão Expandir leva a tela cheia; Recolher devolve ao tamanho normal.
+// • NÃO fecha ao salvar. Só o X (ou Esc) fecha — quem salva costuma querer
+//   conferir o que gravou, e fechar sozinho tira essa chance.
+// • Clique fora NÃO fecha: formulário aberto com dados digitados não pode
+//   sumir por um clique errado.
+//
+// USO
+//   {showPainel && (
+//     <SidePanel titulo="Editar produto" subtitulo={item.nome} onClose={fechar}
+//                rodape={<Button onClick={salvar}>Salvar</Button>}>
+//       ...campos...
+//     </SidePanel>
+//   )}
+import { useEffect, useState, type ReactNode } from 'react'
+import { X, Maximize2, Minimize2 } from 'lucide-react'
 
-/**
- * components/ui/SidePanel.tsx
- *
- * Painel lateral de detalhe — substitui o modal em criação, edição e
- * visualização. Abre por cima, à direita, deixando a listagem visível atrás.
- *
- * A API é a mesma do FormModal de propósito: trocar o componente na tela é
- * renomear a tag, sem mexer no conteúdo.
- *
- *   <SidePanel titulo="Novo fornecedor" onClose={fechar} largura="max-w-xl">
- *     <form className="p-6 space-y-4"> ... </form>
- *   </SidePanel>
- *
- * O rodapé fixo é opcional. Usando-o, as ações ficam sempre visíveis mesmo
- * com formulário longo — que é o comportamento do Kuantum.
- */
 interface Props {
-  titulo:      ReactNode
+  titulo:      string
+  subtitulo?:  string
+  /** Chips, selos ou InfoTip ao lado do título. */
+  cabecalho?:  ReactNode
+  /** Barra fixa no rodapé — normalmente os botões de ação. */
+  rodape?:     ReactNode
   onClose:     () => void
   children:    ReactNode
-  /** largura máxima: max-w-md | max-w-xl | max-w-2xl | max-w-3xl */
+  /** Largura quando recolhido. Padrão: um quarto da tela, mínimo 420px. */
   largura?:    string
-  /** linha de apoio abaixo do título (nome do registro, período…) */
-  subtitulo?:  ReactNode
-  /** conteúdo colado ao título: selo de status, InfoTip */
-  cabecalho?:  ReactNode
-  /** barra fixa no pé do painel, para Cancelar / Salvar */
-  rodape?:     ReactNode
-  fecharNoEsc?: boolean
+  /** Abre já expandido. Útil em telas com muitos campos, como Ficha Técnica. */
+  iniciarExpandido?: boolean
 }
 
 export function SidePanel({
-  titulo, onClose, children,
-  largura = 'max-w-xl',
-  subtitulo, cabecalho, rodape,
-  fecharNoEsc = true,
+  titulo, subtitulo, cabecalho, rodape, onClose, children,
+  largura = 'w-[25vw] min-w-[420px]',
+  iniciarExpandido = false,
 }: Props) {
-  useEffect(() => {
-    if (!fecharNoEsc) return
-    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, fecharNoEsc])
+  const [expandido, setExpandido] = useState(iniciarExpandido)
+  const [montado, setMontado]     = useState(false)
 
+  // Um quadro de atraso antes de animar a entrada: sem isso o painel
+  // aparece já no lugar final e a transição não acontece.
   useEffect(() => {
-    const anterior = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = anterior }
+    const t = requestAnimationFrame(() => setMontado(true))
+    return () => cancelAnimationFrame(t)
   }, [])
 
+  // Esc fecha. Trava a rolagem do fundo enquanto o painel está aberto —
+  // rolar a lista atrás enquanto se digita é desorientador.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    const overflowAnterior = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = overflowAnterior
+    }
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Fundo: mais leve que o do modal — a listagem continua legível atrás */}
+    <>
+      {/* Véu. Escurece a lista atrás sem escondê-la, e NÃO fecha ao clique:
+          um clique errado não pode apagar um formulário preenchido. */}
       <div
-        onClick={onClose}
-        className="absolute inset-0 bg-gray-900/20 backdrop-blur-[1px]"
+        className={`fixed inset-0 z-40 transition-opacity duration-200 ${montado ? 'opacity-100' : 'opacity-0'}`}
+        style={{ backgroundColor: 'rgba(0,0,0,0.25)' }}
         aria-hidden
       />
 
       <aside
         role="dialog"
         aria-modal="true"
-        className={`relative h-full w-full ${largura} bg-white border-l border-gray-200 shadow-2xl flex flex-col animate-[deslizar_.18s_ease-out]`}
+        aria-label={titulo}
+        className={[
+          'fixed top-0 right-0 z-50 h-screen bg-white flex flex-col',
+          'border-l border-gray-200 shadow-2xl',
+          'transition-[width,transform] duration-200 ease-out',
+          expandido ? 'w-screen' : largura,
+          montado ? 'translate-x-0' : 'translate-x-full',
+        ].join(' ')}
       >
         {/* Cabeçalho */}
-        <div className="flex items-start justify-between gap-3 px-6 py-5 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
           <div className="min-w-0">
-            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              {titulo}
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-lg font-semibold text-gray-900 truncate">{titulo}</h2>
               {cabecalho}
-            </h2>
-            {subtitulo && <p className="text-xs text-gray-400 mt-0.5 truncate">{subtitulo}</p>}
+            </div>
+            {subtitulo && (
+              <p className="text-xs text-gray-400 mt-0.5 truncate">{subtitulo}</p>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 flex-shrink-0 p-1 -mr-1 rounded-lg hover:bg-gray-50 transition-colors"
-            aria-label="Fechar"
-          >
-            <X size={18} />
-          </button>
+
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => setExpandido(v => !v)}
+              title={expandido ? 'Recolher' : 'Expandir'}
+              aria-label={expandido ? 'Recolher painel' : 'Expandir painel'}
+              className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-medium text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+            >
+              {expandido ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+              <span className="hidden sm:inline">{expandido ? 'Recolher' : 'Expandir'}</span>
+            </button>
+            <button
+              onClick={onClose}
+              title="Fechar"
+              aria-label="Fechar painel"
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* Conteúdo */}
-        <div className="flex-1 overflow-y-auto">{children}</div>
+        {/* Conteúdo. Expandido, limita a largura da leitura — formulário
+            esticado em 1920px vira uma linha de campos ilegível. */}
+        <div className="flex-1 overflow-y-auto">
+          <div className={expandido ? 'max-w-4xl mx-auto w-full' : ''}>
+            {children}
+          </div>
+        </div>
 
-        {/* Rodapé fixo */}
+        {/* Rodapé fixo. Fica visível mesmo com o formulário rolado. */}
         {rodape && (
-          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-gray-100 flex-shrink-0 bg-white">
-            {rodape}
+          <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 bg-white">
+            <div className={`flex items-center justify-end gap-3 ${expandido ? 'max-w-4xl mx-auto w-full' : ''}`}>
+              {rodape}
+            </div>
           </div>
         )}
       </aside>
-
-      <style jsx global>{`
-        @keyframes deslizar {
-          from { transform: translateX(16px); opacity: .6 }
-          to   { transform: translateX(0);    opacity: 1  }
-        }
-      `}</style>
-    </div>
+    </>
   )
 }
 

@@ -59,8 +59,6 @@ export default function InsumosView({ tenantSlug }: Props) {
   const [estoqueMin, setEstoqueMin]   = useState('0')
   const [estoqueAtual, setEstoqueAtual] = useState('0')
   const [precoCusto, setPrecoCusto]   = useState('')
-  // CORREÇÃO (dados ocultos): descricao, codigoBarras e fornecedorId existiam
-  // no banco mas não apareciam em lugar nenhum da tela.
   const [descricao, setDescricao]       = useState('')
   const [codigoBarras, setCodigoBarras] = useState('')
   const [fornecedorId, setFornecedorId] = useState('')
@@ -104,18 +102,34 @@ export default function InsumosView({ tenantSlug }: Props) {
       const url    = editando ? `${api}/${editando.insumoId}` : api
       const method = editando ? 'PUT' : 'POST'
       const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      const json   = await res.json()
-      // Sem esse check, um 400 "Registro já existente" caía em onSuccess e mostrava "Insumo criado!".
-      if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar insumo')
-      return json
+      // Status ANTES do corpo: resposta sem JSON (405, por exemplo) fazia o
+      // res.json() estourar e esconder o erro real.
+      if (!res.ok) {
+        const texto = await res.text()
+        let msg = `Erro ${res.status} ao salvar insumo`
+        try { msg = JSON.parse(texto)?.message ?? msg } catch {}
+        throw new Error(msg)
+      }
+      return res.json()
     },
-    onSuccess: () => { invalidate(); fecharModal(); toast(editando ? 'Insumo atualizado!' : 'Insumo criado!') },
+    onSuccess: (d: any) => {
+      invalidate()
+      const criando = !editando
+      // O painel NÃO fecha ao salvar — quem fecha é o operador, no X.
+      // Depois de criar, passa para modo edição do registro novo: senão um
+      // segundo clique em Salvar criaria um insumo duplicado.
+      if (criando) {
+        const novoId = d?.data?.insumoId ?? d?.insumoId
+        if (novoId) setEditando({ insumoId: novoId, nome })
+      }
+      toast(criando ? 'Insumo criado!' : 'Insumo atualizado!')
+    },
     onError:   (e: any) => toast(e?.message ?? 'Erro ao salvar insumo.', 'error'),
   })
 
   const excluirMut = useMutation({
     mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { invalidate(); toast('Insumo excluído.') },
+    onSuccess: () => { invalidate(); fecharModal(); toast('Insumo excluído.') },
     onError:   () => toast('Erro ao excluir.', 'error'),
   })
 
@@ -167,7 +181,6 @@ export default function InsumosView({ tenantSlug }: Props) {
   const colunas: Coluna[] = [
     {
       chave: 'nome', titulo: 'Nome', ordenavel: true,
-      // borda verde que aparece no hover da linha — comportamento original da tela
       classeCelula: 'pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150',
       render: (ins: any) => (
         <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700" onClick={() => abrirModal(ins)}>
@@ -186,7 +199,7 @@ export default function InsumosView({ tenantSlug }: Props) {
     {
       chave: 'estoqueAtual', titulo: 'Est. Atual', ordenavel: true, alinhamento: 'center',
       render: (ins: any) => (
-        <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-green-600'}`}>
+        <span className={`text-sm font-semibold ${ins.estoqueAtual <= ins.estoqueMinimo ? 'text-red-600' : 'text-gray-700'}`}>
           {fmtEstoque(ins.estoqueAtual)}
         </span>
       ),
@@ -253,10 +266,11 @@ export default function InsumosView({ tenantSlug }: Props) {
         )}
       />
 
-      {/* Modal Insumo */}
+      {/* Painel criar / editar */}
       {showModal && (
         <FormModal
-          titulo={editando ? 'Editar Insumo' : 'Novo Insumo'}
+          titulo={editando ? 'Editar insumo' : 'Novo insumo'}
+          subtitulo={editando?.nome}
           onClose={fecharModal}
           largura="max-w-lg"
         >
@@ -298,7 +312,6 @@ export default function InsumosView({ tenantSlug }: Props) {
             </div>
             <div><Label>Descrição</Label><Input value={descricao} onChange={e => setDescricao(e.target.value)} className="mt-1" placeholder="Descrição do insumo (opcional)" /></div>
             <div className="grid grid-cols-3 gap-3">
-              {/* step="any": estoque de insumo é fracionado (ex.: 0,250 kg) */}
               <div>
                 <Label className="inline-flex items-center gap-1">
                   Est. Atual
@@ -306,7 +319,8 @@ export default function InsumosView({ tenantSlug }: Props) {
                     Aceita valores fracionados — use ponto como separador (ex.: 0.250 kg).
                   </InfoTip>
                 </Label>
-                <Input type="number" min="0" step="any" value={estoqueAtual} onChange={e => setEstoqueAtual(e.target.value)} className="mt-1" />
+                <Input type="number" min="0" step="any" inputMode="decimal" value={estoqueAtual}
+                  onChange={e => setEstoqueAtual(e.target.value)} className="sem-spinner mt-1" />
               </div>
               <div>
                 <Label className="inline-flex items-center gap-1">
@@ -316,9 +330,14 @@ export default function InsumosView({ tenantSlug }: Props) {
                     Aceita fração — use ponto (ex.: 0.250).
                   </InfoTip>
                 </Label>
-                <Input type="number" min="0" step="any" value={estoqueMin} onChange={e => setEstoqueMin(e.target.value)} className="mt-1" />
+                <Input type="number" min="0" step="any" inputMode="decimal" value={estoqueMin}
+                  onChange={e => setEstoqueMin(e.target.value)} className="sem-spinner mt-1" />
               </div>
-              <div><Label>Preço Custo (R$)</Label><Input type="number" min="0" step="0.01" value={precoCusto} onChange={e => setPrecoCusto(e.target.value)} className="mt-1" /></div>
+              <div>
+                <Label>Preço Custo (R$)</Label>
+                <Input type="number" min="0" step="0.01" inputMode="decimal" value={precoCusto}
+                  onChange={e => setPrecoCusto(e.target.value)} className="sem-spinner mt-1" />
+              </div>
             </div>
 
             {editando && (
@@ -332,7 +351,7 @@ export default function InsumosView({ tenantSlug }: Props) {
             )}
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button variant="outline" onClick={fecharModal}>Fechar</Button>
               <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
                 {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
               </Button>

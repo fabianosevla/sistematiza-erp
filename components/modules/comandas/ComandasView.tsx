@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { FormModal } from '@/components/ui/FormModal'
 import { fmtMoeda as formatCents } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -69,6 +70,8 @@ export default function ComandasView({ tenantSlug }: Props) {
     enabled: buscaProduto.length > 0,
   })
 
+  // Único painel do sistema que fecha ao salvar: criar a comanda leva direto
+  // para a tela dela, então manter o drawer aberto por cima não faz sentido.
   const criarMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(apiBase, {
@@ -246,10 +249,11 @@ export default function ComandasView({ tenantSlug }: Props) {
     setTimeout(() => { win.print(); win.close() }, 300)
   }
 
-  // Modal "Deseja imprimir cupom?" — renderizado nas duas vistas (a comanda
-  // sai da tela após fechar, então o modal precisa existir também na lista)
+  // "Deseja imprimir cupom?" — CONFIRMAÇÃO, continua modal.
+  // Renderizado nas duas vistas (a comanda sai da tela após fechar, então
+  // precisa existir também na lista).
   const cupomModal = cupomVenda && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
         <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
         <p className="text-base font-semibold text-gray-900 mb-1">Comanda fechada — venda registrada!</p>
@@ -260,6 +264,35 @@ export default function ComandasView({ tenantSlug }: Props) {
         </div>
       </div>
     </div>
+  )
+
+  // Painel "Nova comanda" — usado nas duas vistas
+  const painelNovaComanda = showNova && (
+    <FormModal
+      titulo="Nova comanda"
+      onClose={() => setShowNova(false)}
+      largura="max-w-sm"
+    >
+      <div className="p-6 space-y-4">
+        <div>
+          <Label>Identificação *</Label>
+          <Input
+            value={identificacao}
+            onChange={e => setIdentificacao(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && identificacao && criarMutation.mutate()}
+            className="mt-1"
+            placeholder="Mesa 1, Balcão, João..."
+            autoFocus
+          />
+        </div>
+        <div className="flex justify-end gap-3 pt-2">
+          <Button type="button" variant="outline" onClick={() => setShowNova(false)}>Cancelar</Button>
+          <Button onClick={() => criarMutation.mutate()} disabled={!identificacao || criarMutation.isPending}>
+            {criarMutation.isPending ? 'Criando...' : 'Criar comanda'}
+          </Button>
+        </div>
+      </div>
+    </FormModal>
   )
 
   // ── Vista comanda ativa ────────────────────────────────────────────────────
@@ -352,7 +385,7 @@ export default function ComandasView({ tenantSlug }: Props) {
                     min="1"
                     value={quantidade}
                     onChange={e => setQuantidade(Math.max(1, Number(e.target.value)))}
-                    className="text-center w-20"
+                    className="text-center w-20 sem-spinner"
                   />
                   <button
                     onClick={() => setQuantidade(q => q + 1)}
@@ -395,114 +428,113 @@ export default function ComandasView({ tenantSlug }: Props) {
           </div>
         </div>
 
-        {/* Modal Fechar */}
+        {/* Painel Fechar comanda */}
         {showFechar && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Fechar comanda</h2>
-                <button onClick={() => setShowFechar(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+          <FormModal
+            titulo="Fechar comanda"
+            subtitulo={comandaAtiva.identificacao}
+            onClose={() => setShowFechar(false)}
+            largura="max-w-md"
+          >
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Subtotal</span>
+                  <span className="font-medium">{formatCents(totalComanda)}</span>
+                </div>
+                {totalDesconto > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Subtotal</span>
-                    <span className="font-medium">{formatCents(totalComanda)}</span>
-                  </div>
-                  {totalDesconto > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Desconto</span>
-                      <span className="font-medium text-red-500">- {formatCents(totalDesconto)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-2 mt-2">
-                    <span>Total</span>
-                    <span style={{ color: '#2ecc71' }}>{formatCents(totalFinal)}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Desconto (R$)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={desconto || ''}
-                    onChange={e => {
-                      const d = parseFloat(e.target.value) || 0
-                      setDesconto(d)
-                      const newTotal = Math.max(0, totalComanda - Math.round(d * 100))
-                      setPagamentos([{ forma: pagamentos[0]?.forma ?? 'Dinheiro', valor: newTotal }])
-                    }}
-                    className="mt-1"
-                    placeholder="0,00"
-                  />
-                </div>
-
-                <div>
-                  <Label>Formas de pagamento</Label>
-                  {pagamentos.map((pag, i) => (
-                    <div key={i} className="flex gap-2 mt-2">
-                      <select
-                        value={pag.forma}
-                        onChange={e => {
-                          const novo = [...pagamentos]
-                          novo[i].forma = e.target.value
-                          setPagamentos(novo)
-                        }}
-                        className="flex-1 h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
-                      >
-                        {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
-                      </select>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={(pag.valor / 100).toFixed(2)}
-                        onChange={e => {
-                          const novo = [...pagamentos]
-                          novo[i].valor = Math.round(parseFloat(e.target.value || '0') * 100)
-                          setPagamentos(novo)
-                        }}
-                        className="w-32"
-                      />
-                      {pagamentos.length > 1 && (
-                        <button onClick={() => setPagamentos(p => p.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    onClick={() => setPagamentos(p => [...p, { forma: 'Dinheiro', valor: 0 }])}
-                    className="mt-2 text-xs text-green-600 hover:text-green-700 font-medium"
-                  >
-                    + Adicionar forma de pagamento
-                  </button>
-                </div>
-
-                {troco > 0 && (
-                  <div className="flex justify-between px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
-                    <span className="text-sm font-semibold text-green-700">Troco</span>
-                    <span className="text-sm font-bold text-green-700">{formatCents(troco)}</span>
+                    <span className="text-gray-500">Desconto</span>
+                    <span className="font-medium text-red-500">- {formatCents(totalDesconto)}</span>
                   </div>
                 )}
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setShowFechar(false)}>Cancelar</Button>
-                  <Button
-                    onClick={() => setConfirmFechar(true)}
-                    disabled={fecharMutation.isPending || totalPago < totalFinal}
-                  >
-                    {fecharMutation.isPending ? 'Finalizando...' : 'Confirmar fechamento'}
-                  </Button>
+                <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-2 mt-2">
+                  <span>Total</span>
+                  <span style={{ color: '#2ecc71' }}>{formatCents(totalFinal)}</span>
                 </div>
               </div>
+
+              <div>
+                <Label>Desconto (R$)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={desconto || ''}
+                  onChange={e => {
+                    const d = parseFloat(e.target.value) || 0
+                    setDesconto(d)
+                    const newTotal = Math.max(0, totalComanda - Math.round(d * 100))
+                    setPagamentos([{ forma: pagamentos[0]?.forma ?? 'Dinheiro', valor: newTotal }])
+                  }}
+                  className="mt-1 sem-spinner"
+                  placeholder="0,00"
+                />
+              </div>
+
+              <div>
+                <Label>Formas de pagamento</Label>
+                {pagamentos.map((pag, i) => (
+                  <div key={i} className="flex gap-2 mt-2">
+                    <select
+                      value={pag.forma}
+                      onChange={e => {
+                        const novo = [...pagamentos]
+                        novo[i].forma = e.target.value
+                        setPagamentos(novo)
+                      }}
+                      className="flex-1 h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    >
+                      {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
+                    </select>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={(pag.valor / 100).toFixed(2)}
+                      onChange={e => {
+                        const novo = [...pagamentos]
+                        novo[i].valor = Math.round(parseFloat(e.target.value || '0') * 100)
+                        setPagamentos(novo)
+                      }}
+                      className="w-32 sem-spinner"
+                    />
+                    {pagamentos.length > 1 && (
+                      <button onClick={() => setPagamentos(p => p.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  onClick={() => setPagamentos(p => [...p, { forma: 'Dinheiro', valor: 0 }])}
+                  className="mt-2 text-xs text-green-600 hover:text-green-700 font-medium"
+                >
+                  + Adicionar forma de pagamento
+                </button>
+              </div>
+
+              {troco > 0 && (
+                <div className="flex justify-between px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
+                  <span className="text-sm font-semibold text-green-700">Troco</span>
+                  <span className="text-sm font-bold text-green-700">{formatCents(troco)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setShowFechar(false)}>Cancelar</Button>
+                <Button
+                  onClick={() => setConfirmFechar(true)}
+                  disabled={fecharMutation.isPending || totalPago < totalFinal}
+                >
+                  {fecharMutation.isPending ? 'Finalizando...' : 'Confirmar fechamento'}
+                </Button>
+              </div>
             </div>
-          </div>
+          </FormModal>
         )}
 
-        {/* Confirmação da venda (Sim/Não) — sobrepõe o modal de fechamento */}
+        {/* CONFIRMAÇÃO da venda (Sim/Não) — modal, por cima do painel */}
         {confirmFechar && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
@@ -516,6 +548,7 @@ export default function ComandasView({ tenantSlug }: Props) {
           </div>
         )}
 
+        {painelNovaComanda}
         {cupomModal}
       </div>
     )
@@ -587,37 +620,7 @@ export default function ComandasView({ tenantSlug }: Props) {
         </div>
       )}
 
-      {showNova && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold text-gray-900">Nova comanda</h2>
-              <button onClick={() => setShowNova(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <Label>Identificação *</Label>
-                <Input
-                  value={identificacao}
-                  onChange={e => setIdentificacao(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && identificacao && criarMutation.mutate()}
-                  className="mt-1"
-                  placeholder="Mesa 1, Balcão, João..."
-                  autoFocus
-                />
-                <p className="text-xs text-gray-400 mt-1">Mesa, número ou nome do cliente</p>
-              </div>
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => setShowNova(false)}>Cancelar</Button>
-                <Button onClick={() => criarMutation.mutate()} disabled={!identificacao || criarMutation.isPending}>
-                  {criarMutation.isPending ? 'Criando...' : 'Criar comanda'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {painelNovaComanda}
       {cupomModal}
     </div>
   )

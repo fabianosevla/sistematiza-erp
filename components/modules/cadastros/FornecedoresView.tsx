@@ -51,11 +51,19 @@ export default function FornecedoresView({ tenantSlug }: Props) {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       })
       const json = await res.json()
-      // Sem esse check, um 400 "Registro já existente" caía em onSuccess e fechava o form.
+      // Sem esse check, um 400 "Registro já existente" caía em onSuccess.
       if (!res.ok) throw new Error(json?.message ?? 'Erro ao salvar fornecedor')
       return json
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] }); setShowForm(false) },
+    onSuccess: (json: any, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] })
+      // O painel NÃO fecha ao salvar — quem fecha é o operador, no X.
+      // Depois de criar, passa para modo edição do registro novo: senão um
+      // segundo clique em Salvar criaria um fornecedor duplicado.
+      const novoId = json?.data?.fornecedorId ?? json?.fornecedorId
+      if (novoId) setEditItem({ fornecedorId: novoId, ...variables })
+      toast('Fornecedor criado!')
+    },
     onError: (e: any) => toast(e?.message ?? 'Erro ao salvar.', 'error'),
   })
 
@@ -70,7 +78,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] })
-      setShowForm(false); setEditItem(null)
+      toast('Fornecedor atualizado!')
     },
     onError: (e: any) => toast(e?.message ?? 'Erro ao salvar.', 'error'),
   })
@@ -82,7 +90,11 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir')
       return d
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] }); toast('Fornecedor excluído.') },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fornecedores', tenantSlug] })
+      fecharForm()
+      toast('Fornecedor excluído.')
+    },
     onError:   (e: any) => toast(e.message || 'Erro ao excluir.', 'error'),
   })
 
@@ -122,9 +134,22 @@ export default function FornecedoresView({ tenantSlug }: Props) {
 
   // Colunas da listagem — mesma ordem e mesma responsividade de antes
   const colunas: Coluna[] = [
-    { chave: 'nomeCompleto', titulo: 'Nome', principal: true },
     {
-      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md',
+      chave: 'nomeCompleto', titulo: 'Nome', principal: true,
+      render: (item: any) => (
+        <>
+          <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700"
+            onClick={() => handleEdit(item)}>
+            {item.nomeFantasia?.trim() || item.nomeCompleto}
+          </span>
+          {item.nomeFantasia?.trim() && item.nomeFantasia !== item.nomeCompleto && (
+            <span className="block text-xs text-gray-400 uppercase">{item.nomeCompleto}</span>
+          )}
+        </>
+      ),
+    },
+    {
+      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', alinhamento: 'center',
       render: (item: any) => <Badge variant="secondary">{item.tipoPessoa}</Badge>,
     },
     {
@@ -186,6 +211,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       {showForm && (
         <FormModal
           titulo={editItem ? 'Editar fornecedor' : 'Novo fornecedor'}
+          subtitulo={editItem?.nomeFantasia || editItem?.nomeCompleto}
           onClose={fecharForm}
           largura="max-w-2xl"
         >
@@ -214,7 +240,6 @@ export default function FornecedoresView({ tenantSlug }: Props) {
               <div><Label>Contato</Label><Input {...form.register('contato')} className="mt-1" /></div>
               <div><Label>Telefone</Label><Input {...form.register('telefone')} className="mt-1" /></div>
             </div>
-            {/* CORREÇÃO (dados ocultos): endereço completo existia no banco mas não aparecia no formulário */}
             <div className="grid grid-cols-3 gap-4">
               <div><Label>CEP</Label><Input {...form.register('cep')} className="mt-1" placeholder="00000-000" /></div>
               <div className="col-span-2"><Label>Endereço</Label><Input {...form.register('endereco')} className="mt-1" placeholder="Rua, avenida…" /></div>
@@ -244,8 +269,8 @@ export default function FornecedoresView({ tenantSlug }: Props) {
             )}
 
             <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={fecharForm}>Cancelar</Button>
-              <Button type="submit" disabled={isPending}>{isPending ? 'Salvando...' : editItem ? 'Salvar alterações' : 'Salvar fornecedor'}</Button>
+              <Button type="button" variant="outline" onClick={fecharForm}>Fechar</Button>
+              <Button type="submit" disabled={isPending}>{isPending ? 'Salvando...' : 'Salvar'}</Button>
             </div>
           </form>
         </FormModal>

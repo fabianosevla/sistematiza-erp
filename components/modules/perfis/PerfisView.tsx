@@ -90,13 +90,25 @@ export default function PerfisView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(d.message)
       return d
     },
-    onSuccess: () => { invalidate(); fecharModal(); toast(editando ? 'Perfil atualizado!' : 'Perfil criado!') },
+    onSuccess: (d: any) => {
+      invalidate()
+      const criando = !editando
+      // O painel NÃO fecha ao salvar — quem fecha é o operador, no X.
+      // Depois de criar, passa para modo edição do perfil novo: senão um
+      // segundo clique em Salvar criaria um perfil duplicado.
+      if (criando) {
+        const novoId = d?.data?.perfilId ?? d?.perfilId
+        if (novoId) setEditando({ perfilId: novoId, ...form })
+      }
+      toast(criando ? 'Perfil criado!' : 'Perfil atualizado!')
+    },
     onError:   (e: any) => toast(e.message || 'Erro ao salvar.', 'error'),
   })
 
   const excluirMut = useMutation({
     mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { invalidate(); toast('Perfil excluído.') },
+    // Excluir fecha: o registro deixou de existir, não há o que continuar editando.
+    onSuccess: () => { invalidate(); fecharModal(); toast('Perfil excluído.') },
     onError:   (e: any) => toast(e.message || 'Erro ao excluir.', 'error'),
   })
 
@@ -421,12 +433,12 @@ export default function PerfisView({ tenantSlug }: Props) {
             )}
 
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button variant="outline" onClick={fecharModal}>Fechar</Button>
               <Button
                 onClick={() => salvarMut.mutate()}
                 disabled={!form.nome || salvarMut.isPending}
               >
-                {salvarMut.isPending ? 'Salvando...' : editando ? 'Salvar alterações' : 'Criar perfil'}
+                {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
               </Button>
             </div>
           </div>

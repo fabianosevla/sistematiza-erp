@@ -86,6 +86,11 @@ interface Props {
   onLinhaClick?:  (item: any) => void
   classeLinha?:   (item: any) => string
   className?:     string
+  /**
+   * Altura maxima da area que rola. O desconto cobre cabecalho da pagina,
+   * busca e paginacao. Telas com mais coisas acima da grade podem aumentar.
+   */
+  alturaMax?:     string
 }
 
 const ALINHAMENTO = { left: 'text-left', center: 'text-center', right: 'text-right' }
@@ -101,6 +106,7 @@ export function DataTable({
   ordem, onOrdenar,
   onLinhaClick, classeLinha,
   className = '',
+  alturaMax = 'calc(100vh - 330px)',
 }: Props) {
   const totalColunas = colunas.length + (acoes ? 1 : 0)
 
@@ -124,16 +130,23 @@ export function DataTable({
         </div>
       )}
 
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-gray-200 bg-gray-50/70">
+      {/* CABECALHO CONGELADO
+          A rolagem vertical acontece AQUI DENTRO, nao na pagina. E isso que
+          faz o `sticky top-0` funcionar: ele gruda no conteiner que rola. Se
+          quem rolasse fosse a janela, o cabecalho subiria com as linhas.
+          A linha de baixo e sombra, nao borda: borda em celula fixa some ao
+          rolar em alguns navegadores. */}
+      <div className="overflow-auto" style={{ maxHeight: alturaMax, minHeight: '160px' }}>
+        <table className="w-full">
+          <thead>
+            <tr className="bg-gray-50">
             {colunas.map(col => {
               const podeOrdenar = col.ordenavel && onOrdenar
               return (
                 <th
                   key={col.chave}
                   onClick={podeOrdenar ? () => onOrdenar!(col.chave) : undefined}
-                  className={`${ALINHAMENTO[col.alinhamento ?? 'left']} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5 ${visibilidade(col)} ${col.largura ?? ''} ${
+                  className={`sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] ${ALINHAMENTO[col.alinhamento ?? 'left']} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5 ${visibilidade(col)} ${col.largura ?? ''} ${
                     podeOrdenar ? 'cursor-pointer select-none hover:text-gray-700' : ''
                   } ${col.classeCabecalho ?? ''}`}
                 >
@@ -142,7 +155,7 @@ export function DataTable({
                 </th>
               )
             })}
-            {acoes && <th className="px-4 py-2.5 w-24" />}
+            {acoes && <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] px-4 py-2.5 w-24" />}
           </tr>
         </thead>
 
@@ -191,10 +204,11 @@ export function DataTable({
             </tr>
           ))}
         </tbody>
-      </table>
+        </table>
+      </div>
 
-      {/* Paginação: usa o componente que o projeto já tem, para não existirem
-          duas paginações diferentes. mt-0 porque aqui ela fica dentro do cartão. */}
+      {/* Paginação fica FORA da area que rola: sumir ao rolar seria perder a
+          referencia de quantos registros existem. */}
       {meta && onPageChange && (
         <Paginacao
           page={meta.page}
@@ -203,7 +217,7 @@ export function DataTable({
           limit={meta.limit}
           onPage={onPageChange}
           onLimit={onLimitChange}
-          className="px-4 mt-0"
+          className="px-4 mt-0 border-t border-gray-100"
         />
       )}
     </div>

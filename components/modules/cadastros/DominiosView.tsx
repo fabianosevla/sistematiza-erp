@@ -78,8 +78,12 @@ export default function DominiosView({ tenantSlug }: Props) {
     }).then(r => r.json()),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['dominios-list', tenantSlug] })
-      setShowNovoDominio(false); setNovoCodigo(''); setNovoNome(''); setNovaDescricao('')
-      toast('Tabela criada!')
+      // O painel NÃO fecha ao salvar. Aqui a tabela recém-criada já vira a
+      // selecionada, para você cadastrar os valores dela em seguida — que é
+      // sempre o passo seguinte.
+      setSelecionado(novoCodigo)
+      setNovoCodigo(''); setNovoNome(''); setNovaDescricao('')
+      toast('Tabela criada! Agora cadastre os valores dela.')
     },
     onError: () => toast('Erro ao criar tabela. O código pode já existir.', 'error'),
   })
@@ -235,10 +239,10 @@ export default function DominiosView({ tenantSlug }: Props) {
         </div>
       </div>
 
-      {/* Modal nova tabela */}
+      {/* Painel nova tabela */}
       {showNovoDominio && (
         <FormModal
-          titulo="Nova Tabela de Domínio"
+          titulo="Nova tabela de domínio"
           onClose={() => setShowNovoDominio(false)}
           largura="max-w-md"
         >
@@ -268,10 +272,10 @@ export default function DominiosView({ tenantSlug }: Props) {
                 placeholder="Onde esta tabela é usada (opcional)" />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={() => setShowNovoDominio(false)}>Cancelar</Button>
+              <Button variant="outline" onClick={() => setShowNovoDominio(false)}>Fechar</Button>
               <Button onClick={() => criarDominioMut.mutate()}
                 disabled={!novoNome.trim() || !novoCodigo.trim() || criarDominioMut.isPending}>
-                {criarDominioMut.isPending ? 'Criando...' : 'Criar Tabela'}
+                {criarDominioMut.isPending ? 'Criando...' : 'Criar tabela'}
               </Button>
             </div>
           </div>

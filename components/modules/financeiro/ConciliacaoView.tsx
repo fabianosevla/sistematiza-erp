@@ -7,12 +7,11 @@ import { Plus, X, Upload, CheckCircle, EyeOff, Building2, Loader2 } from 'lucide
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
-
-
 
 export default function ConciliacaoView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
@@ -22,7 +21,7 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
 
   const [contaSelecionada, setContaSelecionada] = useState<number | null>(null)
   const [filtroStatus, setFiltroStatus]         = useState('pendente')
-  const [showNovaConta, setShowNovaConta]        = useState(false)
+  const [showNovaConta, setShowNovaConta]       = useState(false)
   const [importando, setImportando]             = useState(false)
 
   const [novaConta, setNovaConta] = useState({ nome: '', banco: '', agencia: '', conta: '', tipo: 'corrente', saldoInicial: '' })
@@ -55,8 +54,8 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
-  // ✅ CORRIGIDO: usa "acao" (não "tipo") para discriminar a operação POST,
-  //    evitando conflito com novaConta.tipo (corrente/poupança/investimento)
+  // Usa "acao" (não "tipo") para discriminar a operação POST, evitando
+  // conflito com novaConta.tipo (corrente/poupança/investimento).
   const criarContaMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(api, {
@@ -72,9 +71,12 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['conciliacao-contas', tenantSlug] })
       setContaSelecionada(data.data.contaBancariaId)
+      // Este painel FECHA ao salvar, e é exceção proposital: criar a conta
+      // bancária é o passo anterior a importar o OFX, e o painel aberto
+      // ficaria por cima do extrato que a pessoa acabou de habilitar.
       setShowNovaConta(false)
       setNovaConta({ nome: '', banco: '', agencia: '', conta: '', tipo: 'corrente', saldoInicial: '' })
-      toast('Conta criada!')
+      toast('Conta criada! Agora importe o extrato OFX.')
     },
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
@@ -91,7 +93,6 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
   })
 
   // ── Import OFX ────────────────────────────────────────────────────────────
-  // ✅ CORRIGIDO: usa "acao" em vez de "tipo" também aqui, por consistência
   async function handleOFX(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !contaSelecionada) return
@@ -153,9 +154,9 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { label: 'Pendentes',   value: String(kpis.pendentes),   color: 'text-amber-600' },
-                { label: 'Conciliados', value: String(kpis.conciliados), color: 'text-green-600' },
-                { label: 'Créditos',    value: fmt(kpis.creditos),       color: 'text-green-600' },
-                { label: 'Débitos',     value: fmt(kpis.debitos),        color: 'text-red-600' },
+                { label: 'Conciliados', value: String(kpis.conciliados), color: 'text-gray-900' },
+                { label: 'Créditos',    value: fmt(kpis.creditos),       color: 'text-gray-900' },
+                { label: 'Débitos',     value: fmt(kpis.debitos),        color: 'text-gray-900' },
               ].map((k, i) => (
                 <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
                   <p className="text-xs text-gray-400">{k.label}</p>
@@ -183,120 +184,123 @@ export default function ConciliacaoView({ tenantSlug }: Props) {
             </div>
           </div>
 
-          {/* Extrato */}
+          {/* Extrato — cabeçalho congelado */}
           <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  {['Data', 'Descrição', 'Tipo', 'Valor', 'Status', ''].map((h, i) => (
-                    <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 3 ? 'text-right' : ''}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loadingExtrato ? (
-                  <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">Carregando...</td></tr>
-                ) : extrato.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">
-                    {filtroStatus === 'pendente' ? 'Nenhum lançamento pendente. Importe um arquivo OFX.' : 'Nenhum lançamento encontrado.'}
-                  </td></tr>
-                ) : extrato.map((e: any) => (
-                  <tr key={e.extratoId} className="group border-b border-gray-50 hover:bg-gray-50/80">
-                    <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(e.dataMovimento)}</td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm text-gray-900">{e.descricao || '—'}</p>
-                      {e.referencia && <p className="text-xs text-gray-400">Ref: {e.referencia}</p>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        e.tipo === 'credito' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {e.tipo === 'credito' ? 'Crédito' : 'Débito'}
-                      </span>
-                    </td>
-                    <td className={`px-4 py-3 text-right text-sm font-bold ${e.valor >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {fmt(e.valor)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        e.status === 'conciliado' ? 'bg-green-100 text-green-700' :
-                        e.status === 'ignorado'   ? 'bg-gray-100 text-gray-500'  :
-                        'bg-amber-100 text-amber-700'
-                      }`}>
-                        {e.status === 'conciliado' ? 'Conciliado' : e.status === 'ignorado' ? 'Ignorado' : 'Pendente'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {e.status === 'pendente' && (
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => conciliarMut.mutate({ extratoId: e.extratoId, acao: 'outro' })}
-                            title="Marcar como conciliado" className="p-1 text-green-500 hover:text-green-700">
-                            <CheckCircle size={14} />
-                          </button>
-                          <button onClick={() => conciliarMut.mutate({ extratoId: e.extratoId, acao: 'ignorar' })}
-                            title="Ignorar lançamento" className="p-1 text-gray-300 hover:text-gray-500">
-                            <EyeOff size={14} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
+            <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 420px)', minHeight: '200px' }}>
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    {['Data', 'Descrição', 'Tipo', 'Valor', 'Status', ''].map((h, i) => (
+                      <th key={i} className={`sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5 ${i === 3 ? 'text-right' : ''}`}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {loadingExtrato ? (
+                    <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">Carregando...</td></tr>
+                  ) : extrato.length === 0 ? (
+                    <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">
+                      {filtroStatus === 'pendente' ? 'Nenhum lançamento pendente. Importe um arquivo OFX.' : 'Nenhum lançamento encontrado.'}
+                    </td></tr>
+                  ) : extrato.map((e: any) => (
+                    <tr key={e.extratoId} className="group border-b border-gray-50 hover:bg-gray-50/80">
+                      <td className="px-4 py-3 text-sm text-gray-500">{fmtDate(e.dataMovimento)}</td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm text-gray-900">{e.descricao || '—'}</p>
+                        {e.referencia && <p className="text-xs text-gray-400">Ref: {e.referencia}</p>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          e.tipo === 'credito' ? 'bg-gray-100 text-gray-700' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {e.tipo === 'credito' ? 'Crédito' : 'Débito'}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-3 text-right text-sm font-bold ${e.valor >= 0 ? 'text-gray-900' : 'text-red-600'}`}>
+                        {fmt(e.valor)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                          e.status === 'conciliado' ? 'bg-green-100 text-green-700' :
+                          e.status === 'ignorado'   ? 'bg-gray-100 text-gray-500'  :
+                          'bg-amber-100 text-amber-700'
+                        }`}>
+                          {e.status === 'conciliado' ? 'Conciliado' : e.status === 'ignorado' ? 'Ignorado' : 'Pendente'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {e.status === 'pendente' && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => conciliarMut.mutate({ extratoId: e.extratoId, acao: 'outro' })}
+                              title="Marcar como conciliado" className="p-1 text-green-500 hover:text-green-700">
+                              <CheckCircle size={14} />
+                            </button>
+                            <button onClick={() => conciliarMut.mutate({ extratoId: e.extratoId, acao: 'ignorar' })}
+                              title="Ignorar lançamento" className="p-1 text-gray-300 hover:text-gray-500">
+                              <EyeOff size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
 
-      {/* Modal nova conta bancária */}
+      {/* Painel nova conta bancária */}
       {showNovaConta && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Nova conta bancária</h2>
-              <button onClick={() => setShowNovaConta(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-            <div className="p-6 space-y-3">
-              <div>
-                <Label>Nome *</Label>
-                <Input value={novaConta.nome} onChange={e => setNC('nome', e.target.value)} className="mt-1" placeholder="Ex: Conta Bradesco" autoFocus />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Banco</Label>
-                  <Input value={novaConta.banco} onChange={e => setNC('banco', e.target.value)} className="mt-1" placeholder="Bradesco, Itaú..." />
-                </div>
-                <div>
-                  <Label>Tipo</Label>
-                  <select value={novaConta.tipo} onChange={e => setNC('tipo', e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="corrente">Corrente</option>
-                    <option value="poupanca">Poupança</option>
-                    <option value="investimento">Investimento</option>
-                  </select>
-                </div>
-                <div>
-                  <Label>Agência</Label>
-                  <Input value={novaConta.agencia} onChange={e => setNC('agencia', e.target.value)} className="mt-1" />
-                </div>
-                <div>
-                  <Label>Conta</Label>
-                  <Input value={novaConta.conta} onChange={e => setNC('conta', e.target.value)} className="mt-1" />
-                </div>
-                <div className="col-span-2">
-                  <Label>Saldo inicial (R$)</Label>
-                  <Input type="number" value={novaConta.saldoInicial} onChange={e => setNC('saldoInicial', e.target.value)} className="mt-1" placeholder="0,00" />
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
-              <Button variant="outline" onClick={() => setShowNovaConta(false)}>Cancelar</Button>
+        <SidePanel
+          titulo="Nova conta bancária"
+          onClose={() => setShowNovaConta(false)}
+          largura="w-[25vw] min-w-[440px]"
+          rodape={
+            <>
+              <Button variant="outline" onClick={() => setShowNovaConta(false)}>Fechar</Button>
               <Button onClick={() => criarContaMut.mutate()} disabled={!novaConta.nome || criarContaMut.isPending}>
                 {criarContaMut.isPending ? 'Criando...' : 'Criar conta'}
               </Button>
+            </>
+          }
+        >
+          <div className="p-6 space-y-3">
+            <div>
+              <Label>Nome *</Label>
+              <Input value={novaConta.nome} onChange={e => setNC('nome', e.target.value)} className="mt-1" placeholder="Ex: Conta Bradesco" autoFocus />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Banco</Label>
+                <Input value={novaConta.banco} onChange={e => setNC('banco', e.target.value)} className="mt-1" placeholder="Bradesco, Itaú..." />
+              </div>
+              <div>
+                <Label>Tipo</Label>
+                <select value={novaConta.tipo} onChange={e => setNC('tipo', e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="corrente">Corrente</option>
+                  <option value="poupanca">Poupança</option>
+                  <option value="investimento">Investimento</option>
+                </select>
+              </div>
+              <div>
+                <Label>Agência</Label>
+                <Input value={novaConta.agencia} onChange={e => setNC('agencia', e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>Conta</Label>
+                <Input value={novaConta.conta} onChange={e => setNC('conta', e.target.value)} className="mt-1" />
+              </div>
+              <div className="col-span-2">
+                <Label>Saldo inicial (R$)</Label>
+                <Input type="number" step="0.01" inputMode="decimal" value={novaConta.saldoInicial}
+                  onChange={e => setNC('saldoInicial', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
+              </div>
             </div>
           </div>
-        </div>
+        </SidePanel>
       )}
     </div>
   )

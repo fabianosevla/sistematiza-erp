@@ -1,5 +1,5 @@
 'use client'
-// components/modules/estoque/LocaisTab.tsx
+// ESTE ARQUIVO VAI EM: components/modules/estoque/LocaisTab.tsx
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -7,6 +7,7 @@ import { Plus, X, ArrowRightLeft, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { FormModal } from '@/components/ui/FormModal'
 import { useToast } from '@/components/ui/Toast'
 
 interface Props { tenantSlug: string }
@@ -55,19 +56,24 @@ export default function LocaisTab({ tenantSlug }: Props) {
     enabled: !!itemSelecionado,
   })
 
+  // O painel continua aberto após salvar: só limpa os campos, para cadastrar
+  // vários locais em sequência sem reabrir nada.
   const criarLocalMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/${tenantSlug}/estoque/locais`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nome: nomeLocal, descricao: descLocal }),
       })
-      return res.json()
+      const d = await res.json()
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao criar local')
+      return d
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['estoque-locais', tenantSlug] })
-      setShowNovoLocal(false); setNomeLocal(''); setDescLocal('')
+      setNomeLocal(''); setDescLocal('')
       toast('Local criado!')
     },
+    onError: (e: any) => toast(e?.message ?? 'Erro ao criar local.', 'error'),
   })
 
   const transferirMut = useMutation({
@@ -103,10 +109,13 @@ export default function LocaisTab({ tenantSlug }: Props) {
     setLocalOrigemId(''); setLocalDestinoId('')
   }
 
+  function fecharNovoLocal() {
+    setShowNovoLocal(false); setNomeLocal(''); setDescLocal('')
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-400">Locais cadastrados e movimentação entre eles</p>
+      <div className="flex items-center justify-end">
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setShowTransferir(true)}>
             <ArrowRightLeft size={13} className="mr-1.5" /> Transferir
@@ -135,121 +144,125 @@ export default function LocaisTab({ tenantSlug }: Props) {
           {transferencias.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">Nenhuma transferência registrada ainda.</p>
           ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Item</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Quantidade</th>
-                  <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Data</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transferencias.map((t: any) => (
-                  <tr key={t.transferenciaId} className="border-b border-gray-50">
-                    <td className="px-4 py-2.5 text-sm text-gray-900">{t.nomeEntidade}</td>
-                    <td className="px-4 py-2.5 text-sm text-gray-600">{parseFloat(t.quantidade).toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-sm text-gray-400">{new Date(t.dataTransferencia + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+            // Cabeçalho congelado: o contêiner que rola é esta div, e cada th
+            // é sticky. A borda inferior usa inset shadow porque border some
+            // em célula sticky com border-collapse.
+            <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 420px)', minHeight: '160px' }}>
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs font-medium text-gray-400 px-4 py-2.5">Item</th>
+                    <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs font-medium text-gray-400 px-4 py-2.5">Quantidade</th>
+                    <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-xs font-medium text-gray-400 px-4 py-2.5">Data</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {transferencias.map((t: any) => (
+                    <tr key={t.transferenciaId} className="border-b border-gray-50">
+                      <td className="px-4 py-2.5 text-sm text-gray-900">{t.nomeEntidade}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-600">{parseFloat(t.quantidade).toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-400">{new Date(t.dataTransferencia + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
 
+      {/* Painel Novo local — continua aberto após salvar */}
       {showNovoLocal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Novo local</h2>
-              <button onClick={() => setShowNovoLocal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Novo local" onClose={fecharNovoLocal} largura="max-w-sm">
+          <div className="p-6 space-y-4">
+            <div>
+              <Label>Nome *</Label>
+              <Input value={nomeLocal} onChange={e => setNomeLocal(e.target.value)} className="mt-1" placeholder="Ex: Depósito Externo" autoFocus />
             </div>
-            <div className="p-6 space-y-4">
-              <div><Label>Nome</Label><Input value={nomeLocal} onChange={e => setNomeLocal(e.target.value)} className="mt-1" placeholder="Ex: Depósito Externo" /></div>
-              <div><Label>Descrição</Label><Input value={descLocal} onChange={e => setDescLocal(e.target.value)} className="mt-1" /></div>
+            <div>
+              <Label>Descrição</Label>
+              <Input value={descLocal} onChange={e => setDescLocal(e.target.value)} className="mt-1" />
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
-              <Button variant="outline" onClick={() => setShowNovoLocal(false)}>Cancelar</Button>
-              <Button onClick={() => criarLocalMut.mutate()} disabled={!nomeLocal || criarLocalMut.isPending}>Criar</Button>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="outline" onClick={fecharNovoLocal}>Cancelar</Button>
+              <Button onClick={() => criarLocalMut.mutate()} disabled={!nomeLocal || criarLocalMut.isPending}>
+                {criarLocalMut.isPending ? 'Criando...' : 'Criar'}
+              </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
 
+      {/* Painel Transferir — continua aberto após transferir */}
       {showTransferir && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Transferir entre locais</h2>
-              <button onClick={fecharTransferir} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        <FormModal titulo="Transferir entre locais" onClose={fecharTransferir} largura="max-w-md">
+          <div className="p-6 space-y-4">
+            <div className="flex gap-2">
+              <button onClick={() => { setEntidade('insumo'); setItemSelecionado(null) }}
+                className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'insumo' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Insumo</button>
+              <button onClick={() => { setEntidade('produto'); setItemSelecionado(null) }}
+                className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'produto' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Produto</button>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="flex gap-2">
-                <button onClick={() => { setEntidade('insumo'); setItemSelecionado(null) }}
-                  className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'insumo' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Insumo</button>
-                <button onClick={() => { setEntidade('produto'); setItemSelecionado(null) }}
-                  className={`flex-1 py-1.5 rounded-lg text-sm font-medium ${entidade === 'produto' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500'}`}>Produto</button>
-              </div>
 
-              {!itemSelecionado ? (
-                <div>
-                  <Label>Buscar item</Label>
-                  <Input value={busca} onChange={e => setBusca(e.target.value)} className="mt-1" placeholder="Digite pra buscar..." />
-                  {busca && itens.length > 0 && (
-                    <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
-                      {itens.map((it: any) => (
-                        <button key={it.produtoId ?? it.insumoId} onClick={() => setItemSelecionado(it)}
-                          className="w-full px-3 py-2 hover:bg-gray-50 text-left text-sm">{it.nome}</button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                    <span className="text-sm font-medium text-gray-900">{itemSelecionado.nome}</span>
-                    <button onClick={() => setItemSelecionado(null)} className="text-xs text-gray-400 hover:text-gray-600">trocar</button>
+            {!itemSelecionado ? (
+              <div>
+                <Label>Buscar item</Label>
+                <Input value={busca} onChange={e => setBusca(e.target.value)} className="mt-1" placeholder="Digite pra buscar..." />
+                {busca && itens.length > 0 && (
+                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden">
+                    {itens.map((it: any) => (
+                      <button key={it.produtoId ?? it.insumoId} onClick={() => setItemSelecionado(it)}
+                        className="w-full px-3 py-2 hover:bg-gray-50 text-left text-sm">{it.nome}</button>
+                    ))}
                   </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                  <span className="text-sm font-medium text-gray-900">{itemSelecionado.nome}</span>
+                  <button onClick={() => setItemSelecionado(null)} className="text-xs text-gray-400 hover:text-gray-600">trocar</button>
+                </div>
 
-                  {loadingDistribuicao ? (
-                    <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-300" /></div>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {distribuicao.map((d: any) => (
-                        <div key={d.localId} className="flex justify-between text-sm px-1">
-                          <span className="text-gray-500">{d.nome}{d.padrao ? ' (padrão)' : ''}</span>
-                          <span className="font-medium text-gray-900">{d.quantidade.toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                {loadingDistribuicao ? (
+                  <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-300" /></div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {distribuicao.map((d: any) => (
+                      <div key={d.localId} className="flex justify-between text-sm px-1">
+                        <span className="text-gray-500">{d.nome}{d.padrao ? ' (padrão)' : ''}</span>
+                        <span className="font-medium text-gray-900">{d.quantidade.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs">De</Label>
-                      <select value={localOrigemId} onChange={e => setLocalOrigemId(e.target.value)}
-                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm">
-                        <option value="">Selecione...</option>
-                        {locais.map((l: any) => <option key={l.localId} value={l.localId}>{l.nome}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <Label className="text-xs">Para</Label>
-                      <select value={localDestinoId} onChange={e => setLocalDestinoId(e.target.value)}
-                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm">
-                        <option value="">Selecione...</option>
-                        {locais.map((l: any) => <option key={l.localId} value={l.localId}>{l.nome}</option>)}
-                      </select>
-                    </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">De</Label>
+                    <select value={localOrigemId} onChange={e => setLocalOrigemId(e.target.value)}
+                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm">
+                      <option value="">Selecione...</option>
+                      {locais.map((l: any) => <option key={l.localId} value={l.localId}>{l.nome}</option>)}
+                    </select>
                   </div>
                   <div>
-                    <Label className="text-xs">Quantidade</Label>
-                    <Input type="number" min="0" step="0.001" value={quantidade} onChange={e => setQuantidade(e.target.value)} className="mt-1" />
+                    <Label className="text-xs">Para</Label>
+                    <select value={localDestinoId} onChange={e => setLocalDestinoId(e.target.value)}
+                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm">
+                      <option value="">Selecione...</option>
+                      {locais.map((l: any) => <option key={l.localId} value={l.localId}>{l.nome}</option>)}
+                    </select>
                   </div>
-                </>
-              )}
-            </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
+                </div>
+                <div>
+                  <Label className="text-xs">Quantidade</Label>
+                  <Input type="number" min="0" step="0.001" value={quantidade} onChange={e => setQuantidade(e.target.value)} className="mt-1 sem-spinner" />
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={fecharTransferir}>Cancelar</Button>
               <Button
                 disabled={!itemSelecionado || !localOrigemId || !localDestinoId || !quantidade || transferirMut.isPending}
@@ -258,7 +271,7 @@ export default function LocaisTab({ tenantSlug }: Props) {
               </Button>
             </div>
           </div>
-        </div>
+        </FormModal>
       )}
     </div>
   )

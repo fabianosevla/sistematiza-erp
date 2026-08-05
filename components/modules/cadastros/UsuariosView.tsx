@@ -82,9 +82,12 @@ export default function UsuariosView({ tenantSlug }: Props) {
     },
     onSuccess: (_, variables) => {
       qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
+      // O painel de convite FECHA ao salvar, e aqui é de propósito: convite
+      // é ação única, não cadastro que se revisa. Reabrir com os campos
+      // preenchidos convidaria a mesma pessoa duas vezes.
       setShowForm(false)
       setSuccessMsg(`Convite enviado para ${variables.email}`)
-      setTimeout(() => setSuccessMsg(''), 5000)
+      setTimeout(() => setSuccessMsg(''), 6000)
     },
   })
 
@@ -112,7 +115,9 @@ export default function UsuariosView({ tenantSlug }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
-      setEditando(null)
+      // Painel de edição NÃO fecha ao salvar — quem fecha é o operador.
+      // Mantém o perfil recém-escolhido no estado para o painel refletir.
+      setEditando((prev: any) => prev ? { ...prev, nome: editNome, email: editEmail, perfilId: editPerfilId } : prev)
       toast('Usuário atualizado!')
     },
     onError: (err: any) => toast(err?.message ?? 'Erro ao atualizar.', 'error'),
@@ -142,7 +147,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
     onError: (err: any) => toast(err?.message ?? 'Erro ao enviar reset.', 'error'),
   })
 
-  // ── Inativar ──────────────────────────────────────────────────────────────
+  // ── Deletar ───────────────────────────────────────────────────────────────
   const inativarMut = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`${apiBase}/${id}`, { method: 'DELETE' })
@@ -152,6 +157,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios', tenantSlug] })
+      setEditando(null)
       toast('Usuário deletado permanentemente.')
     },
     onError: (err: any) => toast(err?.message ?? 'Erro ao inativar.', 'error'),
@@ -177,7 +183,6 @@ export default function UsuariosView({ tenantSlug }: Props) {
 
   const items = Array.isArray(data?.data?.data) ? data.data.data
     : Array.isArray(data?.data) ? data.data : []
-  const meta  = data?.data?.meta
 
   function nomePerfilDoItem(item: any) {
     if (item.perfilNome) return item.perfilNome
@@ -194,10 +199,13 @@ export default function UsuariosView({ tenantSlug }: Props) {
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
             {item.perfil === 'admin'
-              ? <Shield size={14} className="text-green-600" />
+              ? <Shield size={14} className="text-gray-600" />
               : <User size={14} className="text-gray-400" />}
           </div>
-          <span className="text-sm font-medium text-gray-900">{item.nome}</span>
+          <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700"
+            onClick={() => abrirEdicao(item)}>
+            {item.nome}
+          </span>
         </div>
       ),
     },
@@ -213,6 +221,14 @@ export default function UsuariosView({ tenantSlug }: Props) {
           {nomePerfilDoItem(item)}
         </Badge>
       ),
+    },
+    {
+      chave: 'clerkId', titulo: 'Acesso', alinhamento: 'center',
+      // Vínculo pendente = convite não aceito. Antes isso era invisível, e um
+      // usuário nesse estado loga e não vê nada — foi o caso da Maria Julia.
+      render: (item: any) => String(item.clerkId ?? '').startsWith('pending')
+        ? <Badge variant="outline">convite pendente</Badge>
+        : <span className="text-xs text-gray-400">ativo</span>,
     },
   ]
 
@@ -247,14 +263,14 @@ export default function UsuariosView({ tenantSlug }: Props) {
             <BotaoIcone titulo="Resetar senha" variante="alerta" tamanho="md" onClick={() => setConfirmReset(item)}>
               <KeyRound size={14} />
             </BotaoIcone>
-            <BotaoIcone titulo="Inativar" variante="perigo" tamanho="md" onClick={() => setConfirmInativar(item)}>
+            <BotaoIcone titulo="Deletar" variante="perigo" tamanho="md" onClick={() => setConfirmInativar(item)}>
               <UserX size={14} />
             </BotaoIcone>
           </>
         )}
       />
 
-      {/* Modal Novo Usuário */}
+      {/* Painel novo usuário */}
       {showForm && (
         <FormModal
           titulo="Novo usuário"
@@ -263,7 +279,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
           cabecalho={
             <InfoTip titulo="Como funciona o convite">
               Ao salvar, o usuário recebe um e-mail para definir a própria senha.
-              Ele só aparece como ativo depois de aceitar o convite.
+              Ele só passa a acessar depois de aceitar o convite.
             </InfoTip>
           }
         >
@@ -295,7 +311,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
             </div>
             {formError && <Aviso tom="erro">{formError}</Aviso>}
             <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={() => setShowForm(false)}>Fechar</Button>
               <Button type="submit" disabled={createMut.isPending}>
                 {createMut.isPending ? 'Enviando...' : 'Criar e enviar convite'}
               </Button>
@@ -304,9 +320,14 @@ export default function UsuariosView({ tenantSlug }: Props) {
         </FormModal>
       )}
 
-      {/* Modal Editar Usuário */}
+      {/* Painel editar usuário */}
       {editando && (
-        <FormModal titulo="Editar usuário" onClose={() => setEditando(null)} largura="max-w-md">
+        <FormModal
+          titulo="Editar usuário"
+          subtitulo={editando.email}
+          onClose={() => setEditando(null)}
+          largura="max-w-md"
+        >
           <div className="p-6 space-y-4">
             <div>
               <Label>Nome completo</Label>
@@ -324,14 +345,22 @@ export default function UsuariosView({ tenantSlug }: Props) {
             </div>
             <div>
               <Label>Perfil</Label>
-              <select value={String(editPerfilId ?? "")} onChange={e => setEditPerfilId(Number(e.target.value))}
+              <select value={String(editPerfilId ?? '')} onChange={e => setEditPerfilId(Number(e.target.value))}
                 className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
                 <option value="">Selecionar...</option>
                 {perfis.map(p => <option key={p.perfilId} value={p.perfilId}>{p.nome}</option>)}
               </select>
             </div>
+
+            {String(editando.clerkId ?? '').startsWith('pending') && (
+              <Aviso tom="atencao">
+                Convite ainda não aceito. Enquanto isso, este usuário não consegue acessar
+                nada — nem sendo administrador. Use Resetar senha para reenviar o convite.
+              </Aviso>
+            )}
+
             <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={() => setEditando(null)}>Cancelar</Button>
+              <Button variant="outline" onClick={() => setEditando(null)}>Fechar</Button>
               <Button onClick={() => editarMut.mutate()} disabled={!editNome || !editEmail || editarMut.isPending}>
                 {editarMut.isPending ? 'Salvando...' : 'Salvar'}
               </Button>
@@ -340,7 +369,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
         </FormModal>
       )}
 
-      {/* Modal link reset */}
+      {/* Painel link de reset */}
       {linkReset && (
         <FormModal
           titulo="Link de acesso para reset"
@@ -365,7 +394,6 @@ export default function UsuariosView({ tenantSlug }: Props) {
         </FormModal>
       )}
 
-      {/* Confirm reset senha */}
       {confirmReset && (
         <ConfirmModal
           title="Resetar senha"
@@ -376,11 +404,10 @@ export default function UsuariosView({ tenantSlug }: Props) {
         />
       )}
 
-      {/* Confirm inativar */}
       {confirmInativar && (
         <ConfirmModal
           title="Deletar usuário permanentemente"
-          message={`Deletar permanentemente "${confirmInativar.nome}"? O usuário será removido do sistema e do login (Clerk). Esta ação não pode ser desfeita.`}
+          message={`Deletar permanentemente "${confirmInativar.nome}"? O usuário será removido do sistema e do login. Esta ação não pode ser desfeita.`}
           confirmLabel="Deletar permanentemente"
           danger
           onConfirm={() => { inativarMut.mutate(confirmInativar.usuarioId); setConfirmInativar(null) }}

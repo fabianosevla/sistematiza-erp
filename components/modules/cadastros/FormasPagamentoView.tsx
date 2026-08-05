@@ -45,9 +45,15 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(d?.message ?? 'Erro ao salvar')
       return d
     },
-    onSuccess: () => {
+    onSuccess: (d: any) => {
       queryClient.invalidateQueries({ queryKey: ['formas-pagamento', tenantSlug] })
-      fecharModal()
+      // O painel NÃO fecha ao salvar — quem fecha é o operador, no X.
+      // Depois de criar, passa para modo edição do registro novo: senão um
+      // segundo clique em Salvar criaria uma forma duplicada.
+      if (!editando) {
+        const novoId = d?.data?.formaId ?? d?.formaId
+        if (novoId) setEditando({ formaId: novoId, nome, taxa })
+      }
     },
   })
 
@@ -56,7 +62,10 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
       const res = await fetch(`${apiBase}/${id}`, { method: 'DELETE' })
       return res.json()
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['formas-pagamento', tenantSlug] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['formas-pagamento', tenantSlug] })
+      fecharModal()
+    },
   })
 
   function abrirNova() {
@@ -133,13 +142,14 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
                 Taxa (%)
                 <InfoTip titulo="Taxa da forma de pagamento">
                   Percentual cobrado pela operadora — por exemplo, 2,99 para cartão de crédito.
-                  Serve para você comparar o custo real de cada meio de pagamento.
+                  Ela é debitada como dedução de receita no DRE.
                 </InfoTip>
               </Label>
-              <Input type="number" min="0" step="0.01" value={taxa} onChange={e => setTaxa(e.target.value)} className="mt-1" placeholder="0,00" />
+              <Input type="number" min="0" step="0.01" inputMode="decimal" value={taxa}
+                onChange={e => setTaxa(e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
             </div>
             <div className="flex justify-end gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button type="button" variant="outline" onClick={fecharModal}>Fechar</Button>
               <Button onClick={() => salvarMutation.mutate()} disabled={!nome || salvarMutation.isPending}>
                 {salvarMutation.isPending ? 'Salvando...' : 'Salvar'}
               </Button>
@@ -148,8 +158,7 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
         </FormModal>
       )}
 
-      {/* Antes esta exclusão usava o confirm() do navegador — agora usa o
-          mesmo modal de confirmação do resto do sistema. */}
+      {/* Confirmação continua em modal — é decisão curta, não formulário. */}
       {confirmDelete && (
         <ConfirmModal
           title="Excluir forma de pagamento"

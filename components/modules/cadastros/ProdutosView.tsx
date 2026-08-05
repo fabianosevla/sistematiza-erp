@@ -18,7 +18,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { SearchInput } from '@/components/ui/SearchInput'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
-import { FormModal } from '@/components/ui/FormModal'
+import { SidePanel } from '@/components/ui/SidePanel'
 
 interface Props { tenantSlug: string }
 
@@ -37,7 +37,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [page, setPage]                   = useState(1)
   const [limit, setLimit]                 = useState(20)
   const [showInativos, setShowInativos]   = useState(false)
-  const [showModal, setShowModal]         = useState(false)
+  const [showPainel, setShowPainel]         = useState(false)
   const [showImport, setShowImport]       = useState(false)
   const [showFicha, setShowFicha]         = useState<any>(null)
   const [editando, setEditando]           = useState<any>(null)
@@ -129,10 +129,17 @@ export default function ProdutosView({ tenantSlug }: Props) {
       }
       return data
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       invalidate()
-      fecharModal()
-      toast(editando ? 'Produto atualizado!' : 'Produto criado!')
+      const criando = !editando
+      // O painel NÃO fecha ao salvar — quem fecha é o operador, no X.
+      // Mas depois de CRIAR ele passa para o modo edição do registro novo:
+      // sem isso, um segundo clique em Salvar criaria um produto duplicado.
+      if (criando) {
+        const novoId = data?.data?.produtoId ?? data?.produtoId
+        if (novoId) setEditando({ produtoId: novoId, nome })
+      }
+      toast(criando ? 'Produto criado!' : 'Produto atualizado!')
     },
     onError: (err: any) => toast(err?.message ?? 'Erro ao salvar.', 'error'),
   })
@@ -165,7 +172,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
   // ── HELPERS ───────────────────────────────────────────────────────────────
 
-  function abrirModal(item?: any) {
+  function abrirPainel(item?: any) {
     if (item) {
       setEditando(item)
       setNome(item.nome)
@@ -186,7 +193,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setEstoqueMin(String(item.estoqueMinimo ?? 0))
       setEstoqueAtual(String(item.estoqueAtual ?? 0))
       setAtivo(item.activeFlag ?? true)
-      setRevenda(item.revenda === true)
+      setRevenda(item.tipo === 'Revenda' || item.revenda === true)
       setInsumoAtivo(item.insumoFlg === true)
     } else {
       setEditando(null)
@@ -205,10 +212,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setRevenda(false)
       setInsumoAtivo(false)
     }
-    setShowModal(true)
+    setShowPainel(true)
   }
 
-  function fecharModal() { setShowModal(false); setEditando(null) }
+  function fecharPainel() { setShowPainel(false); setEditando(null) }
 
   function toggleSort(key: string) {
     const k = key as SortKey
@@ -267,7 +274,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
           <>
             <span
               className={`text-sm font-medium ${inativo ? 'text-gray-400 line-through' : 'text-gray-900 cursor-pointer hover:text-green-700'}`}
-              onClick={() => !inativo && abrirModal(p)}>
+              onClick={() => !inativo && abrirPainel(p)}>
               {p.nome}
             </span>
             {p.insumoFlg && !inativo && (
@@ -334,7 +341,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
             </Button>
             <Button variant="outline" onClick={exportCSV}><Download size={14} className="mr-1.5" /> CSV</Button>
             <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={14} className="mr-1.5" /> Importar</Button>
-            <Button onClick={() => abrirModal()}><Plus size={15} className="mr-1.5" /> Novo Produto</Button>
+            <Button onClick={() => abrirPainel()}><Plus size={15} className="mr-1.5" /> Novo Produto</Button>
           </>
         }
       />
@@ -355,7 +362,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
         acoesCentro
         vazio={
           <EmptyState icon={Package} title="Nenhum produto cadastrado"
-            action="Cadastrar primeiro produto" onAction={() => abrirModal()} />
+            action="Cadastrar primeiro produto" onAction={() => abrirPainel()} />
         }
         ordem={{ chave: sortKey, dir: sortDir }}
         onOrdenar={toggleSort}
@@ -369,7 +376,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
             <>
               {!inativo && (
                 <>
-                  <BotaoIcone titulo="Editar" variante="sucesso" onClick={() => abrirModal(p)}>
+                  <BotaoIcone titulo="Editar" variante="sucesso" onClick={() => abrirPainel(p)}>
                     <Pencil size={14} />
                   </BotaoIcone>
                   <BotaoIcone titulo="Ver ficha técnica (somente leitura)" variante="azul" onClick={() => setShowFicha(p)}>
@@ -391,12 +398,20 @@ export default function ProdutosView({ tenantSlug }: Props) {
         }}
       />
 
-      {/* Modal Criar/Editar */}
-      {showModal && (
-        <FormModal
-          titulo={editando ? 'Editar Produto' : 'Novo Produto'}
-          onClose={fecharModal}
-          largura="max-w-xl"
+      {/* Painel criar / editar */}
+      {showPainel && (
+        <SidePanel
+          titulo={editando ? 'Editar produto' : 'Novo produto'}
+          subtitulo={editando?.nome}
+          onClose={fecharPainel}
+          rodape={
+            <>
+              <Button variant="outline" onClick={fecharPainel}>Fechar</Button>
+              <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
+                {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </>
+          }
         >
           <div className="p-6 space-y-4">
             <div>
@@ -555,25 +570,19 @@ export default function ProdutosView({ tenantSlug }: Props) {
               />
             )}
 
-            <div className="flex justify-end gap-3 pt-2">
-              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
-              <Button onClick={() => salvarMut.mutate()} disabled={!nome || salvarMut.isPending}>
-                {salvarMut.isPending ? 'Salvando...' : 'Salvar'}
-              </Button>
-            </div>
           </div>
-        </FormModal>
+        </SidePanel>
       )}
 
-      {/* Modal Ficha Técnica — SOMENTE LEITURA.
+      {/* Ficha técnica — SOMENTE LEITURA.
           A edição (adicionar/remover insumos) fica exclusivamente em
           Cadastros → Fichas Técnicas. */}
       {showFicha && (
-        <FormModal
+        <SidePanel
           titulo="Ficha Técnica"
           subtitulo={`${showFicha.nome} — insumos por unidade produzida`}
           onClose={() => setShowFicha(null)}
-          largura="max-w-2xl"
+          iniciarExpandido
           cabecalho={
             <>
               <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200 rounded-full px-2 py-0.5">
@@ -585,6 +594,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
               </InfoTip>
             </>
           }
+          rodape={<Button variant="outline" onClick={() => setShowFicha(null)}>Fechar</Button>}
         >
           <div className="p-6">
             {fichaItens.length === 0 ? (
@@ -636,11 +646,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
               </table>
             )}
 
-            <div className="flex justify-end pt-6">
-              <Button variant="outline" onClick={() => setShowFicha(null)}>Fechar</Button>
-            </div>
           </div>
-        </FormModal>
+        </SidePanel>
       )}
 
       {/* Import CSV */}

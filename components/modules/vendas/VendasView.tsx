@@ -9,11 +9,20 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { TableSkeleton } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { useDominio } from '@/hooks/useDominio'
-import { fmtMoeda as fmt, fmtDataLocal as fmtDate, fmtDataHoraLocal as fmtDateHora } from '@/lib/format'
 
 interface Props { tenantSlug: string }
+
+function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
+function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
+function fmtDateHora(d: string) {
+  return new Date(d).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -503,18 +512,28 @@ export default function VendasView({ tenantSlug }: Props) {
         )}
       </div>
 
-      {/* ── Modal Nova Venda ─────────────────────────────────────────────── */}
+      {/* ── Painel nova venda ─────────────────────────────────────────────
+          Abre já expandido: a grade de itens tem seis colunas e não cabe em
+          um quarto de tela. O botão Recolher continua disponível. */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[92vh] flex flex-col">
-
-            {/* Header do modal */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 sticky top-0 bg-white z-10 rounded-t-2xl">
-              <h2 className="text-lg font-semibold">Nova Venda</h2>
-              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+        <SidePanel
+          titulo="Nova venda"
+          onClose={fecharModal}
+          iniciarExpandido
+          largura="w-[48vw] min-w-[760px]"
+          rodape={
+            <>
+              <Button variant="outline" onClick={fecharModal}>Fechar</Button>
+              <Button
+                onClick={() => setConfirmVenda(true)}
+                disabled={itens.every(i => !i.produtoId) || criarMut.isPending}
+              >
+                {criarMut.isPending ? 'Registrando...' : 'Registrar venda'}
+              </Button>
+            </>
+          }
+        >
+            <div className="p-6 space-y-5">
 
               {/* Info geral */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -788,19 +807,7 @@ export default function VendasView({ tenantSlug }: Props) {
                 </div>
               </div>
             </div>
-
-            {/* Footer do modal */}
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
-              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
-              <Button
-                onClick={() => setConfirmVenda(true)}
-                disabled={itens.every(i => !i.produtoId) || criarMut.isPending}
-              >
-                {criarMut.isPending ? 'Registrando...' : 'Registrar Venda'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </SidePanel>
       )}
 
       {/* ── Confirmação da venda (Sim/Não) ───────────────────────────────── */}

@@ -11,6 +11,7 @@ import { Input }        from '@/components/ui/input'
 import { Label }        from '@/components/ui/label'
 import { useToast }     from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { SidePanel }    from '@/components/ui/SidePanel'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import ConciliacaoView   from './ConciliacaoView'
@@ -148,12 +149,17 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(d.message ?? 'Erro ao salvar')
       return d
     },
-    onSuccess: () => {
+    onSuccess: (d: any) => {
       inv()
-      setShowDespesa(false)
-      setEditDespesa(null)
-      setDespForm({ nome: '', valor: '', categoria: CATEGORIAS_DESPESA[0], dataDespesa: new Date().toISOString().slice(0, 10), recorrente: false })
-      toast(editDespesa ? 'Despesa atualizada!' : 'Despesa lançada!')
+      const criando = !editDespesa
+      // O painel NAO fecha ao salvar — quem fecha e o operador, no X.
+      // Depois de lancar, passa a editar a despesa recem-criada: senao um
+      // segundo clique em Salvar lancaria a mesma despesa de novo.
+      if (criando) {
+        const novoId = d?.data?.despesaId ?? d?.despesaId
+        if (novoId) setEditDespesa({ despesaId: novoId, nome: despForm.nome })
+      }
+      toast(criando ? 'Despesa lancada!' : 'Despesa atualizada!')
     },
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
@@ -165,7 +171,8 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir')
       return d
     },
-    onSuccess: () => { inv(); toast('Despesa excluída.') },
+    // Excluir fecha: o registro deixou de existir.
+    onSuccess: () => { inv(); setShowDespesa(false); setEditDespesa(null); toast('Despesa excluída.') },
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
 
@@ -219,7 +226,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       // sumiria de vista e pareceria não ter sido salvo.
       if (r?.anoInformado && r.anoInformado !== ano) setAno(r.anoInformado)
       qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] })
-      setShowGasto(false)
+      // Painel continua aberto e o formulario e limpo: cadastrar gasto fixo
+      // e tarefa em serie — aluguel, luz, internet — e fechar a cada um
+      // obrigaria a reabrir toda vez.
       setGastoForm({ categoria: '', valor: '', mes: String(mes), ano: String(ano) })
       toast('Categoria criada com o valor lançado!')
     },
@@ -742,14 +751,22 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       {aba === 'a-receber'   && <ContasReceberView tenantSlug={tenantSlug} />}
       {aba === 'conciliacao' && <ConciliacaoView   tenantSlug={tenantSlug} />}
 
-      {/* Modal Despesa */}
+      {/* Painel despesa */}
       {showDespesa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">{editDespesa ? 'Editar despesa' : 'Nova despesa'}</h2>
-              <button onClick={() => { setShowDespesa(false); setEditDespesa(null) }} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
+        <SidePanel
+          titulo={editDespesa ? 'Editar despesa' : 'Nova despesa'}
+          subtitulo={editDespesa?.nome}
+          onClose={() => { setShowDespesa(false); setEditDespesa(null) }}
+          largura="w-[25vw] min-w-[440px]"
+          rodape={
+            <>
+              <Button variant="outline" onClick={() => { setShowDespesa(false); setEditDespesa(null) }}>Fechar</Button>
+              <Button onClick={() => salvarDespMut.mutate()} disabled={!despForm.nome || !despForm.valor || salvarDespMut.isPending}>
+                {salvarDespMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </>
+          }
+        >
             <div className="p-6 space-y-4">
               <div>
                 <Label>Nome *</Label>
@@ -758,7 +775,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Valor (R$) *</Label>
-                  <Input type="number" min="0" step="0.01" value={despForm.valor} onChange={e => setDF('valor', e.target.value)} className="mt-1" placeholder="0,00" />
+                  <Input type="number" min="0" step="0.01" inputMode="decimal" value={despForm.valor} onChange={e => setDF('valor', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
                 </div>
                 <div>
                   <Label>Data</Label>
@@ -777,24 +794,24 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 <Label htmlFor="recorrente" className="cursor-pointer">Despesa recorrente (repete todo mês)</Label>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
-              <Button variant="outline" onClick={() => { setShowDespesa(false); setEditDespesa(null) }}>Cancelar</Button>
-              <Button onClick={() => salvarDespMut.mutate()} disabled={!despForm.nome || !despForm.valor || salvarDespMut.isPending}>
-                {salvarDespMut.isPending ? 'Salvando...' : editDespesa ? 'Salvar' : 'Lançar'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </SidePanel>
       )}
 
-      {/* Modal Gasto Fixo */}
+      {/* Painel gasto fixo */}
       {showGasto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4">
-            <div className="flex items-center justify-between p-6 border-b border-gray-100">
-              <h2 className="text-lg font-semibold">Nova categoria de gasto fixo</h2>
-              <button onClick={() => setShowGasto(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
-            </div>
+        <SidePanel
+          titulo="Nova categoria de gasto fixo"
+          onClose={() => setShowGasto(false)}
+          largura="w-[24vw] min-w-[400px]"
+          rodape={
+            <>
+              <Button variant="outline" onClick={() => setShowGasto(false)}>Fechar</Button>
+              <Button onClick={() => salvarGastoMut.mutate()} disabled={!gastoForm.categoria || !gastoForm.valor || salvarGastoMut.isPending}>
+                {salvarGastoMut.isPending ? 'Salvando...' : 'Salvar'}
+              </Button>
+            </>
+          }
+        >
             <div className="p-6 space-y-4">
               <div>
                 <Label>Categoria *</Label>
@@ -802,7 +819,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               </div>
               <div>
                 <Label>Valor (R$) *</Label>
-                <Input type="number" min="0" step="0.01" value={gastoForm.valor} onChange={e => setGF('valor', e.target.value)} className="mt-1" placeholder="0,00" />
+                <Input type="number" min="0" step="0.01" inputMode="decimal" value={gastoForm.valor} onChange={e => setGF('valor', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -814,18 +831,11 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 </div>
                 <div>
                   <Label>Ano</Label>
-                  <Input type="number" value={gastoForm.ano} onChange={e => setGF('ano', e.target.value)} className="mt-1" />
+                  <Input type="number" value={gastoForm.ano} onChange={e => setGF('ano', e.target.value)} className="sem-spinner mt-1" />
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-100">
-              <Button variant="outline" onClick={() => setShowGasto(false)}>Cancelar</Button>
-              <Button onClick={() => salvarGastoMut.mutate()} disabled={!gastoForm.categoria || !gastoForm.valor || salvarGastoMut.isPending}>
-                {salvarGastoMut.isPending ? 'Salvando...' : 'Salvar'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        </SidePanel>
       )}
 
       {confirmDel && (
