@@ -122,6 +122,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [novoCli, setNovoCli] = useState(CLI_VAZIO)
   const setCli = (k: string, v: string) => setNovoCli(p => ({ ...p, [k]: v }))
   const [buscaCliente, setBuscaCliente]       = useState('')
+  // Nome digitado para quem não é cadastrado. Só vale enquanto nenhum cliente
+  // foi selecionado — com cadastro, o cadastro manda.
+  const [nomeAvulso, setNomeAvulso]           = useState('')
   const [vendedor, setVendedor]               = useState('')
   const [tipoEntrega, setTipoEntrega]         = useState(isDelivery ? 'Entrega' : 'Retirada')
   const [observacao, setObservacao]           = useState('')
@@ -247,6 +250,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clienteId:      clienteId ? Number(clienteId) : undefined,
+          nomeClienteAvulso: clienteId ? undefined : (nomeAvulso.trim() || undefined),
           tipoEntrega:    tipoEntrega || (isDelivery ? 'Entrega' : 'Retirada'),
           dataEntrega:    dataEntrega || undefined,
           enderecoEntrega: enderecoEntrega || undefined,
@@ -293,7 +297,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         cashbackUsado: usado, total: tot,
         forma:     formaPgto || formasNomes[0] || 'PIX',
         troco:     trocoVal,
-        cliente:   clienteNomeDisplay,
+        // O cupom mostra quem comprou: cliente cadastrado ou o nome avulso.
+        cliente:   clienteNomeDisplay || nomeAvulso.trim(),
         vendedor,
         tabela:    ehAtacado ? rotuloTabela : '',
         empresa,
@@ -390,6 +395,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     // Mostra o nome pelo qual a loja conhece o cliente, igual à listagem
     // de Clientes e à lista de resultados aqui em cima.
     setClienteNomeDisplay(c.nomeFantasia?.trim() || c.nomeCompleto)
+    // Escolher um cliente de verdade descarta o nome solto.
+    setNomeAvulso('')
     // É aqui que a tabela de preço do cliente entra em vigor.
     setTabelaPreco(c.tabelaPreco ?? 'varejo')
     setBuscaCliente('')
@@ -401,6 +408,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
   function limparCliente() {
     setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setUsarCashback(false)
+    setNomeAvulso('')
     setTabelaPreco('varejo')
   }
 
@@ -900,6 +908,20 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                       })}
                     </div>
                   )}
+                  {/* Cliente avulso: quem compra uma vez e não vale cadastrar.
+                      Vai para a venda e sai no cupom. Sem cliente_id não há
+                      cashback nem histórico. */}
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <Input value={nomeAvulso} onChange={e => setNomeAvulso(e.target.value)}
+                      placeholder="Ou digite o nome (não cadastrado)"
+                      className="h-8 text-xs flex-1" />
+                    <InfoTip titulo="Cliente avulso">
+                      Guarda só o nome na venda e no cupom. Não cria cliente: sem histórico,
+                      sem tabela de preço e sem cashback, porque o programa de fidelidade
+                      precisa de um cadastro. Para quem volta, use Cadastrar novo cliente.
+                    </InfoTip>
+                  </div>
+
                   <button
                     onClick={() => setShowCadastrarCliente(true)}
                     className="mt-1.5 w-full text-xs text-green-600 hover:text-green-700 text-left flex items-center gap-1">

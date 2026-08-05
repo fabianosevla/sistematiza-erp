@@ -1,3 +1,4 @@
+// ESTE ARQUIVO VAI EM: lib/services/vendas/VendaService.ts
 import { and, eq, gte, lte, desc, count, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
@@ -6,6 +7,7 @@ import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
+import { converterUnidade } from '@/lib/unidades'
 
 function resolverPreco(produto: any, tipoPrecao: string): number {
   switch (tipoPrecao) {
@@ -22,18 +24,7 @@ function resolverPreco(produto: any, tipoPrecao: string): number {
  * Converte quantidade da ficha técnica para a unidade do estoque.
  * Mesma lógica do DebitoInsumoService — centralizada aqui para uso interno.
  */
-function converterUnidade(qtd: number, de: string, para: string): number {
-  const f = de.toLowerCase().trim()
-  const e = para.toLowerCase().trim()
-  if (f === e) return qtd
-  if (f === 'g'  && e === 'kg') return qtd / 1000
-  if (f === 'kg' && e === 'g')  return qtd * 1000
-  if (f === 'ml' && e === 'l')  return qtd / 1000
-  if (f === 'l'  && e === 'ml') return qtd * 1000
-  if (f === 'mg' && e === 'g')  return qtd / 1000
-  if (f === 'mg' && e === 'kg') return qtd / 1_000_000
-  return qtd
-}
+
 
 export class VendaService {
   constructor(private db: AppDB, private schemaName: string = '') {}
@@ -74,12 +65,18 @@ export class VendaService {
     }
 
     const total = Number(totals[0]?.total ?? 0)
-    const data = vendas.map(v => ({
-      ...v,
-      // Sem cliente_id é venda de balcão sem identificação — "Consumidor
-      // Final" é a verdade, não falha de exibição.
-      clienteNome: v.clienteId ? (clienteMap[v.clienteId] || `Cliente #${v.clienteId}`) : 'Consumidor Final',
-    }))
+    const data = vendas.map(v => {
+      // Ordem: cliente cadastrado → nome avulso digitado na venda →
+      // Consumidor Final, que é a verdade quando ninguém se identificou.
+      const avulso = String((v as any).nomeClienteAvulso ?? '').trim()
+      return {
+        ...v,
+        clienteNome: v.clienteId
+          ? (clienteMap[v.clienteId] || `Cliente #${v.clienteId}`)
+          : (avulso || 'Consumidor Final'),
+        clienteAvulso: !v.clienteId && !!avulso,
+      }
+    })
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } }
   }
 
@@ -91,7 +88,7 @@ export class VendaService {
       this.db.select().from(dbVendaPagamento).where(eq(dbVendaPagamento.vendaId, id)),
     ])
     let cliente = null
-    let clienteNome = 'Consumidor Final'
+    let clienteNome = String((venda as any).nomeClienteAvulso ?? '').trim() || 'Consumidor Final'
     if (venda.clienteId) {
       const [c] = await this.db.select().from(dbCliente).where(eq(dbCliente.clienteId, venda.clienteId))
       cliente = c ?? null
@@ -171,10 +168,13 @@ export class VendaService {
     }
   }
 
-  async criarDireta({ itens, clienteId, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
-    itens: { produtoId: number; quantidade: number; tipoPrecao?: string }[]
+  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
+    itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
     clienteId?:         number
-    desconto:           number
+    // Cliente avulso: só um nome. Sem cliente_id não há cashback nem
+    // histórico — é o limite de não cadastrar.
+    nomeClienteAvulso?: string
+    desconto:           number   // desconto geral da venda (no PDV já vem líquido do acréscimo)
     pagamentos:         { forma: string; valor: number }[]
     tipoEntrega?:       string
     dataEntrega?:       string
@@ -186,7 +186,8 @@ export class VendaService {
     userId:             number
   }) {
     const now = new Date()
-    let subtotal = 0
+    let subtotal = 0          // bruto (soma de preço x quantidade, sem descontos)
+    let descontoItens = 0     // soma dos descontos aplicados linha a linha
     const itemsDetalhados: any[] = []
 
     for (const item of itens) {
@@ -196,8 +197,13 @@ export class VendaService {
 
       const tipoPrecao    = item.tipoPrecao ?? 'varejo'
       const precoUnitario = resolverPreco(produto, tipoPrecao)
-      const itemSubtotal  = precoUnitario * item.quantidade
-      subtotal += itemSubtotal
+      const itemBruto     = precoUnitario * item.quantidade
+      // Desconto do item nunca passa do valor do próprio item
+      const descontoItem  = Math.max(0, Math.min(item.desconto ?? 0, itemBruto))
+      const itemSubtotal  = itemBruto - descontoItem
+
+      subtotal      += itemBruto
+      descontoItens += descontoItem
 
       const labelTipo: Record<string, string> = {
         varejo: 'Varejo', atacado_a: 'Atacado A', atacado_b: 'Atacado B',
@@ -208,20 +214,27 @@ export class VendaService {
         produtoId: produto.produtoId, nomeProduto: produto.nome,
         quantidade: item.quantidade, tipoPrecao,
         nomeTipoPrecao: labelTipo[tipoPrecao] ?? 'Varejo',
-        precoUnitario, subtotal: itemSubtotal,
+        precoUnitario, desconto: descontoItem, subtotal: itemSubtotal,
       })
     }
 
-    const total = Math.max(0, subtotal - desconto)
+    // O desconto gravado na venda soma os descontos de item com o desconto geral,
+    // pra que subtotal - desconto = total continue verdadeiro nos relatórios.
+    const descontoTotal = descontoItens + desconto
+    const total = Math.max(0, subtotal - descontoTotal)
+
+    // Nome avulso só vale sem cliente cadastrado — com cadastro, o cadastro manda.
+    const avulso = clienteId ? null : (nomeClienteAvulso?.trim() || null)
 
     const [venda] = await this.db.insert(dbVenda).values({
       origem:            'direta',
       clienteId:         clienteId ?? null,
+      nomeClienteAvulso: avulso,
       status:            'concluida',
       tipoEntrega:       tipoEntrega || 'Retirada',
       dataEntrega:       dataEntrega ? new Date(dataEntrega) : null,
       enderecoEntrega:   enderecoEntrega || null,
-      subtotal, desconto, total,
+      subtotal, desconto: descontoTotal, total,
       observacao:        observacao || null,
       observacaoInterna: observacaoInterna || null,
       vendedor:          vendedor || null,
@@ -234,18 +247,19 @@ export class VendaService {
         await this.db.execute(sql`
           INSERT INTO t_venda_item (
             venda_id, produto_id, nome_produto, quantidade,
-            tipo_precao, nome_tipo_precao, preco_unitario, subtotal,
+            tipo_precao, nome_tipo_precao, preco_unitario, desconto, subtotal,
             created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
           ) VALUES (
             ${venda.vendaId}, ${item.produtoId}, ${item.nomeProduto}, ${item.quantidade},
-            ${item.tipoPrecao}, ${item.nomeTipoPrecao}, ${item.precoUnitario}, ${item.subtotal},
+            ${item.tipoPrecao}, ${item.nomeTipoPrecao}, ${item.precoUnitario}, ${item.desconto}, ${item.subtotal},
             ${userId}, ${userId}, ${now.toISOString()}, ${now.toISOString()}, true, 0
           )
         `)
       } catch {
         await this.db.insert(dbVendaItem).values({
           vendaId: venda.vendaId, produtoId: item.produtoId, nomeProduto: item.nomeProduto,
-          quantidade: item.quantidade, precoUnitario: item.precoUnitario, subtotal: item.subtotal,
+          quantidade: item.quantidade, precoUnitario: item.precoUnitario,
+          desconto: item.desconto, subtotal: item.subtotal,
           createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
         })
       }
@@ -278,6 +292,8 @@ export class VendaService {
 
     // ── Fidelidade / Cashback ────────────────────────────────────────────────
     // Nunca deixa o cashback quebrar a venda: tudo dentro de try/catch.
+    // Cliente avulso não entra aqui: cashback é saldo de alguém, e sem
+    // cliente_id não existe alguém.
     let cashbackUsado = 0
     let cashbackCreditado = 0
     try {

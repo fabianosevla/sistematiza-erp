@@ -41,9 +41,11 @@ const criarVendaSchema = z.object({
     produtoId:   z.number().int(),
     quantidade:  z.number().int().min(1),
     tipoPrecao:  z.string().optional(),
-    desconto:    z.number().int().min(0).optional(),   // desconto do item, em centavos
   })).min(1),
   clienteId:       z.number().int().optional().nullable(),
+  // Cliente avulso: quem compra uma vez e não vale cadastrar. Só um nome —
+  // sem histórico, sem tabela de preço e sem cashback.
+  nomeClienteAvulso: z.string().max(200).optional().nullable(),
   desconto:        z.number().int().default(0),
   pagamentos:      z.array(z.object({
     forma:  z.string(),
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         ...payload,
         pagamentos: pagamentosValidos,
         clienteId:  payload.clienteId ?? undefined,
+        nomeClienteAvulso: payload.nomeClienteAvulso ?? undefined,
         usarCashback: payload.usarCashback ?? undefined,
         userId: 1,
       })

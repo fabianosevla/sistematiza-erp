@@ -1,3 +1,4 @@
+// ESTE ARQUIVO VAI EM: lib/db/schemas/vendas.ts
 import { pgTable, serial, integer, varchar, boolean, timestamp } from 'drizzle-orm/pg-core'
 import type { InferSelectModel, InferInsertModel } from 'drizzle-orm'
 
@@ -43,6 +44,8 @@ export const dbComanda = pgTable('t_comanda', {
   ...auditFields,
   identificacao:  varchar('identificacao', { length: 100 }).notNull(),
   clienteId:      integer('cliente_id'),
+  // Cliente avulso — ver scripts/migrate-venda-cliente-avulso.js
+  nomeClienteAvulso: varchar('nome_cliente_avulso', { length: 200 }),
   status:         varchar('status', { length: 20 }).notNull().default('aberta'),
   observacao:     varchar('observacao', { length: 500 }),
   desconto:       integer('desconto').notNull().default(0),
@@ -70,6 +73,11 @@ export const dbVenda = pgTable('t_venda', {
   origem:            varchar('origem', { length: 20 }).notNull().default('direta'),
   comandaId:         integer('comanda_id'),
   clienteId:         integer('cliente_id'),
+  // Cliente avulso: quem compra uma vez e não vale cadastrar. É só um nome —
+  // sem histórico, sem tabela de preço e sem cashback, porque o programa de
+  // fidelidade depende de cliente_id.
+  // Ver scripts/migrate-venda-cliente-avulso.js
+  nomeClienteAvulso: varchar('nome_cliente_avulso', { length: 200 }),
   status:            varchar('status', { length: 20 }).notNull().default('concluida'),
   tipoEntrega:       varchar('tipo_entrega', { length: 20 }).notNull().default('retirada'),
   dataEntrega:       timestamp('data_entrega', { withTimezone: true }),
