@@ -7,22 +7,22 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { TableSkeleton } from '@/components/ui/Skeleton'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { SidePanel } from '@/components/ui/SidePanel'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { useToast } from '@/components/ui/Toast'
 import { useDominio } from '@/hooks/useDominio'
+import { fmtMoeda, fmtDataHora as fmtDataHoraPadrao } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-function fmt(c: number) { return (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
-function fmtDate(d: string) { return new Date(d).toLocaleDateString('pt-BR') }
-function fmtDateHora(d: string) {
-  return new Date(d).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
+// Formatação vem de lib/format — a tela tinha cópias locais que divergiam do
+// resto do sistema (o padrão usa ano com 2 dígitos na lista).
+const fmt          = (c: number) => fmtMoeda(c)
+const fmtDate      = (d: string) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—')
+const fmtDateHora  = (d: string) => fmtDataHoraPadrao(d)
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -413,104 +413,89 @@ export default function VendasView({ tenantSlug }: Props) {
     )
   }
 
+  // ── Colunas ───────────────────────────────────────────────────────────────
+  const colunas: Coluna[] = [
+    { chave: 'vendidaEm', titulo: 'Data', render: (v: any) => fmtDateHora(v.vendidaEm) },
+    {
+      chave: 'clienteNome', titulo: 'Cliente',
+      classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
+      render: (v: any) => v.clienteNome ?? 'Consumidor Final',
+    },
+    {
+      chave: 'tipoEntrega', titulo: 'Canal',
+      render: (v: any) => <CanalBadge tipo={v.tipoEntrega ?? 'retirada'} />,
+    },
+    {
+      chave: 'total', titulo: 'Total', alinhamento: 'right',
+      render: (v: any) => <span className="font-semibold text-gray-900">{fmt(v.total)}</span>,
+    },
+  ]
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div>
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Vendas</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Loja, Delivery e B2B</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={exportCSV}>
-            <Download size={14} className="mr-1.5" /> CSV
-          </Button>
-          <Button onClick={() => setShowModal(true)}>
-            <Plus size={15} className="mr-1.5" /> Nova Venda
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        titulo="Vendas"
+        acoes={
+          <>
+            <Button variant="outline" size="sm" onClick={exportCSV}>
+              <Download size={13} className="mr-1.5" /> CSV
+            </Button>
+            <Button size="sm" onClick={() => setShowModal(true)}>
+              <Plus size={15} className="mr-1.5" /> Nova Venda
+            </Button>
+          </>
+        }
+      />
 
-      {/* ── KPIs ────────────────────────────────────────────────────────── */}
+      {/* ── KPIs — mesmo desenho do dashboard e das consultas ────────────── */}
       {kpis && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
           {[
-            { label: 'Receita hoje',   value: fmt(kpis.receitaHoje  ?? 0), color: 'text-green-600' },
-            { label: 'Receita do mês', value: fmt(kpis.receitaMes   ?? 0), color: 'text-green-600' },
-            { label: 'Vendas do mês',  value: String(kpis.qtdMes    ?? 0), color: 'text-gray-900' },
-            { label: 'Ticket médio',   value: fmt(kpis.ticketMedio  ?? 0), color: 'text-gray-600' },
+            { rotulo: 'Receita hoje',   valor: fmt(kpis.receitaHoje ?? 0) },
+            { rotulo: 'Receita do mês', valor: fmt(kpis.receitaMes  ?? 0) },
+            { rotulo: 'Vendas do mês',  valor: String(kpis.qtdMes   ?? 0) },
+            { rotulo: 'Ticket médio',   valor: fmt(kpis.ticketMedio ?? 0) },
           ].map((k, i) => (
-            <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
-              <p className="text-xs text-gray-400 mb-1">{k.label}</p>
-              <p className={`text-xl font-bold ${k.color}`}>{k.value}</p>
+            <div key={i} className="bg-white rounded-xl border border-gray-100 px-4 py-3.5">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{k.rotulo}</p>
+              <p className="text-xl font-semibold text-gray-900 mt-1.5 truncate">{k.valor}</p>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Filtro ──────────────────────────────────────────────────────── */}
-      <div className="flex gap-3 mb-4">
-        <Input
-          placeholder="Buscar por cliente ou vendedor..."
-          value={busca}
-          onChange={e => { setBusca(e.target.value); setPageNum(1) }}
-          className="max-w-xs h-9 text-sm"
-        />
-      </div>
-
-      {/* ── Tabela ──────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              {['Data', 'Cliente', 'Canal', 'Total', ''].map((h, i) => (
-                <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 3 ? 'text-right' : ''}`}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <TableSkeleton rows={6} cols={5} />
-            ) : vendas.length === 0 ? (
-              <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-gray-400">Nenhuma venda encontrada.</td></tr>
-            ) : vendas.map((v: any) => (
-              <tr key={v.vendaId} className="group border-b border-gray-50 hover:bg-gray-50/80 transition-colors">
-                <td className="px-4 py-3 text-sm text-gray-500">{fmtDateHora(v.vendidaEm)}</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{v.clienteNome ?? 'Consumidor Final'}</td>
-                <td className="px-4 py-3"><CanalBadge tipo={v.tipoEntrega ?? 'retirada'} /></td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-green-600">{fmt(v.total)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => router.push(`/${tenantSlug}/vendas/${v.vendaId}`)}
-                      className="p-1 text-gray-400 hover:text-gray-600"
-                    >
-                      <Eye size={14} />
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete({ id: v.vendaId })}
-                      className="p-1 text-gray-300 hover:text-red-500"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-            <p className="text-xs text-gray-400">Página {meta.page} de {meta.totalPages} ({meta.total} vendas)</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={pageNum <= 1} onClick={() => setPageNum(p => p - 1)}>Anterior</Button>
-              <Button variant="outline" size="sm" disabled={pageNum >= meta.totalPages} onClick={() => setPageNum(p => p + 1)}>Próximo</Button>
-            </div>
-          </div>
+      {/* ── Listagem ────────────────────────────────────────────────────── */}
+      <DataTable
+        colunas={colunas}
+        itens={vendas}
+        chave={(v: any) => v.vendaId}
+        carregando={isLoading}
+        usarSkeleton
+        vazio="Nenhuma venda encontrada."
+        ferramentas={
+          <Input
+            placeholder="Buscar por cliente ou vendedor..."
+            value={busca}
+            onChange={e => { setBusca(e.target.value); setPageNum(1) }}
+            className="max-w-xs h-8 text-sm"
+          />
+        }
+        meta={meta ?? null}
+        onPageChange={setPageNum}
+        acoes={(v: any) => (
+          <>
+            <BotaoIcone titulo="Ver detalhes" variante="info"
+              onClick={() => router.push(`/${tenantSlug}/vendas/${v.vendaId}`)}>
+              <Eye size={14} />
+            </BotaoIcone>
+            <BotaoIcone titulo="Excluir venda" variante="perigo"
+              onClick={() => setConfirmDelete({ id: v.vendaId })}>
+              <Trash2 size={14} />
+            </BotaoIcone>
+          </>
         )}
-      </div>
+      />
 
       {/* ── Painel nova venda ─────────────────────────────────────────────
           Abre já expandido: a grade de itens tem seis colunas e não cabe em
