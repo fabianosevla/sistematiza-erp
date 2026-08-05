@@ -82,9 +82,14 @@ export default function Header({
   // o operador escolher a foto, esquecer de salvar e achar que gravou.
   const [enviandoFoto, setEnviandoFoto] = useState(false)
 
+  const { data: meuAcesso } = useQuery({
+    queryKey: ['meu-acesso', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
+    staleTime: 60000,
+  })
   const nomeUsuarioLogado =
+    String(meuAcesso?.data?.nome ?? '').trim() ||
     user?.fullName?.trim() ||
-    [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
     user?.primaryEmailAddress?.emailAddress ||
     'Usuário'
   const iniciaisUsuario = nomeUsuarioLogado
@@ -396,7 +401,7 @@ export default function Header({
       {showSettings && (
         <SidePanel
           titulo="Configurações"
-          subtitulo={tenantName}
+          subtitulo={String(empresa.nomeFantasia ?? "").trim() || tenantName}
           onClose={fecharModal}
           largura="w-[34vw] min-w-[560px]"
           rodape={aba === 'conta' ? (

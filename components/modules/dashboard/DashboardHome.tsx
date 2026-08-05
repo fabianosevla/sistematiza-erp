@@ -1,8 +1,11 @@
 'use client'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+// Sem BarChart/Bar: os quatro gráficos viraram linha ou área, e o antigo
+// "Top 5 produtos" em barra horizontal virou a lista de ranking.
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, Legend,
 } from 'recharts'
 
 interface Props { tenantSlug: string }
@@ -17,6 +20,96 @@ function fmt(v: number) {
 
 const COLORS = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c','#e67e22','#95a5a6']
 const tooltipFmt = (v: unknown) => fmt(Number(v ?? 0))
+
+/**
+ * Quantidade de estoque sem casa decimal inútil.
+ *
+ * Estava fixo em toFixed(1): 12 unidades apareciam como "12.0/20.0". Produto
+ * se conta inteiro; insumo pode ser fracionado (0,5 kg de farinha), e aí a
+ * fração importa. Então o decimal só aparece quando existe de verdade.
+ */
+function fmtEstoque(v: any): string {
+  const n = Number(v ?? 0)
+  if (!Number.isFinite(n)) return '0'
+  return Number.isInteger(n)
+    ? String(n)
+    : n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 3 })
+}
+
+/**
+ * RANKING DE PRODUTOS MAIS VENDIDOS.
+ *
+ * Substitui o gráfico de barras horizontais. Em barra, o nome do produto
+ * precisava ser cortado em 14 caracteres para caber no eixo — "Canelloni 4
+ * Queij…". Em lista, o nome tem a linha inteira, e a barra de proporção vira
+ * apoio visual em vez de ser o próprio dado.
+ *
+ * Tem seletor próprio de período (dia/semana/mês) e busca numa rota separada,
+ * para não recarregar o dashboard inteiro a cada troca.
+ */
+function RankingProdutos({ tenantSlug }: { tenantSlug: string }) {
+  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('semana')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['dashboard-top-produtos', tenantSlug, periodo],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/dashboard/top-produtos?periodo=${periodo}`)).json(),
+    staleTime: 30000,
+  })
+
+  const itens: any[] = Array.isArray(data?.data?.itens) ? data.data.itens : []
+  const maior        = Number(data?.data?.maiorQtd ?? 0) || 1
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Produtos mais vendidos</h3>
+        <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+          {([
+            { k: 'dia',    r: 'Dia' },
+            { k: 'semana', r: 'Semana' },
+            { k: 'mes',    r: 'Mês' },
+          ] as const).map(o => (
+            <button key={o.k} onClick={() => setPeriodo(o.k)}
+              className={`px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                periodo === o.k ? 'bg-green-50 text-green-700' : 'bg-white text-gray-500 hover:bg-gray-50'
+              }`}>
+              {o.r}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+      ) : itens.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-12">Sem vendas no período</p>
+      ) : (
+        <div className="space-y-2.5" style={{ minHeight: 200 }}>
+          {itens.map((p: any, i: number) => (
+            <div key={p.nome} className="flex items-center gap-3">
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                i < 3 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm text-gray-900 truncate">{p.nome}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{fmtEstoque(p.qtd)} un</span>
+                </div>
+                <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 rounded-full"
+                    style={{ width: `${Math.max(4, (p.qtd / maior) * 100)}%`, backgroundColor: '#2ecc71', opacity: i < 3 ? 0.85 : 0.5 }} />
+                </div>
+              </div>
+              <span className="text-xs font-medium text-gray-600 w-20 text-right flex-shrink-0">{fmt(p.valor / 100)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Escala dinâmica dos eixos ───────────────────────────────────────────────
 //
@@ -151,7 +244,6 @@ export default function DashboardHome({ tenantSlug }: Props) {
   // Uma escala por gráfico, recalculada a cada render com os dados do momento.
   const escFaturamento = escala(faturamento6m.map((d: any) => Number(d.valor)), { moeda: true })
   const escVendasDia   = escala(vendasDia.map((d: any) => Number(d.valor)),     { moeda: true })
-  const escTopProdutos = escala(topProdutos.map((d: any) => Number(d.qtd)),     { inteiro: true })
   const escReceitaDesp = escala(
     // As duas séries dividem o mesmo eixo — o topo tem que considerar ambas,
     // senão a barra maior estoura para fora da área do gráfico.
@@ -193,7 +285,15 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={faturamento6m} margin={{ left: 4, right: 8 }}>
+              <AreaChart data={faturamento6m} margin={{ left: 4, right: 8 }}>
+                {/* Preenchimento em degradê que some para baixo: dá volume ao
+                    dado sem o peso do bloco de cor cheia. */}
+                <defs>
+                  <linearGradient id="gradFaturamento" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#2ecc71" stopOpacity={0.22} />
+                    <stop offset="100%" stopColor="#2ecc71" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
                 <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis
@@ -204,8 +304,12 @@ export default function DashboardHome({ tenantSlug }: Props) {
                   tickFormatter={escFaturamento.formatar}
                 />
                 <Tooltip formatter={tooltipFmt} labelStyle={{ fontSize: 12 }} />
-                <Bar dataKey="valor" fill="#2ecc71" fillOpacity={0.85} radius={[6, 6, 0, 0]} maxBarSize={44} name="Faturamento" />
-              </BarChart>
+                <Area type="monotone" dataKey="valor" name="Faturamento"
+                  stroke="#2ecc71" strokeWidth={2}
+                  fill="url(#gradFaturamento)"
+                  dot={faturamento6m.length <= 2 ? { r: 3, fill: '#2ecc71', strokeWidth: 0 } : false}
+                  activeDot={{ r: 4 }} />
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -216,7 +320,13 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={vendasDia} margin={{ left: 4, right: 8 }}>
+              <AreaChart data={vendasDia} margin={{ left: 4, right: 8 }}>
+                <defs>
+                  <linearGradient id="gradVendasDia" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#2ecc71" stopOpacity={0.22} />
+                    <stop offset="100%" stopColor="#2ecc71" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
                 <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis
@@ -229,9 +339,12 @@ export default function DashboardHome({ tenantSlug }: Props) {
                 <Tooltip formatter={tooltipFmt} />
                 {/* Com um único dia registrado a linha não tem o que ligar —
                     o ponto garante que o dado apareça mesmo assim. */}
-                <Line type="monotone" dataKey="valor" stroke="#2ecc71" strokeWidth={1.75}
-                  dot={vendasDia.length <= 2} name="Vendas" />
-              </LineChart>
+                <Area type="monotone" dataKey="valor" name="Vendas"
+                  stroke="#2ecc71" strokeWidth={2}
+                  fill="url(#gradVendasDia)"
+                  dot={vendasDia.length <= 2 ? { r: 3, fill: '#2ecc71', strokeWidth: 0 } : false}
+                  activeDot={{ r: 4 }} />
+              </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -239,33 +352,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
 
       {/* Linha 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Top 5 produtos — este mês</h3>
-          {topProdutos.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-12">Sem vendas registradas</p>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={topProdutos} layout="vertical" margin={{ left: 10, right: 20 }}>
-                <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
-                <XAxis
-                  type="number"
-                  tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
-                  domain={escTopProdutos.dominio}
-                  ticks={escTopProdutos.marcas}
-                  tickFormatter={escTopProdutos.formatar}
-                  allowDecimals={false}
-                />
-                <YAxis type="category" dataKey="nome" tick={{ fontSize: 10, fill: '#6b7280' }} width={100}
-                  tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + '…' : v} />
-                <Tooltip formatter={(v: unknown, name: unknown) => [
-                  name === 'qtd' ? `${v} un` : fmt(Number(v ?? 0)),
-                  name === 'qtd' ? 'Quantidade' : 'Valor',
-                ]} />
-                <Bar dataKey="qtd" fill="#2ecc71" fillOpacity={0.7} radius={[0, 6, 6, 0]} maxBarSize={18} name="qtd" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
+        <RankingProdutos tenantSlug={tenantSlug} />
 
         <div className="bg-white rounded-xl border border-gray-100 p-5">
           <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Receita vs Despesas — 6 meses</h3>
@@ -273,7 +360,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={receitaVsDespesas} margin={{ left: 4, right: 8 }}>
+              <LineChart data={receitaVsDespesas} margin={{ left: 4, right: 8 }}>
                 <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
                 <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis
@@ -285,9 +372,15 @@ export default function DashboardHome({ tenantSlug }: Props) {
                 />
                 <Tooltip formatter={tooltipFmt} />
                 <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="receita"  fill="#2ecc71" fillOpacity={0.85} radius={[6, 6, 0, 0]} maxBarSize={28} name="Receita" />
-                <Bar dataKey="despesas" fill="#e74c3c" fillOpacity={0.75} radius={[6, 6, 0, 0]} maxBarSize={28} name="Despesas" />
-              </BarChart>
+                <Line type="monotone" dataKey="receita"  name="Receita"
+                  stroke="#2ecc71" strokeWidth={2}
+                  dot={receitaVsDespesas.length <= 2 ? { r: 3, fill: '#2ecc71', strokeWidth: 0 } : false}
+                  activeDot={{ r: 4 }} />
+                <Line type="monotone" dataKey="despesas" name="Despesas"
+                  stroke="#e74c3c" strokeWidth={2}
+                  dot={receitaVsDespesas.length <= 2 ? { r: 3, fill: '#e74c3c', strokeWidth: 0 } : false}
+                  activeDot={{ r: 4 }} />
+              </LineChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -338,7 +431,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
                       <div className="bg-red-500 h-1.5 rounded-full"
                         style={{ width: `${Math.min(100, (p.estoqueAtual / Math.max(1, p.estoqueMinimo)) * 100)}%` }} />
                     </div>
-                    <span className="text-xs font-medium text-red-600 w-16 text-right">{Number(p.estoqueAtual).toFixed(1)}/{Number(p.estoqueMinimo).toFixed(1)}</span>
+                    <span className="text-xs font-medium text-red-600 w-16 text-right">{fmtEstoque(p.estoqueAtual)}/{fmtEstoque(p.estoqueMinimo)}</span>
                   </div>
                 </div>
               ))}

@@ -8,6 +8,7 @@ import {
   PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { useUser } from '@clerk/nextjs'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import type { Config } from '@/components/layout/ClientShell'
@@ -28,12 +29,22 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   const base     = `/${tenantSlug}`
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
-  // Usuário logado vem do Clerk, que já guarda nome e foto. Não precisa de
-  // rota nova nem de coluna nova no banco para o rodapé funcionar.
+  // NOME vem do NOSSO cadastro (t_usuario.nome), não do Clerk.
+  //
+  // Motivo concreto: a conta do Clerk de fabiano.halves02@gmail.com está com
+  // o nome de perfil "Sistematiza Suporte" — foi criada assim. Enquanto a tela
+  // lia user.fullName, o dono do sistema aparecia como suporte. O cadastro do
+  // ERP é a fonte de verdade do nome; o Clerk fica só com a autenticação e a
+  // foto.
   const { user } = useUser()
+  const { data: meuAcesso } = useQuery({
+    queryKey: ['meu-acesso', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
+    staleTime: 60000,
+  })
   const nomeUsuario =
+    String(meuAcesso?.data?.nome ?? '').trim() ||
     user?.fullName?.trim() ||
-    [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
     user?.primaryEmailAddress?.emailAddress ||
     'Usuário'
   const fotoUsuario     = user?.hasImage ? user.imageUrl : ''
