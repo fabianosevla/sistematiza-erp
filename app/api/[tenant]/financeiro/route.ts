@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FinanceiroService } from '@/lib/services/financeiro/FinanceiroService'
 import { ok, created, serverError } from '@/lib/api/responses'
 
@@ -48,7 +49,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const payload = despesaSchema.parse(await req.json())
-      return created(await new FinanceiroService(db, tenant.schemaName).criar({ ...payload, userId: 1 }))
+      // Era o literal 1: toda despesa nascia com created_by do mesmo usuário.
+      const userId  = await usuarioAtualIdDb(db)
+      return created(await new FinanceiroService(db, tenant.schemaName).criar({ ...payload, userId }))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

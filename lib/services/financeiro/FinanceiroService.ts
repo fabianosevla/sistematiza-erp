@@ -179,6 +179,56 @@ export class FinanceiroService {
     return result
   }
 
+  /**
+   * Edição de despesa.
+   *
+   * Só grava o que veio no payload — campo ausente fica como está. Isso evita
+   * que uma tela que envia meia dúzia de campos apague o resto do registro.
+   *
+   * mes_competencia / ano_competencia continuam fora do schema Drizzle (foram
+   * adicionados por migration depois), então seguem pelo mesmo caminho do
+   * `criar`: UPDATE cru com search_path do tenant.
+   */
+  async atualizar(id: number, payload: {
+    nome?: string; categoria?: string; valor?: number
+    dataDespesa?: string; recorrente?: boolean
+    periodoRecorrencia?: string | null; observacao?: string | null
+    mes?: number; ano?: number; userId: number
+  }) {
+    const now = new Date()
+    const campos: any = { updatedDt: now, updatedBy: payload.userId }
+
+    if (payload.nome !== undefined)               campos.nome = payload.nome
+    if (payload.categoria !== undefined)          campos.categoria = payload.categoria
+    if (payload.valor !== undefined)              campos.valor = payload.valor
+    if (payload.dataDespesa !== undefined)        campos.dataDespesa = new Date(payload.dataDespesa)
+    if (payload.recorrente !== undefined)         campos.recorrente = payload.recorrente
+    if (payload.periodoRecorrencia !== undefined) campos.periodoRecorrencia = payload.periodoRecorrencia
+    if (payload.observacao !== undefined)         campos.observacao = payload.observacao
+
+    await this.db.update(dbDespesa).set(campos).where(eq(dbDespesa.despesaId, id))
+
+    // Competência: se a tela mandou mes/ano usa eles; se mandou só a data,
+    // deriva dela. Sem nenhum dos dois, não mexe.
+    let mes = payload.mes
+    let ano = payload.ano
+    if ((mes === undefined || ano === undefined) && payload.dataDespesa) {
+      const dt = new Date(payload.dataDespesa)
+      mes = mes ?? dt.getMonth() + 1
+      ano = ano ?? dt.getFullYear()
+    }
+    if (mes !== undefined && ano !== undefined) {
+      await this.withSchema(async client => {
+        await client.query(
+          `UPDATE t_despesa SET mes_competencia = $1, ano_competencia = $2 WHERE despesa_id = $3`,
+          [mes, ano, id]
+        )
+      })
+    }
+
+    return { despesaId: id }
+  }
+
   async excluir(id: number, userId: number) {
     await this.db.update(dbDespesa).set({ activeFlag: false, updatedDt: new Date(), updatedBy: userId })
       .where(eq(dbDespesa.despesaId, id))
