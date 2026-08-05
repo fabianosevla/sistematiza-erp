@@ -46,10 +46,10 @@ const MODULOS = [
   { key: 'planoAcaoAtivo', label: 'Plano de Ação',     group: 'Gerencial'   },
   { key: 'fiscalAtivo',    label: 'Fiscal (NFC-e)',    group: 'Gerencial'   },
 
-  // Financeiro Completo
-  { key: 'contasPagarAtivo',         label: 'Contas a Pagar',   group: 'Financeiro' },
-  { key: 'contasReceberAtivo',       label: 'Contas a Receber', group: 'Financeiro' },
-  { key: 'conciliacaoBancariaAtivo', label: 'Conciliação OFX',  group: 'Financeiro' },
+  // NÃO acrescente aqui o que não é item do menu lateral.
+  // Contas a Pagar, Contas a Receber e Conciliação são ABAS dentro de
+  // Financeiro — ligar e desligar aba não é escolha de módulo, e escondê-las
+  // criava lançamento sem lugar para ser visto. Elas aparecem sempre.
 ] as const
 
 // Campos que compõem a aba "Configurações de conta".

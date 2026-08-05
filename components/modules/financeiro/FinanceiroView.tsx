@@ -253,16 +253,17 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     a.click()
   }
 
+  // Abas fixas. Não dependem mais de flag em Configurações: aba não é módulo,
+  // e esconder "A Receber" fazia a conta gerada pela entrega de um pedido
+  // existir sem lugar para ser vista.
   const ABAS_BASE: { key: Aba; label: string }[] = [
     { key: 'despesas',      label: 'Despesas'      },
     { key: 'dre',           label: 'DRE'           },
     { key: 'gastos-fixos',  label: 'Gastos Fixos'  },
     { key: 'demonstrativo', label: 'Demonstrativo' },
-  ]
-  const ABAS_FIN: { key: Aba; label: string; check: boolean }[] = [
-    { key: 'a-pagar',     label: 'A Pagar',     check: !!config?.contasPagarAtivo },
-    { key: 'a-receber',   label: 'A Receber',   check: !!config?.contasReceberAtivo },
-    { key: 'conciliacao', label: 'Conciliação', check: !!config?.conciliacaoBancariaAtivo },
+    { key: 'a-pagar',       label: 'A Pagar'       },
+    { key: 'a-receber',     label: 'A Receber'     },
+    { key: 'conciliacao',   label: 'Conciliação'   },
   ]
 
   // KPIs calculados do DRE
@@ -313,14 +314,6 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       <div className="border-b border-gray-100 mb-6 overflow-x-auto">
         <div className="flex gap-0 min-w-max">
           {ABAS_BASE.map(a => (
-            <button key={a.key} onClick={() => setAba(a.key)}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}>
-              {a.label}
-            </button>
-          ))}
-          {ABAS_FIN.filter(a => a.check).map(a => (
             <button key={a.key} onClick={() => setAba(a.key)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 aba === a.key ? 'border-green-500 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-700'
