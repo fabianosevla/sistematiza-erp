@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FormModal } from '@/components/ui/FormModal'
 import { useToast } from '@/components/ui/Toast'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -134,7 +134,7 @@ export default function PerdasTab({ tenantSlug }: Props) {
               ) : perdas.map((p: any) => (
                 <tr key={p.perdaId} className="border-b border-gray-50">
                   <td className="px-4 py-2.5 text-sm text-gray-900">{p.nomeEntidade}</td>
-                  <td className="px-4 py-2.5 text-right text-sm text-gray-600">{parseFloat(p.quantidade).toFixed(2)}</td>
+                  <td className="px-4 py-2.5 text-right text-sm text-gray-600">{fmtQtd(p.quantidade)}</td>
                   <td className="px-4 py-2.5 text-sm text-gray-600">{MOTIVOS.find(m => m.value === p.motivo)?.label ?? p.motivo}</td>
                   <td className="px-4 py-2.5 text-sm text-gray-400">{new Date(p.dataPerda + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                   <td className="px-4 py-2.5 text-right text-sm font-medium text-red-500">{fmt(p.valorEstimado)}</td>

@@ -100,9 +100,21 @@ export class ConsultasService {
 
   // ── ENTRADA DE ESTOQUE POR PERÍODO ────────────────────────────────────────
   //
-  // Só movimentações de tipo 'entrada'. O nome vem de t_produto ou t_insumo
-  // conforme a coluna `entidade` — a movimentação guarda apenas o id, então
-  // sem esse join a consulta mostraria "entidade 14" para o operador.
+  // TUDO QUE FAZ ESTOQUE SUBIR, venha de onde vier.
+  //
+  // Cada pessoa registra do seu jeito, e hoje há três caminhos que entram
+  // aqui:
+  //   • Registrar Produção          → grava tipo 'entrada'
+  //   • Estoque → Movimentar        → grava 'entrada' ou 'ajuste'
+  //   • Estoque → Ajustar           → grava 'entrada' com a diferença
+  //
+  // Por isso o filtro aceita 'entrada' E 'ajuste' com quantidade positiva.
+  // Filtrar só por 'entrada' escondia todo aumento lançado como ajuste — e o
+  // relatório dizia que nada entrou num dia em que entrou.
+  //
+  // O nome vem de t_produto ou t_insumo conforme a coluna `entidade`: a
+  // movimentação guarda só o id, e sem esse join a consulta mostraria
+  // "entidade 14" para o operador.
   async entradasEstoquePorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
     const { inicio, fim } = this.limites(dataInicio, dataFim)
 
@@ -110,6 +122,7 @@ export class ConsultasService {
       SELECT
         m.movimentacao_id,
         m.data_movimentacao,
+        m.tipo,
         m.entidade,
         m.entidade_id,
         m.quantidade,
@@ -121,7 +134,7 @@ export class ConsultasService {
       LEFT JOIN t_produto p ON m.entidade = 'produto' AND p.produto_id = m.entidade_id
       LEFT JOIN t_insumo  i ON m.entidade = 'insumo'  AND i.insumo_id  = m.entidade_id
       WHERE m.active_flg = true
-        AND m.tipo = 'entrada'
+        AND (m.tipo = 'entrada' OR (m.tipo = 'ajuste' AND m.quantidade > 0))
         AND m.data_movimentacao >= ${inicio}
         AND m.data_movimentacao <= ${fim}
       ORDER BY m.data_movimentacao DESC, m.movimentacao_id DESC
@@ -135,6 +148,9 @@ export class ConsultasService {
       return {
         movimentacaoId: Number(r.movimentacao_id),
         data:      r.data_movimentacao,
+        // 'entrada' ou 'ajuste' — a tela mostra, para o operador saber se
+        // aquele aumento veio de produção/compra ou de correção manual.
+        tipoMov:   r.tipo,
         entidade:  r.entidade,
         nome:      r.nome ?? `${r.entidade} #${r.entidade_id}`,
         unidade:   r.unidade ?? '',

@@ -128,16 +128,26 @@ export function fmtDataHoraLocal(valor: any): string {
 // ── Números ─────────────────────────────────────────────────────────────────
 
 /**
- * Quantidade com casas decimais suficientes para insumos usados em fração
- * mínima (ex.: orégano a 0.00027 kg). Mostra no mínimo 3 casas e corta os
- * zeros à direita além disso.
+ * Quantidade.
+ *
+ * A versão anterior forçava no mínimo 3 casas decimais E usava ponto como
+ * separador: 50 unidades saíam como "50.000". Em português isso se lê
+ * cinquenta mil — o operador via o estoque inflado em mil vezes na tela.
+ *
+ * Agora:
+ *   • número inteiro sai inteiro          → 50 vira "50"
+ *   • fração só aparece se existir        → 0.5 vira "0,5"
+ *   • separador é vírgula, e o milhar tem ponto, como manda o pt-BR
+ *   • insumo em fração mínima continua legível → 0.00027 vira "0,00027"
+ *
+ * O segundo parâmetro é o MÁXIMO de casas. Antes ele era o mínimo — a troca é
+ * proposital, e nenhuma chamada do sistema passa esse argumento hoje.
  */
-export function fmtQtd(valor: any, casasMin = 3, casasMax = 6): string {
-  const n = parseFloat(String(valor ?? 0))
-  if (!Number.isFinite(n)) return (0).toFixed(casasMin)
-  const s = n.toFixed(casasMax).replace(/0+$/, '')
-  const [inteiro, dec = ''] = s.split('.')
-  return `${inteiro}.${dec.padEnd(casasMin, '0')}`
+export function fmtQtd(valor: any, casasMax = 6): string {
+  const n = parseFloat(String(valor ?? 0).replace(',', '.'))
+  if (!Number.isFinite(n)) return '0'
+  if (Number.isInteger(n)) return n.toLocaleString('pt-BR')
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: casasMax })
 }
 
 /** 12.3456 → "12,3%" */

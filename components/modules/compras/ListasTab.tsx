@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
-import { fmtData as fmtDate } from '@/lib/format'
+import { fmtData as fmtDate, fmtQtd } from '@/lib/format'
 
 interface Props {
   tenantSlug:       string
@@ -124,7 +124,7 @@ export default function ListasTab({ tenantSlug, onIniciarCotacao }: Props) {
                       {(l.itens ?? []).map((item: any) => (
                         <tr key={item.itemId} className="border-t border-gray-100">
                           <td className="py-1.5 text-sm text-gray-700">{item.nomeInsumo}</td>
-                          <td className="py-1.5 text-right text-sm font-medium text-gray-600">{parseFloat(item.quantidadeSugerida).toFixed(2)}</td>
+                          <td className="py-1.5 text-right text-sm font-medium text-gray-600">{fmtQtd(item.quantidadeSugerida)}</td>
                           <td className="py-1.5 text-right text-sm text-gray-400">{parseFloat(item.estoqueNoMomento).toFixed(2)}</td>
                         </tr>
                       ))}

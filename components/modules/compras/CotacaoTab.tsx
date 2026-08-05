@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props {
   tenantSlug:       string
@@ -157,7 +157,7 @@ export default function CotacaoTab({ tenantSlug, listaIdInicial, onPedidosGerado
             <div key={li.itemId} className="bg-white rounded-xl border border-gray-100 p-4">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-sm font-semibold text-gray-900">{li.nomeInsumo}</p>
-                <p className="text-xs text-gray-400">Qtd: {parseFloat(li.quantidadeSugerida).toFixed(2)}</p>
+                <p className="text-xs text-gray-400">Qtd: {fmtQtd(li.quantidadeSugerida)}</p>
               </div>
 
               {precos.length > 0 && (

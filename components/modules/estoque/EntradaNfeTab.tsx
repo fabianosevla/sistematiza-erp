@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { Aviso } from '@/components/ui/Aviso'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -218,7 +218,7 @@ function ItemMapeamento({ item, tenantSlug, onMapear }: { item: any; tenantSlug:
       <div className="flex items-center justify-between mb-2">
         <div>
           <p className="text-sm font-medium text-gray-900">{item.descricaoXml}</p>
-          <p className="text-xs text-gray-400">Qtd: {Number(item.quantidade).toFixed(2)} · {fmt(item.valorUnitario)}/un</p>
+          <p className="text-xs text-gray-400">Qtd: {fmtQtd(item.quantidade)} · {fmt(item.valorUnitario)}/un</p>
         </div>
         {item.insumoId && <CheckCircle size={16} className="text-green-500 flex-shrink-0" />}
       </div>

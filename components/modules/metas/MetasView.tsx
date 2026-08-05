@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast'
 import { InfoTip }  from '@/components/ui/InfoTip'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FormModal }  from '@/components/ui/FormModal'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -364,10 +364,10 @@ export default function MetasView({ tenantSlug }: Props) {
                           <tr key={i} className={`border-b border-gray-50 ${precisaComprar ? 'bg-red-50/30' : ''}`}>
                             <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{ins.nome}</td>
                             <td className="px-4 py-2.5 text-right text-sm text-gray-500">{ins.unidade}</td>
-                            <td className="px-4 py-2.5 text-right text-sm text-gray-700">{ins.necessario.toFixed(3)}</td>
+                            <td className="px-4 py-2.5 text-right text-sm text-gray-700">{fmtQtd(ins.necessario)}</td>
                             <td className="px-4 py-2.5 text-right">
                               <span className={`text-sm font-medium ${precisaComprar ? 'text-red-600' : 'text-green-600'}`}>
-                                {parseFloat(String(ins.estoqueAtual)).toFixed(3)}
+                                {fmtQtd(ins.estoqueAtual)}
                               </span>
                             </td>
                             <td className="px-4 py-2.5 text-right">

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FormModal } from '@/components/ui/FormModal'
 import { useToast } from '@/components/ui/Toast'
+import { fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -160,7 +161,7 @@ export default function LocaisTab({ tenantSlug }: Props) {
                   {transferencias.map((t: any) => (
                     <tr key={t.transferenciaId} className="border-b border-gray-50">
                       <td className="px-4 py-2.5 text-sm text-gray-900">{t.nomeEntidade}</td>
-                      <td className="px-4 py-2.5 text-sm text-gray-600">{parseFloat(t.quantidade).toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-sm text-gray-600">{fmtQtd(t.quantidade)}</td>
                       <td className="px-4 py-2.5 text-sm text-gray-400">{new Date(t.dataTransferencia + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
                     </tr>
                   ))}
@@ -231,7 +232,7 @@ export default function LocaisTab({ tenantSlug }: Props) {
                     {distribuicao.map((d: any) => (
                       <div key={d.localId} className="flex justify-between text-sm px-1">
                         <span className="text-gray-500">{d.nome}{d.padrao ? ' (padrão)' : ''}</span>
-                        <span className="font-medium text-gray-900">{d.quantidade.toFixed(2)}</span>
+                        <span className="font-medium text-gray-900">{fmtQtd(d.quantidade)}</span>
                       </div>
                     ))}
                   </div>
