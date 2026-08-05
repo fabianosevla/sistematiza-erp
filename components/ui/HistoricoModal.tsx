@@ -19,7 +19,7 @@ function fmtDateTime(d: string) {
 
 const ACAO_CONFIG: Record<string, { label: string; cor: string; icon: any }> = {
   criado:     { label: 'Criado',     cor: 'bg-green-100 text-green-700',  icon: Plus },
-  atualizado: { label: 'Atualizado', cor: 'bg-blue-100 text-blue-700',    icon: Pencil },
+  atualizado: { label: 'Atualizado', cor: 'bg-gray-100 text-gray-700',    icon: Pencil },
   excluido:   { label: 'Excluído',   cor: 'bg-red-100 text-red-700',      icon: Trash2 },
   reativado:  { label: 'Reativado',  cor: 'bg-amber-100 text-amber-700',  icon: Plus },
 }

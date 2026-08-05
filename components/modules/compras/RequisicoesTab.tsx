@@ -15,7 +15,7 @@ interface Props { tenantSlug: string }
 
 const PRIORIDADE_CFG: Record<string, { label: string; cls: string }> = {
   baixa:   { label: 'Baixa',   cls: 'bg-gray-100 text-gray-600' },
-  normal:  { label: 'Normal',  cls: 'bg-blue-100 text-blue-700' },
+  normal:  { label: 'Normal',  cls: 'bg-gray-100 text-gray-700' },
   alta:    { label: 'Alta',    cls: 'bg-amber-100 text-amber-700' },
   urgente: { label: 'Urgente', cls: 'bg-red-100 text-red-700' },
 }

@@ -305,7 +305,7 @@ function NotasList({ notas, isLoading, onEmitir, onCancelar }: {
                       <button onClick={() => onEmitir(n.notaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Emitir</button>
                     )}
                     {n.danfeUrl && (
-                      <Anchor href={n.danfeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-700">DANFE</Anchor>
+                      <Anchor href={n.danfeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-700">DANFE</Anchor>
                     )}
                     {n.status === 'autorizada' && (
                       <button onClick={() => onCancelar(n.notaId)} className="text-xs text-red-500 hover:text-red-600">Cancelar</button>

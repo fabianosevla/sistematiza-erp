@@ -26,10 +26,10 @@ const brlToCent = (v: any)    => Math.round(parseFloat(String(v).replace(',', '.
 
 const TIPO_CFG: Record<string, { label: string; cls: string; sinal: 1 | -1 }> = {
   credito:         { label: 'Crédito',             cls: 'bg-green-100 text-green-700',  sinal: 1 },
-  uso:             { label: 'Uso',                 cls: 'bg-blue-100 text-blue-700',    sinal: -1 },
+  uso:             { label: 'Uso',                 cls: 'bg-gray-100 text-gray-700',    sinal: -1 },
   estorno:         { label: 'Estorno (devolução)', cls: 'bg-amber-100 text-amber-700',  sinal: 1 },
   estorno_credito: { label: 'Estorno de crédito',  cls: 'bg-red-100 text-red-700',      sinal: -1 },
-  ajuste:          { label: 'Ajuste',              cls: 'bg-purple-100 text-purple-700',sinal: 1 },
+  ajuste:          { label: 'Ajuste',              cls: 'bg-gray-100 text-gray-700',sinal: 1 },
   expiracao:       { label: 'Expiração',           cls: 'bg-gray-100 text-gray-500',    sinal: -1 },
 }
 
@@ -346,7 +346,7 @@ function VisaoTab({ tenantSlug, programaAtivo, onIrConfig }: { tenantSlug: strin
     { label: 'Saldo em circulação',   value: fmt(r?.saldoCirculante ?? 0), cor: 'text-green-600' },
     { label: 'Clientes com saldo',    value: String(r?.clientesComSaldo ?? 0), cor: 'text-gray-900' },
     { label: 'Creditado no mês',      value: fmt(r?.creditadoMes ?? 0), cor: 'text-green-600' },
-    { label: 'Usado no mês',          value: fmt(r?.usadoMes ?? 0), cor: 'text-blue-600' },
+    { label: 'Usado no mês',          value: fmt(r?.usadoMes ?? 0), cor: 'text-gray-600' },
     { label: 'Creditado (total)',     value: fmt(r?.creditadoTotal ?? 0), cor: 'text-gray-700' },
     { label: 'Usado (total)',         value: fmt(r?.usadoTotal ?? 0), cor: 'text-gray-700' },
     { label: 'Avisos WhatsApp (30d)', value: String(r?.avisos30d ?? 0), cor: 'text-gray-900' },
@@ -674,7 +674,7 @@ function StatusCard({ ok, label, texto, onFix }: { ok?: boolean; label: string; 
         {ok ? <ArrowUpCircle size={15} className="text-green-500" /> : <ArrowDownCircle size={15} className="text-gray-400" />}
       </div>
       <p className={`text-sm font-semibold mt-1 ${ok ? 'text-green-700' : 'text-gray-600'}`}>{texto}</p>
-      {onFix && <button onClick={onFix} className="text-xs text-blue-600 underline mt-1">Configurar</button>}
+      {onFix && <button onClick={onFix} className="text-xs text-gray-600 underline mt-1">Configurar</button>}
     </div>
   )
 }

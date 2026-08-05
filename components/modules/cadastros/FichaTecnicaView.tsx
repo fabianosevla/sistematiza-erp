@@ -258,7 +258,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                         <span className="text-sm text-gray-500">Varejo: <span className="font-semibold text-gray-900">{fmt(precoVarejo)}</span></span>
                       )}
                       {custoTotal > 0 && (
-                        <span className="text-sm text-gray-500">Custo prod.: <span className="font-semibold text-orange-600">{fmt(custoTotal)}</span></span>
+                        <span className="text-sm text-gray-500">Custo prod.: <span className="font-semibold text-gray-600">{fmt(custoTotal)}</span></span>
                       )}
                     </div>
                   </div>
@@ -400,12 +400,12 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                           <tr key={item.produtoInsumoId ?? item.itemId} className="group border-b border-gray-50 hover:bg-gray-50/50">
                             <td className="px-5 py-3 text-sm font-medium text-gray-900">
                               {item.nomeInsumo ?? ins?.nome ?? `#${item.insumoId}`}
-                              {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
+                              {item.ehProduto && <span className="ml-2 text-[10px] bg-gray-50 text-gray-700 border border-gray-200 rounded-full px-1.5 py-0.5">produto</span>}
                             </td>
                             <td className="px-4 py-3 text-right text-sm text-gray-600">{fmtQtd(item.quantidade)} <span className="text-gray-400">{item.unidade}</span></td>
                             <td className="px-4 py-3 text-right text-sm text-gray-600">{precoCusto ? fmt(precoCusto) : <span className="text-gray-300">—</span>}</td>
                             <td className="px-4 py-3 text-right text-sm font-semibold">
-                              {custoFracao > 0 ? <span className="text-orange-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
+                              {custoFracao > 0 ? <span className="text-gray-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
                             </td>
                             <td className="px-3 py-3 text-center">
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -425,7 +425,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                       <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                         <tr>
                           <td colSpan={3} className="px-5 py-3 text-sm font-bold text-gray-700 text-right">Custo total / unidade produzida</td>
-                          <td className="px-4 py-3 text-right text-base font-bold text-orange-600">{fmt(custoTotal)}</td>
+                          <td className="px-4 py-3 text-right text-base font-bold text-gray-600">{fmt(custoTotal)}</td>
                           <td />
                         </tr>
                         {precoVarejo > 0 && (
@@ -509,7 +509,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                               <td className="px-4 py-3 text-right text-sm font-semibold text-gray-800">{fmtQtd(item.quantidade)}</td>
                               <td className="px-4 py-3 text-center text-sm text-gray-500">{item.unidade}</td>
                               <td className="px-4 py-3 text-right text-sm font-semibold">
-                                {item.custo > 0 ? <span className="text-orange-600">{fmt(item.custo)}</span> : <span className="text-gray-300">—</span>}
+                                {item.custo > 0 ? <span className="text-gray-600">{fmt(item.custo)}</span> : <span className="text-gray-300">—</span>}
                               </td>
                               <td />
                             </tr>
@@ -531,7 +531,7 @@ export default function FichaTecnicaView({ tenantSlug }: Props) {
                         <td colSpan={3} className="px-5 py-3 text-sm font-bold text-gray-700 text-right">
                           Custo total dos insumos {multiplicador > 1 ? `(${fmtQtd(multiplicador)} unidades)` : '(1 unidade)'}
                         </td>
-                        <td className="px-4 py-3 text-right text-base font-bold text-orange-600">{fmt(composicao?.custoTotal ?? 0)}</td>
+                        <td className="px-4 py-3 text-right text-base font-bold text-gray-600">{fmt(composicao?.custoTotal ?? 0)}</td>
                         <td />
                       </tr>
                     </tfoot>

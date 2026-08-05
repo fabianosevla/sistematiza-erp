@@ -102,7 +102,7 @@ export default function MrpTab({ tenantSlug, onListaGerada }: Props) {
           </div>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-xs text-gray-400">Valor estimado de compra</p>
-            <p className="text-xl font-bold mt-0.5 text-orange-600">{fmt(resultado.valorEstimado)}</p>
+            <p className="text-xl font-bold mt-0.5 text-gray-600">{fmt(resultado.valorEstimado)}</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-xs text-gray-400">Projeção</p>
@@ -170,8 +170,8 @@ export default function MrpTab({ tenantSlug, onListaGerada }: Props) {
                 <td className="px-3 py-2.5 text-right text-sm text-gray-500 hidden md:table-cell">{item.estoqueMinimo.toFixed(2)}</td>
                 <td className="px-3 py-2.5 text-right text-sm text-gray-500 hidden lg:table-cell">{item.qtdRequisicao.toFixed(2)}</td>
                 <td className="px-3 py-2.5 text-right text-sm text-gray-500 hidden lg:table-cell">{item.consumoProjetado.toFixed(2)}</td>
-                <td className="px-3 py-2.5 text-right text-sm text-blue-500 hidden md:table-cell">{item.pedidosEmAberto.toFixed(2)}</td>
-                <td className="px-3 py-2.5 text-right text-sm font-bold text-orange-600">{item.sugestaoCompra.toFixed(2)} {item.unidade}</td>
+                <td className="px-3 py-2.5 text-right text-sm text-gray-500 hidden md:table-cell">{item.pedidosEmAberto.toFixed(2)}</td>
+                <td className="px-3 py-2.5 text-right text-sm font-bold text-gray-600">{item.sugestaoCompra.toFixed(2)} {item.unidade}</td>
                 <td className="px-3 py-2.5 text-right text-sm font-semibold text-gray-700">{fmt(item.valorEstimado)}</td>
               </tr>
             ))}

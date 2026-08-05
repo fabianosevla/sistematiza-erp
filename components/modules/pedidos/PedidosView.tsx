@@ -24,7 +24,7 @@ interface Props { tenantSlug: string }
 
 const FLUXO: Record<string, { next: string; label: string; btnLabel: string; color: string }> = {
   pendente:  { next: 'producao', label: 'Pendente',    btnLabel: 'Iniciar Produção →', color: 'bg-amber-100 text-amber-700' },
-  producao:  { next: 'pronto',   label: 'Em Produção', btnLabel: 'Marcar como Pronto →', color: 'bg-blue-100 text-blue-700' },
+  producao:  { next: 'pronto',   label: 'Em Produção', btnLabel: 'Marcar como Pronto →', color: 'bg-gray-100 text-gray-700' },
   pronto:    { next: 'entregue', label: 'Pronto',      btnLabel: 'Confirmar Entrega →', color: 'bg-green-100 text-green-700' },
   entregue:  { next: '',         label: 'Entregue',    btnLabel: '', color: 'bg-gray-100 text-gray-600' },
   cancelado: { next: '',         label: 'Cancelado',   btnLabel: '', color: 'bg-red-100 text-red-600' },
@@ -460,7 +460,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                   )}
                   {STATUS_EDITAVEIS.includes(p.status) && (
                     <button onClick={() => abrirEdicao(p.pedidoId)}
-                      className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1">
+                      className="text-xs text-gray-600 hover:text-gray-700 font-medium flex items-center gap-1">
                       <Pencil size={12} /> Editar
                     </button>
                   )}

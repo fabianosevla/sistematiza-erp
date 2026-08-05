@@ -18,11 +18,11 @@ export function FiltrosSalvos({ tenantSlug, modulo, filtrosAtuais, onAplicar }: 
     <div className="flex items-center gap-2 flex-wrap">
       {/* Filtros salvos */}
       {filtros.map((f: any) => (
-        <div key={f.filtro_id} className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 group">
-          <button onClick={() => onAplicar(f.filtros)} className="text-xs font-medium text-blue-700 hover:text-blue-900">
+        <div key={f.filtro_id} className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 group">
+          <button onClick={() => onAplicar(f.filtros)} className="text-xs font-medium text-gray-700 hover:text-gray-900">
             {f.nome}
           </button>
-          <button onClick={() => deletarMut.mutate(f.filtro_id)} className="text-blue-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+          <button onClick={() => deletarMut.mutate(f.filtro_id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
             <X size={11} />
           </button>
         </div>

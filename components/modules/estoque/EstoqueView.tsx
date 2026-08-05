@@ -367,7 +367,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button onClick={() => setEditandoAjuste({ id: p.produtoId, valor: String(p.estoqueAtual) })}
-                        className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 mx-auto">
+                        className="text-xs text-gray-600 hover:text-gray-700 flex items-center gap-1 mx-auto">
                         <Edit3 size={12} /> Ajustar
                       </button>
                     </td>

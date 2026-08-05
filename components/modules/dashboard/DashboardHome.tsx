@@ -313,7 +313,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
                 <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-gray-900 truncate">{p.nome}</p>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.tipo === 'insumo' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.tipo === 'insumo' ? 'bg-gray-50 text-gray-600' : 'bg-gray-50 text-gray-600'}`}>
                       {p.tipo === 'insumo' ? 'Insumo' : 'Produto'}
                     </span>
                   </div>

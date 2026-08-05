@@ -118,7 +118,7 @@ export default function ConferenciaTab({ tenantSlug, pedidoIdInicial }: Props) {
           {resultado.contaPagarId && (
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">Conta a pagar</span>
-              <span className="font-medium text-blue-600">#{resultado.contaPagarId}</span>
+              <span className="font-medium text-gray-600">#{resultado.contaPagarId}</span>
             </div>
           )}
         </div>

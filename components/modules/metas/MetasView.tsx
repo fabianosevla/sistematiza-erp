@@ -231,7 +231,7 @@ export default function MetasView({ tenantSlug }: Props) {
                   <div className="space-y-2.5">
                     {[
                       { label: 'Receita Projetada',   value:  simulado.receitaProjetada, cor: 'text-green-600' },
-                      { label: 'Custo de Insumos',    value: -simulado.custoInsumos,     cor: 'text-orange-600' },
+                      { label: 'Custo de Insumos',    value: -simulado.custoInsumos,     cor: 'text-gray-600' },
                       { label: 'Lucro Bruto',         value:  simulado.lucroBruto,       cor: simulado.lucroBruto >= 0 ? 'text-green-600' : 'text-red-600', bold: true },
                       { label: 'Despesas do Mês',     value: -simulado.totalDespesas,    cor: 'text-red-500' },
                       { label: 'Resultado Projetado', value:  simulado.lucroLiquido,     cor: simulado.lucroLiquido >= 0 ? 'text-green-700' : 'text-red-700', bold: true, large: true },
@@ -307,7 +307,7 @@ export default function MetasView({ tenantSlug }: Props) {
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
                         <td className="px-4 py-3 text-right text-sm text-gray-600">{p.mediaVendas.toFixed(1)} un</td>
-                        <td className="px-4 py-3 text-right text-sm text-blue-600">{p.pedidosPendentes} un</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-600">{p.pedidosPendentes} un</td>
                         <td className="px-4 py-3 text-right">
                           <span className="text-sm font-bold text-green-700">{p.previsaoProducao} un</span>
                         </td>
@@ -322,7 +322,7 @@ export default function MetasView({ tenantSlug }: Props) {
                         <td className="px-4 py-2.5 text-right text-xs font-bold text-gray-600">
                           {(previsao.produtos ?? []).reduce((a: number, p: any) => a + p.mediaVendas, 0).toFixed(1)} un
                         </td>
-                        <td className="px-4 py-2.5 text-right text-xs font-bold text-blue-600">
+                        <td className="px-4 py-2.5 text-right text-xs font-bold text-gray-600">
                           {(previsao.produtos ?? []).reduce((a: number, p: any) => a + p.pedidosPendentes, 0)} un
                         </td>
                         <td className="px-4 py-2.5 text-right text-xs font-bold text-green-700">
@@ -398,8 +398,8 @@ export default function MetasView({ tenantSlug }: Props) {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {[
                   { label: 'Receita estimada',       value: previsao.totalReceitaEstimada, color: 'text-green-600' },
-                  { label: 'Custo de insumos',       value: previsao.totalCustoInsumos,    color: 'text-orange-600' },
-                  { label: 'Lucro bruto estimado',   value: previsao.totalReceitaEstimada - previsao.totalCustoInsumos, color: 'text-blue-600' },
+                  { label: 'Custo de insumos',       value: previsao.totalCustoInsumos,    color: 'text-gray-600' },
+                  { label: 'Lucro bruto estimado',   value: previsao.totalReceitaEstimada - previsao.totalCustoInsumos, color: 'text-gray-600' },
                 ].map((k, i) => (
                   <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
                     <p className="text-xs text-gray-400">{k.label}</p>

@@ -18,7 +18,7 @@ interface Props {
 }
 
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  aberto:            { label: 'Aberto',            cls: 'bg-blue-100 text-blue-700' },
+  aberto:            { label: 'Aberto',            cls: 'bg-gray-100 text-gray-700' },
   recebido_parcial:  { label: 'Recebido parcial',  cls: 'bg-amber-100 text-amber-700' },
   recebido:          { label: 'Recebido',          cls: 'bg-green-100 text-green-700' },
   cancelado:         { label: 'Cancelado',         cls: 'bg-gray-100 text-gray-500' },

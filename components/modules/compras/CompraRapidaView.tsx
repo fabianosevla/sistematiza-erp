@@ -177,7 +177,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.nomeInsumo}</td>
                   <td className="px-4 py-3 text-sm text-gray-500">
                     {c.tipoItem === 'produto' ? (
-                      <span className="flex items-center gap-1 text-blue-600"><Package size={12} /> Revenda</span>
+                      <span className="flex items-center gap-1 text-gray-600"><Package size={12} /> Revenda</span>
                     ) : (
                       <span className="flex items-center gap-1 text-gray-500"><Layers size={12} /> Insumo</span>
                     )}

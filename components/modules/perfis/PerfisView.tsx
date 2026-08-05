@@ -375,12 +375,12 @@ export default function PerfisView({ tenantSlug }: Props) {
                           onClick={() => toggle(m.key)}
                           className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors text-sm ${
                             (form as any)[m.key]
-                              ? 'bg-blue-50 border-blue-200 text-blue-700 font-medium'
+                              ? 'bg-gray-50 border-gray-200 text-gray-700 font-medium'
                               : 'bg-gray-50 border-gray-100 text-gray-500 hover:border-gray-200'
                           }`}
                         >
                           <div className={`w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0 ${
-                            (form as any)[m.key] ? 'bg-blue-500' : 'bg-gray-200'
+                            (form as any)[m.key] ? 'bg-gray-500' : 'bg-gray-200'
                           }`}>
                             {(form as any)[m.key] && <Check size={9} className="text-white" />}
                           </div>

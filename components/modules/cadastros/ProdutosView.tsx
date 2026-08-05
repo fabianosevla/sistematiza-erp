@@ -278,10 +278,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
               {p.nome}
             </span>
             {p.insumoFlg && !inativo && (
-              <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5 align-middle">insumo</span>
+              <span className="ml-2 text-[10px] bg-gray-100 text-gray-600 border border-gray-200 rounded-full px-1.5 py-0.5 align-middle">insumo</span>
             )}
             {p.revenda && !inativo && (
-              <span className="ml-2 text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-1.5 py-0.5 align-middle">revenda</span>
+              <span className="ml-2 text-[10px] bg-gray-100 text-gray-600 border border-gray-200 rounded-full px-1.5 py-0.5 align-middle">revenda</span>
             )}
             {inativo && (
               <InfoTip titulo="Produto inativo" className="ml-2 align-middle">
@@ -465,7 +465,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
               <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs text-orange-700 font-semibold inline-flex items-center gap-1">
+                    <Label className="text-xs text-gray-700 font-semibold inline-flex items-center gap-1">
                       Custo (R$)
                       <InfoTip titulo="Preço de custo">
                         Se o produto tem ficha técnica, o custo calculado por ela prevalece.
@@ -621,7 +621,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                       <tr key={item.produtoInsumoId ?? item.itemId} className="border-b border-gray-50">
                         <td className="px-3 py-2.5 text-sm font-medium text-gray-900">
                           {item.nomeInsumo ?? item.insumo?.nome ?? `#${item.insumoId}`}
-                          {item.ehProduto && <span className="ml-2 text-[10px] bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-1.5 py-0.5">produto</span>}
+                          {item.ehProduto && <span className="ml-2 text-[10px] bg-gray-100 text-gray-600 border border-gray-200 rounded-full px-1.5 py-0.5">produto</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right text-sm text-gray-600">{fmtQtd(item.quantidade)}</td>
                         <td className="px-3 py-2.5 text-center text-sm text-gray-500">{item.unidade}</td>
@@ -629,7 +629,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                           {precoCustoI ? fmt(precoCustoI) : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-3 py-2.5 text-right text-sm font-semibold">
-                          {custoFracao > 0 ? <span className="text-orange-600">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
+                          {custoFracao > 0 ? <span className="text-gray-700">{fmt(custoFracao)}</span> : <span className="text-gray-300">—</span>}
                         </td>
                       </tr>
                     )
@@ -639,7 +639,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
                   <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                     <tr>
                       <td colSpan={4} className="px-3 py-3 text-sm font-bold text-gray-700 text-right">Custo total / unidade produzida</td>
-                      <td className="px-3 py-3 text-right text-base font-bold text-orange-600">{fmt(custoFicha)}</td>
+                      <td className="px-3 py-3 text-right text-base font-bold text-gray-700">{fmt(custoFicha)}</td>
                     </tr>
                   </tfoot>
                 )}

@@ -177,7 +177,7 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       {kpis && (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           {[
-            { label: 'A receber',   value: fmt(kpis.aReceber),      sub: `${kpis.qtdAberta} título(s)`,   color: 'text-blue-600' },
+            { label: 'A receber',   value: fmt(kpis.aReceber),      sub: `${kpis.qtdAberta} título(s)`,   color: 'text-gray-600' },
             { label: 'Vencidas',    value: fmt(kpis.vencidas),      sub: `${kpis.qtdVencida} título(s)`,  color: 'text-red-600' },
             { label: 'Recebido',    value: fmt(kpis.totalRecebido), sub: `${kpis.qtdRecebida} baixa(s)`,  color: 'text-green-600' },
           ].map((k, i) => (
@@ -243,13 +243,13 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                   <td className="px-4 py-3 text-right">
                     <p className="text-sm font-bold text-gray-900">{fmt(r.valorOriginal)}</p>
                     {r.valorRecebido > 0 && <p className="text-xs text-green-600">Recebido: {fmt(r.valorRecebido)}</p>}
-                    {saldo > 0 && saldo < r.valorOriginal && <p className="text-xs text-orange-500">Saldo: {fmt(saldo)}</p>}
+                    {saldo > 0 && saldo < r.valorOriginal && <p className="text-xs text-gray-500">Saldo: {fmt(saldo)}</p>}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                       vencida ? 'bg-red-100 text-red-700' :
                       r.status === 'recebida' ? 'bg-green-100 text-green-700' :
-                      r.status === 'aberta'   ? 'bg-blue-100 text-blue-700'  :
+                      r.status === 'aberta'   ? 'bg-gray-100 text-gray-700'  :
                       'bg-gray-100 text-gray-500'
                     }`}>
                       {vencida ? 'Vencida' : r.status === 'recebida' ? 'Recebida' : r.status === 'aberta' ? 'Aberta' : r.status}
@@ -260,7 +260,7 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                       {r.status !== 'recebida' && (
                         <>
                           <button onClick={() => abrirEdicao(r)}
-                            className="p-1 text-blue-400 hover:text-blue-600" title="Editar (vencimento, valor, dados)">
+                            className="p-1 text-gray-400 hover:text-gray-600" title="Editar (vencimento, valor, dados)">
                             <Pencil size={13} />
                           </button>
                           <button onClick={() => { setShowBaixa(r); setBaixaForm({ valorRecebido: ((r.valorOriginal - r.valorRecebido) / 100).toFixed(2), dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: r.formaRecebimento ?? '' }) }}
@@ -372,7 +372,7 @@ export default function ContasReceberView({ tenantSlug }: Props) {
             <div className="p-6 space-y-4">
               <div className="bg-gray-50 rounded-xl p-3 flex items-center justify-between">
                 <span className="text-sm text-gray-500">Saldo a receber</span>
-                <span className="font-bold text-blue-600">{fmt(showBaixa.valorOriginal - showBaixa.valorRecebido)}</span>
+                <span className="font-bold text-gray-600">{fmt(showBaixa.valorOriginal - showBaixa.valorRecebido)}</span>
               </div>
               <div>
                 <Label>Valor recebido (R$) *</Label>

@@ -17,7 +17,7 @@ interface Props {
 
 const ORIGEM_CFG: Record<string, string> = { mrp: 'MRP', manual: 'Manual', requisicao: 'Requisição' }
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  aberta:     { label: 'Aberta',      cls: 'bg-blue-100 text-blue-700' },
+  aberta:     { label: 'Aberta',      cls: 'bg-gray-100 text-gray-700' },
   em_cotacao: { label: 'Em cotação',  cls: 'bg-amber-100 text-amber-700' },
   finalizada: { label: 'Finalizada',  cls: 'bg-green-100 text-green-700' },
   cancelada:  { label: 'Cancelada',   cls: 'bg-gray-100 text-gray-500' },
@@ -124,7 +124,7 @@ export default function ListasTab({ tenantSlug, onIniciarCotacao }: Props) {
                       {(l.itens ?? []).map((item: any) => (
                         <tr key={item.itemId} className="border-t border-gray-100">
                           <td className="py-1.5 text-sm text-gray-700">{item.nomeInsumo}</td>
-                          <td className="py-1.5 text-right text-sm font-medium text-orange-600">{parseFloat(item.quantidadeSugerida).toFixed(2)}</td>
+                          <td className="py-1.5 text-right text-sm font-medium text-gray-600">{parseFloat(item.quantidadeSugerida).toFixed(2)}</td>
                           <td className="py-1.5 text-right text-sm text-gray-400">{parseFloat(item.estoqueNoMomento).toFixed(2)}</td>
                         </tr>
                       ))}

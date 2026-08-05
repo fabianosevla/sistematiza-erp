@@ -401,9 +401,9 @@ export default function VendasView({ tenantSlug }: Props) {
   // ── Badge de canal ─────────────────────────────────────────────────────────
   function CanalBadge({ tipo }: { tipo: string }) {
     const map: Record<string, { label: string; cls: string }> = {
-      retirada:       { label: 'Loja',     cls: 'bg-blue-100 text-blue-700' },
+      retirada:       { label: 'Loja',     cls: 'bg-gray-100 text-gray-700' },
       entrega:        { label: 'Delivery', cls: 'bg-green-100 text-green-700' },
-      transportadora: { label: 'B2B',      cls: 'bg-purple-100 text-purple-700' },
+      transportadora: { label: 'B2B',      cls: 'bg-gray-100 text-gray-700' },
     }
     const cfg = map[tipo?.toLowerCase()] ?? { label: tipo, cls: 'bg-gray-100 text-gray-600' }
     return (
@@ -439,7 +439,7 @@ export default function VendasView({ tenantSlug }: Props) {
             { label: 'Receita hoje',   value: fmt(kpis.receitaHoje  ?? 0), color: 'text-green-600' },
             { label: 'Receita do mês', value: fmt(kpis.receitaMes   ?? 0), color: 'text-green-600' },
             { label: 'Vendas do mês',  value: String(kpis.qtdMes    ?? 0), color: 'text-gray-900' },
-            { label: 'Ticket médio',   value: fmt(kpis.ticketMedio  ?? 0), color: 'text-blue-600' },
+            { label: 'Ticket médio',   value: fmt(kpis.ticketMedio  ?? 0), color: 'text-gray-600' },
           ].map((k, i) => (
             <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
               <p className="text-xs text-gray-400 mb-1">{k.label}</p>
@@ -484,7 +484,7 @@ export default function VendasView({ tenantSlug }: Props) {
                   <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => router.push(`/${tenantSlug}/vendas/${v.vendaId}`)}
-                      className="p-1 text-blue-400 hover:text-blue-600"
+                      className="p-1 text-gray-400 hover:text-gray-600"
                     >
                       <Eye size={14} />
                     </button>

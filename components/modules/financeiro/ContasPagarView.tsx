@@ -20,7 +20,7 @@ function isVencida(row: any) {
 }
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  aberta:    { label: 'Aberta',    cls: 'bg-blue-100 text-blue-700' },
+  aberta:    { label: 'Aberta',    cls: 'bg-gray-100 text-gray-700' },
   paga:      { label: 'Paga',      cls: 'bg-green-100 text-green-700' },
   cancelada: { label: 'Cancelada', cls: 'bg-gray-100 text-gray-500' },
 }

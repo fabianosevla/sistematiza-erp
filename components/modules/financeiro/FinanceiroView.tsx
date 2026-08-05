@@ -310,7 +310,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           { label: 'Taxas',     value: fmt(taxasMes),    color: 'text-red-400'   },
           { label: 'Despesas',  value: fmt(despesasMes), color: 'text-red-600'   },
           { label: 'Resultado', value: fmt(resultado),   color: resultado >= 0 ? 'text-green-600' : 'text-red-600' },
-          { label: 'Margem',    value: fmtPct(margemPct), color: 'text-blue-600' },
+          { label: 'Margem',    value: fmtPct(margemPct), color: 'text-gray-600' },
         ].map((k, i) => (
           <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
             <p className="text-xs text-gray-400">{k.label}</p>
@@ -383,7 +383,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                             recorrente: d.recorrente ?? false,
                           })
                           setShowDespesa(true)
-                        }} className="p-1 text-blue-400 hover:text-blue-600">
+                        }} className="p-1 text-gray-400 hover:text-gray-600">
                           <Pencil size={13} />
                         </button>
                         <button onClick={() => setConfirmDel(d)} className="p-1 text-gray-300 hover:text-red-500">
@@ -472,7 +472,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     { label: '(=) Receita Líquida',    value: receitaPeriodo - taxasPeriodo,   color: 'text-green-700', bold: true },
                     { label: '(-) Total Despesas',     value: -despesasPeriodo,                color: 'text-red-500' },
                     { label: '(=) Resultado Acum.',  value: resultadoAcumulado,   color: resultadoAcumulado >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
-                    { label: 'Margem',               value: margemPeriodo,        color: 'text-blue-600', isPct: true },
+                    { label: 'Margem',               value: margemPeriodo,        color: 'text-gray-600', isPct: true },
                   ]).map((item: any, i) => (
                     <div key={i} className={`flex justify-between items-center ${item.border ? 'border-t border-gray-100 pt-3' : ''}`}>
                       <span className={`text-sm ${item.bold ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>{item.label}</span>
@@ -627,7 +627,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                         <td className="px-2 py-2 text-center">
                           {valorJan > 0 && (
                             <button onClick={() => propagarLinha(cat.categoriaId, valorJan)}
-                              className="text-xs text-blue-500 hover:text-blue-700 whitespace-nowrap">
+                              className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap">
                               ↔ propagar
                             </button>
                           )}

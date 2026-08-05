@@ -490,7 +490,7 @@ export default function Header({
                         </div>
                       )}
                       <label className="cursor-pointer">
-                        <span className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+                        <span className="text-sm text-gray-600 hover:text-gray-800 font-medium">
                           {logoPreview ? 'Trocar logo' : 'Enviar logo'}
                         </span>
                         <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />

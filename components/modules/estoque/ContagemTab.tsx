@@ -16,7 +16,7 @@ import { fmtData } from '@/lib/format'
 interface Props { tenantSlug: string }
 
 const STATUS_CFG: Record<string, { label: string; cls: string }> = {
-  aberta:    { label: 'Aberta',    cls: 'bg-blue-100 text-blue-700' },
+  aberta:    { label: 'Aberta',    cls: 'bg-gray-100 text-gray-700' },
   concluida: { label: 'Concluída', cls: 'bg-green-100 text-green-700' },
 }
 
@@ -210,7 +210,7 @@ export default function ContagemTab({ tenantSlug }: Props) {
                       className="w-24 h-7 text-sm text-right ml-auto" />
                   </td>
                   <td className={`px-4 py-2 text-right text-sm font-medium ${
-                    diferenca === null ? 'text-gray-300' : diferenca === 0 ? 'text-gray-400' : diferenca > 0 ? 'text-blue-500' : 'text-red-500'
+                    diferenca === null ? 'text-gray-300' : diferenca === 0 ? 'text-gray-400' : diferenca > 0 ? 'text-gray-500' : 'text-red-500'
                   }`}>
                     {diferenca === null ? '—' : (diferenca > 0 ? '+' : '') + diferenca.toFixed(2)}
                   </td>
