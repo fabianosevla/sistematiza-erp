@@ -1,6 +1,16 @@
 'use client'
+// components/ui/HistoricoModal.tsx
+//
+// O nome continua "Modal" de propósito: ele é importado por várias telas e
+// renomear obrigaria a mexer em todas elas. Por dentro, virou painel lateral —
+// a regra do sistema é que só confirmação usa modal.
+//
+// Ganho concreto aqui: o histórico é uma tela de CONFERÊNCIA. Com o painel na
+// direita, o registro que originou a dúvida continua visível atrás, e o botão
+// Expandir abre a linha do tempo inteira quando há muita alteração.
 import { useQuery } from '@tanstack/react-query'
-import { X, Clock, Plus, Pencil, Trash2 } from 'lucide-react'
+import { Clock, Plus, Pencil, Trash2 } from 'lucide-react'
+import { SidePanel } from '@/components/ui/SidePanel'
 
 interface Props {
   tenantSlug: string
@@ -33,21 +43,14 @@ export function HistoricoModal({ tenantSlug, entidade, entidadeId, titulo, onClo
   const itens = Array.isArray(data?.data) ? data.data : []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Histórico de Alterações</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{titulo}</p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Timeline */}
-        <div className="flex-1 overflow-y-auto p-6">
+    <SidePanel
+      titulo="Histórico de Alterações"
+      subtitulo={titulo}
+      onClose={onClose}
+      largura="w-[28vw] min-w-[480px]"
+    >
+      {/* Timeline */}
+      <div className="p-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
@@ -107,10 +110,9 @@ export function HistoricoModal({ tenantSlug, entidade, entidadeId, titulo, onClo
                   )
                 })}
               </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
-    </div>
+    </SidePanel>
   )
 }
