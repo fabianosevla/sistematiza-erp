@@ -1,6 +1,6 @@
 'use client'
-import type { ReactNode } from 'react'
-import { ArrowUpDown } from 'lucide-react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { Filter, X as XIcon, ArrowUpDown } from 'lucide-react'
 import Paginacao from '@/components/ui/Paginacao'
 import { TableSkeleton } from '@/components/ui/Skeleton'
 
@@ -48,6 +48,8 @@ export interface Coluna {
   /** classes extras da célula (sobrescreve o padrão de cor/tamanho) */
   classeCelula?:    string
   classeCabecalho?: string
+  /** mostra o funil no cabeçalho e abre a busca de valores daquela coluna */
+  filtravel?:       boolean
   /** conteúdo customizado; sem isso, mostra item[chave] ou travessão */
   render?:          (item: any) => ReactNode
 }
@@ -78,6 +80,12 @@ interface Props {
   acoes?:         (item: any) => ReactNode
   /** alinhamento da coluna de ações: à direita (padrão) ou centro */
   acoesCentro?:   boolean
+  /** valor ativo de cada filtro de coluna: { chave: valor } */
+  filtros?:       Record<string, string>
+  /** chamado ao escolher ou limpar um filtro; valor vazio significa limpar */
+  onFiltrar?:     (chave: string, valor: string) => void
+  /** valores disponíveis por coluna, calculados sobre o conjunto SEM filtro */
+  opcoesFiltro?:  Record<string, string[]>
   meta?:          MetaPaginacao | null
   onPageChange?:  (page: number) => void
   onLimitChange?: (limit: number) => void
@@ -93,6 +101,104 @@ interface Props {
   alturaMax?:     string
 }
 
+/**
+ * FILTRO DE COLUNA.
+ *
+ * O funil aparece no cabeçalho da coluna marcada como `filtravel`. Abre uma
+ * caixinha com busca livre e a lista de valores que existem de fato naquela
+ * coluna — o operador digita ou clica, sem precisar saber a grafia exata.
+ *
+ * As opções vêm do conjunto SEM filtro (via `opcoesFiltro`). Se viessem dos
+ * itens já filtrados, escolher "PIX" apagaria as outras formas da lista e não
+ * daria mais para trocar de escolha sem limpar antes.
+ */
+function FiltroColuna({
+  titulo, valor, opcoes, onEscolher,
+}: {
+  titulo: string
+  valor: string
+  opcoes: string[]
+  onEscolher: (v: string) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [busca, setBusca]   = useState('')
+  const ref = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!aberto) return
+    function fora(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+    }
+    function esc(e: KeyboardEvent) { if (e.key === 'Escape') setAberto(false) }
+    document.addEventListener('mousedown', fora)
+    window.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', fora); window.removeEventListener('keydown', esc) }
+  }, [aberto])
+
+  const ativo = !!valor
+  const lista = opcoes
+    .filter(o => o.toLowerCase().includes(busca.trim().toLowerCase()))
+    .slice(0, 60)
+
+  return (
+    <span ref={ref} className="relative inline-block align-middle">
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); setAberto(v => !v) }}
+        title={ativo ? `Filtrando por "${valor}"` : `Filtrar ${titulo}`}
+        className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded transition-colors ${
+          ativo ? 'bg-green-100 text-green-700' : 'text-gray-300 hover:text-gray-600 hover:bg-gray-100'
+        }`}
+      >
+        <Filter size={11} />
+      </button>
+
+      {aberto && (
+        <div
+          onClick={e => e.stopPropagation()}
+          className="absolute left-0 z-30 mt-1 w-56 bg-white rounded-xl border border-gray-200 shadow-xl p-2 normal-case tracking-normal"
+        >
+          <input
+            autoFocus
+            value={busca}
+            onChange={e => setBusca(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { onEscolher(busca.trim()); setAberto(false) }
+            }}
+            placeholder={`Buscar ${titulo.toLowerCase()}...`}
+            className="w-full h-8 px-2 rounded-lg border border-gray-200 text-[13px] font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-200"
+          />
+
+          <div className="max-h-52 overflow-y-auto mt-1.5">
+            {lista.length === 0 ? (
+              <p className="px-2 py-3 text-[12px] font-normal text-gray-400 text-center">Nenhum valor</p>
+            ) : lista.map(o => (
+              <button
+                key={o}
+                onClick={() => { onEscolher(o); setAberto(false) }}
+                className={`w-full text-left px-2 py-1.5 rounded-lg text-[13px] font-normal truncate transition-colors ${
+                  o === valor ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+
+          {ativo && (
+            <button
+              onClick={() => { onEscolher(''); setBusca(''); setAberto(false) }}
+              className="w-full mt-1.5 pt-1.5 border-t border-gray-100 flex items-center justify-center gap-1 text-[12px] font-normal text-gray-500 hover:text-gray-800"
+            >
+              <XIcon size={11} /> Limpar filtro
+            </button>
+          )}
+        </div>
+      )}
+    </span>
+  )
+}
+
 const ALINHAMENTO = { left: 'text-left', center: 'text-center', right: 'text-right' }
 
 export function DataTable({
@@ -102,6 +208,7 @@ export function DataTable({
   usarSkeleton = false,
   vazio = 'Nenhum registro encontrado.',
   acoes, acoesCentro = false,
+  filtros, onFiltrar, opcoesFiltro,
   meta, onPageChange, onLimitChange,
   ordem, onOrdenar,
   onLinhaClick, classeLinha,
@@ -152,6 +259,14 @@ export function DataTable({
                 >
                   {col.titulo}
                   {col.ordenavel && <IconeOrdem col={col.chave} />}
+                  {col.filtravel && onFiltrar && (
+                    <FiltroColuna
+                      titulo={col.titulo}
+                      valor={filtros?.[col.chave] ?? ''}
+                      opcoes={opcoesFiltro?.[col.chave] ?? []}
+                      onEscolher={v => onFiltrar(col.chave, v)}
+                    />
+                  )}
                 </th>
               )
             })}

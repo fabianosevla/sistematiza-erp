@@ -124,16 +124,34 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['mensagem_cupom',      body.mensagemCupom],
       ]
 
+      // O guarda `existe.has(col)` evita quebrar num tenant que não rodou as
+      // migrations. O problema é que ele fazia isso EM SILÊNCIO: o usuário
+      // preenchia Nome fantasia, clicava em Salvar, via "salvo com sucesso" e
+      // o campo voltava vazio — sem erro em lugar nenhum.
+      //
+      // Agora o que foi pulado volta na resposta e sai no log do servidor.
+      const gravados: string[] = []
+      const ignorados: string[] = []
+
       for (const [col, val] of updates) {
-        if (val !== undefined && existe.has(col)) {
-          await client.query(
-            `UPDATE t_configuracoes_tenant SET ${col} = $1`,
-            [val]
-          )
-        }
+        if (val === undefined) continue
+        if (!existe.has(col)) { ignorados.push(col); continue }
+        await client.query(
+          `UPDATE t_configuracoes_tenant SET ${col} = $1`,
+          [val]
+        )
+        gravados.push(col)
       }
 
-      return ok({ updated: true })
+      if (ignorados.length > 0) {
+        console.warn(
+          `[configuracoes] ${tenant.schemaName}: colunas ausentes em ` +
+          `t_configuracoes_tenant, valores NÃO gravados → ${ignorados.join(', ')}. ` +
+          `Rode as migrations correspondentes (ex.: scripts/migrate-empresa-dados.js).`
+        )
+      }
+
+      return ok({ updated: true, gravados, ignorados })
     } finally { client.release() }
   } catch (err) { return serverError(err) }
 }

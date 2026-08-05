@@ -26,9 +26,9 @@ export async function GET(req: NextRequest, { params }: Params) {
       const dataFim    = searchParams.get('dataFim')    ?? undefined
       const service    = new ConsultasService(db)
 
-      if (tipo === 'entradas-estoque') {
-        return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim }))
-      }
+      if (tipo === 'entradas-estoque') return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim }))
+      if (tipo === 'gastos-insumos')   return ok(await service.gastosInsumosPorPeriodo({ dataInicio, dataFim }))
+      if (tipo === 'despesas')         return ok(await service.despesasPorPeriodo({ dataInicio, dataFim }))
       return ok(await service.vendasPorPeriodo({ dataInicio, dataFim }))
     } finally { release() }
   } catch (err) { return serverError(err) }
