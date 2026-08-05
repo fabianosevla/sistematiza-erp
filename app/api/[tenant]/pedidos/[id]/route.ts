@@ -50,7 +50,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 // o pedido não foi entregue — depois da entrega existe venda emitida, e mudar
 // os itens tornaria a venda mentirosa.
 const atualizarPedidoSchema = z.object({
-  clienteId:        z.number().int().optional(),
+  clienteId:         z.number().int().optional(),
+  // Cliente avulso: só um nome, para quem não vale cadastrar.
+  nomeClienteAvulso: z.string().max(200).optional().nullable(),
   tipoVenda:        z.enum(['balcao', 'entrega']).default('entrega'),
   dataPedido:       z.string(),
   previsaoProducao: z.string().optional(),
@@ -102,7 +104,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
       // Cabeçalho do pedido + nome do cliente (para a conta a receber)
       const cab = await client.query(`
-        SELECT p.pedido_id, p.status, p.cliente_id, p.venda_id,
+        SELECT p.pedido_id, p.status, p.cliente_id, p.nome_cliente_avulso, p.venda_id,
                p.tipo_venda, p.endereco_entrega, p.observacao,
                p.previsao_entrega, p.valor_entrega,
                cl.nome_completo AS cliente_razao,
@@ -172,8 +174,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       const subtotal = itens.reduce((a: number, i: any) => a + Number(i.subtotal ?? 0), 0)
       const total    = subtotal + Number(pedido.valor_entrega ?? 0)
 
+      // Nome que vai na conta a receber. Cliente cadastrado tem prioridade;
+      // sem ele, vale o nome avulso digitado no pedido. A conta fica sem
+      // cliente_id nesse caso — é o limite do avulso.
       const nomeCliente = String(pedido.cliente_fantasia ?? '').trim()
         || String(pedido.cliente_razao ?? '').trim()
+        || String(pedido.nome_cliente_avulso ?? '').trim()
         || null
 
       // Vencimento = previsão de entrega. Sem previsão, vence hoje.

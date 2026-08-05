@@ -1,3 +1,4 @@
+// ESTE ARQUIVO VAI EM: lib/db/schemas/producao.ts
 import {
   pgTable, serial, integer, varchar, boolean, timestamp, date, numeric,
 } from 'drizzle-orm/pg-core'
@@ -66,6 +67,10 @@ export const dbPedido = pgTable('t_pedido', {
   pedidoId:          serial('pedido_id').primaryKey(),
   ...auditFields,
   clienteId:         integer('cliente_id'),
+  // Cliente avulso: quem compra uma vez e não vale cadastrar. É só um nome —
+  // não tem histórico nem tabela de preço, e a conta a receber gerada na
+  // entrega fica sem cliente_id. Ver scripts/migrate-pedido-cliente-avulso.js
+  nomeClienteAvulso: varchar('nome_cliente_avulso', { length: 200 }),
   tipoVenda:         varchar('tipo_venda', { length: 20 }).notNull().default('entrega'),
   status:            varchar('status', { length: 20 }).notNull().default('pendente'),
   dataPedido:        timestamp('data_pedido', { withTimezone: true }).notNull(),

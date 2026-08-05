@@ -22,7 +22,7 @@ export class PedidoService {
   async list({ status }: { status?: string } = {}) {
     const res = await this.db.execute(sql`
       SELECT
-        p.pedido_id, p.cliente_id, p.tipo_venda, p.status,
+        p.pedido_id, p.cliente_id, p.nome_cliente_avulso, p.tipo_venda, p.status,
         p.data_pedido, p.previsao_producao, p.previsao_entrega,
         p.valor_entrega, p.endereco_entrega, p.observacao, p.venda_id,
         p.active_flg, p.modification_num,
@@ -39,13 +39,19 @@ export class PedidoService {
     return (res.rows as any[]).map(r => {
       const fantasia = String(r.cliente_fantasia ?? '').trim()
       const razao    = String(r.cliente_razao ?? '').trim()
+      const avulso   = String(r.nome_cliente_avulso ?? '').trim()
       return {
         pedidoId:         r.pedido_id,
         clienteId:        r.cliente_id,
-        // Sem cliente_id, "Consumidor Final" é a verdade — o pedido foi
-        // lançado sem identificar quem comprou.
-        clienteNome:      r.cliente_id ? (fantasia || razao || `Cliente #${r.cliente_id}`) : null,
+        nomeClienteAvulso: avulso || null,
+        // Ordem: cliente cadastrado → nome avulso digitado → nulo, que a tela
+        // mostra como "Consumidor Final".
+        clienteNome:      r.cliente_id
+          ? (fantasia || razao || `Cliente #${r.cliente_id}`)
+          : (avulso || null),
         clienteRazao:     razao || null,
+        // Marca quem não é cliente de verdade — a tela pode sinalizar.
+        clienteAvulso:    !r.cliente_id && !!avulso,
         tipoVenda:        r.tipo_venda,
         status:           r.status,
         dataPedido:       r.data_pedido,
@@ -75,7 +81,7 @@ export class PedidoService {
     ))
 
     // O modal de detalhe também mostra o cliente. Mesma regra da listagem.
-    let clienteNome: string | null = null
+    let clienteNome: string | null = (pedido as any).nomeClienteAvulso?.trim() || null
     let clienteRazao: string | null = null
     if (pedido.clienteId) {
       const cli = await this.db.execute(sql`
@@ -92,8 +98,9 @@ export class PedidoService {
     return { ...pedido, itens, clienteNome, clienteRazao }
   }
 
-  async criar({ clienteId, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
-    clienteId?:        number
+  async criar({ clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
+    clienteId?:         number
+    nomeClienteAvulso?: string
     tipoVenda:         string
     dataPedido:        string
     previsaoProducao?: string
@@ -108,6 +115,9 @@ export class PedidoService {
 
     const [pedido] = await this.db.insert(dbPedido).values({
       clienteId:        clienteId ?? null,
+      // Só guarda o nome avulso quando NÃO há cliente cadastrado. Com os dois
+      // preenchidos, o cadastro manda e o texto solto viraria ruído.
+      nomeClienteAvulso: clienteId ? null : (nomeClienteAvulso?.trim() || null),
       tipoVenda,
       status:           'pendente',
       dataPedido:       new Date(dataPedido),
@@ -149,8 +159,9 @@ export class PedidoService {
    * a rota só permite editar pedidos 'pendente'/'producao', onde o estoque
    * ainda não foi movimentado.
    */
-  async atualizar(id: number, { clienteId, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
-    clienteId?:        number
+  async atualizar(id: number, { clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
+    clienteId?:         number
+    nomeClienteAvulso?: string
     tipoVenda:         string
     dataPedido:        string
     previsaoProducao?: string
@@ -165,6 +176,7 @@ export class PedidoService {
 
     await this.db.update(dbPedido).set({
       clienteId:        clienteId ?? null,
+      nomeClienteAvulso: clienteId ? null : (nomeClienteAvulso?.trim() || null),
       tipoVenda,
       dataPedido:       new Date(dataPedido),
       previsaoProducao: previsaoProducao ? new Date(previsaoProducao) : null,
