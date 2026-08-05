@@ -76,6 +76,42 @@ async function calcular(db: any): Promise<Notif[]> {
     })
   }
 
+  // Contas a receber VENCIDAS — cobrança do dia a dia.
+  //
+  // A mensagem inclui os dias de atraso. Como esse número muda todo dia, a
+  // assinatura gravada em t_notificacao_lida deixa de bater e o alerta
+  // reaparece — é o lembrete diário até a conta ser baixada.
+  try {
+    const vencidas = await db.execute(sql`
+      SELECT conta_receber_id, descricao, nome_cliente,
+             (valor_original - valor_recebido) AS saldo,
+             data_vencimento::text AS vencimento,
+             (CURRENT_DATE - data_vencimento) AS dias_atraso
+      FROM t_conta_receber
+      WHERE active_flg = true
+        AND status = 'aberta'
+        AND data_vencimento < CURRENT_DATE
+        AND (valor_original - valor_recebido) > 0
+      ORDER BY data_vencimento ASC
+      LIMIT 10
+    `)
+    for (const r of vencidas.rows as any[]) {
+      const saldo = (Number(r.saldo ?? 0) / 100)
+        .toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      const dias  = Number(r.dias_atraso ?? 0)
+      const quem  = String(r.nome_cliente ?? '').trim()
+      const venc  = String(r.vencimento ?? '').split('-').reverse().join('/')
+      notifs.push({
+        id: `receber-${r.conta_receber_id}`, tipo: 'financeiro',
+        titulo: 'Conta a receber vencida',
+        mensagem: `${quem || r.descricao} — ${saldo}, vencida em ${venc} (${dias} dia${dias === 1 ? '' : 's'} de atraso)`,
+        lida: false,
+      })
+    }
+  } catch (_) {
+    // Financeiro Completo pode não estar ativo / tabela ausente — ignora
+  }
+
   // Plano de Ação — itens pendentes (atrasados primeiro)
   try {
     const planoAcaoPendente = await db.execute(sql`

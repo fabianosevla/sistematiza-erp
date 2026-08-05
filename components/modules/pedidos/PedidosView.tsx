@@ -228,13 +228,23 @@ export default function PedidosView({ tenantSlug }: Props) {
       qc.invalidateQueries({ queryKey: ['pedido', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['dashboard', tenantSlug] })
+      // A entrega gera venda e conta a receber — as duas telas precisam relerem.
+      qc.invalidateQueries({ queryKey: ['vendas', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['contas-receber', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['contas-receber-kpis', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
       const labels: Record<string, string> = {
-        producao: 'Pedido em produção!',
-        pronto:   'Estoque atualizado — produto marcado como pronto!',
-        entregue: 'Entrega confirmada — produto debitado do estoque!',
+        producao: 'Pedido em produção.',
+        // Pronto não mexe mais em estoque — quem soma é o registro de produção.
+        pronto:   'Pedido pronto para entrega.',
+        entregue: 'Entrega confirmada.',
         cancelado:'Pedido cancelado.',
       }
-      toast(labels[vars.status] ?? 'Status atualizado!')
+      // A entrega devolve uma mensagem própria, com o número da venda gerada,
+      // o vencimento da conta a receber e o aviso de estoque insuficiente.
+      const doServidor = _?.data?.message
+      toast(doServidor ?? labels[vars.status] ?? 'Status atualizado!')
     },
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })

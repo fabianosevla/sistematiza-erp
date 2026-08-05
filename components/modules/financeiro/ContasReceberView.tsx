@@ -4,19 +4,24 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, CheckCircle } from 'lucide-react'
+import { Plus, X, Trash2, CheckCircle, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useToast } from '@/components/ui/Toast'
-import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
+import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-
 function isVencida(row: any) {
   return row.status === 'aberta' && row.dataVencimento < new Date().toISOString().slice(0, 10)
+}
+
+const FORM_VAZIO = {
+  descricao: '', nomeCliente: '', categoria: '', numeroDocumento: '',
+  valorOriginal: '', dataEmissao: new Date().toISOString().slice(0, 10),
+  dataVencimento: '', formaRecebimento: '', observacao: '', totalParcelas: '1',
 }
 
 export default function ContasReceberView({ tenantSlug }: Props) {
@@ -27,14 +32,12 @@ export default function ContasReceberView({ tenantSlug }: Props) {
   const [filtroStatus, setFiltroStatus] = useState('todas')
   const [busca, setBusca]               = useState('')
   const [showModal, setShowModal]       = useState(false)
+  // Conta em edição. Null = o modal está criando.
+  const [editando, setEditando]         = useState<any | null>(null)
   const [showBaixa, setShowBaixa]       = useState<any | null>(null)
   const [confirmDel, setConfirmDel]     = useState<any | null>(null)
 
-  const [form, setForm] = useState({
-    descricao: '', nomeCliente: '', categoria: '', numeroDocumento: '',
-    valorOriginal: '', dataEmissao: new Date().toISOString().slice(0, 10),
-    dataVencimento: '', formaRecebimento: '', observacao: '', totalParcelas: '1',
-  })
+  const [form, setForm] = useState({ ...FORM_VAZIO })
   const setF = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   const [baixaForm, setBaixaForm] = useState({
@@ -45,6 +48,8 @@ export default function ContasReceberView({ tenantSlug }: Props) {
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['contas-receber', tenantSlug] })
     qc.invalidateQueries({ queryKey: ['contas-receber-kpis', tenantSlug] })
+    // A notificação de vencidas é recalculada a partir destes títulos.
+    qc.invalidateQueries({ queryKey: ['notificacoes', tenantSlug] })
   }
 
   const { data: kpisRaw } = useQuery({
@@ -62,21 +67,79 @@ export default function ContasReceberView({ tenantSlug }: Props) {
     },
   })
 
+  function abrirNova() {
+    setEditando(null)
+    setForm({ ...FORM_VAZIO })
+    setShowModal(true)
+  }
+
+  // Editar traz a conta para o mesmo modal. O caso mais comum é só mudar o
+  // vencimento — um pedido entregue nasce vencendo na previsão de entrega, e
+  // o combinado com o cliente às vezes é outro.
+  function abrirEdicao(r: any) {
+    setEditando(r)
+    setForm({
+      descricao:        r.descricao ?? '',
+      nomeCliente:      r.nomeCliente ?? '',
+      categoria:        r.categoria ?? '',
+      numeroDocumento:  r.numeroDocumento ?? '',
+      valorOriginal:    ((r.valorOriginal ?? 0) / 100).toFixed(2),
+      dataEmissao:      toInputDate(r.dataEmissao),
+      dataVencimento:   toInputDate(r.dataVencimento),
+      formaRecebimento: r.formaRecebimento ?? '',
+      observacao:       r.observacao ?? '',
+      totalParcelas:    String(r.totalParcelas ?? 1),
+    })
+    setShowModal(true)
+  }
+
+  function fecharModal() {
+    setShowModal(false)
+    setEditando(null)
+    setForm({ ...FORM_VAZIO })
+  }
+
   const criarMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(api, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, valorOriginal: parseFloat(form.valorOriginal.replace(',', '.')) || 0, totalParcelas: parseInt(form.totalParcelas) || 1 }),
+        body: JSON.stringify({
+          ...form,
+          valorOriginal: parseFloat(form.valorOriginal.replace(',', '.')) || 0,
+          totalParcelas: parseInt(form.totalParcelas) || 1,
+        }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.message)
       return d
     },
-    onSuccess: () => {
-      inv(); setShowModal(false)
-      setForm({ descricao: '', nomeCliente: '', categoria: '', numeroDocumento: '', valorOriginal: '', dataEmissao: new Date().toISOString().slice(0, 10), dataVencimento: '', formaRecebimento: '', observacao: '', totalParcelas: '1' })
-      toast('Conta a receber criada!')
+    onSuccess: () => { inv(); fecharModal(); toast('Conta a receber criada!') },
+    onError: (e: any) => toast(e.message || 'Erro.', 'error'),
+  })
+
+  // Só os campos editáveis vão no PUT. Mandar o objeto inteiro levaria junto
+  // o id e os campos de auditoria, que a rota gravaria por cima.
+  const editarMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`${api}/${editando.contaReceberId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          descricao:        form.descricao,
+          nomeCliente:      form.nomeCliente || null,
+          categoria:        form.categoria || null,
+          numeroDocumento:  form.numeroDocumento || null,
+          valorOriginal:    parseFloat(form.valorOriginal.replace(',', '.')) || 0,
+          dataEmissao:      form.dataEmissao,
+          dataVencimento:   form.dataVencimento,
+          formaRecebimento: form.formaRecebimento || null,
+          observacao:       form.observacao || null,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao salvar')
+      return d
     },
+    onSuccess: () => { inv(); fecharModal(); toast('Conta atualizada!') },
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
 
@@ -105,6 +168,8 @@ export default function ContasReceberView({ tenantSlug }: Props) {
 
   const kpis = kpisRaw?.data
   const rows = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
+
+  const salvando = criarMut.isPending || editarMut.isPending
 
   return (
     <div className="space-y-5">
@@ -137,7 +202,7 @@ export default function ContasReceberView({ tenantSlug }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar..." className="h-8 text-sm w-48" />
-          <Button onClick={() => setShowModal(true)} size="sm">
+          <Button onClick={abrirNova} size="sm">
             <Plus size={14} className="mr-1" /> Nova conta
           </Button>
         </div>
@@ -193,10 +258,16 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
                       {r.status !== 'recebida' && (
-                        <button onClick={() => { setShowBaixa(r); setBaixaForm({ valorRecebido: ((r.valorOriginal - r.valorRecebido) / 100).toFixed(2), dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: r.formaRecebimento ?? '' }) }}
-                          className="p-1 text-green-500 hover:text-green-700" title="Baixar">
-                          <CheckCircle size={14} />
-                        </button>
+                        <>
+                          <button onClick={() => abrirEdicao(r)}
+                            className="p-1 text-blue-400 hover:text-blue-600" title="Editar (vencimento, valor, dados)">
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={() => { setShowBaixa(r); setBaixaForm({ valorRecebido: ((r.valorOriginal - r.valorRecebido) / 100).toFixed(2), dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: r.formaRecebimento ?? '' }) }}
+                            className="p-1 text-green-500 hover:text-green-700" title="Baixar">
+                            <CheckCircle size={14} />
+                          </button>
+                        </>
                       )}
                       <button onClick={() => setConfirmDel(r)} className="p-1 text-gray-300 hover:text-red-500">
                         <Trash2 size={13} />
@@ -210,13 +281,20 @@ export default function ContasReceberView({ tenantSlug }: Props) {
         </table>
       </div>
 
-      {/* Modal nova conta */}
+      {/* Modal nova conta / edição */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
-              <h2 className="text-lg font-semibold">Nova conta a receber</h2>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {editando ? 'Editar conta a receber' : 'Nova conta a receber'}
+                </h2>
+                {editando?.origem === 'pedido' && (
+                  <p className="text-xs text-gray-400 mt-0.5">Gerada pela entrega de um pedido</p>
+                )}
+              </div>
+              <button onClick={fecharModal} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
@@ -238,7 +316,8 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                 </div>
                 <div>
                   <Label>Valor total (R$) *</Label>
-                  <Input type="number" value={form.valorOriginal} onChange={e => setF('valorOriginal', e.target.value)} className="mt-1" placeholder="0,00" />
+                  <Input type="number" step="0.01" inputMode="decimal" value={form.valorOriginal}
+                    onChange={e => setF('valorOriginal', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
                 </div>
                 <div>
                   <Label>Data emissão *</Label>
@@ -248,20 +327,31 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                   <Label>Vencimento *</Label>
                   <Input type="date" value={form.dataVencimento} onChange={e => setF('dataVencimento', e.target.value)} className="mt-1" />
                 </div>
-                <div>
-                  <Label>Parcelas</Label>
-                  <Input type="number" min="1" max="48" value={form.totalParcelas} onChange={e => setF('totalParcelas', e.target.value)} className="mt-1" />
-                </div>
+                {/* Parcelamento só faz sentido ao criar: a conta existente já
+                    nasceu com o número de parcelas dela. */}
+                {!editando && (
+                  <div>
+                    <Label>Parcelas</Label>
+                    <Input type="number" min="1" max="48" value={form.totalParcelas}
+                      onChange={e => setF('totalParcelas', e.target.value)} className="sem-spinner mt-1" />
+                  </div>
+                )}
                 <div>
                   <Label>Forma de recebimento</Label>
                   <Input value={form.formaRecebimento} onChange={e => setF('formaRecebimento', e.target.value)} className="mt-1" placeholder="PIX, Boleto..." />
                 </div>
               </div>
+              <div>
+                <Label>Observação</Label>
+                <Input value={form.observacao} onChange={e => setF('observacao', e.target.value)} className="mt-1" />
+              </div>
             </div>
             <div className="flex justify-end gap-3 p-6 border-t border-gray-100 flex-shrink-0">
-              <Button variant="outline" onClick={() => setShowModal(false)}>Cancelar</Button>
-              <Button onClick={() => criarMut.mutate()} disabled={!form.descricao || !form.valorOriginal || !form.dataVencimento || criarMut.isPending}>
-                {criarMut.isPending ? 'Salvando...' : 'Criar conta'}
+              <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
+              <Button
+                onClick={() => (editando ? editarMut.mutate() : criarMut.mutate())}
+                disabled={!form.descricao || !form.valorOriginal || !form.dataVencimento || salvando}>
+                {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Criar conta'}
               </Button>
             </div>
           </div>
@@ -286,7 +376,8 @@ export default function ContasReceberView({ tenantSlug }: Props) {
               </div>
               <div>
                 <Label>Valor recebido (R$) *</Label>
-                <Input type="number" value={baixaForm.valorRecebido} onChange={e => setBF('valorRecebido', e.target.value)} className="mt-1" />
+                <Input type="number" step="0.01" inputMode="decimal" value={baixaForm.valorRecebido}
+                  onChange={e => setBF('valorRecebido', e.target.value)} className="sem-spinner mt-1" />
               </div>
               <div>
                 <Label>Data recebimento *</Label>
