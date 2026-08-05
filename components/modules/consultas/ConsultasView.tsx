@@ -19,113 +19,25 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import {
+  SeletorPeriodo, PERIODICIDADES, intervaloDe, deslocar,
+  type Periodicidade,
+} from '@/components/ui/SeletorPeriodo'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-type Periodicidade = 'diaria' | 'semanal' | 'mensal' | 'trimestral' | 'semestral' | 'anual'
-type Aba           = 'vendas' | 'entradas-estoque'
-
-const PERIODICIDADES: { valor: Periodicidade; rotulo: string }[] = [
-  { valor: 'diaria',     rotulo: 'Diária' },
-  { valor: 'semanal',    rotulo: 'Semanal' },
-  { valor: 'mensal',     rotulo: 'Mensal' },
-  { valor: 'trimestral', rotulo: 'Trimestral' },
-  { valor: 'semestral',  rotulo: 'Semestral' },
-  { valor: 'anual',      rotulo: 'Anual' },
-]
+type Aba = 'vendas' | 'entradas-estoque'
 
 const ABAS: { valor: Aba; rotulo: string; icone: any }[] = [
   { valor: 'vendas',           rotulo: 'Venda por período',              icone: ShoppingCart },
   { valor: 'entradas-estoque', rotulo: 'Entrada de estoque por período', icone: PackagePlus },
 ]
-
-const MESES = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro']
-
-// ── Cálculo do intervalo ────────────────────────────────────────────────────
-//
-// Toda a navegação (setas, "Hoje", escolha manual de data) move APENAS a
-// âncora. O intervalo é sempre derivado dela, nunca guardado em estado — assim
-// é impossível a tela ficar com início e fim inconsistentes entre si.
-
-function iso(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function intervaloDe(periodicidade: Periodicidade, ancora: Date) {
-  const a = new Date(ancora.getFullYear(), ancora.getMonth(), ancora.getDate())
-  let inicio: Date
-  let fim: Date
-  let rotulo: string
-
-  switch (periodicidade) {
-    case 'diaria': {
-      inicio = new Date(a)
-      fim    = new Date(a)
-      rotulo = a.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
-      break
-    }
-    case 'semanal': {
-      // Segunda a domingo. getDay() devolve 0 para domingo, por isso o domingo
-      // recua 6 dias em vez de avançar — senão ele cairia na semana seguinte.
-      const diaSemana = a.getDay()
-      const recuo     = diaSemana === 0 ? 6 : diaSemana - 1
-      inicio = new Date(a); inicio.setDate(a.getDate() - recuo)
-      fim    = new Date(inicio); fim.setDate(inicio.getDate() + 6)
-      rotulo = `${inicio.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} a ${fim.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-      break
-    }
-    case 'mensal': {
-      inicio = new Date(a.getFullYear(), a.getMonth(), 1)
-      fim    = new Date(a.getFullYear(), a.getMonth() + 1, 0)
-      rotulo = `${MESES[a.getMonth()]} de ${a.getFullYear()}`
-      break
-    }
-    case 'trimestral': {
-      const t = Math.floor(a.getMonth() / 3)
-      inicio = new Date(a.getFullYear(), t * 3, 1)
-      fim    = new Date(a.getFullYear(), t * 3 + 3, 0)
-      rotulo = `${t + 1}º trimestre de ${a.getFullYear()}`
-      break
-    }
-    case 'semestral': {
-      const s = a.getMonth() < 6 ? 0 : 1
-      inicio = new Date(a.getFullYear(), s * 6, 1)
-      fim    = new Date(a.getFullYear(), s * 6 + 6, 0)
-      rotulo = `${s + 1}º semestre de ${a.getFullYear()}`
-      break
-    }
-    case 'anual':
-    default: {
-      inicio = new Date(a.getFullYear(), 0, 1)
-      fim    = new Date(a.getFullYear(), 11, 31)
-      rotulo = String(a.getFullYear())
-      break
-    }
-  }
-
-  return { inicio: iso(inicio), fim: iso(fim), rotulo }
-}
-
-/** Move a âncora um período inteiro para frente ou para trás. */
-function deslocar(periodicidade: Periodicidade, ancora: Date, passo: 1 | -1) {
-  const d = new Date(ancora)
-  switch (periodicidade) {
-    case 'diaria':     d.setDate(d.getDate() + passo); break
-    case 'semanal':    d.setDate(d.getDate() + passo * 7); break
-    case 'mensal':     d.setMonth(d.getMonth() + passo); break
-    case 'trimestral': d.setMonth(d.getMonth() + passo * 3); break
-    case 'semestral':  d.setMonth(d.getMonth() + passo * 6); break
-    case 'anual':      d.setFullYear(d.getFullYear() + passo); break
-  }
-  return d
-}
 
 const fmtDataHora = (d: any) =>
   d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -258,7 +170,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
           </InfoTip>
         </div>
 
-        {/* Navegador do período */}
+        {/* Setas para andar de período em período, com o seletor de calendário
+            no meio. O rótulo do intervalo fica dentro do próprio seletor —
+            antes aparecia duas vezes, aqui e no botão. */}
         <div className="flex items-center gap-1">
           <button
             onClick={() => setAncora(a => deslocar(periodicidade, a, -1))}
@@ -267,9 +181,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
           >
             <ChevronLeft size={16} />
           </button>
-          <div className="min-w-[190px] h-9 px-3 flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
-            <span className="text-sm font-medium text-gray-800">{periodo.rotulo}</span>
-          </div>
+
+          <SeletorPeriodo periodicidade={periodicidade} valor={ancora} onChange={setAncora} />
+
           <button
             onClick={() => setAncora(a => deslocar(periodicidade, a, 1))}
             title="Próximo período"
@@ -278,25 +192,6 @@ export default function ConsultasView({ tenantSlug }: Props) {
             <ChevronRight size={16} />
           </button>
         </div>
-
-        {/* Salto direto por data — substitui o antigo seletor de semanas */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Ir para</span>
-          <Input
-            type="date"
-            value={iso(ancora)}
-            onChange={e => { if (e.target.value) setAncora(new Date(`${e.target.value}T12:00:00`)) }}
-            className="h-9 w-[150px] text-sm"
-          />
-        </div>
-
-        <Button variant="outline" size="sm" onClick={() => setAncora(new Date())}>
-          Hoje
-        </Button>
-
-        <span className="ml-auto text-xs text-gray-400">
-          {periodo.inicio.split('-').reverse().join('/')} — {periodo.fim.split('-').reverse().join('/')}
-        </span>
       </div>
 
       {/* ── ABAS ─────────────────────────────────────────────────────────── */}
