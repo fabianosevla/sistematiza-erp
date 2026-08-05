@@ -1,8 +1,7 @@
 import { eq, and } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbEntradaNfe, dbEntradaNfeItem } from '@/lib/db/schemas/estoque-avancado'
-import { PedidoCompraService } from '@/lib/services/compras/PedidoCompraService'
-import { ConferenciaService } from '@/lib/services/compras/ConferenciaService'
+import { ComprasService } from '@/lib/services/compras/ComprasService'
 
 interface ItemNfeParsed {
   codigoXml: string
@@ -116,11 +115,22 @@ export class EntradaNfeService {
   }
 
   /**
-   * Confirma a entrada: todos os itens precisam estar mapeados pra um
-   * insumo. Gera um Pedido de Compra + Conferência já finalizada (entrada
-   * de NF-e significa que a mercadoria já chegou de fato), o que dá
-   * entrada automática no estoque e gera a Conta a Pagar — reaproveitando
-   * o fluxo de Compras inteiro, sem duplicar lógica.
+   * Confirma a entrada da NF-e.
+   *
+   * Antes este método montava um Pedido de Compra, abria uma Conferência,
+   * lançava item a item e finalizava — três objetos só para dizer "a
+   * mercadoria chegou". Esse fluxo saiu junto com as abas de Compras.
+   *
+   * Agora delega para ComprasService.criar, que numa transação só grava a
+   * compra, sobe o estoque, registra a movimentação, atualiza o custo do
+   * insumo e lança o financeiro.
+   *
+   * Dois ganhos que o caminho antigo não tinha: a entrada passa a aparecer em
+   * Consultas → Entradas (havia estoque subindo sem linha de extrato), e o
+   * preco_custo do insumo passa a valer o preço da nota.
+   *
+   * NF-e entra como compra A PRAZO quando a nota traz vencimento; sem
+   * vencimento, entra à vista na data da emissão.
    */
   async confirmar(entradaId: number, userId: number) {
     const entrada = await this.findById(entradaId)
@@ -131,31 +141,29 @@ export class EntradaNfeService {
       throw new Error(`${naoMapeados.length} item(ns) ainda não foram vinculados a um insumo.`)
     }
 
-    const pedidoSvc = new PedidoCompraService(this.db)
-    const pedido = await pedidoSvc.criar({
+    const dataCompra = String(
+      (entrada as any).dataEmissao ?? new Date().toISOString().slice(0, 10),
+    ).slice(0, 10)
+
+    const resultado = await new ComprasService(this.db).criar({
       nomeFornecedor: entrada.nomeFornecedor || 'Fornecedor (NF-e)',
-      observacao: `Gerado automaticamente da NF-e nº ${entrada.numeroNfe} (chave ${entrada.chaveAcesso})`,
+      dataCompra,
+      documento:  entrada.numeroNfe ? String(entrada.numeroNfe) : undefined,
+      condicao:   'a_vista',
+      observacao: `NF-e nº ${entrada.numeroNfe} · chave ${entrada.chaveAcesso}`,
       itens: entrada.itens.map(i => ({
-        insumoId: i.insumoId!, nomeInsumo: i.descricaoXml,
-        quantidade: Number(i.quantidade), precoUnitario: i.valorUnitario / 100,
+        insumoId:      i.insumoId!,
+        nomeInsumo:    i.descricaoXml,
+        quantidade:    Number(i.quantidade),
+        valorUnitario: Number(i.valorUnitario),   // já em centavos
       })),
       userId,
     })
 
-    const confSvc = new ConferenciaService(this.db)
-    const conferencia = await confSvc.iniciar(pedido.pedidoId, userId)
-
-    // Lança a quantidade total recebida = quantidade da nota (recebimento integral)
-    const confDetail = await confSvc.findById(conferencia.conferenciaId)
-    for (const item of confDetail!.itens) {
-      await confSvc.lancarItem(item.itemId, Number(item.quantidadePedida), userId)
-    }
-    const resultado = await confSvc.finalizar(conferencia.conferenciaId, { gerarContaPagar: true }, userId)
-
     await this.db.update(dbEntradaNfe).set({
-      status: 'processada', pedidoId: pedido.pedidoId, updatedDt: new Date(), updatedBy: userId,
+      status: 'processada', updatedDt: new Date(), updatedBy: userId,
     }).where(eq(dbEntradaNfe.entradaId, entradaId))
 
-    return { pedidoId: pedido.pedidoId, ...resultado }
+    return resultado
   }
 }

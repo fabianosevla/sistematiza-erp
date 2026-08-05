@@ -1,344 +1,683 @@
 'use client'
-import { useState } from 'react'
+// ESTE ARQUIVO VAI EM: components/modules/compras/CompraRapidaView.tsx
+//
+// COMPRAS — TELA ÚNICA.
+//
+// Três blocos, na ordem em que a compra acontece de verdade:
+//
+//   1. PRECISA COMPRAR   o que está faltando, com quantidade sugerida
+//   2. HISTÓRICO         o que já foi comprado, com filtro e período
+//   3. NOVA COMPRA       o painel lateral onde a compra é registrada
+//
+// O bloco 1 existe porque a tela antiga era uma folha em branco: o operador
+// tinha que saber de cabeça o que comprar. A sugestão vem do estoque mínimo
+// somado ao consumo previsto da produção agendada, e cada linha entra no
+// carrinho com um clique.
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, ShoppingCart, Package, Layers } from 'lucide-react'
-import { Button }       from '@/components/ui/button'
-import { Input }        from '@/components/ui/input'
-import { Label }        from '@/components/ui/label'
-import { useToast }     from '@/components/ui/Toast'
+import {
+  Plus, Trash2, ShoppingBag, AlertTriangle, X, ChevronLeft, ChevronRight,
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { SidePanel } from '@/components/ui/SidePanel'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
-import { InfoTip }      from '@/components/ui/InfoTip'
-import { Aviso }        from '@/components/ui/Aviso'
-import { PageHeader }   from '@/components/ui/PageHeader'
-import { FormModal }    from '@/components/ui/FormModal'
-import { BotaoIcone }   from '@/components/ui/BotaoIcone'
-import { fmtMoeda as fmt, fmtData } from '@/lib/format'
+import { useToast } from '@/components/ui/Toast'
+import {
+  SeletorPeriodo, PERIODICIDADES, intervaloDe, deslocar,
+  type Periodicidade,
+} from '@/components/ui/SeletorPeriodo'
+import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-type TipoItem = 'insumo' | 'produto'
+interface ItemCarrinho {
+  insumoId:      number | null
+  nomeInsumo:    string
+  unidade:       string
+  quantidade:    number
+  valorUnitario: number   // centavos
+}
+
+const POR_PAGINA = 25
+const hojeISO = () => new Date().toISOString().slice(0, 10)
+
+const fmtData = (d: any) =>
+  d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
 export default function CompraRapidaView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
   const api       = `/api/${tenantSlug}/compras`
 
-  const [showModal, setShowModal]   = useState(false)
-  const [confirmDel, setConfirmDel] = useState<any>(null)
-  const [tipoItem, setTipoItem]     = useState<TipoItem>('insumo')
-  const [form, setForm] = useState({
-    insumoId:       '',
-    produtoId:      '',
-    nomeItem:       '',
-    nomeFornecedor: '',
-    dataEntrada:    new Date().toISOString().slice(0, 10),
-    valorUnitario:  '',
-    quantidade:     '',
-    observacao:     '',
-  })
-  const setF = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
+  // ── Período do histórico ─────────────────────────────────────────────────
+  const [periodicidade, setPeriodicidade] = useState<Periodicidade>('mensal')
+  const [ancora, setAncora]               = useState<Date>(() => new Date())
+  const [fimCustom, setFimCustom]         = useState<Date | null>(null)
+  const periodo = useMemo(
+    () => intervaloDe(periodicidade, ancora, fimCustom),
+    [periodicidade, ancora, fimCustom],
+  )
 
-  const { data: comprasRaw, isLoading } = useQuery({
-    queryKey: ['compras-rapidas', tenantSlug],
-    queryFn:  async () => (await fetch(api)).json(),
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  const [pagina, setPagina]   = useState(1)
+  const [painel, setPainel]   = useState(false)
+  const [confirmCancelar, setConfirmCancelar] = useState<any>(null)
+
+  // ── Formulário ───────────────────────────────────────────────────────────
+  const [fornecedorId, setFornecedorId]     = useState<number | null>(null)
+  const [nomeFornecedor, setNomeFornecedor] = useState('')
+  const [buscaForn, setBuscaForn]           = useState('')
+  const [dataCompra, setDataCompra]         = useState(hojeISO())
+  const [documento, setDocumento]           = useState('')
+  const [condicao, setCondicao]             = useState<'a_vista' | 'a_prazo'>('a_vista')
+  const [formaPagamento, setFormaPagamento] = useState('')
+  const [dataVencimento, setDataVencimento] = useState('')
+  const [observacao, setObservacao]         = useState('')
+  const [carrinho, setCarrinho]             = useState<ItemCarrinho[]>([])
+  const [buscaInsumo, setBuscaInsumo]       = useState('')
+
+  // ── Dados ────────────────────────────────────────────────────────────────
+  const { data: sugRaw, isLoading: loadingSug } = useQuery({
+    queryKey: ['compras-sugestoes', tenantSlug],
+    queryFn:  async () => (await fetch(`${api}?tipo=sugestoes`)).json(),
+    staleTime: 30000,
   })
+  const sugestoes: any[] = Array.isArray(sugRaw?.data?.itens) ? sugRaw.data.itens : []
+  const kpisSug          = sugRaw?.data?.kpis ?? {}
+
+  const { data: histRaw, isLoading } = useQuery({
+    queryKey: ['compras', tenantSlug, periodo.inicio, periodo.fim],
+    queryFn:  async () => {
+      const p = new URLSearchParams({ dataInicio: periodo.inicio, dataFim: periodo.fim })
+      return (await fetch(`${api}?${p}`)).json()
+    },
+  })
+  const todos: any[] = Array.isArray(histRaw?.data?.itens) ? histRaw.data.itens : []
+  const kpis         = histRaw?.data?.kpis ?? {}
 
   const { data: insumosRaw } = useQuery({
-    queryKey: ['insumos-compras', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=500`)).json(),
+    queryKey: ['compras-insumos', tenantSlug, buscaInsumo],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/insumos?limit=10&search=${encodeURIComponent(buscaInsumo)}`)).json(),
+    enabled:  buscaInsumo.length > 1,
   })
+  const insumosBusca: any[] = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data
+    : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
 
-  const { data: produtosRaw } = useQuery({
-    queryKey: ['produtos-compras', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=500`)).json(),
+  const { data: fornRaw } = useQuery({
+    queryKey: ['compras-fornecedores', tenantSlug, buscaForn],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/fornecedores?limit=8&search=${encodeURIComponent(buscaForn)}`)).json(),
+    enabled:  buscaForn.length > 1,
   })
+  const fornecedores: any[] = Array.isArray(fornRaw?.data?.data) ? fornRaw.data.data
+    : Array.isArray(fornRaw?.data) ? fornRaw.data : []
 
-  const { data: fornecedoresRaw } = useQuery({
-    queryKey: ['fornecedores-compras', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/fornecedores?limit=500`)).json(),
+  const { data: formasRaw } = useQuery({
+    queryKey: ['formas-pagamento', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/formas-pagamento`)).json(),
+    staleTime: 60000,
   })
+  const formas: any[] = Array.isArray(formasRaw?.data) ? formasRaw.data : []
+
+  // ── Filtro no cliente ────────────────────────────────────────────────────
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor; else delete novo[chave]
+      return novo
+    })
+    setPagina(1)
+  }
+
+  const itens = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return todos
+    return todos.filter(i => chaves.every(k => String(i[k] ?? '') === filtros[k]))
+  }, [todos, filtros])
+
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const k of ['fornecedor', 'formaPagamento', 'condicao']) {
+      const set = new Set<string>()
+      for (const i of todos) if (i[k]) set.add(String(i[k]))
+      if (set.size > 0) mapa[k] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [todos])
+
+  const temFiltro    = Object.keys(filtros).length > 0
+  const totalPaginas = Math.max(1, Math.ceil(itens.length / POR_PAGINA))
+  const paginaAtual  = Math.min(pagina, totalPaginas)
+  const itensPagina  = itens.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
+  const somaFiltrada = itens.reduce((a, i) => a + i.valorTotal, 0)
+  const somaTotal    = todos.reduce((a, i) => a + i.valorTotal, 0)
+
+  // ── Carrinho ─────────────────────────────────────────────────────────────
+  const totalCompra = carrinho.reduce((a, i) => a + Math.round(i.quantidade * i.valorUnitario), 0)
+
+  function addInsumo(ins: any, qtd?: number, preco?: number) {
+    setCarrinho(prev => {
+      if (prev.some(i => i.insumoId === ins.insumoId)) {
+        toast('Esse insumo já está na compra.', 'error')
+        return prev
+      }
+      return [...prev, {
+        insumoId:      ins.insumoId,
+        nomeInsumo:    ins.nome,
+        unidade:       ins.unidade ?? '',
+        quantidade:    qtd ?? 1,
+        valorUnitario: preco ?? Number(ins.precoCusto ?? 0),
+      }]
+    })
+    setBuscaInsumo('')
+    setPainel(true)
+  }
+
+  function alterarItem(idx: number, campo: keyof ItemCarrinho, valor: any) {
+    setCarrinho(prev => prev.map((i, k) => k === idx ? { ...i, [campo]: valor } : i))
+  }
+
+  function limparFormulario() {
+    setCarrinho([]); setFornecedorId(null); setNomeFornecedor(''); setBuscaForn('')
+    setDataCompra(hojeISO()); setDocumento(''); setCondicao('a_vista')
+    setFormaPagamento(''); setDataVencimento(''); setObservacao('')
+  }
 
   const salvarMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(api, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          insumoId:       tipoItem === 'insumo' && form.insumoId ? Number(form.insumoId) : undefined,
-          produtoId:      tipoItem === 'produto' && form.produtoId ? Number(form.produtoId) : undefined,
-          nomeInsumo:     form.nomeItem,
-          tipItem:        tipoItem,
-          nomeFornecedor: form.nomeFornecedor || undefined,
-          dataEntrada:    form.dataEntrada,
-          valorUnitario:  Math.round(parseFloat(form.valorUnitario.replace(',', '.') || '0') * 100),
-          quantidade:     parseFloat(form.quantidade.replace(',', '.') || '0'),
-          observacao:     form.observacao || undefined,
+          fornecedorId, nomeFornecedor: nomeFornecedor.trim() || undefined,
+          dataCompra, documento: documento.trim() || undefined,
+          condicao, formaPagamento: formaPagamento || undefined,
+          dataVencimento: condicao === 'a_prazo' ? dataVencimento : null,
+          observacao: observacao.trim() || undefined,
+          itens: carrinho.map(i => ({
+            insumoId: i.insumoId, nomeInsumo: i.nomeInsumo, unidade: i.unidade,
+            quantidade: i.quantidade, valorUnitario: i.valorUnitario,
+          })),
         }),
       })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.message ?? 'Erro ao registrar compra')
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao registrar compra')
       return d
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['compras-rapidas', tenantSlug] })
+    onSuccess: (d: any) => {
+      qc.invalidateQueries({ queryKey: ['compras', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['compras-sugestoes', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
-      qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
-      qc.invalidateQueries({ queryKey: ['fin-despesas', tenantSlug] })
-      qc.invalidateQueries({ queryKey: ['fin-kpis', tenantSlug] })
-      setShowModal(false)
-      resetForm()
-      toast('Compra registrada! Estoque e despesa atualizados.')
+      qc.invalidateQueries({ queryKey: ['consultas', tenantSlug] })
+      limparFormulario()
+      const gerou = d?.data?.contaPagarId ? 'conta a pagar' : 'despesa'
+      toast(`Compra registrada — estoque atualizado e ${gerou} lançada.`)
     },
     onError: (e: any) => toast(e.message || 'Erro ao registrar.', 'error'),
   })
 
-  const excluirMut = useMutation({
+  const cancelarMut = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetch(`${api}/${id}`, { method: 'DELETE' })
       const d = await res.json()
-      if (!res.ok) throw new Error(d.message ?? 'Erro ao excluir')
+      if (!res.ok) throw new Error(d?.message ?? 'Erro ao cancelar')
       return d
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['compras-rapidas', tenantSlug] }); toast('Compra excluída.') },
-    onError: (e: any) => toast(e.message || 'Erro.', 'error'),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['compras', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['consultas', tenantSlug] })
+      toast('Compra cancelada — o lançamento financeiro foi desfeito. O estoque não foi alterado.')
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao cancelar.', 'error'),
   })
 
-  function resetForm() {
-    setForm({ insumoId: '', produtoId: '', nomeItem: '', nomeFornecedor: '', dataEntrada: new Date().toISOString().slice(0, 10), valorUnitario: '', quantidade: '', observacao: '' })
-    setTipoItem('insumo')
-  }
+  const podeSalvar =
+    carrinho.length > 0 &&
+    carrinho.every(i => i.quantidade > 0) &&
+    (condicao === 'a_vista' || !!dataVencimento) &&
+    !salvarMut.isPending
 
-  const compras      = Array.isArray(comprasRaw?.data) ? comprasRaw.data : []
-  const insumos      = Array.isArray(insumosRaw?.data?.data) ? insumosRaw.data.data : Array.isArray(insumosRaw?.data) ? insumosRaw.data : []
-  const todosProdutos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
-  // Mostra na combobox apenas produtos marcados como revenda
-  const produtosRevenda = todosProdutos.filter((p: any) => p.tipo === 'Revenda' || p.revenda === true)
-  const fornecedores  = Array.isArray(fornecedoresRaw?.data?.data) ? fornecedoresRaw.data.data : Array.isArray(fornecedoresRaw?.data) ? fornecedoresRaw.data : []
-
-  const totalGasto = compras.reduce((a: number, c: any) => {
-    const qtd = parseFloat(c.qtdTotal ?? c.quantidade ?? '0')
-    return a + Math.round((c.valorUnitario ?? 0) * qtd)
-  }, 0)
+  // ── Colunas do histórico ─────────────────────────────────────────────────
+  const colunas: Coluna[] = [
+    { chave: 'data', titulo: 'Data', render: (i: any) => fmtData(i.data) },
+    {
+      chave: 'fornecedor', titulo: 'Fornecedor', filtravel: true,
+      classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
+      render: (i: any) => i.fornecedor,
+    },
+    { chave: 'documento', titulo: 'Documento', esconderAte: 'md', render: (i: any) => i.documento || <span className="text-gray-300">—</span> },
+    {
+      chave: 'itensTexto', titulo: 'Itens', esconderAte: 'lg',
+      render: (i: any) => (
+        <span className="text-sm text-gray-600" title={i.itensTexto}>
+          {i.qtdItens} {i.qtdItens === 1 ? 'item' : 'itens'}
+        </span>
+      ),
+    },
+    {
+      chave: 'condicao', titulo: 'Condição', filtravel: true,
+      render: (i: any) => i.condicao === 'a_prazo'
+        ? <Badge variant="secondary">a prazo · vence {fmtData(i.vencimento)}</Badge>
+        : <Badge variant="secondary">à vista</Badge>,
+    },
+    { chave: 'formaPagamento', titulo: 'Pagamento', filtravel: true, esconderAte: 'xl', render: (i: any) => i.formaPagamento || <span className="text-gray-300">—</span> },
+    { chave: 'valorTotal', titulo: 'Total', alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valorTotal)}</span> },
+  ]
 
   return (
     <div>
       <PageHeader
-        titulo="Compra Rápida"
+        titulo="Compras"
         acoes={
-          <>
-            <InfoTip titulo="O que acontece ao registrar">
-              Compra de <strong>insumo</strong> aumenta o estoque do insumo.
-              Compra de <strong>produto para revenda</strong> aumenta o estoque do produto.
-              Nos dois casos, uma despesa é lançada automaticamente no financeiro.
-            </InfoTip>
-            <Button onClick={() => { resetForm(); setShowModal(true) }}>
-              <Plus size={15} className="mr-1.5" /> Registrar Compra
-            </Button>
-          </>
+          <Button onClick={() => setPainel(true)}>
+            <Plus size={15} className="mr-1.5" /> Nova compra
+          </Button>
         }
       />
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400">Total de compras</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{compras.length}</p>
+      {/* ── 1. PRECISA COMPRAR ───────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 mb-4 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide inline-flex items-center gap-1.5">
+            Precisa comprar
+            <InfoTip titulo="Como a sugestão é calculada">
+              Estoque mínimo somado ao consumo previsto da produção já agendada
+              para os próximos {kpisSug.diasProjecao ?? 30} dias, menos o que existe hoje.
+              O preço é o da última compra desse insumo; sem compra anterior,
+              o valor vem do cadastro e aparece marcado como estimado.
+            </InfoTip>
+          </p>
+          {sugestoes.length > 0 && (
+            <span className="text-xs text-gray-500">
+              {kpisSug.aComprar} insumo(s) · estimado {fmt(kpisSug.valorEstimado ?? 0)}
+            </span>
+          )}
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <p className="text-xs text-gray-400">Total gasto</p>
-          <p className="text-2xl font-bold text-red-600 mt-1">{fmt(totalGasto)}</p>
-        </div>
-      </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              {['Data', 'Item', 'Tipo', 'Fornecedor', 'Qtd', 'Valor Unit.', 'Total', ''].map((h, i) => (
-                <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i >= 4 ? 'text-right' : ''}`}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={8} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
-            ) : compras.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-12 text-sm text-gray-400">
-                <ShoppingCart size={28} className="text-gray-200 mx-auto mb-2" />
-                Nenhuma compra registrada ainda.
-              </td></tr>
-            ) : compras.map((c: any) => {
-              const qtd  = parseFloat(c.qtdTotal ?? c.quantidade ?? '0')
-              const unit = c.valorUnitario ?? 0
-              const tot  = Math.round(unit * qtd)
+        {loadingSug ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-400">Calculando...</p>
+        ) : sugestoes.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-400">
+            Nenhum insumo abaixo do necessário.
+          </p>
+        ) : (
+          <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
+            {sugestoes.map((s: any) => {
+              const jaNoCarrinho = carrinho.some(i => i.insumoId === s.insumoId)
               return (
-                <tr key={c.compraId} className="group border-b border-gray-50 hover:bg-gray-50/80">
-                  <td className="px-4 py-3 text-sm text-gray-500">{fmtData(c.dataEntrada)}</td>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{c.nomeInsumo}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500">
-                    {c.tipoItem === 'produto' ? (
-                      <span className="flex items-center gap-1 text-gray-600"><Package size={12} /> Revenda</span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-gray-500"><Layers size={12} /> Insumo</span>
+                <div key={s.insumoId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50/60">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate inline-flex items-center gap-1.5">
+                      {s.nome}
+                      {s.critico && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-red-600">
+                          <AlertTriangle size={10} /> abaixo do mínimo
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      tem {fmtQtd(s.estoqueAtual)} {s.unidade} · mínimo {fmtQtd(s.estoqueMinimo)}
+                      {s.consumoPrevisto > 0 && ` · produção vai usar ${fmtQtd(s.consumoPrevisto)}`}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <p className="text-sm font-semibold text-gray-900">
+                      {fmtQtd(s.sugerido)} <span className="text-gray-400 font-normal">{s.unidade}</span>
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {fmt(s.ultimoPreco)}/{s.unidade || 'un'}
+                      {s.precoEstimado && <span className="text-gray-300"> estimado</span>}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm" variant="outline"
+                    disabled={jaNoCarrinho}
+                    onClick={() => addInsumo(
+                      { insumoId: s.insumoId, nome: s.nome, unidade: s.unidade },
+                      s.sugerido, s.ultimoPreco,
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500">{c.nomeFornecedor || '—'}</td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-700">{qtd.toLocaleString('pt-BR')}</td>
-                  <td className="px-4 py-3 text-right text-sm text-gray-700">{fmt(unit)}</td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(tot)}</td>
-                  <td className="px-4 py-3">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <BotaoIcone titulo="Excluir compra" variante="perigo" onClick={() => setConfirmDel(c)}>
-                        <Trash2 size={13} />
-                      </BotaoIcone>
-                    </div>
-                  </td>
-                </tr>
+                  >
+                    {jaNoCarrinho ? 'na compra' : 'Adicionar'}
+                  </Button>
+                </div>
               )
             })}
-          </tbody>
-          {compras.length > 0 && (
-            <tfoot>
-              <tr className="border-t border-gray-100 bg-gray-50">
-                <td colSpan={6} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
-                <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">{fmt(totalGasto)}</td>
-                <td />
-              </tr>
-            </tfoot>
-          )}
-        </table>
+          </div>
+        )}
       </div>
 
-      {/* Modal */}
-      {showModal && (
-        <FormModal titulo="Registrar Compra" onClose={() => setShowModal(false)} largura="max-w-lg">
+      {/* ── Período do histórico ─────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Periodicidade</span>
+          <select
+            value={periodicidade}
+            onChange={e => {
+              const nova = e.target.value as Periodicidade
+              setPeriodicidade(nova)
+              if (nova !== 'customizado') setFimCustom(null)
+              setPagina(1)
+            }}
+            className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-200"
+          >
+            {PERIODICIDADES.map(p => <option key={p.valor} value={p.valor}>{p.rotulo}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setAncora(a => deslocar(periodicidade, a, -1, fimCustom))}
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <SeletorPeriodo
+            periodicidade={periodicidade}
+            valor={ancora}
+            onChange={setAncora}
+            fimCustom={fimCustom}
+            onChangeCustom={(i, f) => { setAncora(i); setFimCustom(f) }}
+          />
+          <button
+            onClick={() => setAncora(a => deslocar(periodicidade, a, 1, fimCustom))}
+            className="w-9 h-9 flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* ── KPIs ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+        {[
+          { rotulo: 'Compras',      valor: String(kpis.quantidade ?? 0) },
+          { rotulo: 'Total gasto',  valor: fmt(kpis.valorTotal ?? 0) },
+          { rotulo: 'Compra média', valor: fmt(kpis.ticketMedio ?? 0) },
+          { rotulo: 'A prazo',      valor: String(kpis.aPrazo ?? 0) },
+        ].map((c, i) => (
+          <div key={i} className="bg-white rounded-xl border border-gray-100 px-4 py-3.5">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{c.rotulo}</p>
+            <p className="text-xl font-semibold text-gray-900 mt-1.5 truncate">{c.valor}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── 2. HISTÓRICO ─────────────────────────────────────────────────── */}
+      <DataTable
+        colunas={colunas}
+        itens={itensPagina}
+        chave={(i: any) => i.compraId}
+        carregando={isLoading}
+        vazio={temFiltro ? 'Nenhuma compra com esse filtro.' : 'Nenhuma compra neste período.'}
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
+        meta={{ page: paginaAtual, totalPages: totalPaginas, total: itens.length, limit: POR_PAGINA }}
+        onPageChange={setPagina}
+        acoes={(i: any) => (
+          <button
+            onClick={() => setConfirmCancelar(i)}
+            title="Cancelar compra"
+            className="text-gray-300 hover:text-red-600 transition-colors"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      />
+
+      <div className="mt-3 bg-white rounded-xl border border-gray-100 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-500">
+            Total do período
+            <span className="text-gray-300 ml-1.5">({todos.length} compra{todos.length !== 1 ? 's' : ''})</span>
+          </span>
+          <span className="text-base font-semibold text-gray-900">{fmt(somaTotal)}</span>
+        </div>
+        {temFiltro && (
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+            <span className="text-sm font-medium text-green-700">
+              Total filtrado
+              <span className="text-green-600/60 ml-1.5 font-normal">
+                ({itens.length} compra{itens.length !== 1 ? 's' : ''}
+                {somaTotal > 0 && ` · ${((somaFiltrada / somaTotal) * 100).toFixed(1)}% do período`})
+              </span>
+            </span>
+            <span className="text-lg font-bold text-green-700">{fmt(somaFiltrada)}</span>
+          </div>
+        )}
+        {temFiltro && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+            {Object.entries(filtros).map(([k, v]) => (
+              <span key={k} className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-[11px] text-green-700">
+                {v}
+                <button onClick={() => aplicarFiltro(k, '')} className="hover:text-green-900">×</button>
+              </span>
+            ))}
+            <button onClick={() => { setFiltros({}); setPagina(1) }} className="text-[11px] text-gray-400 hover:text-gray-700 ml-1">
+              limpar tudo
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── 3. NOVA COMPRA ───────────────────────────────────────────────── */}
+      {painel && (
+        <SidePanel
+          titulo="Nova compra"
+          subtitulo={carrinho.length > 0 ? `${carrinho.length} item(ns) · ${fmt(totalCompra)}` : undefined}
+          largura="w-[34vw] min-w-[580px]"
+          onClose={() => setPainel(false)}
+          rodape={
+            <>
+              <Button variant="outline" onClick={limparFormulario} disabled={carrinho.length === 0}>
+                Limpar
+              </Button>
+              <Button onClick={() => salvarMut.mutate()} disabled={!podeSalvar}>
+                {salvarMut.isPending ? 'Registrando...' : `Registrar — ${fmt(totalCompra)}`}
+              </Button>
+            </>
+          }
+        >
           <div className="p-6 space-y-4">
 
-            {/* Tipo do item */}
+            {/* Fornecedor */}
             <div>
-              <Label>Tipo de item *</Label>
-              <div className="grid grid-cols-2 gap-2 mt-1">
-                {[
-                  { key: 'insumo',  label: 'Insumo de produção', icon: Layers },
-                  { key: 'produto', label: 'Produto para revenda', icon: Package },
-                ].map(t => (
-                  <button key={t.key} onClick={() => { setTipoItem(t.key as TipoItem); setF('insumoId', ''); setF('produtoId', ''); setF('nomeItem', '') }}
-                    className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium transition-colors ${
-                      tipoItem === t.key ? 'bg-green-50 border-green-400 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+              <Label className="text-xs">Fornecedor</Label>
+              {fornecedorId || nomeFornecedor ? (
+                <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
+                  <span className="text-sm font-medium text-gray-900 truncate">{nomeFornecedor}</span>
+                  <button onClick={() => { setFornecedorId(null); setNomeFornecedor(''); setBuscaForn('') }}
+                    className="text-gray-400 hover:text-gray-700 ml-1"><X size={12} /></button>
+                </div>
+              ) : (
+                <div className="relative mt-1">
+                  <Input value={buscaForn} onChange={e => setBuscaForn(e.target.value)}
+                    placeholder="Buscar fornecedor ou digitar o nome..." className="h-9 text-sm" />
+                  {buscaForn.length > 1 && fornecedores.length > 0 && (
+                    <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
+                      {fornecedores.map((f: any) => (
+                        <button key={f.fornecedorId}
+                          onClick={() => {
+                            setFornecedorId(f.fornecedorId)
+                            setNomeFornecedor(f.nomeFantasia?.trim() || f.nomeCompleto)
+                            setBuscaForn('')
+                          }}
+                          className="w-full px-3 py-2 hover:bg-gray-50 text-left text-sm border-b border-gray-50 last:border-0">
+                          {f.nomeFantasia?.trim() || f.nomeCompleto}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {buscaForn.trim().length > 1 && (
+                    <button
+                      onClick={() => { setNomeFornecedor(buscaForn.trim()); setBuscaForn('') }}
+                      className="mt-1.5 text-xs text-gray-600 hover:text-gray-900 flex items-center gap-1">
+                      <Plus size={11} /> Usar &quot;{buscaForn.trim()}&quot; sem cadastrar
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Data da compra *</Label>
+                <Input type="date" value={dataCompra} onChange={e => setDataCompra(e.target.value)} className="mt-1 h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Documento / nota</Label>
+                <Input value={documento} onChange={e => setDocumento(e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nº do cupom ou NF" />
+              </div>
+            </div>
+
+            {/* Itens */}
+            <div>
+              <Label className="text-xs">Adicionar insumo</Label>
+              <div className="relative mt-1">
+                <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)}
+                  placeholder="Buscar insumo..." className="h-9 text-sm" />
+                {buscaInsumo.length > 1 && insumosBusca.length > 0 && (
+                  <div className="absolute z-20 w-full mt-0.5 bg-white border border-gray-100 rounded-lg shadow-lg overflow-hidden">
+                    {insumosBusca.map((ins: any) => (
+                      <button key={ins.insumoId} onClick={() => addInsumo(ins)}
+                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-gray-50 text-left border-b border-gray-50 last:border-0">
+                        <span className="text-sm text-gray-900">{ins.nome}</span>
+                        <span className="text-xs text-gray-400">{ins.unidade}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {carrinho.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center">
+                <ShoppingBag size={22} className="text-gray-200 mx-auto mb-2" />
+                <p className="text-sm text-gray-400">Nenhum item na compra</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr>
+                      <th className="bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Insumo</th>
+                      <th className="bg-gray-50 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-1 py-2 w-24">Qtd</th>
+                      <th className="bg-gray-50 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-1 py-2 w-24">Unit.</th>
+                      <th className="bg-gray-50 text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2 w-24">Subtotal</th>
+                      <th className="bg-gray-50 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {carrinho.map((it, idx) => (
+                      <tr key={idx} className="border-t border-gray-50">
+                        <td className="px-3 py-2">
+                          <p className="text-sm text-gray-900">{it.nomeInsumo}</p>
+                          <p className="text-[11px] text-gray-400">{it.unidade}</p>
+                        </td>
+                        <td className="px-1 py-2">
+                          <input type="number" min="0" step="0.001" value={it.quantidade}
+                            onChange={e => alterarItem(idx, 'quantidade', Number(e.target.value) || 0)}
+                            className="sem-spinner w-20 h-7 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-green-400" />
+                        </td>
+                        <td className="px-1 py-2">
+                          <input type="number" min="0" step="0.01"
+                            value={it.valorUnitario ? (it.valorUnitario / 100).toFixed(2) : ''}
+                            onChange={e => alterarItem(idx, 'valorUnitario', Math.round((parseFloat(e.target.value) || 0) * 100))}
+                            placeholder="0,00"
+                            className="sem-spinner w-20 h-7 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-green-400" />
+                        </td>
+                        <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
+                          {fmt(Math.round(it.quantidade * it.valorUnitario))}
+                        </td>
+                        <td className="px-1 py-2 text-center">
+                          <button onClick={() => setCarrinho(prev => prev.filter((_, k) => k !== idx))}
+                            className="text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-200 bg-gray-50">
+                      <td colSpan={3} className="px-3 py-2 text-right text-sm font-semibold text-gray-700">Total</td>
+                      <td className="px-3 py-2 text-right text-base font-bold" style={{ color: '#2ecc71' }}>{fmt(totalCompra)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {/* Pagamento */}
+            <div>
+              <Label className="text-xs inline-flex items-center gap-1">
+                Condição de pagamento
+                <InfoTip titulo="À vista ou a prazo">
+                  <strong>À vista</strong> lança a despesa na data da compra.
+                  <strong> A prazo</strong> cria uma conta a pagar com vencimento, e o
+                  gasto só entra no caixa quando ela for baixada.
+                </InfoTip>
+              </Label>
+              <div className="flex gap-2 mt-1">
+                {([
+                  { k: 'a_vista', r: 'À vista' },
+                  { k: 'a_prazo', r: 'A prazo' },
+                ] as const).map(o => (
+                  <button key={o.k} onClick={() => setCondicao(o.k)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      condicao === o.k
+                        ? 'bg-green-50 border-green-300 text-green-700'
+                        : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                     }`}>
-                    <t.icon size={14} /> {t.label}
+                    {o.r}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Seleção do item */}
-            <div>
-              <Label>{tipoItem === 'insumo' ? 'Insumo' : 'Produto para Revenda'} *</Label>
-              {tipoItem === 'insumo' ? (
-                <>
-                  <select value={form.insumoId} onChange={e => {
-                    const ins = insumos.find((i: any) => String(i.insumoId) === e.target.value)
-                    setF('insumoId', e.target.value)
-                    if (ins) setF('nomeItem', ins.nome)
-                  }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="">Selecionar insumo cadastrado...</option>
-                    {insumos.map((i: any) => <option key={i.insumoId} value={i.insumoId}>{i.nome} ({i.unidade})</option>)}
-                  </select>
-                  {!form.insumoId && (
-                    <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
-                      placeholder="Ou digite o nome do insumo..." className="mt-2 h-8 text-sm" />
-                  )}
-                </>
-              ) : (
-                <>
-                  <select value={form.produtoId} onChange={e => {
-                    const p = produtosRevenda.find((x: any) => String(x.produtoId) === e.target.value)
-                    setF('produtoId', e.target.value)
-                    if (p) setF('nomeItem', p.nome)
-                  }} className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="">Selecionar produto para revenda...</option>
-                    {produtosRevenda.map((p: any) => <option key={p.produtoId} value={p.produtoId}>{p.nome}</option>)}
-                  </select>
-                  {/* Condição real do sistema — nenhum produto configurado como revenda */}
-                  {produtosRevenda.length === 0 && (
-                    <Aviso tom="atencao" className="mt-2">
-                      Nenhum produto marcado como Revenda. Configure em Cadastros → Produtos.
-                    </Aviso>
-                  )}
-                  {!form.produtoId && (
-                    <Input value={form.nomeItem} onChange={e => setF('nomeItem', e.target.value)}
-                      placeholder="Ou digite o nome do produto..." className="mt-2 h-8 text-sm" />
-                  )}
-                </>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Forma de pagamento</Label>
+                <select value={formaPagamento} onChange={e => setFormaPagamento(e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="">Selecionar...</option>
+                  {(formas.length > 0 ? formas.map((f: any) => f.nome) : ['Dinheiro', 'PIX', 'Crédito', 'Débito', 'Boleto']).map((f: string) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </div>
+              {condicao === 'a_prazo' && (
+                <div>
+                  <Label className="text-xs">Vencimento *</Label>
+                  <Input type="date" value={dataVencimento} onChange={e => setDataVencimento(e.target.value)} className="mt-1 h-9 text-sm" />
+                </div>
               )}
             </div>
 
-            {/* Fornecedor */}
-            <div>
-              <Label>Fornecedor</Label>
-              <select value={form.nomeFornecedor} onChange={e => setF('nomeFornecedor', e.target.value)}
-                className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                <option value="">Selecionar...</option>
-                {fornecedores.map((f: any) => (
-                  <option key={f.fornecedorId} value={f.nomeFantasia ?? f.razaoSocial}>{f.nomeFantasia ?? f.razaoSocial}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Data, Qtd, Valor */}
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label>Data *</Label>
-                <Input type="date" value={form.dataEntrada} onChange={e => setF('dataEntrada', e.target.value)} className="mt-1 h-9 text-sm" />
-              </div>
-              <div>
-                <Label>Quantidade *</Label>
-                <Input type="number" min="0" step="1" value={form.quantidade}
-                  onChange={e => setF('quantidade', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0" />
-              </div>
-              <div>
-                <Label>Valor unitário (R$) *</Label>
-                <Input type="number" min="0" step="0.01" value={form.valorUnitario}
-                  onChange={e => setF('valorUnitario', e.target.value)} className="mt-1 h-9 text-sm" placeholder="0,00" />
-              </div>
-            </div>
-
-            {/* Total calculado */}
-            {form.quantidade && form.valorUnitario && (
-              <div className="bg-gray-50 rounded-lg p-3 flex justify-between items-center">
-                <span className="text-sm text-gray-500">Total da compra</span>
-                <span className="text-base font-bold text-red-600">
-                  {fmt(Math.round(
-                    parseFloat(form.valorUnitario.replace(',', '.') || '0') * 100 *
-                    parseFloat(form.quantidade.replace(',', '.') || '0')
-                  ))}
-                </span>
-              </div>
+            {condicao === 'a_prazo' && !dataVencimento && (
+              <p className="text-[11px] font-medium text-red-600">Informe o vencimento para registrar a compra a prazo.</p>
             )}
 
             <div>
-              <Label>Observação</Label>
-              <Input value={form.observacao} onChange={e => setF('observacao', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Opcional" />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-              <Button variant="outline" onClick={() => setShowModal(false)}>Cancelar</Button>
-              <Button onClick={() => salvarMut.mutate()}
-                disabled={!form.nomeItem || !form.quantidade || !form.valorUnitario || salvarMut.isPending}>
-                {salvarMut.isPending ? 'Registrando...' : 'Registrar Compra'}
-              </Button>
+              <Label className="text-xs">Observação</Label>
+              <Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" />
             </div>
           </div>
-        </FormModal>
+        </SidePanel>
       )}
 
-      {confirmDel && (
-        <ConfirmModal title="Excluir compra"
-          message={`Excluir a compra de "${confirmDel.nomeInsumo}"? O estoque e a despesa não serão revertidos automaticamente.`}
-          confirmLabel="Excluir" danger
-          onConfirm={() => { excluirMut.mutate(confirmDel.compraId); setConfirmDel(null) }}
-          onCancel={() => setConfirmDel(null)} />
+      {confirmCancelar && (
+        <ConfirmModal
+          title="Cancelar compra"
+          message={`Cancelar a compra de ${confirmCancelar.fornecedor} no valor de ${fmt(confirmCancelar.valorTotal)}? O lançamento no financeiro será desfeito. O estoque NÃO será alterado — se precisar corrigir o saldo, use Estoque → Ajustar.`}
+          confirmLabel="Cancelar compra"
+          danger
+          onConfirm={() => { cancelarMut.mutate(confirmCancelar.compraId); setConfirmCancelar(null) }}
+          onCancel={() => setConfirmCancelar(null)}
+        />
       )}
     </div>
   )

@@ -17,7 +17,7 @@
 // é semanal.
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Sprout, Receipt } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Receipt } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
@@ -32,12 +32,11 @@ import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-type Aba = 'vendas' | 'entradas-estoque' | 'gastos-insumos' | 'despesas'
+type Aba = 'vendas' | 'entradas-estoque' | 'despesas'
 
 const ABAS: { valor: Aba; rotulo: string; icone: any }[] = [
   { valor: 'vendas',           rotulo: 'Vendas',            icone: ShoppingCart },
   { valor: 'entradas-estoque', rotulo: 'Entradas',          icone: PackagePlus },
-  { valor: 'gastos-insumos',   rotulo: 'Gastos com insumos', icone: Sprout },
   { valor: 'despesas',         rotulo: 'Despesas',          icone: Receipt },
 ]
 
@@ -141,7 +140,6 @@ export default function ConsultasView({ tenantSlug }: Props) {
   const campoValor: Record<Aba, string> = {
     'vendas':           'total',
     'entradas-estoque': 'valorTotal',
-    'gastos-insumos':   'valorTotal',
     'despesas':         'valor',
   }
   const somaFiltrada = itens.reduce((a, i) => a + Number(i[campoValor[aba]] ?? 0), 0)
@@ -187,13 +185,6 @@ export default function ConsultasView({ tenantSlug }: Props) {
         ...itens.map(i => [
           fmtDataHora(i.data), i.nome, String(i.quantidade), i.unidade,
           (i.precoCusto / 100).toFixed(2), (i.valorTotal / 100).toFixed(2), i.observacao,
-        ]),
-      ]
-      : aba === 'gastos-insumos' ? [
-        ['Data', 'Insumo', 'Categoria', 'Quantidade', 'Unidade', 'Custo unit.', 'Gasto'],
-        ...itens.map(i => [
-          fmtDataHora(i.data), i.nome, i.categoria, String(i.quantidade), i.unidade,
-          (i.precoCusto / 100).toFixed(2), (i.valorTotal / 100).toFixed(2),
         ]),
       ]
       : [
@@ -257,19 +248,6 @@ export default function ConsultasView({ tenantSlug }: Props) {
     { chave: 'observacao', titulo: 'Observação', esconderAte: 'xl', render: (i: any) => i.observacao || <span className="text-gray-300">—</span> },
   ]
 
-  const colunasGastosInsumos: Coluna[] = [
-    { chave: 'data', titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
-    {
-      chave: 'nome', titulo: 'Insumo', filtravel: true,
-      classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
-      render: (i: any) => i.nome,
-    },
-    { chave: 'categoria',  titulo: 'Categoria', filtravel: true, esconderAte: 'md', render: (i: any) => i.categoria },
-    { chave: 'quantidade', titulo: 'Quantidade', alinhamento: 'right', render: (i: any) => <>{fmtQtd(i.quantidade)} <span className="text-gray-400">{i.unidade}</span></> },
-    { chave: 'precoCusto', titulo: 'Custo unit.', alinhamento: 'right', esconderAte: 'md', render: (i: any) => i.precoCusto > 0 ? fmt(i.precoCusto) : <span className="text-gray-300">—</span> },
-    { chave: 'valorTotal', titulo: 'Gasto', alinhamento: 'right', render: (i: any) => i.valorTotal > 0 ? <span className="font-semibold text-gray-900">{fmt(i.valorTotal)}</span> : <span className="text-gray-300">—</span> },
-  ]
-
   const colunasDespesas: Coluna[] = [
     { chave: 'data', titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
     {
@@ -290,14 +268,12 @@ export default function ConsultasView({ tenantSlug }: Props) {
   const COLUNAS: Record<Aba, Coluna[]> = {
     'vendas':           colunasVendas,
     'entradas-estoque': colunasEntradas,
-    'gastos-insumos':   colunasGastosInsumos,
     'despesas':         colunasDespesas,
   }
 
   const VAZIO: Record<Aba, string> = {
     'vendas':           'Nenhuma venda neste período.',
     'entradas-estoque': 'Nenhuma entrada de estoque neste período.',
-    'gastos-insumos':   'Nenhuma entrada de insumo neste período.',
     'despesas':         'Nenhuma despesa neste período.',
   }
 
@@ -314,13 +290,6 @@ export default function ConsultasView({ tenantSlug }: Props) {
         { rotulo: 'Produtos',    valor: String(kpis.totalProdutos ?? 0) },
         { rotulo: 'Insumos',     valor: String(kpis.totalInsumos ?? 0) },
         { rotulo: 'Valor total', valor: fmt(kpis.valorTotal ?? 0) },
-      ]
-    : aba === 'gastos-insumos'
-    ? [
-        { rotulo: 'Lançamentos', valor: String(kpis.quantidade ?? 0) },
-        { rotulo: 'Gasto total', valor: fmt(kpis.valorTotal ?? 0) },
-        { rotulo: 'Média por lançamento', valor: fmt(kpis.custoMedio ?? 0) },
-        { rotulo: 'Sem custo informado',  valor: String(kpis.semCusto ?? 0) },
       ]
     : [
         { rotulo: 'Despesas',    valor: String(kpis.quantidade ?? 0) },

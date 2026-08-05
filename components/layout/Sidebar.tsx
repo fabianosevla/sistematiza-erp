@@ -95,11 +95,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.producaoAtivo  ? [{ label: 'Produção',          href: '/producao',   icon: Factory }]        : []),
     ...(config.estoqueAtivo   ? [{ label: 'Estoque',           href: '/estoque',    icon: Boxes }]          : []),
     ...(config.comprasAtivo ? [{
-      label: 'Compras', icon: ShoppingBag,
-      children: [
-        { label: 'Visão geral',   href: '/compras' },
-        { label: 'Compra Rápida', href: '/compras/rapida' },
-      ],
+      label: 'Compras', href: '/compras', icon: ShoppingBag,
     }] : []),
     ...(config.comandasAtivo   ? [{ label: 'Comandas',    href: '/comandas',   icon: CreditCard }] : []),
     ...(config.fiscalAtivo     ? [{ label: 'Fiscal',      href: '/fiscal',     icon: CreditCard }] : []),

@@ -182,68 +182,6 @@ export class ConsultasService {
     }
   }
 
-  // ── GASTOS COM INSUMOS ────────────────────────────────────────────────────
-  //
-  // O que entrou de insumo no período, valorizado pelo custo registrado na
-  // própria movimentação.
-  //
-  // Uma ressalva que importa para ler o número: entrada sem `preco_custo`
-  // preenchido entra como zero. Isso acontece, por exemplo, no insumo que
-  // volta ao estoque por ajuste manual — ali não há compra, e portanto não há
-  // gasto. O relatório mostra a linha com valor zerado em vez de escondê-la,
-  // para a quantidade continuar batendo com o estoque.
-  async gastosInsumosPorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
-    const { inicio, fim } = this.limites(dataInicio, dataFim)
-
-    const res = await this.db.execute(sql`
-      SELECT
-        m.movimentacao_id,
-        m.data_movimentacao,
-        m.tipo,
-        m.quantidade,
-        m.preco_custo,
-        m.observacao,
-        i.nome    AS nome,
-        i.unidade AS unidade,
-        i.tipo    AS categoria
-      FROM t_movimentacao_estoque m
-      JOIN t_insumo i ON i.insumo_id = m.entidade_id
-      WHERE m.active_flg = true
-        AND m.entidade = 'insumo'
-        AND (m.tipo = 'entrada' OR (m.tipo = 'ajuste' AND m.quantidade > 0))
-        AND m.data_movimentacao >= ${inicio}
-        AND m.data_movimentacao <= ${fim}
-      ORDER BY m.data_movimentacao DESC, m.movimentacao_id DESC
-    `)
-
-    const itens = (res.rows as any[]).map(r => {
-      const qtd   = Number(r.quantidade ?? 0)
-      const custo = Number(r.preco_custo ?? 0)
-      return {
-        movimentacaoId: Number(r.movimentacao_id),
-        data:       r.data_movimentacao,
-        nome:       r.nome,
-        categoria:  r.categoria ?? '—',
-        unidade:    r.unidade ?? '',
-        quantidade: qtd,
-        precoCusto: custo,
-        valorTotal: Math.round(qtd * custo),
-        observacao: r.observacao ?? '',
-      }
-    })
-
-    const total = itens.reduce((a, i) => a + i.valorTotal, 0)
-    return {
-      itens,
-      kpis: {
-        quantidade:   itens.length,
-        valorTotal:   total,
-        semCusto:     itens.filter(i => i.precoCusto === 0).length,
-        custoMedio:   itens.length > 0 ? Math.round(total / itens.length) : 0,
-      },
-    }
-  }
-
   // ── GASTOS DE DESPESAS ────────────────────────────────────────────────────
   //
   // Despesas lançadas em Financeiro. O recorte é por `data_despesa`, e não
