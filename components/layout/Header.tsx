@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store } from 'lucide-react'
-import { useClerk } from '@clerk/nextjs'
+import { useClerk, useUser } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -69,10 +69,58 @@ export default function Header({
   const qc          = useQueryClient()
   const { toast }   = useToast()
   const { signOut } = useClerk()
+  const { user }    = useUser()
 
   const [showSettings, setShowSettings] = useState(false)
   const [showNotifs, setShowNotifs]     = useState(false)
   const [aba, setAba]                   = useState<Aba>('conta')
+
+  // ── Foto do usuário ──────────────────────────────────────────────────────
+  // Vai direto para o Clerk via setProfileImage. Fica fora do fluxo de
+  // "pendente + Salvar" das outras configurações de propósito: é upload de
+  // arquivo, não campo de texto — segurar num rascunho só criaria a chance de
+  // o operador escolher a foto, esquecer de salvar e achar que gravou.
+  const [enviandoFoto, setEnviandoFoto] = useState(false)
+
+  const nomeUsuarioLogado =
+    user?.fullName?.trim() ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
+    user?.primaryEmailAddress?.emailAddress ||
+    'Usuário'
+  const iniciaisUsuario = nomeUsuarioLogado
+    .split(' ').filter(Boolean).slice(0, 2)
+    .map(w => w[0]).join('').toUpperCase()
+  const fotoAtual = user?.hasImage ? user.imageUrl : ''
+
+  async function enviarFoto(file: File) {
+    if (file.size > 5 * 1024 * 1024) {
+      toast('Imagem acima de 5 MB. Escolha uma menor.', 'error')
+      return
+    }
+    setEnviandoFoto(true)
+    try {
+      await user?.setProfileImage({ file })
+      await user?.reload()
+      toast('Foto atualizada!')
+    } catch (e: any) {
+      toast(e?.errors?.[0]?.message ?? 'Não foi possível enviar a foto.', 'error')
+    } finally {
+      setEnviandoFoto(false)
+    }
+  }
+
+  async function removerFoto() {
+    setEnviandoFoto(true)
+    try {
+      await user?.setProfileImage({ file: null })
+      await user?.reload()
+      toast('Foto removida.')
+    } catch {
+      toast('Não foi possível remover a foto.', 'error')
+    } finally {
+      setEnviandoFoto(false)
+    }
+  }
 
   // ── Estado pendente ──────────────────────────────────────────────────────
   // NADA nesta tela grava sozinho. Toggle, logo e campos de texto só alteram
@@ -396,6 +444,52 @@ export default function Header({
             {/* ══ ABA 1 — CONFIGURAÇÕES DE CONTA ══════════════════════════ */}
             {aba === 'conta' && (
                 <div className="p-6 space-y-6">
+
+                  {/* ── MEU PERFIL ────────────────────────────────────────
+                      A foto é gravada no Clerk, não no nosso banco: ele já
+                      guarda avatar por usuário e serve a imagem por CDN. Assim
+                      não precisou de coluna nova, rota nova nem migration — e
+                      a foto aparece no rodapé do menu na hora. */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Meu perfil</p>
+                    <div className="flex items-center gap-4">
+                      {fotoAtual ? (
+                        <img src={fotoAtual} alt="" className="w-16 h-16 rounded-full object-cover border border-gray-200" />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full bg-green-50 border border-green-200 flex items-center justify-center text-base font-bold text-green-700">
+                          {iniciaisUsuario}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{nomeUsuarioLogado}</p>
+                        <p className="text-xs text-gray-400 truncate">{user?.primaryEmailAddress?.emailAddress}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <label className="cursor-pointer">
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              className="hidden"
+                              onChange={e => {
+                                const f = e.target.files?.[0]
+                                if (f) enviarFoto(f)
+                                e.target.value = ''
+                              }}
+                            />
+                            <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+                              <Upload size={13} />
+                              {enviandoFoto ? 'Enviando...' : fotoAtual ? 'Trocar foto' : 'Escolher foto'}
+                            </span>
+                          </label>
+                          {fotoAtual && (
+                            <Button variant="outline" size="sm" onClick={removerFoto} disabled={enviandoFoto}>
+                              Remover
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Dados da empresa — cabeçalho de cupom e documentos */}
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Dados da empresa</p>

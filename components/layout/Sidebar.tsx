@@ -7,6 +7,7 @@ import {
   Search, ClipboardCheck, X, Target, Gift, ShoppingBag,
   PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
+import { useUser } from '@clerk/nextjs'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import type { Config } from '@/components/layout/ClientShell'
@@ -26,6 +27,19 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   const pathname = usePathname()
   const base     = `/${tenantSlug}`
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+
+  // Usuário logado vem do Clerk, que já guarda nome e foto. Não precisa de
+  // rota nova nem de coluna nova no banco para o rodapé funcionar.
+  const { user } = useUser()
+  const nomeUsuario =
+    user?.fullName?.trim() ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() ||
+    user?.primaryEmailAddress?.emailAddress ||
+    'Usuário'
+  const fotoUsuario     = user?.hasImage ? user.imageUrl : ''
+  const iniciaisUsuario = nomeUsuario
+    .split(' ').filter(Boolean).slice(0, 2)
+    .map(w => w[0]).join('').toUpperCase()
 
   // Recolhido fica salvo por computador — cada operador escolhe como prefere.
   const [recolhida, setRecolhida] = useState(false)
@@ -231,18 +245,32 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
         })}
       </nav>
 
-      {/* Rodapé */}
+      {/* Rodapé — QUEM ESTÁ LOGADO.
+          Antes mostrava a razão social do tenant, que é a mesma para todos e
+          não responde a pergunta que o rodapé de qualquer software responde:
+          "eu sou quem, aqui?". Agora traz nome e foto do usuário; a empresa
+          aparece na linha de baixo, menor, como contexto. */}
       <div className={cn('border-t border-white/5', recolhida ? 'p-3' : 'p-4')}>
         <div className={cn('flex items-center gap-3', recolhida && 'justify-center')}>
-          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
-            title={tenantName}
-            style={{ backgroundColor: 'rgba(46,204,113,0.15)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.25)' }}>
-            {initials}
-          </div>
+          {fotoUsuario ? (
+            <img
+              src={fotoUsuario}
+              alt=""
+              title={`${nomeUsuario} · ${tenantName}`}
+              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+              style={{ border: '1px solid rgba(255,255,255,0.15)' }}
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
+              title={`${nomeUsuario} · ${tenantName}`}
+              style={{ backgroundColor: 'rgba(46,204,113,0.15)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.25)' }}>
+              {iniciaisUsuario || initials}
+            </div>
+          )}
           {!recolhida && (
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-white/60 truncate">{tenantName}</p>
-              <p className="text-[10px] text-white/25">cliente ativo</p>
+              <p className="text-xs font-semibold text-white/75 truncate">{nomeUsuario}</p>
+              <p className="text-[10px] text-white/30 truncate">{tenantName}</p>
             </div>
           )}
         </div>

@@ -103,6 +103,19 @@ export default function DashboardHome({ tenantSlug }: Props) {
     retry: false,
   })
 
+  // Nome fantasia para o subtítulo. Mesma queryKey usada no PDV e no Header,
+  // então na prática vem do cache — sem requisição extra.
+  const { data: empresaRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 300000,
+  })
+  const emp      = empresaRaw?.data ?? {}
+  const daEmpresa = String(emp.nomeFantasia || emp.nomeEmpresa || '').trim()
+  const subtitulo = daEmpresa
+    ? `Visão geral de negócio da ${daEmpresa}`
+    : 'Visão geral do negócio'
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
       <p className="text-sm text-gray-400">Carregando dashboard...</p>
@@ -113,7 +126,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Visão geral do negócio</p>
+        <p className="text-sm text-gray-400 mt-0.5">{subtitulo}</p>
       </div>
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
         <p className="text-sm text-amber-700">Dashboard disponível após registrar as primeiras vendas.</p>
@@ -150,7 +163,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Visão geral do negócio</p>
+        <p className="text-sm text-gray-400 mt-0.5">{subtitulo}</p>
       </div>
 
       {/* KPIs */}
@@ -161,10 +174,13 @@ export default function DashboardHome({ tenantSlug }: Props) {
           { label: 'Estoque crítico',    value: String(estoqueCritico.length), sub: 'produtos abaixo do mínimo', color: estoqueCritico.length > 0 ? '#e74c3c' : undefined },
           { label: 'Top produto',        value: topProdutos[0]?.nome?.split(' ').slice(0, 2).join(' ') ?? '—', sub: topProdutos[0] ? `${topProdutos[0].qtd} un` : '' },
         ].map((kpi, i) => (
-          <div key={i} className="bg-white rounded-xl border border-gray-100 p-4">
-            <p className="text-xs text-gray-400">{kpi.label}</p>
-            <p className="text-xl font-bold mt-1 truncate" style={{ color: kpi.color ?? '#0F1117' }}>{kpi.value}</p>
-            {kpi.sub && <p className="text-xs text-gray-400 mt-0.5">{kpi.sub}</p>}
+          // Rótulo em caixa alta pequena e valor em semibold: o cartão para de
+          // competir com o gráfico ao lado. Cor só quando informa algo — hoje
+          // isso significa estoque crítico em vermelho.
+          <div key={i} className="bg-white rounded-xl border border-gray-100 px-4 py-3.5">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{kpi.label}</p>
+            <p className="text-xl font-semibold mt-1.5 truncate" style={{ color: kpi.color ?? '#111827' }}>{kpi.value}</p>
+            {kpi.sub && <p className="text-[11px] text-gray-400 mt-0.5">{kpi.sub}</p>}
           </div>
         ))}
       </div>
@@ -172,39 +188,39 @@ export default function DashboardHome({ tenantSlug }: Props) {
       {/* Linha 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Faturamento — últimos 6 meses</h3>
+          <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Faturamento — últimos 6 meses</h3>
           {faturamento6m.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={faturamento6m} margin={{ left: 4, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                   width={62}
                   domain={escFaturamento.dominio}
                   ticks={escFaturamento.marcas}
                   tickFormatter={escFaturamento.formatar}
                 />
                 <Tooltip formatter={tooltipFmt} labelStyle={{ fontSize: 12 }} />
-                <Bar dataKey="valor" fill="#2ecc71" radius={[4, 4, 0, 0]} name="Faturamento" />
+                <Bar dataKey="valor" fill="#2ecc71" fillOpacity={0.85} radius={[6, 6, 0, 0]} maxBarSize={44} name="Faturamento" />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Vendas por dia — mês atual</h3>
+          <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Vendas por dia — mês atual</h3>
           {vendasDia.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={vendasDia} margin={{ left: 4, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="dia" tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
+                <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                   width={62}
                   domain={escVendasDia.dominio}
                   ticks={escVendasDia.marcas}
@@ -213,7 +229,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
                 <Tooltip formatter={tooltipFmt} />
                 {/* Com um único dia registrado a linha não tem o que ligar —
                     o ponto garante que o dado apareça mesmo assim. */}
-                <Line type="monotone" dataKey="valor" stroke="#2ecc71" strokeWidth={2}
+                <Line type="monotone" dataKey="valor" stroke="#2ecc71" strokeWidth={1.75}
                   dot={vendasDia.length <= 2} name="Vendas" />
               </LineChart>
             </ResponsiveContainer>
@@ -224,16 +240,16 @@ export default function DashboardHome({ tenantSlug }: Props) {
       {/* Linha 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Top 5 produtos — este mês</h3>
+          <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Top 5 produtos — este mês</h3>
           {topProdutos.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Sem vendas registradas</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topProdutos} layout="vertical" margin={{ left: 10, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
                 <XAxis
                   type="number"
-                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                   domain={escTopProdutos.dominio}
                   ticks={escTopProdutos.marcas}
                   tickFormatter={escTopProdutos.formatar}
@@ -245,23 +261,23 @@ export default function DashboardHome({ tenantSlug }: Props) {
                   name === 'qtd' ? `${v} un` : fmt(Number(v ?? 0)),
                   name === 'qtd' ? 'Quantidade' : 'Valor',
                 ]} />
-                <Bar dataKey="qtd" fill="#3498db" radius={[0, 4, 4, 0]} name="qtd" />
+                <Bar dataKey="qtd" fill="#2ecc71" fillOpacity={0.7} radius={[0, 6, 6, 0]} maxBarSize={18} name="qtd" />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Receita vs Despesas — 6 meses</h3>
+          <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Receita vs Despesas — 6 meses</h3>
           {receitaVsDespesas.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={receitaVsDespesas} margin={{ left: 4, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#9ca3af' }} />
+                <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#9ca3af' }}
+                  tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                   width={62}
                   domain={escReceitaDesp.dominio}
                   ticks={escReceitaDesp.marcas}
@@ -269,8 +285,8 @@ export default function DashboardHome({ tenantSlug }: Props) {
                 />
                 <Tooltip formatter={tooltipFmt} />
                 <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="receita"  fill="#2ecc71" radius={[4, 4, 0, 0]} name="Receita" />
-                <Bar dataKey="despesas" fill="#e74c3c" radius={[4, 4, 0, 0]} name="Despesas" />
+                <Bar dataKey="receita"  fill="#2ecc71" fillOpacity={0.85} radius={[6, 6, 0, 0]} maxBarSize={28} name="Receita" />
+                <Bar dataKey="despesas" fill="#e74c3c" fillOpacity={0.75} radius={[6, 6, 0, 0]} maxBarSize={28} name="Despesas" />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -280,7 +296,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
       {/* Linha 3 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Formas de pagamento — mês atual</h3>
+          <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Formas de pagamento — mês atual</h3>
           {porForma.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
@@ -298,7 +314,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Estoque crítico</h3>
+          <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Estoque crítico</h3>
           {estoqueCritico.length === 0 ? (
             <div className="flex items-center justify-center h-40">
               <div className="text-center">
