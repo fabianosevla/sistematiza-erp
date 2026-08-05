@@ -533,10 +533,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     const esc = (t: any) => String(t ?? '').replace(/[&<>]/g, (c: string) =>
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c] as string))
 
-    // Cabeçalho: usa o que estiver preenchido. Sem razão social, cai no nome
-    // do tenant para o cupom nunca sair sem identificação.
-    const razao    = esc(e.nomeEmpresa || tenantName(tenantSlug))
-    const fantasia = esc(e.nomeFantasia || '')
+    // Cabeçalho: o NOME FANTASIA vem em destaque — é por ele que o cliente
+    // conhece a loja. A razão social entra abaixo, menor, porque é exigência
+    // de identificação, não de comunicação.
+    const fantasia = esc(e.nomeFantasia || e.nomeEmpresa || tenantName(tenantSlug))
+    const razao    = esc(e.nomeFantasia ? (e.nomeEmpresa || '') : '')
     const linhaEndereco = [
       esc(e.endereco), e.numero ? esc(e.numero) : '', esc(e.bairro),
     ].filter(Boolean).join(', ')
@@ -563,31 +564,55 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     }).join('')
 
     win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cupom</title><style>
-      * { font-family: 'Courier New', monospace; font-size: 12px; color: #000; }
-      body { width: 72mm; margin: 0; padding: 6px; }
-      h1 { font-size: 13px; text-align: center; margin: 0; font-weight: bold; }
-      p  { margin: 1px 0; }
-      .c { text-align: center; } .r { text-align: right; } .b { font-weight: bold; }
-      .peq { font-size: 11px; }
+      /* LEGIBILIDADE EM IMPRESSORA TÉRMICA.
+         O cupom saía claro e pequeno. Três coisas resolvem:
+         - fonte maior (13px de base, contra 12) e entrelinha folgada;
+         - peso 700 em quase tudo: térmica queima o papel por ponto, e o
+           traço grosso sai visivelmente mais escuro que o fino;
+         - print-color-adjust exact, para o navegador não "economizar" tinta.
+         A fonte é a mesma família das impressoras fiscais — monospace com
+         alinhamento previsível em coluna. */
+      @page { size: 80mm auto; margin: 0; }
+      * {
+        font-family: 'Consolas', 'DejaVu Sans Mono', 'Courier New', monospace;
+        color: #000;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      body {
+        width: 72mm; margin: 0; padding: 4mm 3mm;
+        font-size: 13px; line-height: 1.35; font-weight: 700;
+      }
+      h1 {
+        font-size: 19px; text-align: center; margin: 0 0 2px;
+        font-weight: 900; letter-spacing: .5px;
+      }
+      p { margin: 1px 0; }
+      .c { text-align: center; } .r { text-align: right; }
+      .b { font-weight: 900; }
+      .peq  { font-size: 12px; }
+      .mini { font-size: 11px; font-weight: 400; }
       table { width: 100%; border-collapse: collapse; }
       td { padding: 0; vertical-align: top; }
-      td.q { width: 22%; } td.u { width: 14%; }
-      tr.it td { padding-top: 3px; }
-      .desc { font-size: 10px; padding-left: 8px; }
-      hr { border: none; border-top: 1px dashed #000; margin: 5px 0; }
-      .tot { font-weight: bold; font-size: 14px; }
-      .aviso { font-size: 10px; text-align: center; margin-top: 6px; }
+      td.q { width: 24%; } td.u { width: 13%; }
+      tr.it td { padding-top: 5px; font-size: 13px; }
+      .desc { font-size: 11px; padding-left: 10px; font-weight: 400; }
+      hr { border: none; border-top: 2px solid #000; margin: 5px 0; }
+      hr.leve { border-top: 1px dashed #000; }
+      .titulo { font-size: 15px; font-weight: 900; letter-spacing: 1px; }
+      .tot { font-weight: 900; font-size: 20px; }
+      .aviso { font-size: 11px; text-align: center; margin-top: 6px; font-weight: 400; }
     </style></head><body>
 
-      <h1>${razao}</h1>
-      ${fantasia ? `<p class="c peq">${fantasia}</p>` : ''}
+      <h1>${fantasia}</h1>
+      ${razao ? `<p class="c mini">${razao}</p>` : ''}
       ${linhaEndereco ? `<p class="c peq">${linhaEndereco}</p>` : ''}
-      ${linhaCidade || linhaFone ? `<p class="c peq">${[linhaCidade, linhaFone].filter(Boolean).join('  ')}</p>` : ''}
+      ${linhaCidade || linhaFone ? `<p class="c peq">${[linhaCidade, linhaFone].filter(Boolean).join('   ')}</p>` : ''}
       ${linhaDoc ? `<p class="c peq">${linhaDoc}</p>` : ''}
 
       <hr/>
-      <p class="c b">CUPOM NÃO FISCAL</p>
-      <p class="c peq">Sem valor fiscal · não substitui a NFC-e</p>
+      <p class="c titulo">CUPOM NÃO FISCAL</p>
+      <p class="c mini">Sem valor fiscal · não substitui a NFC-e</p>
       <hr/>
 
       <table class="peq">
@@ -601,7 +626,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         <tr class="b"><td colspan="4">CÓDIGO  DESCRIÇÃO</td></tr>
         <tr class="b"><td class="q">QTDE</td><td class="u">UN</td><td class="r">VL UNIT</td><td class="r">VL TOTAL</td></tr>
       </table>
-      <hr/>
+      <hr class="leve"/>
       <table>${linhas}</table>
       <hr/>
 
@@ -611,14 +636,17 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         ${v.desconto > 0 ? `<tr><td>Descontos</td><td class="r">-${(v.desconto / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
         ${v.acrescimo > 0 ? `<tr><td>Acréscimo</td><td class="r">+${(v.acrescimo / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
         ${v.cashbackUsado > 0 ? `<tr><td>Cashback</td><td class="r">-${(v.cashbackUsado / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
-        <tr><td class="tot">VALOR A PAGAR R$</td><td class="r tot">${(v.total / 100).toFixed(2).replace('.', ',')}</td></tr>
       </table>
-
+      <hr class="leve"/>
+      <table>
+        <tr><td class="tot">VALOR A PAGAR</td><td class="r tot">${(v.total / 100).toFixed(2).replace('.', ',')}</td></tr>
+      </table>
       <hr/>
+
       <table class="peq">
         <tr><td>FORMA DE PAGAMENTO</td><td class="r">VALOR R$</td></tr>
         <tr class="b"><td>${esc(v.forma).toUpperCase()}</td><td class="r">${(v.total / 100).toFixed(2).replace('.', ',')}</td></tr>
-        ${v.troco > 0 ? `<tr><td>TROCO</td><td class="r">${(v.troco / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
+        ${v.troco > 0 ? `<tr class="b"><td>TROCO</td><td class="r">${(v.troco / 100).toFixed(2).replace('.', ',')}</td></tr>` : ''}
       </table>
 
       <hr/>
@@ -627,7 +655,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       ${v.enderecoEntrega ? `<p class="peq">ENTREGA: ${esc(v.enderecoEntrega)}</p>` : ''}
 
       <hr/>
-      <p class="c">${esc(e.mensagemCupom || 'Obrigado pela preferência!')}</p>
+      <p class="c peq">${esc(e.mensagemCupom || 'Obrigado pela preferência!')}</p>
       <p class="aviso">Este documento não é válido como comprovante fiscal.</p>
 
     </body></html>`)
