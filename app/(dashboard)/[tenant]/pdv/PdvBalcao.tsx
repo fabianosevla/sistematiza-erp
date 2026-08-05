@@ -85,10 +85,10 @@ const DENSIDADES = {
 } as const
 type Densidade = keyof typeof DENSIDADES
 
-// Grafite do menu lateral. É a cor de ação do sistema: a interface é cinza e a
-// cor fica reservada para o que muda a decisão do operador — valor negativo e
-// impedimento. Ver PdvShell.tsx / Sidebar.tsx.
-const ACAO = 'bg-[#0F1117] hover:bg-[#232733] text-white'
+// Verde da marca. Os botões usam o componente <Button> sem sobrescrever cor —
+// é ele que define a identidade em todo o sistema, e o PDV não pode ser a
+// exceção escura no meio de uma aplicação clara.
+const VERDE = '#2ecc71'
 
 // Etapa 1 = montar o carrinho na tela cheia. Etapa 2 = painel lateral, que por
 // sua vez tem duas partes: conferir os itens e depois pagar.
@@ -749,7 +749,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       )}
       <div className="flex justify-between items-baseline border-t border-gray-100 pt-2">
         <span className="text-sm font-bold text-gray-900">Total da venda</span>
-        <span className="text-2xl font-bold text-gray-900">{fmt(totalAPagar)}</span>
+        <span className="text-2xl font-semibold" style={{ color: VERDE }}>{fmt(totalAPagar)}</span>
       </div>
     </div>
   )
@@ -767,7 +767,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* Tabela de preço em vigor — só aparece quando não é varejo */}
           {ehAtacado && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-gray-300 bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
               <Tag size={12} /> {rotuloTabela}
             </span>
           )}
@@ -846,15 +846,15 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               return (
                 <button key={p.produtoId} onClick={() => addProduto(p)}
                   className={`relative bg-white rounded-lg border p-3 text-left transition-all active:scale-95 hover:shadow-sm ${
-                    noCarrinho ? 'border-gray-900' : 'border-gray-100 hover:border-gray-400'
+                    noCarrinho ? 'border-green-300' : 'border-gray-100 hover:border-green-200'
                   }`}>
                   {noCarrinho && (
-                    <span className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gray-900 text-white text-[10px] font-bold flex items-center justify-center">
+                    <span style={{ backgroundColor: VERDE }} className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center">
                       {noCarrinho.quantidade}
                     </span>
                   )}
                   <p className={`${dens.titulo} font-medium text-gray-900 leading-tight line-clamp-2 pr-5`}>{p.nome}</p>
-                  <p className={`${dens.preco} font-bold mt-1 text-gray-900`}>{precoCard ? fmt(precoCard) : '—'}</p>
+                  <p className={`${dens.preco} font-semibold mt-1`} style={{ color: VERDE }}>{precoCard ? fmt(precoCard) : '—'}</p>
                   <p className="text-xs text-gray-400">{p.unidade}{p.codigoBarras ? ` · ${p.codigoBarras}` : ''}</p>
                 </button>
               )
@@ -867,7 +867,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       <div className="flex-shrink-0 bg-white border border-gray-200 rounded-xl px-4 py-3 flex items-center gap-4">
         {vendaOk ? (
           <div className="flex items-center gap-2 flex-1">
-            <CheckCircle size={18} className="text-gray-900" />
+            <CheckCircle size={18} className="text-green-600" />
             <span className="text-sm font-semibold text-gray-900">Venda registrada.</span>
           </div>
         ) : (
@@ -878,9 +878,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               className="flex items-center gap-3 min-w-0 text-left disabled:cursor-default group"
             >
               <div className="relative flex-shrink-0">
-                <ShoppingCart size={22} className={carrinho.length > 0 ? 'text-gray-900' : 'text-gray-300'} />
+                <ShoppingCart size={22} className={carrinho.length > 0 ? 'text-green-600' : 'text-gray-300'} />
                 {carrinho.length > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-gray-900 text-white text-[10px] font-bold flex items-center justify-center">
+                  <span style={{ backgroundColor: VERDE }} className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center">
                     {qtdItens}
                   </span>
                 )}
@@ -906,12 +906,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               )}
               <div className="text-right">
                 <p className="text-[11px] text-gray-400 leading-none">Total</p>
-                <p className="text-2xl font-bold text-gray-900 leading-tight">{fmt(totalAPagar)}</p>
+                <p className="text-2xl font-semibold leading-tight" style={{ color: VERDE }}>{fmt(totalAPagar)}</p>
               </div>
               <Button
                 onClick={() => abrirPainel('itens')}
                 disabled={carrinho.length === 0}
-                className={`h-12 px-6 text-base font-bold ${ACAO}`}
+                className="h-12 px-6 text-base"
               >
                 Revisar e finalizar
                 <span className="ml-2 text-xs font-normal opacity-70">(F10)</span>
@@ -947,7 +947,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <Button
                   onClick={() => setEtapa('pagamento')}
                   disabled={carrinho.length === 0}
-                  className={`h-11 px-6 font-bold ${ACAO}`}
+                  className="h-11 px-6"
                 >
                   Ir para pagamento <ChevronRight size={16} className="ml-1" />
                 </Button>
@@ -960,7 +960,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <Button
                   onClick={() => setConfirmVenda(true)}
                   disabled={!podeVender}
-                  className={`h-11 px-6 font-bold ${ACAO}`}
+                  className="h-11 px-6"
                 >
                   {venderMut.isPending
                     ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
@@ -1021,7 +1021,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                                   placeholder="0,00"
                                   className="sem-spinner w-16 h-6 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-gray-500" />
                               </td>
-                              <td className="px-2 py-2 text-right font-bold text-gray-900 whitespace-nowrap">{fmt(item.subtotal)}</td>
+                              <td className="px-2 py-2 text-right font-semibold whitespace-nowrap" style={{ color: VERDE }}>{fmt(item.subtotal)}</td>
                               <td className="px-1 py-2 text-center align-top">
                                 <button onClick={() => removerItem(item.produtoId)} className="text-gray-300 hover:text-red-600"><Trash2 size={12} /></button>
                               </td>
@@ -1059,7 +1059,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   </InfoTip>
                 </Label>
                 {clienteId && clienteNomeDisplay ? (
-                  <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-gray-100 border border-gray-200 rounded-lg">
+                  <div className="mt-1 flex items-center justify-between px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg">
                     <span className="text-sm font-medium text-gray-900 truncate">
                       {clienteNomeDisplay}
                       {ehAtacado && <span className="ml-1.5 text-[10px] font-semibold text-gray-500">· {rotuloTabela}</span>}
@@ -1181,7 +1181,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <Button variant="outline" className="flex-1" onClick={() => { setShowCadastrarCliente(false); setNovoCli(CLI_VAZIO) }}>
                       Cancelar
                     </Button>
-                    <Button className={`flex-1 ${ACAO}`}
+                    <Button className="flex-1"
                       onClick={() => criarClienteMut.mutate()}
                       disabled={!novoCli.nomeCompleto.trim() || !novoCli.celular.trim() || criarClienteMut.isPending}>
                       {criarClienteMut.isPending ? 'Salvando...' : 'Salvar e usar'}
@@ -1215,7 +1215,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   <button key={pct} onClick={() => setDesconto(pct === 0 ? '0' : ((subtotal * pct / 100) / 100).toFixed(2))}
                     className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
                       descontoVal === Math.round(subtotal * pct / 100) && pct > 0
-                        ? 'bg-gray-900 border-gray-900 text-white'
+                        ? 'bg-green-50 border-green-300 text-green-700'
                         : 'bg-gray-50 border-gray-100 text-gray-500 hover:bg-gray-100'
                     }`}>
                     {pct === 0 ? 'Sem' : `${pct}%`}
@@ -1270,9 +1270,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   <Label className="text-xs">Valor recebido (R$)</Label>
                   <Input type="number" min="0" step="0.01" inputMode="decimal" value={valorRecebido} onChange={e => setValorRecebido(e.target.value)} className="sem-spinner mt-1 h-9 text-sm" placeholder="0,00" />
                   {troco > 0 && (
-                    <div className="flex justify-between items-baseline mt-2 px-3 py-2 rounded-lg bg-gray-100 border border-gray-200">
+                    <div className="flex justify-between items-baseline mt-2 px-3 py-2 rounded-lg bg-green-50 border border-green-200">
                       <span className="text-sm font-semibold text-gray-700">Troco</span>
-                      <span className="text-xl font-bold text-gray-900">{fmt(troco)}</span>
+                      <span className="text-xl font-semibold text-gray-900">{fmt(troco)}</span>
                     </div>
                   )}
                 </div>
@@ -1355,7 +1355,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             )}
             <div className="flex justify-center gap-3 mt-5">
               <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
-              <Button className={`w-24 ${ACAO}`} onClick={() => { setConfirmVenda(false); venderMut.mutate() }}>Sim</Button>
+              <Button className="w-24" onClick={() => { setConfirmVenda(false); venderMut.mutate() }}>Sim</Button>
             </div>
           </div>
         </div>
@@ -1365,12 +1365,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       {cupomVenda && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
-            <CheckCircle size={28} className="mx-auto text-gray-900 mb-2" />
+            <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
             <p className="text-base font-semibold text-gray-900 mb-1">Venda registrada!</p>
             <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
             <div className="flex justify-center gap-3">
               <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
-              <Button className={`w-24 ${ACAO}`} onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
+              <Button className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
             </div>
           </div>
         </div>

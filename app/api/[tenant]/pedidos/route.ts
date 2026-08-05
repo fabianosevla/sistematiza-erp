@@ -16,8 +16,12 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       const { searchParams } = new URL(req.url)
       const status  = searchParams.get('status') ?? undefined
+      // A tela sempre mandou `periodo`; esta rota lia só `status` e o
+      // descartava aqui, antes de chegar no service. Por isso o seletor de
+      // período não surtia efeito nenhum na listagem.
+      const periodo = searchParams.get('periodo') ?? undefined
       const service = new PedidoService(db)
-      const result  = await service.list({ status })
+      const result  = await service.list({ status, periodo })
       return ok(result)
     } finally {
       release()

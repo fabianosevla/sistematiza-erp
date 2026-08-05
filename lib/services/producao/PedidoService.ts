@@ -19,7 +19,34 @@ export class PedidoService {
    * O nome exibido é o fantasia quando existe, senão a razão social — mesma
    * regra da listagem de Clientes e das buscas do PDV e de Pedidos.
    */
-  async list({ status }: { status?: string } = {}) {
+  /**
+   * FILTRO DE PERÍODO.
+   *
+   * A tela sempre mandou `periodo` na query string, e tanto a rota quanto este
+   * método descartavam. Resultado: trocar "Este mês" por "Este ano" não mudava
+   * absolutamente nada na lista.
+   *
+   * Convenção adotada, para não haver dúvida na leitura:
+   *   mes       → do dia 1º do mês corrente em diante
+   *   trimestre → os últimos 3 meses, contando o corrente
+   *   semestre  → os últimos 6 meses, contando o corrente
+   *   ano       → de 1º de janeiro do ano corrente em diante
+   *   tudo      → sem recorte
+   *
+   * O corte é por `data_pedido`, que é a data que a tela mostra na coluna.
+   */
+  private recorteDePeriodo(periodo?: string) {
+    switch (periodo) {
+      case 'mes':       return sql`AND p.data_pedido >= date_trunc('month', CURRENT_DATE)`
+      case 'trimestre': return sql`AND p.data_pedido >= date_trunc('month', CURRENT_DATE) - INTERVAL '2 months'`
+      case 'semestre':  return sql`AND p.data_pedido >= date_trunc('month', CURRENT_DATE) - INTERVAL '5 months'`
+      case 'ano':       return sql`AND p.data_pedido >= date_trunc('year', CURRENT_DATE)`
+      // 'tudo', vazio ou valor desconhecido: não recorta.
+      default:          return sql``
+    }
+  }
+
+  async list({ status, periodo }: { status?: string; periodo?: string } = {}) {
     const res = await this.db.execute(sql`
       SELECT
         p.pedido_id, p.cliente_id, p.nome_cliente_avulso, p.tipo_venda, p.status,
@@ -33,6 +60,7 @@ export class PedidoService {
       LEFT JOIN t_cliente cl ON cl.cliente_id = p.cliente_id
       WHERE p.active_flg = true
         ${status ? sql`AND p.status = ${status}` : sql``}
+        ${this.recorteDePeriodo(periodo)}
       ORDER BY p.data_pedido DESC, p.pedido_id DESC
     `)
 
