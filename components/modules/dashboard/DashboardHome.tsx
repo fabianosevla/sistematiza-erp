@@ -1,12 +1,27 @@
 'use client'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-// Sem BarChart/Bar: os quatro gráficos viraram linha ou área, e o antigo
-// "Top 5 produtos" em barra horizontal virou a lista de ranking.
+// Barra continua sendo o desenho certo aqui: com uma empresa que ainda tem
+// poucos meses de historico, linha e area viram um ponto solto no vazio. A
+// barra ocupa o espaco e comunica volume mesmo com um unico periodo.
 import {
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
 } from 'recharts'
+
+// Cartao do tooltip: mesma borda e mesmo raio dos cartoes da tela, em vez da
+// caixa branca dura que o recharts desenha por padrao.
+const ESTILO_TOOLTIP = {
+  contentStyle: {
+    borderRadius: 10,
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+    fontSize: 12,
+    padding: '8px 10px',
+  },
+  labelStyle: { fontSize: 11, color: '#9ca3af', marginBottom: 2 },
+  cursor: { fill: 'rgba(46,204,113,0.06)' },
+}
 
 interface Props { tenantSlug: string }
 
@@ -285,17 +300,15 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={faturamento6m} margin={{ left: 4, right: 8 }}>
-                {/* Preenchimento em degradê que some para baixo: dá volume ao
-                    dado sem o peso do bloco de cor cheia. */}
+              <BarChart data={faturamento6m} margin={{ left: 4, right: 8, top: 8 }}>
                 <defs>
-                  <linearGradient id="gradFaturamento" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#2ecc71" stopOpacity={0.22} />
-                    <stop offset="100%" stopColor="#2ecc71" stopOpacity={0} />
+                  <linearGradient id="barVerde" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#2ecc71" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#2ecc71" stopOpacity={0.55} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} dy={4} />
                 <YAxis
                   tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                   width={62}
@@ -303,13 +316,10 @@ export default function DashboardHome({ tenantSlug }: Props) {
                   ticks={escFaturamento.marcas}
                   tickFormatter={escFaturamento.formatar}
                 />
-                <Tooltip formatter={tooltipFmt} labelStyle={{ fontSize: 12 }} />
-                <Area type="monotone" dataKey="valor" name="Faturamento"
-                  stroke="#2ecc71" strokeWidth={2}
-                  fill="url(#gradFaturamento)"
-                  dot={faturamento6m.length <= 2 ? { r: 3, fill: '#2ecc71', strokeWidth: 0 } : false}
-                  activeDot={{ r: 4 }} />
-              </AreaChart>
+                <Tooltip formatter={tooltipFmt} {...ESTILO_TOOLTIP} />
+                <Bar dataKey="valor" name="Faturamento"
+                  fill="url(#barVerde)" radius={[6, 6, 0, 0]} maxBarSize={46} />
+              </BarChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -320,15 +330,15 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={vendasDia} margin={{ left: 4, right: 8 }}>
+              <BarChart data={vendasDia} margin={{ left: 4, right: 8, top: 8 }}>
                 <defs>
-                  <linearGradient id="gradVendasDia" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%"   stopColor="#2ecc71" stopOpacity={0.22} />
-                    <stop offset="100%" stopColor="#2ecc71" stopOpacity={0} />
+                  <linearGradient id="barVerde" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#2ecc71" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#2ecc71" stopOpacity={0.55} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
-                <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="dia" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} dy={4} />
                 <YAxis
                   tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                   width={62}
@@ -336,15 +346,10 @@ export default function DashboardHome({ tenantSlug }: Props) {
                   ticks={escVendasDia.marcas}
                   tickFormatter={escVendasDia.formatar}
                 />
-                <Tooltip formatter={tooltipFmt} />
-                {/* Com um único dia registrado a linha não tem o que ligar —
-                    o ponto garante que o dado apareça mesmo assim. */}
-                <Area type="monotone" dataKey="valor" name="Vendas"
-                  stroke="#2ecc71" strokeWidth={2}
-                  fill="url(#gradVendasDia)"
-                  dot={vendasDia.length <= 2 ? { r: 3, fill: '#2ecc71', strokeWidth: 0 } : false}
-                  activeDot={{ r: 4 }} />
-              </AreaChart>
+                <Tooltip formatter={tooltipFmt} {...ESTILO_TOOLTIP} />
+                <Bar dataKey="valor" name="Vendas"
+                  fill="url(#barVerde)" radius={[6, 6, 0, 0]} maxBarSize={26} />
+              </BarChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -360,9 +365,19 @@ export default function DashboardHome({ tenantSlug }: Props) {
             <p className="text-sm text-gray-400 text-center py-12">Sem dados</p>
           ) : (
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={receitaVsDespesas} margin={{ left: 4, right: 8 }}>
+              <BarChart data={receitaVsDespesas} margin={{ left: 4, right: 8, top: 8 }} barGap={4}>
+                <defs>
+                  <linearGradient id="barVerde" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#2ecc71" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#2ecc71" stopOpacity={0.55} />
+                  </linearGradient>
+                  <linearGradient id="barVermelho" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stopColor="#e26d6d" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#e26d6d" stopOpacity={0.55} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
-                <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="mes" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} dy={4} />
                 <YAxis
                   tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
                   width={62}
@@ -370,17 +385,11 @@ export default function DashboardHome({ tenantSlug }: Props) {
                   ticks={escReceitaDesp.marcas}
                   tickFormatter={escReceitaDesp.formatar}
                 />
-                <Tooltip formatter={tooltipFmt} />
-                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="receita"  name="Receita"
-                  stroke="#2ecc71" strokeWidth={2}
-                  dot={receitaVsDespesas.length <= 2 ? { r: 3, fill: '#2ecc71', strokeWidth: 0 } : false}
-                  activeDot={{ r: 4 }} />
-                <Line type="monotone" dataKey="despesas" name="Despesas"
-                  stroke="#e74c3c" strokeWidth={2}
-                  dot={receitaVsDespesas.length <= 2 ? { r: 3, fill: '#e74c3c', strokeWidth: 0 } : false}
-                  activeDot={{ r: 4 }} />
-              </LineChart>
+                <Tooltip formatter={tooltipFmt} {...ESTILO_TOOLTIP} />
+                <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                <Bar dataKey="receita"  name="Receita"  fill="url(#barVerde)"    radius={[5, 5, 0, 0]} maxBarSize={22} />
+                <Bar dataKey="despesas" name="Despesas" fill="url(#barVermelho)" radius={[5, 5, 0, 0]} maxBarSize={22} />
+              </BarChart>
             </ResponsiveContainer>
           )}
         </div>
