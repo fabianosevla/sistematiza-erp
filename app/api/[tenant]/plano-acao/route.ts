@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { PlanoAcaoService } from '@/lib/services/plano_acao/PlanoAcaoService'
 import { ok, created, serverError } from '@/lib/api/responses'
 
@@ -34,8 +35,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
+      const userId  = await usuarioAtualIdDb(db)
       const payload = schema.parse(await req.json())
-      return created(await new PlanoAcaoService(db).criar({ ...payload, userId: 1 }))
+      return created(await new PlanoAcaoService(db).criar({ ...payload, userId }))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

@@ -81,13 +81,39 @@ export class EstoqueService {
   }) {
     const now = new Date()
 
-    // t_movimentacao_estoque.quantidade é NUMERIC(12,3) — o Drizzle espera
-    // string em coluna numeric. Antes era INTEGER e a rota arredondava, o que
-    // fazia 0,5 kg de insumo virar 1 no histórico.
-    const qtdMovimento = tipo === 'saida' ? -Math.abs(quantidade) : Math.abs(quantidade)
+    // AJUSTE GRAVA A DIFERENÇA, NÃO O SALDO FINAL.
+    //
+    // Em 'ajuste', `quantidade` é o novo saldo — o UPDATE mais abaixo faz
+    // `estoque_atual = quantidade`. O extrato, porém, registrava esse mesmo
+    // número como se fosse o quanto entrou: ajustar de 40 para 50 aparecia
+    // como "entrada de 50" na consulta de Entradas, inflando o relatório em
+    // 40 unidades que nunca se moveram.
+    //
+    // Aqui o saldo anterior é lido antes, e o que vai para a movimentação é a
+    // diferença. Entrada e saída seguem como estavam: ali o número informado
+    // já É o movimento.
+    let qtdMovimento: number
+    let tipoMovimento: 'entrada' | 'saida' | 'ajuste' = tipo
+
+    if (tipo === 'ajuste') {
+      const atualRes = entidade === 'produto'
+        ? await this.db.select({ v: dbProduto.estoqueAtual }).from(dbProduto).where(eq(dbProduto.produtoId, entidadeId))
+        : await this.db.select({ v: dbInsumo.estoqueAtual }).from(dbInsumo).where(eq(dbInsumo.insumoId, entidadeId))
+      const anterior = Number((atualRes[0] as any)?.v ?? 0)
+      const delta    = quantidade - anterior
+      qtdMovimento   = Math.abs(delta)
+      // Mantém 'ajuste' como tipo — é o que distingue correção de inventário
+      // de uma entrada real — mas com sinal correto na quantidade.
+      if (delta < 0) qtdMovimento = -qtdMovimento
+    } else {
+      // t_movimentacao_estoque.quantidade é NUMERIC(12,3) — o Drizzle espera
+      // string em coluna numeric. Antes era INTEGER e a rota arredondava, o
+      // que fazia 0,5 kg de insumo virar 1 no histórico.
+      qtdMovimento = tipo === 'saida' ? -Math.abs(quantidade) : Math.abs(quantidade)
+    }
 
     await this.db.insert(dbMovimentacaoEstoque).values({
-      tipo,
+      tipo: tipoMovimento,
       entidade,
       entidadeId,
       quantidade:       String(qtdMovimento),

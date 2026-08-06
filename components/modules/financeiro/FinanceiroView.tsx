@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Download, Plus, X, Trash2, Pencil } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Printer, Plus, X, Trash2, Pencil } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
@@ -122,6 +122,56 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`${api}?tipo=demonstrativo&ano=${ano}`)).json(),
     enabled:  aba === 'demonstrativo',
   })
+
+  // ── DRE: exportar e imprimir ─────────────────────────────────────────────
+  //
+  // As duas saídas recebem as linhas já montadas pela tela, em vez de refazer
+  // a conta. Relatório impresso que não bate com a tela é pior que relatório
+  // nenhum: quem confere passa a duvidar dos dois.
+  function exportarDreCSV(linhas: { rotulo: string; valor: number }[], titulo: string) {
+    if (linhas.length === 0) { toast('Nada para exportar.', 'error'); return }
+    const csv = [['Linha', 'Valor'], ...linhas.map(l => [l.rotulo, (l.valor / 100).toFixed(2)])]
+      .map(l => l.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
+    a.download = `dre-${titulo.replace(/[^\w]+/g, '-').toLowerCase()}.csv`
+    a.click()
+  }
+
+  function imprimirDre(
+    linhas: { rotulo: string; valor: number; destaque?: boolean }[],
+    titulo: string,
+    rodape: string,
+  ) {
+    if (linhas.length === 0) { toast('Nada para imprimir.', 'error'); return }
+    const win = window.open('', '_blank', 'width=800,height=900')
+    if (!win) { toast('Habilite pop-ups para imprimir.', 'error'); return }
+    const corpo = linhas.map(l => {
+      const v = (l.valor / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+      return `<tr class="${l.destaque ? 'total' : ''}"><td>${l.rotulo}</td><td class="r">${v}</td></tr>`
+    }).join('')
+    win.document.write(`<!doctype html><html><head><meta charset="utf-8">
+      <title>DRE — ${titulo}</title><style>
+      * { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; color: #111; }
+      body { max-width: 700px; margin: 32px auto; padding: 0 24px; }
+      h1 { font-size: 20px; margin: 0 0 2px; }
+      .sub { font-size: 13px; color: #666; margin: 0 0 24px; }
+      table { width: 100%; border-collapse: collapse; }
+      td { padding: 8px 4px; font-size: 14px; border-bottom: 1px solid #eee; }
+      .r { text-align: right; font-variant-numeric: tabular-nums; }
+      tr.total td { font-weight: 700; border-top: 2px solid #333; border-bottom: none; }
+      .rodape { margin-top: 28px; font-size: 11px; color: #999; }
+      @media print { body { margin: 0; } }
+    </style></head><body>
+      <h1>Demonstrativo de Resultado</h1>
+      <p class="sub">${titulo}</p>
+      <table>${corpo}</table>
+      <p class="rodape">${rodape} &middot; gerado em ${new Date().toLocaleString('pt-BR')}</p>
+    </body></html>`)
+    win.document.close()
+    win.focus()
+    setTimeout(() => win.print(), 300)
+  }
 
   // ── Invalidate ──────────────────────────────────────────────────────────
   const inv = () => {
@@ -428,6 +478,26 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         // Para período mensal, usa o DRE do servidor (mais preciso com gastos fixos)
         const dreExibir = periodo === 'mensal' ? dre : null  // DRE mensal
 
+        // Fonte única das linhas do DRE. Tela, CSV e impressão leem daqui —
+        // relatório impresso que não bate com a tela é pior que relatório
+        // nenhum, porque quem confere passa a duvidar dos dois.
+        const linhasDre: any[] = (periodo === 'mensal' && dreExibir ? [
+          { label: '(+) Receita Bruta',      value: dreExibir.receita ?? 0, color: 'text-green-600' },
+          { label: '(-) Taxas de pagamento', value: -(dreExibir.taxasPagamento ?? 0), color: 'text-red-500' },
+          { label: '(=) Receita Líquida',    value: dreExibir.receitaLiquida ?? dreExibir.receita ?? 0, color: 'text-green-700', bold: true },
+          { label: '(-) Total Despesas',     value: -(dreExibir.totalDespesas ?? 0), color: 'text-red-500' },
+          { label: '(=) Resultado',          value: dreExibir.resultado ?? 0, color: (dreExibir.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
+        ] : [
+          { label: '(+) Receita Bruta',      value: receitaPeriodo,                color: 'text-green-600' },
+          { label: '(-) Taxas de pagamento', value: -taxasPeriodo,                 color: 'text-red-500' },
+          { label: '(=) Receita Líquida',    value: receitaPeriodo - taxasPeriodo, color: 'text-green-700', bold: true },
+          { label: '(-) Total Despesas',     value: -despesasPeriodo,              color: 'text-red-500' },
+          { label: '(=) Resultado Acum.',    value: resultadoAcumulado, color: resultadoAcumulado >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
+        ])
+        const tituloDre = periodo === 'mensal'
+          ? `${MESES[mes - 1]}/${ano}`
+          : `${MESES[mesInicio - 1]}–${MESES[mesFim - 1]}/${ano}`
+
         return (
         <div className="space-y-4">
           {/* Seletor de período */}
@@ -447,6 +517,23 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 {' '}({mesesDoPeriodo.length} meses)
               </span>
             )}
+            <div className="ml-auto flex items-center gap-2">
+              <Button variant="outline" size="sm"
+                onClick={() => imprimirDre(
+                  linhasDre.map(l => ({ rotulo: l.label, valor: l.value, destaque: l.bold })),
+                  tituloDre,
+                  'Inclui gastos fixos do período.',
+                )}>
+                <Printer size={13} className="mr-1.5" /> Imprimir
+              </Button>
+              <Button variant="outline" size="sm"
+                onClick={() => exportarDreCSV(
+                  linhasDre.map(l => ({ rotulo: l.label, valor: l.value })),
+                  tituloDre,
+                )}>
+                <Download size={13} className="mr-1.5" /> CSV
+              </Button>
+            </div>
           </div>
 
           {periodo === 'mensal' && !dre ? (
@@ -458,44 +545,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">DRE — {periodo === 'mensal' ? `${MESES[mes-1]}/${ano}` : `${MESES[mesInicio-1]}–${MESES[mesFim-1]}/${ano}`}</h3>
                 <div className="space-y-3">
-                  {(periodo === 'mensal' && dreExibir ? [
-                    // Taxa de meio de pagamento é dedução de receita, não
-                    // despesa operacional — por isso entra entre a bruta e a
-                    // líquida, e não na lista de categorias de despesa.
-                    { label: '(+) Receita Bruta',     value: dreExibir.receita ?? 0, color: 'text-green-600' },
-                    { label: '(-) Taxas de pagamento', value: -(dreExibir.taxasPagamento ?? 0), color: 'text-red-500' },
-                    { label: '(=) Receita Líquida',    value: dreExibir.receitaLiquida ?? dreExibir.receita ?? 0, color: 'text-green-700', bold: true },
-                    { label: '(-) Total Despesas',     value: -(dreExibir.totalDespesas ?? 0), color: 'text-red-500' },
-                    { label: '(=) Resultado',          value: dreExibir.resultado ?? 0, color: (dreExibir.resultado ?? 0) >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
-                  ] : [
-                    { label: '(+) Receita Bruta',      value: receitaPeriodo,                  color: 'text-green-600' },
-                    { label: '(-) Taxas de pagamento', value: -taxasPeriodo,                   color: 'text-red-500' },
-                    { label: '(=) Receita Líquida',    value: receitaPeriodo - taxasPeriodo,   color: 'text-green-700', bold: true },
-                    { label: '(-) Total Despesas',     value: -despesasPeriodo,                color: 'text-red-500' },
-                    { label: '(=) Resultado Acum.',  value: resultadoAcumulado,   color: resultadoAcumulado >= 0 ? 'text-green-600' : 'text-red-600', bold: true, border: true },
-                    { label: 'Margem',               value: margemPeriodo,        color: 'text-gray-600', isPct: true },
-                  ]).map((item: any, i) => (
+                  {(linhasDre).map((item: any, i) => (
                     <div key={i} className={`flex justify-between items-center ${item.border ? 'border-t border-gray-100 pt-3' : ''}`}>
                       <span className={`text-sm ${item.bold ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>{item.label}</span>
                       <span className={`text-sm ${item.bold ? 'font-bold' : ''} ${item.color}`}>{item.isPct ? fmtPct(item.value) : fmt(item.value)}</span>
                     </div>
                   ))}
                 </div>
-
-                {/* Taxas por meio de pagamento */}
-                {periodo === 'mensal' && (dre?.taxasPorForma ?? []).some((f: any) => f.valorTaxa > 0) && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <p className="text-xs font-semibold text-gray-500 mb-2">Taxas por meio de pagamento</p>
-                    {dre.taxasPorForma.filter((f: any) => f.valorTaxa > 0).map((f: any, i: number) => (
-                      <div key={i} className="flex justify-between text-xs py-1">
-                        <span className="text-gray-500">
-                          {f.forma} <span className="text-gray-300">({f.taxaPct}% de {fmt(f.valorPago)})</span>
-                        </span>
-                        <span className="font-medium text-red-500">{fmt(f.valorTaxa)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 {/* Despesas por categoria */}
                 {dre?.porCategoria && Object.keys(dre.porCategoria).length > 0 && (
