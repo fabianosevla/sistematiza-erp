@@ -125,7 +125,10 @@ export class ConsultasService {
   // O nome vem de t_produto ou t_insumo conforme a coluna `entidade`: a
   // movimentação guarda só o id, e sem esse join a consulta mostraria
   // "entidade 14" para o operador.
-  async entradasEstoquePorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+  async entradasEstoquePorPeriodo(
+    { dataInicio, dataFim, entidade }:
+    { dataInicio?: string; dataFim?: string; entidade?: 'produto' | 'insumo' },
+  ) {
     const { inicio, fim } = this.limites(dataInicio, dataFim)
 
     const res = await this.db.execute(sql`
@@ -136,7 +139,15 @@ export class ConsultasService {
         m.entidade,
         m.entidade_id,
         m.quantidade,
+        -- Custo da movimentação, com o do cadastro como reserva.
+        --
+        -- Produção e ajuste manual gravam preco_custo = 0: ali não houve
+        -- compra, então não há preço pago. A coluna aparecia vazia e o
+        -- relatório parecia quebrado. Agora cai no custo do cadastro e a
+        -- linha é marcada como estimada, para ninguém somar isso achando que
+        -- é dinheiro que saiu.
         m.preco_custo,
+        COALESCE(NULLIF(m.preco_custo, 0), p.preco_custo, i.preco_custo, 0) AS custo_efetivo,
         m.observacao,
         COALESCE(p.nome,    i.nome)    AS nome,
         COALESCE(p.unidade, i.unidade) AS unidade
@@ -145,6 +156,7 @@ export class ConsultasService {
       LEFT JOIN t_insumo  i ON m.entidade = 'insumo'  AND i.insumo_id  = m.entidade_id
       WHERE m.active_flg = true
         AND (m.tipo = 'entrada' OR (m.tipo = 'ajuste' AND m.quantidade > 0))
+        ${entidade ? sql`AND m.entidade = ${entidade}` : sql``}
         AND m.data_movimentacao >= ${inicio}
         AND m.data_movimentacao <= ${fim}
       ORDER BY m.data_movimentacao DESC, m.movimentacao_id DESC
@@ -153,11 +165,14 @@ export class ConsultasService {
     const itens = (res.rows as any[]).map(r => {
       // quantidade é NUMERIC(12,3) — o driver devolve string. Sem o Number
       // aqui, a soma dos KPIs viraria concatenação de texto.
-      const qtd   = Number(r.quantidade ?? 0)
-      const custo = Number(r.preco_custo ?? 0)
+      const qtd       = Number(r.quantidade ?? 0)
+      const custoReal = Number(r.preco_custo ?? 0)
+      const custo     = Number(r.custo_efetivo ?? 0)
       return {
         movimentacaoId: Number(r.movimentacao_id),
         data:      r.data_movimentacao,
+        // true = o valor veio do cadastro, não de uma compra real.
+        custoEstimado: custoReal === 0 && custo > 0,
         // 'entrada' ou 'ajuste' — a tela mostra, para o operador saber se
         // aquele aumento veio de produção/compra ou de correção manual.
         tipoMov:   r.tipo,
@@ -174,10 +189,11 @@ export class ConsultasService {
     return {
       itens,
       kpis: {
-        quantidade:   itens.length,
+        quantidade:    itens.length,
         totalProdutos: itens.filter(i => i.entidade === 'produto').length,
         totalInsumos:  itens.filter(i => i.entidade === 'insumo').length,
         valorTotal:    itens.reduce((a, i) => a + i.valorTotal, 0),
+        estimados:     itens.filter(i => i.custoEstimado).length,
       },
     }
   }
@@ -187,7 +203,10 @@ export class ConsultasService {
   // Despesas lançadas em Financeiro. O recorte é por `data_despesa`, e não
   // por mês de competência: quem consulta "3 a 5 de agosto" quer o que foi
   // gasto naqueles dias, não o que pertence à competência de agosto.
-  async despesasPorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+  async despesasPorPeriodo(
+    { dataInicio, dataFim, incluirFixos = true }:
+    { dataInicio?: string; dataFim?: string; incluirFixos?: boolean },
+  ) {
     const { inicio, fim } = this.limites(dataInicio, dataFim)
 
     // t_compra só existe depois de scripts/migrate-compra-rapida-v2.js. Sem
@@ -246,7 +265,7 @@ export class ConsultasService {
     // Então ele entra quando o período consultado contém o dia 1º daquele mês.
     // Consultar agosto inteiro traz o aluguel; consultar 3 a 5 de agosto não
     // traz — e é proposital, senão três dias apareceriam com o aluguel cheio.
-    const fixosRes = await this.db.execute(sql`
+    const fixosRes = !incluirFixos ? { rows: [] as any[] } : await this.db.execute(sql`
       SELECT gv.valor_id, gv.ano, gv.mes, gv.valor, gc.nome AS categoria
       FROM t_gasto_fixo_valor gv
       JOIN t_gasto_fixo_categoria gc

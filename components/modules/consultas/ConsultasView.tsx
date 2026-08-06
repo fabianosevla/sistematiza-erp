@@ -17,7 +17,7 @@
 // é semanal.
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Receipt } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Sprout, Receipt } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
@@ -32,11 +32,12 @@ import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-type Aba = 'vendas' | 'entradas-estoque' | 'despesas'
+type Aba = 'vendas' | 'entradas-produto' | 'entradas-insumo' | 'despesas'
 
 const ABAS: { valor: Aba; rotulo: string; icone: any }[] = [
   { valor: 'vendas',           rotulo: 'Vendas',            icone: ShoppingCart },
-  { valor: 'entradas-estoque', rotulo: 'Entradas',          icone: PackagePlus },
+  { valor: 'entradas-produto', rotulo: 'Entrada de produto', icone: PackagePlus },
+  { valor: 'entradas-insumo',  rotulo: 'Entrada de insumo',  icone: Sprout },
   { valor: 'despesas',         rotulo: 'Despesas',          icone: Receipt },
 ]
 
@@ -53,6 +54,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
   const [ancora, setAncora]               = useState<Date>(() => new Date())
   // Segunda ponta, usada só no modo "Período customizável".
   const [fimCustom, setFimCustom]         = useState<Date | null>(null)
+  // Só afeta a VISUALIZAÇÃO. O padrão é incluir: gasto fixo é despesa, e
+  // escondê-lo por omissão daria um total menor do que a realidade.
+  const [incluirFixos, setIncluirFixos]   = useState(true)
 
   const periodo = useMemo(
     () => intervaloDe(periodicidade, ancora, fimCustom),
@@ -60,9 +64,10 @@ export default function ConsultasView({ tenantSlug }: Props) {
   )
 
   const { data: raw, isLoading } = useQuery({
-    queryKey: ['consultas', tenantSlug, aba, periodo.inicio, periodo.fim],
+    queryKey: ['consultas', tenantSlug, aba, periodo.inicio, periodo.fim, incluirFixos],
     queryFn: async () => {
       const p = new URLSearchParams({ tipo: aba, dataInicio: periodo.inicio, dataFim: periodo.fim })
+      if (aba === 'despesas' && !incluirFixos) p.set('fixos', '0')
       return (await fetch(`/api/${tenantSlug}/consultas?${p}`)).json()
     },
   })
@@ -139,7 +144,8 @@ export default function ConsultasView({ tenantSlug }: Props) {
   // Soma do recorte — só aparece quando há filtro, abaixo do total do período.
   const campoValor: Record<Aba, string> = {
     'vendas':           'total',
-    'entradas-estoque': 'valorTotal',
+    'entradas-produto': 'valorTotal',
+    'entradas-insumo':  'valorTotal',
     'despesas':         'valor',
   }
   const somaFiltrada = itens.reduce((a, i) => a + Number(i[campoValor[aba]] ?? 0), 0)
@@ -180,7 +186,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
           (i.desconto / 100).toFixed(2), (i.total / 100).toFixed(2),
         ]),
       ]
-      : aba === 'entradas-estoque' ? [
+      : aba !== 'despesas' ? [
         ['Data', 'Item', 'Quantidade', 'Unidade', 'Custo unit.', 'Valor total', 'Observacao'],
         ...itens.map(i => [
           fmtDataHora(i.data), i.nome, String(i.quantidade), i.unidade,
@@ -243,8 +249,18 @@ export default function ConsultasView({ tenantSlug }: Props) {
       render: (i: any) => i.nome,
     },
     { chave: 'quantidade', titulo: 'Quantidade', alinhamento: 'right', render: (i: any) => <>{fmtQtd(i.quantidade)} <span className="text-gray-400">{i.unidade}</span></> },
-    { chave: 'precoCusto', titulo: 'Custo unit.', alinhamento: 'right', esconderAte: 'md', render: (i: any) => i.precoCusto > 0 ? fmt(i.precoCusto) : <span className="text-gray-300">—</span> },
-    { chave: 'valorTotal', titulo: 'Valor total', alinhamento: 'right', render: (i: any) => i.valorTotal > 0 ? <span className="font-semibold text-gray-900">{fmt(i.valorTotal)}</span> : <span className="text-gray-300">—</span> },
+    {
+      chave: 'precoCusto', titulo: 'Custo unit.', alinhamento: 'right', esconderAte: 'md',
+      render: (i: any) => i.precoCusto > 0
+        ? fmt(i.precoCusto)
+        : <span className="text-gray-400" title="Sem compra registrada — valor do cadastro">{fmt(i.valorTotal && i.quantidade ? Math.round(i.valorTotal / i.quantidade) : 0)}*</span>,
+    },
+    {
+      chave: 'valorTotal', titulo: 'Valor total', alinhamento: 'right',
+      render: (i: any) => i.valorTotal > 0
+        ? <span className={i.custoEstimado ? 'text-gray-500' : 'font-semibold text-gray-900'}>{fmt(i.valorTotal)}{i.custoEstimado && '*'}</span>
+        : <span className="text-gray-300">—</span>,
+    },
     { chave: 'observacao', titulo: 'Observação', esconderAte: 'xl', render: (i: any) => i.observacao || <span className="text-gray-300">—</span> },
   ]
 
@@ -271,13 +287,15 @@ export default function ConsultasView({ tenantSlug }: Props) {
 
   const COLUNAS: Record<Aba, Coluna[]> = {
     'vendas':           colunasVendas,
-    'entradas-estoque': colunasEntradas,
+    'entradas-produto': colunasEntradas,
+    'entradas-insumo':  colunasEntradas,
     'despesas':         colunasDespesas,
   }
 
   const VAZIO: Record<Aba, string> = {
     'vendas':           'Nenhuma venda neste período.',
-    'entradas-estoque': 'Nenhuma entrada de estoque neste período.',
+    'entradas-produto': 'Nenhuma entrada de produto neste período.',
+    'entradas-insumo':  'Nenhuma entrada de insumo neste período.',
     'despesas':         'Nenhuma despesa neste período.',
   }
 
@@ -288,12 +306,12 @@ export default function ConsultasView({ tenantSlug }: Props) {
         { rotulo: 'Ticket médio',  valor: fmt(kpis.ticketMedio ?? 0) },
         { rotulo: 'Descontos',     valor: fmt(kpis.totalDesconto ?? 0) },
       ]
-    : aba === 'entradas-estoque'
+    : aba !== 'despesas'
     ? [
-        { rotulo: 'Entradas',    valor: String(kpis.quantidade ?? 0) },
-        { rotulo: 'Produtos',    valor: String(kpis.totalProdutos ?? 0) },
-        { rotulo: 'Insumos',     valor: String(kpis.totalInsumos ?? 0) },
-        { rotulo: 'Valor total', valor: fmt(kpis.valorTotal ?? 0) },
+        { rotulo: 'Entradas',      valor: String(kpis.quantidade ?? 0) },
+        { rotulo: 'Valor total',   valor: fmt(kpis.valorTotal ?? 0) },
+        { rotulo: 'Custo estimado', valor: String(kpis.estimados ?? 0) },
+        { rotulo: 'Com compra',    valor: String((kpis.quantidade ?? 0) - (kpis.estimados ?? 0)) },
       ]
     : [
         { rotulo: 'Despesas',    valor: String(kpis.quantidade ?? 0) },
@@ -382,6 +400,33 @@ export default function ConsultasView({ tenantSlug }: Props) {
           })}
         </div>
       </div>
+
+      {/* ── Opção da aba Despesas ────────────────────────────────────────
+          Só muda a visualização; não altera nada gravado. */}
+      {aba === 'despesas' && (
+        <div className="bg-white rounded-xl border border-gray-100 px-4 py-2.5 mb-4 flex items-center gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={incluirFixos}
+              onChange={e => { setIncluirFixos(e.target.checked); setPagina(1) }}
+              className="w-4 h-4 rounded accent-green-500"
+            />
+            <span className="text-sm text-gray-700">Incluir gastos fixos</span>
+          </label>
+          <InfoTip titulo="Gastos fixos nas despesas">
+            Aluguel, luz, salário e o que mais estiver na grade de gastos fixos
+            entram nesta lista por padrão, com origem <strong>Fixo</strong> e
+            data no dia 1º do mês. Desmarcar esconde apenas na tela — nada é
+            apagado, e o Financeiro continua contando.
+          </InfoTip>
+          {!incluirFixos && (
+            <span className="ml-auto text-xs text-gray-400">
+              Gastos fixos ocultos — o total abaixo não representa o gasto real do período.
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── KPIs do período ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">

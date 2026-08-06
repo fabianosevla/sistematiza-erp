@@ -26,8 +26,16 @@ export async function GET(req: NextRequest, { params }: Params) {
       const dataFim    = searchParams.get('dataFim')    ?? undefined
       const service    = new ConsultasService(db)
 
+      // entradas-produto / entradas-insumo: mesma consulta, recorte por entidade.
+      if (tipo === 'entradas-produto') return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim, entidade: 'produto' }))
+      if (tipo === 'entradas-insumo')  return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim, entidade: 'insumo' }))
       if (tipo === 'entradas-estoque') return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim }))
-      if (tipo === 'despesas')         return ok(await service.despesasPorPeriodo({ dataInicio, dataFim }))
+      if (tipo === 'despesas') {
+        return ok(await service.despesasPorPeriodo({
+          dataInicio, dataFim,
+          incluirFixos: searchParams.get('fixos') !== '0',
+        }))
+      }
       return ok(await service.vendasPorPeriodo({ dataInicio, dataFim }))
     } finally { release() }
   } catch (err) { return serverError(err) }

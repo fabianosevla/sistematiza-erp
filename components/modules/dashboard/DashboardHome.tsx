@@ -126,6 +126,41 @@ function RankingProdutos({ tenantSlug }: { tenantSlug: string }) {
   )
 }
 
+
+/**
+ * EIXO X COMPLETO — os 6 meses, com dado ou sem.
+ *
+ * A API só devolve mês que teve movimento. Com uma empresa que começou em
+ * julho, o gráfico de "últimos 6 meses" mostrava UMA barra sozinha no meio do
+ * nada — parecia defeito, não escassez de dado.
+ *
+ * Aqui a série é reconstruída a partir de hoje para trás: os seis rótulos
+ * sempre existem, e o mês sem movimento entra com zero. O operador passa a ver
+ * a linha do tempo inteira e entende que aquilo é um começo, não um erro.
+ *
+ * O rótulo tem que casar com o que o Postgres gera em TO_CHAR(..., 'Mon/YY'),
+ * que é sempre em inglês e com a inicial maiúscula: "Jul/26".
+ */
+const MES_PG = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const MES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+function serieMeses<T extends Record<string, any>>(
+  dados: T[],
+  meses = 6,
+  zerado: Omit<T, 'mes'> = {} as any,
+): (T & { mes: string })[] {
+  const hoje = new Date()
+  const saida: any[] = []
+  for (let i = meses - 1; i >= 0; i--) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
+    const chavePg = `${MES_PG[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`
+    const rotulo  = `${MES_BR[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`
+    const achado  = dados.find(x => String(x.mes).trim() === chavePg)
+    saida.push({ ...(zerado as any), ...(achado ?? {}), mes: rotulo })
+  }
+  return saida
+}
+
 // ── Escala dinâmica dos eixos ───────────────────────────────────────────────
 //
 // O formatador antigo era fixo: `R$${(v/1000).toFixed(0)}k`. Com faturamento
@@ -244,10 +279,18 @@ export default function DashboardHome({ tenantSlug }: Props) {
 
   const raw = data.data
 
-  const faturamento6m     = Array.isArray(raw.faturamento6m)     ? raw.faturamento6m     : []
+  // Séries de mês completas: sem isso, mês sem venda simplesmente não existia
+  // no eixo e o gráfico ficava com uma barra solta.
+  const faturamento6m     = serieMeses(
+    Array.isArray(raw.faturamento6m) ? raw.faturamento6m : [],
+    6, { valor: 0, qtd: 0 } as any,
+  )
   const vendasDia         = Array.isArray(raw.vendasDia)         ? raw.vendasDia         : []
   const topProdutos       = Array.isArray(raw.topProdutos)       ? raw.topProdutos       : []
-  const receitaVsDespesas = Array.isArray(raw.receitaVsDespesas) ? raw.receitaVsDespesas : []
+  const receitaVsDespesas = serieMeses(
+    Array.isArray(raw.receitaVsDespesas) ? raw.receitaVsDespesas : [],
+    6, { receita: 0, despesas: 0 } as any,
+  )
   const estoqueCritico    = Array.isArray(raw.estoqueCritico)    ? raw.estoqueCritico    : []
   const porForma          = Array.isArray(raw.porForma)          ? raw.porForma          : []
 
