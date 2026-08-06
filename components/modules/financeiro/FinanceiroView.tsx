@@ -14,12 +14,10 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { SidePanel }    from '@/components/ui/SidePanel'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
-import ConciliacaoView   from './ConciliacaoView'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-type Aba = 'despesas' | 'dre' | 'gastos-fixos' | 'demonstrativo' | 'a-pagar' | 'a-receber' | 'conciliacao'
 
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const CORES  = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c']
@@ -29,6 +27,10 @@ const CATEGORIAS_DESPESA = [
   'Aluguel', 'Água e Luz', 'Internet', 'Telefone', 'Funcionários',
   'Matéria-prima', 'Embalagens', 'Marketing', 'Transporte', 'Manutenção', 'Outros',
 ]
+
+// 'conciliacao' saiu: era o importador de extrato bancário OFX, ferramenta de
+// escritório contábil que ninguém usava aqui.
+type Aba = 'despesas' | 'dre' | 'gastos-fixos' | 'demonstrativo' | 'a-pagar' | 'a-receber'
 
 export default function FinanceiroView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
@@ -272,7 +274,6 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     { key: 'demonstrativo', label: 'Demonstrativo' },
     { key: 'a-pagar',       label: 'A Pagar'       },
     { key: 'a-receber',     label: 'A Receber'     },
-    { key: 'conciliacao',   label: 'Conciliação'   },
   ]
 
   // KPIs calculados do DRE
@@ -749,7 +750,6 @@ export default function FinanceiroView({ tenantSlug }: Props) {
 
       {aba === 'a-pagar'     && <ContasPagarView   tenantSlug={tenantSlug} />}
       {aba === 'a-receber'   && <ContasReceberView tenantSlug={tenantSlug} />}
-      {aba === 'conciliacao' && <ConciliacaoView   tenantSlug={tenantSlug} />}
 
       {/* Painel despesa */}
       {showDespesa && (

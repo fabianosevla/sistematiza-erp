@@ -148,6 +148,10 @@ export class ConsultasService {
         -- é dinheiro que saiu.
         m.preco_custo,
         COALESCE(NULLIF(m.preco_custo, 0), p.preco_custo, i.preco_custo, 0) AS custo_efetivo,
+        -- Produto de revenda e insumo são COMPRADOS: o custo deles é preço
+        -- pago. Produto fabricado não tem preço de compra — o custo dele é
+        -- calculado pela ficha técnica, e por isso vive em outra coluna.
+        COALESCE(p.revenda, true) AS eh_comprado,
         m.observacao,
         COALESCE(p.nome,    i.nome)    AS nome,
         COALESCE(p.unidade, i.unidade) AS unidade
@@ -168,11 +172,19 @@ export class ConsultasService {
       const qtd       = Number(r.quantidade ?? 0)
       const custoReal = Number(r.preco_custo ?? 0)
       const custo     = Number(r.custo_efetivo ?? 0)
+      // Comprado (insumo ou produto de revenda) → o valor é PREÇO PAGO.
+      // Fabricado → não existe preço de compra; o valor é ESTIMATIVA vinda do
+      // cadastro/ficha. São naturezas diferentes e por isso ocupam colunas
+      // diferentes na tela: somar as duas na mesma coluna misturaria dinheiro
+      // que saiu com dinheiro que se supõe.
+      const comprado = r.eh_comprado === true
       return {
         movimentacaoId: Number(r.movimentacao_id),
         data:      r.data_movimentacao,
-        // true = o valor veio do cadastro, não de uma compra real.
-        custoEstimado: custoReal === 0 && custo > 0,
+        comprado,
+        custoUnitario: comprado ? custo : 0,
+        custoEstimadoUnit: comprado ? 0 : custo,
+        custoEstimado: !comprado,
         // 'entrada' ou 'ajuste' — a tela mostra, para o operador saber se
         // aquele aumento veio de produção/compra ou de correção manual.
         tipoMov:   r.tipo,
@@ -182,6 +194,8 @@ export class ConsultasService {
         quantidade: qtd,
         precoCusto: custo,
         valorTotal: Math.round(qtd * custo),
+        valorPago:      comprado ? Math.round(qtd * custo) : 0,
+        valorEstimado: !comprado ? Math.round(qtd * custo) : 0,
         observacao: r.observacao ?? '',
       }
     })
@@ -193,6 +207,8 @@ export class ConsultasService {
         totalProdutos: itens.filter(i => i.entidade === 'produto').length,
         totalInsumos:  itens.filter(i => i.entidade === 'insumo').length,
         valorTotal:    itens.reduce((a, i) => a + i.valorTotal, 0),
+        valorPago:     itens.reduce((a, i) => a + i.valorPago, 0),
+        valorEstimado: itens.reduce((a, i) => a + i.valorEstimado, 0),
         estimados:     itens.filter(i => i.custoEstimado).length,
       },
     }
@@ -304,6 +320,103 @@ export class ConsultasService {
         fixos:       fixos.reduce((a, i) => a + i.valor, 0),
         manuais:     itens.filter(i => i.origem === 'Manual').length,
       },
+    }
+  }
+
+  // ── DRE DO PERÍODO ────────────────────────────────────────────────────────
+  //
+  // O DRE que existia em Financeiro só sabia trabalhar por MÊS fechado. Aqui
+  // ele aceita qualquer intervalo, para casar com o seletor de período das
+  // Consultas — inclusive o customizado.
+  //
+  // Estrutura, na ordem em que se lê um demonstrativo:
+  //
+  //   Receita bruta
+  //   (-) Taxas de meio de pagamento     dedução de receita, não despesa
+  //   = Receita líquida
+  //   (-) Despesas por categoria         avulsas + compras + gastos fixos
+  //   = Resultado
+  //
+  // Taxa de cartão fica FORA das despesas de propósito: ela não é escolha de
+  // gasto, é desconto na receita. Somá-la junto com aluguel distorceria a
+  // comparação entre categorias.
+  async drePorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+    const { inicio, fim } = this.limites(dataInicio, dataFim)
+
+    const [recRes, taxaRes, despRes, fixRes] = await Promise.all([
+      this.db.execute(sql`
+        SELECT COALESCE(SUM(total), 0)::bigint AS receita, COUNT(*)::int AS qtd
+        FROM t_venda
+        WHERE active_flg = true AND vendida_em >= ${inicio} AND vendida_em <= ${fim}
+      `),
+      this.db.execute(sql`
+        SELECT COALESCE(vp.forma, 'Não informado') AS forma,
+               COALESCE(fp.taxa, 0)               AS taxa_pct,
+               COALESCE(SUM(vp.valor), 0)::bigint AS valor_pago,
+               COALESCE(SUM(ROUND(vp.valor * COALESCE(fp.taxa, 0) / 100.0)), 0)::bigint AS valor_taxa
+        FROM t_venda_pagamento vp
+        JOIN t_venda v ON v.venda_id = vp.venda_id AND v.active_flg = true
+        LEFT JOIN t_forma_pagamento fp
+               ON LOWER(TRIM(fp.nome)) = LOWER(TRIM(vp.forma)) AND fp.active_flg = true
+        WHERE v.vendida_em >= ${inicio} AND v.vendida_em <= ${fim}
+        GROUP BY vp.forma, fp.taxa
+        HAVING COALESCE(SUM(vp.valor), 0) > 0
+      `).catch(() => ({ rows: [] as any[] })),
+      this.db.execute(sql`
+        SELECT categoria, COALESCE(SUM(valor), 0)::bigint AS total
+        FROM t_despesa
+        WHERE active_flg = true AND data_despesa >= ${inicio} AND data_despesa <= ${fim}
+        GROUP BY categoria ORDER BY categoria
+      `),
+      this.db.execute(sql`
+        SELECT gc.nome AS categoria, COALESCE(SUM(gv.valor), 0)::bigint AS total
+        FROM t_gasto_fixo_valor gv
+        JOIN t_gasto_fixo_categoria gc
+          ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
+        WHERE gv.active_flg = true AND gv.valor > 0
+          AND MAKE_DATE(gv.ano, gv.mes, 1) >= ${inicio}::date
+          AND MAKE_DATE(gv.ano, gv.mes, 1) <= ${fim}::date
+        GROUP BY gc.nome ORDER BY gc.nome
+      `).catch(() => ({ rows: [] as any[] })),
+    ])
+
+    const receita   = Number((recRes.rows[0] as any)?.receita ?? 0)
+    const qtdVendas = Number((recRes.rows[0] as any)?.qtd ?? 0)
+
+    const taxasPorForma = (taxaRes.rows as any[]).map(r => ({
+      forma:     r.forma,
+      taxaPct:   Number(r.taxa_pct),
+      valorPago: Number(r.valor_pago),
+      valorTaxa: Number(r.valor_taxa),
+    }))
+    const taxas = taxasPorForma.reduce((a, f) => a + f.valorTaxa, 0)
+
+    // Categorias: avulsas e fixas somam na mesma linha quando têm o mesmo
+    // nome. O prefixo "[Fixo]" separa quando não têm.
+    const porCategoria: Record<string, number> = {}
+    for (const r of despRes.rows as any[]) {
+      porCategoria[r.categoria ?? 'Sem categoria'] = Number(r.total)
+    }
+    for (const r of fixRes.rows as any[]) {
+      const cat = `[Fixo] ${r.categoria}`
+      porCategoria[cat] = (porCategoria[cat] ?? 0) + Number(r.total)
+    }
+
+    const totalDespesas  = Object.values(porCategoria).reduce((a, b) => a + b, 0)
+    const receitaLiquida = receita - taxas
+    const resultado      = receitaLiquida - totalDespesas
+
+    return {
+      receita,
+      qtdVendas,
+      taxas,
+      taxasPorForma,
+      receitaLiquida,
+      porCategoria,
+      totalDespesas,
+      resultado,
+      margem: receita > 0 ? (resultado / receita) * 100 : 0,
+      ticketMedio: qtdVendas > 0 ? Math.round(receita / qtdVendas) : 0,
     }
   }
 }

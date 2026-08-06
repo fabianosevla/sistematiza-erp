@@ -36,7 +36,6 @@ export async function GET(req: NextRequest, { params }: Params) {
         // Financeiro Completo
         contasPagarAtivo:         r.contas_pagar_ativo         ?? false,
         contasReceberAtivo:       r.contas_receber_ativo       ?? false,
-        conciliacaoBancariaAtivo: r.conciliacao_bancaria_ativo ?? false,
         // Aparência
         logoBase64: r.logo_base64 ?? null,
         darkMode:   r.dark_mode   ?? false,
@@ -102,7 +101,6 @@ export async function PUT(req: NextRequest, { params }: Params) {
         // Financeiro Completo
         ['contas_pagar_ativo',         body.contasPagarAtivo],
         ['contas_receber_ativo',       body.contasReceberAtivo],
-        ['conciliacao_bancaria_ativo', body.conciliacaoBancariaAtivo],
         // Aparência
         ['logo_base64', body.logoBase64],
         ['dark_mode',   body.darkMode],

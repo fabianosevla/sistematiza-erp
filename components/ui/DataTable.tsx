@@ -48,6 +48,8 @@ export interface Coluna {
   /** classes extras da célula (sobrescreve o padrão de cor/tamanho) */
   classeCelula?:    string
   classeCabecalho?: string
+  /** conteúdo ao lado do título — normalmente um InfoTip explicando a coluna */
+  cabecalho?:       ReactNode
   /** mostra o funil no cabeçalho e abre a busca de valores daquela coluna */
   filtravel?:       boolean
   /** conteúdo customizado; sem isso, mostra item[chave] ou travessão */
@@ -258,6 +260,11 @@ export function DataTable({
                   } ${col.classeCabecalho ?? ''}`}
                 >
                   {col.titulo}
+                  {col.cabecalho && (
+                    <span className="ml-1 inline-block align-middle normal-case tracking-normal font-normal">
+                      {col.cabecalho}
+                    </span>
+                  )}
                   {col.ordenavel && <IconeOrdem col={col.chave} />}
                   {col.filtravel && onFiltrar && (
                     <FiltroColuna

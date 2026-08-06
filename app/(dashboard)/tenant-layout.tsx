@@ -50,7 +50,6 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     metasAtivo:      cfg?.metas_ativo      ?? false,
     contasPagarAtivo:         cfg?.contas_pagar_ativo         ?? false,
     contasReceberAtivo:       cfg?.contas_receber_ativo       ?? false,
-    conciliacaoBancariaAtivo: cfg?.conciliacao_bancaria_ativo ?? false,
 
     // Compras: a coluna correta é compras_ativo — é onde a API grava.
     // modulo_compras_ativo fica como segundo fallback só para bases antigas

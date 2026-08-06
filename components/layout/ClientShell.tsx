@@ -15,7 +15,6 @@ export interface Config {
   metasAtivo:      boolean
   contasPagarAtivo:         boolean
   contasReceberAtivo:       boolean
-  conciliacaoBancariaAtivo: boolean
   comprasAtivo:             boolean
   // Menus que antes não tinham chave: agora chegam pelo layout, então o
   // Sidebar não precisa mais buscá-los por conta própria na API.

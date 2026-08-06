@@ -30,6 +30,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       if (tipo === 'entradas-produto') return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim, entidade: 'produto' }))
       if (tipo === 'entradas-insumo')  return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim, entidade: 'insumo' }))
       if (tipo === 'entradas-estoque') return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim }))
+      if (tipo === 'dre')      return ok(await service.drePorPeriodo({ dataInicio, dataFim }))
       if (tipo === 'despesas') {
         return ok(await service.despesasPorPeriodo({
           dataInicio, dataFim,
