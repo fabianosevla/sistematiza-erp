@@ -419,4 +419,70 @@ export class ConsultasService {
       ticketMedio: qtdVendas > 0 ? Math.round(receita / qtdVendas) : 0,
     }
   }
+
+  // ── VENDAS POR PRODUTO E POR DIA ──────────────────────────────────────────
+  //
+  // Uma linha por produto POR DIA — não o acumulado do período. É o recorte
+  // que responde "quanto de canelone eu vendo numa terça?", que é a pergunta
+  // que orienta a produção da semana seguinte.
+  //
+  // Produto que não vendeu no dia simplesmente não aparece: preencher a grade
+  // com zeros multiplicaria as linhas por produtos × dias e enterraria o que
+  // importa.
+  async vendasPorProdutoPorPeriodo({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
+    const { inicio, fim } = this.limites(dataInicio, dataFim)
+
+    const res = await this.db.execute(sql`
+      SELECT
+        DATE(v.vendida_em)                          AS dia,
+        vi.produto_id,
+        vi.nome_produto,
+        SUM(vi.quantidade)::numeric                 AS quantidade,
+        SUM(vi.subtotal)::bigint                    AS total,
+        SUM(COALESCE(vi.desconto, 0))::bigint       AS desconto,
+        COUNT(DISTINCT vi.venda_id)::int            AS qtd_vendas,
+        MAX(p.unidade)                              AS unidade
+      FROM t_venda_item vi
+      JOIN t_venda v ON v.venda_id = vi.venda_id AND v.active_flg = true
+      LEFT JOIN t_produto p ON p.produto_id = vi.produto_id
+      WHERE v.vendida_em >= ${inicio} AND v.vendida_em <= ${fim}
+      GROUP BY DATE(v.vendida_em), vi.produto_id, vi.nome_produto
+      ORDER BY dia DESC, SUM(vi.subtotal) DESC
+    `)
+
+    const itens = (res.rows as any[]).map(r => {
+      const qtd   = Number(r.quantidade ?? 0)
+      const total = Number(r.total ?? 0)
+      return {
+        // Chave própria: produto e dia juntos, porque o mesmo produto aparece
+        // em vários dias.
+        chave:       `${r.dia}-${r.produto_id}`,
+        data:        r.dia,
+        produtoId:   Number(r.produto_id),
+        nome:        r.nome_produto,
+        unidade:     r.unidade ?? '',
+        quantidade:  qtd,
+        qtdVendas:   Number(r.qtd_vendas ?? 0),
+        desconto:    Number(r.desconto ?? 0),
+        total,
+        // Preço médio praticado no dia — revela desconto sistemático que o
+        // total sozinho esconde.
+        precoMedio:  qtd > 0 ? Math.round(total / qtd) : 0,
+      }
+    })
+
+    const totalGeral = itens.reduce((a, i) => a + i.total, 0)
+    const qtdGeral   = itens.reduce((a, i) => a + i.quantidade, 0)
+    const produtos   = new Set(itens.map(i => i.produtoId))
+
+    return {
+      itens,
+      kpis: {
+        quantidade:  itens.length,
+        produtos:    produtos.size,
+        totalVendido: totalGeral,
+        unidades:    qtdGeral,
+      },
+    }
+  }
 }

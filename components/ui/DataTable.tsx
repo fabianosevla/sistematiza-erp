@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Filter, X as XIcon, ArrowUpDown } from 'lucide-react'
 import Paginacao from '@/components/ui/Paginacao'
 import { TableSkeleton } from '@/components/ui/Skeleton'
@@ -124,54 +125,101 @@ function FiltroColuna({
 }) {
   const [aberto, setAberto] = useState(false)
   const [busca, setBusca]   = useState('')
-  const ref = useRef<HTMLSpanElement>(null)
+  const [pos, setPos]       = useState<{ top: number; left: number } | null>(null)
+  const btnRef   = useRef<HTMLButtonElement>(null)
+  const painelRef = useRef<HTMLDivElement>(null)
+
+  // POR QUE PORTAL, E NÃO UM DIV ABSOLUTO AO LADO DO BOTÃO.
+  //
+  // O cabeçalho vive dentro do contêiner que rola (é o que faz o `sticky top-0`
+  // funcionar). Um popover posicionado por `absolute` fica preso a esse
+  // contêiner: com a tabela baixa, ele era cortado na borda e o "Limpar filtro"
+  // sumia embaixo. Renderizando no body com `position: fixed`, a caixa flutua
+  // sobre a página inteira e não depende da altura da grade.
+  function abrir() {
+    const r = btnRef.current?.getBoundingClientRect()
+    if (!r) return
+    const largura = 240
+    // Não deixa passar da borda direita da janela.
+    const left = Math.min(r.left, window.innerWidth - largura - 12)
+    setPos({ top: r.bottom + 6, left: Math.max(12, left) })
+    setAberto(true)
+  }
 
   useEffect(() => {
     if (!aberto) return
     function fora(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+      const alvo = e.target as Node
+      if (painelRef.current?.contains(alvo) || btnRef.current?.contains(alvo)) return
+      setAberto(false)
     }
     function esc(e: KeyboardEvent) { if (e.key === 'Escape') setAberto(false) }
+    // Rolar ou redimensionar move o botão; a caixa fecharia "solta" no lugar
+    // errado, então fecha junto.
+    function fecha() { setAberto(false) }
     document.addEventListener('mousedown', fora)
     window.addEventListener('keydown', esc)
-    return () => { document.removeEventListener('mousedown', fora); window.removeEventListener('keydown', esc) }
+    window.addEventListener('resize', fecha)
+    window.addEventListener('scroll', fecha, true)
+    return () => {
+      document.removeEventListener('mousedown', fora)
+      window.removeEventListener('keydown', esc)
+      window.removeEventListener('resize', fecha)
+      window.removeEventListener('scroll', fecha, true)
+    }
   }, [aberto])
 
   const ativo = !!valor
   const lista = opcoes
     .filter(o => o.toLowerCase().includes(busca.trim().toLowerCase()))
-    .slice(0, 60)
+    .slice(0, 100)
 
   return (
-    <span ref={ref} className="relative inline-block align-middle">
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={e => { e.stopPropagation(); setAberto(v => !v) }}
+        onClick={e => { e.stopPropagation(); aberto ? setAberto(false) : abrir() }}
         title={ativo ? `Filtrando por "${valor}"` : `Filtrar ${titulo}`}
-        className={`ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded transition-colors ${
+        className={`ml-1 inline-flex items-center justify-center w-5 h-5 rounded transition-colors align-middle ${
           ativo ? 'bg-green-100 text-green-700' : 'text-gray-300 hover:text-gray-600 hover:bg-gray-100'
         }`}
       >
         <Filter size={11} />
       </button>
 
-      {aberto && (
+      {aberto && pos && typeof document !== 'undefined' && createPortal(
         <div
+          ref={painelRef}
           onClick={e => e.stopPropagation()}
-          className="absolute left-0 z-30 mt-1 w-56 bg-white rounded-xl border border-gray-200 shadow-xl p-2 normal-case tracking-normal"
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: 240 }}
+          className="z-[100] bg-white rounded-xl border border-gray-200 shadow-xl normal-case tracking-normal"
         >
-          <input
-            autoFocus
-            value={busca}
-            onChange={e => setBusca(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') { onEscolher(busca.trim()); setAberto(false) }
-            }}
-            placeholder={`Buscar ${titulo.toLowerCase()}...`}
-            className="w-full h-8 px-2 rounded-lg border border-gray-200 text-[13px] font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-200"
-          />
+          <div className="p-2 border-b border-gray-100">
+            <input
+              autoFocus
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && busca.trim()) { onEscolher(busca.trim()); setAberto(false) }
+              }}
+              placeholder={`Buscar ${titulo.toLowerCase()}...`}
+              className="w-full h-8 px-2 rounded-lg border border-gray-200 text-[13px] font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-200"
+            />
+            {/* Limpar fica NO TOPO, junto do campo. Antes vivia no rodapé da
+                lista: com muitos valores era preciso rolar até o fim para
+                achar a saída. */}
+            {ativo && (
+              <button
+                onClick={() => { onEscolher(''); setBusca(''); setAberto(false) }}
+                className="mt-1.5 w-full h-7 flex items-center justify-center gap-1 rounded-lg text-[12px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <XIcon size={11} /> Limpar filtro
+              </button>
+            )}
+          </div>
 
-          <div className="max-h-52 overflow-y-auto mt-1.5">
+          <div className="max-h-60 overflow-y-auto p-1">
             {lista.length === 0 ? (
               <p className="px-2 py-3 text-[12px] font-normal text-gray-400 text-center">Nenhum valor</p>
             ) : lista.map(o => (
@@ -186,18 +234,10 @@ function FiltroColuna({
               </button>
             ))}
           </div>
-
-          {ativo && (
-            <button
-              onClick={() => { onEscolher(''); setBusca(''); setAberto(false) }}
-              className="w-full mt-1.5 pt-1.5 border-t border-gray-100 flex items-center justify-center gap-1 text-[12px] font-normal text-gray-500 hover:text-gray-800"
-            >
-              <XIcon size={11} /> Limpar filtro
-            </button>
-          )}
-        </div>
+        </div>,
+        document.body,
       )}
-    </span>
+    </>
   )
 }
 

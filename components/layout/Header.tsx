@@ -27,6 +27,10 @@ interface Props {
 // Ao acrescentar um menu no Sidebar, acrescente a chave aqui também — senão
 // o cliente não consegue desligá-lo.
 //
+// Comandas saiu desta lista: ela vive dentro do PDV, como aba, e não é mais
+// um menu do gerencial. Deixá-la habilitável criaria um interruptor que não
+// liga nem desliga nada visível.
+//
 // Duas exceções propositais: Dashboard e Cadastros. O Dashboard é a rota raiz
 // do tenant e sem Cadastros ninguém cria produto nem cliente — esconder
 // qualquer um dos dois deixaria o sistema inutilizável.
@@ -39,7 +43,6 @@ const MODULOS = [
   { key: 'estoqueAtivo',   label: 'Estoque',           group: 'Operacional' },
   { key: 'comprasAtivo',   label: 'Compras',           group: 'Operacional' },
   { key: 'pedidosAtivo',   label: 'Pedidos',           group: 'Operacional' },
-  { key: 'comandasAtivo',  label: 'Comandas',          group: 'Operacional' },
 
   { key: 'consultasAtivo', label: 'Consultas',         group: 'Gerencial'   },
   { key: 'metasAtivo',     label: 'Metas & Simulador', group: 'Gerencial'   },

@@ -17,7 +17,7 @@
 // é semanal.
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Sprout, Receipt, FileBarChart, Printer } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Sprout, Receipt, FileBarChart, Printer, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
@@ -33,10 +33,11 @@ import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-type Aba = 'vendas' | 'entradas-produto' | 'entradas-insumo' | 'despesas' | 'dre'
+type Aba = 'vendas' | 'vendas-produto' | 'entradas-produto' | 'entradas-insumo' | 'despesas' | 'dre'
 
 const ABAS: { valor: Aba; rotulo: string; icone: any }[] = [
   { valor: 'vendas',           rotulo: 'Vendas',            icone: ShoppingCart },
+  { valor: 'vendas-produto',   rotulo: 'Vendas por produto', icone: Boxes },
   { valor: 'entradas-produto', rotulo: 'Entrada de produto', icone: PackagePlus },
   { valor: 'entradas-insumo',  rotulo: 'Entrada de insumo',  icone: Sprout },
   { valor: 'despesas',         rotulo: 'Despesas',          icone: Receipt },
@@ -44,6 +45,9 @@ const ABAS: { valor: Aba; rotulo: string; icone: any }[] = [
 ]
 
 const POR_PAGINA = 25
+
+const fmtDataSimples = (d: any) =>
+  d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
 const fmtDataHora = (d: any) =>
   d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -270,6 +274,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
   // Soma do recorte — só aparece quando há filtro, abaixo do total do período.
   const campoValor: Partial<Record<Aba, string>> = {
     'vendas':           'total',
+    'vendas-produto':   'total',
     'entradas-produto': 'valorTotal',
     'entradas-insumo':  'valorTotal',
     'despesas':         'valor',
@@ -381,6 +386,14 @@ export default function ConsultasView({ tenantSlug }: Props) {
           (i.desconto / 100).toFixed(2), (i.total / 100).toFixed(2),
         ]),
       ]
+      : aba === 'vendas-produto' ? [
+        ['Dia', 'Produto', 'Quantidade', 'Unidade', 'Vendas', 'Preco medio', 'Desconto', 'Total'],
+        ...itens.map(i => [
+          fmtDataSimples(i.data), i.nome, String(i.quantidade), i.unidade,
+          String(i.qtdVendas), (i.precoMedio / 100).toFixed(2),
+          (i.desconto / 100).toFixed(2), (i.total / 100).toFixed(2),
+        ]),
+      ]
       : aba !== 'despesas' ? [
         ['Data', 'Item', 'Quantidade', 'Unidade', 'Custo unit.', 'Valor total', 'Observacao'],
         ...itens.map(i => [
@@ -436,6 +449,30 @@ export default function ConsultasView({ tenantSlug }: Props) {
     { chave: 'total',    titulo: 'Total',     alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
   ]
 
+  const colunasVendasProduto: Coluna[] = [
+    { chave: 'data', titulo: 'Dia', render: (i: any) => fmtDataSimples(i.data) },
+    {
+      chave: 'nome', titulo: 'Produto', filtravel: true,
+      classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
+      render: (i: any) => i.nome,
+    },
+    {
+      chave: 'quantidade', titulo: 'Quantidade', alinhamento: 'right',
+      render: (i: any) => <>{fmtQtd(i.quantidade)} <span className="text-gray-400">{i.unidade}</span></>,
+    },
+    { chave: 'qtdVendas', titulo: 'Vendas', alinhamento: 'right', esconderAte: 'md', render: (i: any) => i.qtdVendas },
+    {
+      chave: 'precoMedio', titulo: 'Preço médio', alinhamento: 'right', esconderAte: 'md',
+      cabecalho: <InfoTip titulo="Preço médio">Total dividido pela quantidade — revela desconto que o total sozinho esconde.</InfoTip>,
+      render: (i: any) => fmt(i.precoMedio),
+    },
+    {
+      chave: 'desconto', titulo: 'Desconto', alinhamento: 'right', esconderAte: 'lg',
+      render: (i: any) => i.desconto > 0 ? <span className="text-red-600">-{fmt(i.desconto)}</span> : <span className="text-gray-300">—</span>,
+    },
+    { chave: 'total', titulo: 'Total', alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
+  ]
+
   const colunasEntradas: Coluna[] = [
     { chave: 'data',     titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
     {
@@ -489,6 +526,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
   // 'dre' fica de fora: ela desenha o demonstrativo, não uma listagem.
   const COLUNAS: Partial<Record<Aba, Coluna[]>> = {
     'vendas':           colunasVendas,
+    'vendas-produto':   colunasVendasProduto,
     'entradas-produto': colunasEntradas,
     'entradas-insumo':  colunasEntradas,
     'despesas':         colunasDespesas,
@@ -496,6 +534,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
 
   const VAZIO: Partial<Record<Aba, string>> = {
     'vendas':           'Nenhuma venda neste período.',
+    'vendas-produto':   'Nenhuma venda neste período.',
     'entradas-produto': 'Nenhuma entrada de produto neste período.',
     'entradas-insumo':  'Nenhuma entrada de insumo neste período.',
     'despesas':         'Nenhuma despesa neste período.',
@@ -514,6 +553,13 @@ export default function ConsultasView({ tenantSlug }: Props) {
         { rotulo: 'Total vendido', valor: fmt(kpis.totalVendido ?? 0) },
         { rotulo: 'Ticket médio',  valor: fmt(kpis.ticketMedio ?? 0) },
         { rotulo: 'Descontos',     valor: fmt(kpis.totalDesconto ?? 0) },
+      ]
+    : aba === 'vendas-produto'
+    ? [
+        { rotulo: 'Linhas',        valor: String(kpis.quantidade ?? 0) },
+        { rotulo: 'Produtos',      valor: String(kpis.produtos ?? 0) },
+        { rotulo: 'Unidades',      valor: fmtQtd(kpis.unidades ?? 0) },
+        { rotulo: 'Total vendido', valor: fmt(kpis.totalVendido ?? 0) },
       ]
     : aba !== 'despesas'
     ? [
@@ -705,7 +751,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
         <DataTable
           colunas={COLUNAS[aba] ?? []}
           itens={itensPagina}
-          chave={(i: any) => i.vendaId ?? i.movimentacaoId ?? i.despesaId}
+          chave={(i: any) => i.chave ?? i.vendaId ?? i.movimentacaoId ?? i.despesaId}
           carregando={isLoading}
           vazio={temFiltro ? 'Nenhum registro com esse filtro.' : (VAZIO[aba] ?? 'Nenhum registro.')}
           filtros={filtros}

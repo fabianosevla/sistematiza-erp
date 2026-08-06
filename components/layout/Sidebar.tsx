@@ -100,7 +100,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     ...(config.comprasAtivo ? [{
       label: 'Compras', href: '/compras', icon: ShoppingBag,
     }] : []),
-    ...(config.comandasAtivo   ? [{ label: 'Comandas',    href: '/comandas',   icon: CreditCard }] : []),
     ...(config.fiscalAtivo     ? [{ label: 'Fiscal',      href: '/fiscal',     icon: CreditCard }] : []),
     ...(config.fidelidadeAtivo ? [{ label: 'Fidelidade',  href: '/fidelidade', icon: Gift }]       : []),
   ]
