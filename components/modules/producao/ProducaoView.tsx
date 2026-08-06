@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Factory, AlertTriangle, CheckCircle, X, Lock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Factory, CopyCheck, AlertTriangle, CheckCircle, X, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
@@ -49,6 +49,29 @@ export default function ProducaoView({ tenantSlug }: Props) {
   // Dias marcados no modal. Vazio = nada será registrado.
   const [diasSelecionados, setDiasSelecionados] = useState<string[]>([])
   const [ciente, setCiente]                 = useState(false)
+
+  // ── PREVISTO × PRODUZIDO ─────────────────────────────────────────────────
+  //
+  // Antes existia uma coluna só, e o que estava planejado era lançado como se
+  // tivesse sido produzido. Previsão e realizado são coisas diferentes: o
+  // plano diz 40, a fábrica rende 37, e é o 37 que consome insumo e entra no
+  // estoque.
+  //
+  // `produzidas` vive só no cliente até o registro — não há coluna no banco
+  // para "produzido ainda não lançado", e criar uma significaria um rascunho
+  // persistido que ninguém pediu. Ao registrar, o valor vira
+  // t_producao_registro.qtd_produzida e a célula trava.
+  const [produzidas, setProduzidas] = useState<Record<number, Record<string, number>>>({})
+
+  function setProduzida(produtoId: number, data: string, valor: number) {
+    setProduzidas(prev => ({
+      ...prev,
+      [produtoId]: { ...(prev[produtoId] ?? {}), [data]: Math.max(0, valor) },
+    }))
+  }
+  function getProduzida(produtoId: number, data: string): number {
+    return produzidas?.[produtoId]?.[data] ?? 0
+  }
 
   const dias   = getWeekDates(weekOffset)
   const inicio = isoDate(dias[0])
@@ -123,7 +146,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
         nome:       p.nome,
         unidade:    p.unidade,
         data:       d,
-        quantidade: celulas?.[p.produtoId]?.[d] ?? 0,
+        quantidade: getProduzida(p.produtoId, d),
       }))
       .filter((c: CelulaPendente) => c.quantidade > 0 && !jaRegistrada(c.produtoId, c.data))
   )
@@ -262,6 +285,69 @@ export default function ProducaoView({ tenantSlug }: Props) {
     )
   }
 
+  // Célula do PRODUZIDO. Editável direto, sem ida ao servidor: o valor só
+  // existe até o registro. Depois de registrada mostra o que foi lançado e
+  // trava, igual à de previsto.
+  function CelulaProduzida({ produtoId, data, futuro }: { produtoId: number; data: string; futuro: boolean }) {
+    const travada = jaRegistrada(produtoId, data)
+    if (travada) {
+      const reg = registrados[produtoId][data]
+      return (
+        <span
+          title={`Registrado: ${fmtQtd(reg.produzida)} — insumo já debitado`}
+          className="inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
+          {reg.produzida > 0 ? fmtQtd(reg.produzida) : '—'}
+        </span>
+      )
+    }
+    // Dia que ainda não chegou não tem produção: deixar editável convidaria a
+    // lançar baixa de insumo de algo que não aconteceu.
+    if (futuro) {
+      return <span className="inline-flex items-center justify-center w-10 h-6 text-xs text-gray-200">·</span>
+    }
+    const valor = getProduzida(produtoId, data)
+    return (
+      <input
+        type="number" min="0" value={valor || ''}
+        onChange={e => setProduzida(produtoId, data, Number(e.target.value) || 0)}
+        placeholder="—"
+        className={`sem-spinner w-10 h-6 text-center text-xs rounded border transition-colors ${
+          valor > 0
+            ? 'border-green-300 bg-green-50 text-green-800 font-medium'
+            : 'border-gray-200 text-gray-400 hover:border-gray-300'
+        } focus:outline-none focus:border-green-400`}
+      />
+    )
+  }
+
+  // ── Replicar previsto no produzido ───────────────────────────────────────
+  //
+  // Na maioria dos dias a fábrica produz o que planejou. Obrigar a redigitar
+  // os mesmos números seria retrabalho puro — e retrabalho é onde o operador
+  // erra ou desiste de registrar.
+  //
+  // Só toca dias que já aconteceram e ainda não foram lançados; e não
+  // sobrescreve o que já foi digitado à mão, porque um número digitado é uma
+  // decisão do operador e não pode ser apagado por um clique de conveniência.
+  const replicaveis = produtos.flatMap((p: any) =>
+    dias.map(d => isoDate(d))
+      .filter((d: string) => d <= HOJE && !jaRegistrada(p.produtoId, d))
+      .filter((d: string) => (celulas?.[p.produtoId]?.[d] ?? 0) > 0 && getProduzida(p.produtoId, d) === 0)
+      .map((d: string) => ({ produtoId: p.produtoId, data: d, qtd: celulas[p.produtoId][d] }))
+  )
+
+  function replicarPrevisto() {
+    if (replicaveis.length === 0) return
+    setProduzidas(prev => {
+      const novo = { ...prev }
+      for (const r of replicaveis) {
+        novo[r.produtoId] = { ...(novo[r.produtoId] ?? {}), [r.data]: r.qtd }
+      }
+      return novo
+    })
+    toast(`${replicaveis.length} célula(s) preenchida(s) com o previsto.`)
+  }
+
   function CelulaPedido({ valor }: { valor: number }) {
     return (
       <span className={`inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium ${
@@ -291,6 +377,23 @@ export default function ProducaoView({ tenantSlug }: Props) {
           <p className="text-sm text-gray-400 mt-0.5">{fmtDate(dias[0])} – {fmtDate(dias[5])}</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Replicar previsto → produzido.
+              Botão discreto, no mesmo peso do "Ver Previsão": é atalho de
+              conveniência, não a ação principal da tela. Desabilita quando não
+              há nada a copiar, e o número no rótulo diz de antemão o que vai
+              acontecer — clicar às cegas em algo que altera seis dias de grade
+              é o tipo de coisa que faz o operador desconfiar do sistema. */}
+          <Button
+            variant="outline" size="sm"
+            onClick={replicarPrevisto}
+            disabled={replicaveis.length === 0}
+            title={replicaveis.length === 0
+              ? 'Nada a replicar: as células de produzido já estão preenchidas ou não há previsto'
+              : `Copia o previsto para o produzido em ${replicaveis.length} célula(s)`}
+          >
+            <CopyCheck size={13} className="mr-1.5" />
+            Replicar previsto{replicaveis.length > 0 ? ` (${replicaveis.length})` : ''}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowPrevisao(!showPrevisao)}>
             {showPrevisao ? 'Ocultar Previsão Insumos' : 'Ver Previsão de Insumos'}
           </Button>
@@ -301,8 +404,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
             Para cada célula dos dias marcados: os insumos da ficha são debitados e a
             quantidade entra no estoque do produto.
             <br /><br />
-            A quantidade da célula é o que <strong>de fato</strong> foi produzido — se o plano
-            era 50 e saíram 52, corrija a célula para 52 antes de registrar.
+            O que baixa insumo é a coluna <strong>Produzido</strong>, não a Previsto. Se o
+            plano era 50 e saíram 52, digite 52 ali. O botão <strong>Replicar previsto</strong>
+            preenche o produzido igual ao plano nos dias em que não houve diferença.
             <br /><br />
             Célula registrada fica cinza e não aceita mais edição. Dias futuros não aparecem
             na lista.
@@ -341,23 +445,27 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 <th className="sticky top-0 left-0 z-30 text-left text-xs font-medium text-gray-500 px-3 py-2 w-56 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Produto</th>
                 <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-16 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Estoque</th>
                 {DIAS.map((d, i) => (
-                  <th key={d} className="sticky top-0 z-20 text-center text-xs font-medium text-gray-400 px-0 py-1 bg-gray-50 border-b border-gray-200" colSpan={2}>
+                  <th key={d} className="sticky top-0 z-20 text-center text-xs font-medium text-gray-400 px-0 py-1 bg-gray-50 border-b border-gray-200" colSpan={3}>
                     <div className="font-semibold text-gray-600">{d}</div>
                     <div className="text-[10px] text-gray-400">{fmtDate(dias[i])}</div>
-                    <div className="grid grid-cols-2 text-[9px] text-gray-300 mt-0.5">
-                      <span className="text-blue-400">Ped</span>
-                      <span className="text-green-500">PP</span>
+                    {/* "Ped" e "PP" viraram nome por extenso: abreviação que
+                        só quem escreveu entende não é economia de espaço, é
+                        transferência de custo para o operador. */}
+                    <div className="grid grid-cols-3 text-[9px] mt-0.5">
+                      <span className="text-blue-400">Pedido</span>
+                      <span className="text-gray-400">Previsto</span>
+                      <span className="text-green-600">Produzido</span>
                     </div>
                   </th>
                 ))}
-                <th className="sticky top-0 z-20 text-center text-xs font-medium text-blue-600 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Total Ped.</th>
+                <th className="sticky top-0 z-20 text-center text-xs font-medium text-blue-600 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Total Pedido</th>
                 <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prev. Est.</th>
                 <th className="sticky top-0 z-20 text-center text-xs font-bold text-orange-600 px-2 py-2 w-24 bg-orange-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prod. Semanal Necessária</th>
               </tr>
             </thead>
             <tbody>
               {produtos.length === 0 ? (
-                <tr><td colSpan={3 + DIAS.length * 2 + 3} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
+                <tr><td colSpan={3 + DIAS.length * 3 + 3} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
               ) : produtos.map((p: any) => {
                 const estoque = p.estoqueAtual ?? 0
                 let totalPed = 0, totalPrev = 0
@@ -383,11 +491,14 @@ export default function ProducaoView({ tenantSlug }: Props) {
                       totalPed  += ped
                       totalPrev += prev
                       return (
-                        <td key={`dia-${d}`} className="px-0 py-2 align-middle" colSpan={2}>
-                          <div className="grid grid-cols-2">
+                        <td key={`dia-${d}`} className="px-0 py-2 align-middle" colSpan={3}>
+                          <div className="grid grid-cols-3">
                             <span className="text-center"><CelulaPedido valor={ped} /></span>
                             <span className="text-center">
                               <CelulaEditavel produtoId={p.produtoId} data={d} valor={celulas?.[p.produtoId]?.[d] ?? 0} />
+                            </span>
+                            <span className="text-center">
+                              <CelulaProduzida produtoId={p.produtoId} data={d} futuro={d > HOJE} />
                             </span>
                           </div>
                         </td>
@@ -422,10 +533,17 @@ export default function ProducaoView({ tenantSlug }: Props) {
                   {dias.map(dia => {
                     const d = isoDate(dia)
                     return (
-                      <td key={`tot-${d}`} className="px-0 py-2" colSpan={2}>
-                        <div className="grid grid-cols-2">
+                      <td key={`tot-${d}`} className="px-0 py-2" colSpan={3}>
+                        <div className="grid grid-cols-3">
                           <span className="text-center text-xs font-bold text-blue-600">{totaisPedDia[d] > 0 ? totaisPedDia[d] : '—'}</span>
-                          <span className="text-center text-xs font-bold text-green-600">{totaisPrevDia[d] > 0 ? totaisPrevDia[d] : '—'}</span>
+                          <span className="text-center text-xs font-bold text-gray-500">{totaisPrevDia[d] > 0 ? totaisPrevDia[d] : '—'}</span>
+                          {(() => {
+                            const t = produtos.reduce((a: number, p: any) => {
+                              const reg = registrados?.[p.produtoId]?.[d]
+                              return a + (reg ? Number(reg.produzida) : getProduzida(p.produtoId, d))
+                            }, 0)
+                            return <span className="text-center text-xs font-bold text-green-600">{t > 0 ? fmtQtd(t) : '—'}</span>
+                          })()}
                         </div>
                       </td>
                     )
@@ -443,8 +561,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
           </table>
         </div>
         <div className="px-4 py-2 border-t border-gray-100 flex gap-4 flex-wrap text-[10px] text-gray-400">
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido (Ped) — dos Pedidos, somente leitura</span>
-          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" /> Produção (PP) — editável</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-100 inline-block" /> Pedido — vem dos Pedidos, somente leitura</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-100 inline-block" /> Previsto — o plano da semana, editável</span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-100 inline-block" /> Produzido — o que saiu de fato; é ele que baixa insumo</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-gray-100 inline-block" /> Registrada — insumo debitado, estoque somado</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-100 inline-block" /> Necessária = média histórica ÷ 4</span>
         </div>
