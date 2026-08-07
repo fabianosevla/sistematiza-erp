@@ -1,29 +1,26 @@
 import { auth, currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { tenantSlugPorEmail } from '@/lib/auth/tenant'
+import { tenantsDoUsuarioPorEmail } from '@/lib/auth/tenant'
 
 export default async function Home() {
   const { userId } = await auth()
   if (!userId) redirect('/sign-in')
 
-  const user = await currentUser()
-  let tenantSlug = user?.publicMetadata?.tenantSlug as string | undefined
+  const user  = await currentUser()
+  const email = user?.emailAddresses?.[0]?.emailAddress
 
-  // O Clerk nem sempre transfere o publicMetadata do convite para a conta
-  // criada (acontece com login por Google). Sem o passo abaixo, um usuário
-  // legítimo que entre pelo domínio puro — em vez de clicar no link do e-mail
-  // — cairia em "Criar minha empresa" e poderia criar um tenant duplicado.
-  //
-  // O metadata volta a ser gravado logo em seguida, pelo resolveTenant, quando
-  // a navegação chegar numa rota com o tenant na URL.
-  if (!tenantSlug) {
-    const email = user?.emailAddresses?.[0]?.emailAddress
-    if (email) {
-      tenantSlug = (await tenantSlugPorEmail(email)) ?? undefined
-    }
-  }
+  // Quem manda é o cadastro, não o metadata do Clerk. A mesma pessoa pode
+  // pertencer a mais de uma empresa — o suporte precisa disso, e um contador
+  // que atende dois clientes também.
+  const empresas = email ? await tenantsDoUsuarioPorEmail(email) : []
 
-  if (!tenantSlug) redirect('/onboarding')
+  // Nenhuma: é cliente novo, vai criar a própria empresa.
+  if (empresas.length === 0) redirect('/onboarding')
 
-  redirect(`/${tenantSlug}/selecionar-modulo`)
+  // Uma só: entra direto. É o caso de praticamente todo usuário, e mostrar uma
+  // tela de escolha com um botão seria cerimônia sem função.
+  if (empresas.length === 1) redirect(`/${empresas[0].slug}/selecionar-modulo`)
+
+  // Mais de uma: escolhe.
+  redirect('/selecionar-empresa')
 }

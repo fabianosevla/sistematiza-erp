@@ -53,9 +53,11 @@ import { eq } from 'drizzle-orm'
  * acesso. Depois disso o resolveTenant grava o vínculo e este caminho não é
  * mais tocado.
  */
-export async function tenantSlugPorEmail(email: string): Promise<string | null> {
+export async function tenantsDoUsuarioPorEmail(
+  email: string,
+): Promise<{ slug: string; name: string }[]> {
   const alvo = email?.trim()
-  if (!alvo) return null
+  if (!alvo) return []
 
   const { db, release } = await getPublicDb()
   let tenants: any[] = []
@@ -65,6 +67,7 @@ export async function tenantSlugPorEmail(email: string): Promise<string | null> 
     release()
   }
 
+  const achados: { slug: string; name: string }[] = []
   const client = await pool.connect()
   try {
     for (const t of tenants) {
@@ -86,13 +89,19 @@ export async function tenantSlugPorEmail(email: string): Promise<string | null> 
           LIMIT 1`,
         [alvo],
       )
-      if (achou.rows.length > 0) return t.slug as string
+      if (achou.rows.length > 0) achados.push({ slug: t.slug, name: t.name })
     }
   } finally {
     client.release()
   }
 
-  return null
+  return achados
+}
+
+/** Primeira empresa do usuário, ou null. Conveniência para quem só precisa saber se existe alguma. */
+export async function tenantSlugPorEmail(email: string): Promise<string | null> {
+  const lista = await tenantsDoUsuarioPorEmail(email)
+  return lista[0]?.slug ?? null
 }
 
 export async function resolveTenant(tenantSlug: string) {
@@ -101,14 +110,23 @@ export async function resolveTenant(tenantSlug: string) {
 
   const userTenantSlug = user.publicMetadata?.tenantSlug as string | undefined
 
-  // Metadata preenchido e apontando para outro tenant: barra na hora, sem
-  // consultar banco nenhum. Este é o caso que realmente precisa ser negado.
-  if (userTenantSlug && userTenantSlug !== tenantSlug) {
-    throw new Error('FORBIDDEN')
-  }
-
-  // Ausente não é mais motivo de recusa — é motivo de verificar no banco.
-  const faltaMetadata = !userTenantSlug
+  // O METADATA DEIXOU DE AUTORIZAR. Quem autoriza é o t_usuario do schema
+  // pedido, verificado mais abaixo — se o e-mail ou o clerk_id não estiverem
+  // lá, ativos, a função lança USER_NOT_IN_TENANT e ninguém entra.
+  //
+  // Antes o metadata guardava UM slug e qualquer divergência era FORBIDDEN.
+  // Isso protegia o cliente A de espiar o cliente B, mas com o efeito colateral
+  // de prender toda conta a uma empresa só — inclusive a de suporte, que
+  // precisa entrar em qualquer cliente.
+  //
+  // Duas fontes de verdade para a mesma pergunta é onde nasce brecha: bastava
+  // o metadata estar desatualizado para o acesso divergir do cadastro. Agora a
+  // pergunta "esta pessoa pode entrar aqui?" tem uma resposta só, e ela mora na
+  // tabela que a tela de Usuários administra.
+  //
+  // O metadata sobrou como memória da última empresa usada, e é atualizado no
+  // fim quando muda.
+  const precisaAtualizarMetadata = userTenantSlug !== tenantSlug
 
   const { db, release } = await getPublicDb()
   let tenant: any
@@ -167,12 +185,12 @@ export async function resolveTenant(tenantSlug: string) {
     client.release()
   }
 
-  // Chegou aqui sem metadata: o banco autorizou. Grava o vínculo no Clerk para
-  // que a próxima requisição resolva pelo caminho barato, sem ir ao t_usuario.
+  // O banco autorizou. O metadata guarda qual foi a última empresa acessada —
+  // serve para o app lembrar, não para decidir.
   //
-  // Falha aqui não derruba o acesso: quem autorizou foi o banco, e o Clerk é
-  // só cache. Se a escrita não passar, a requisição seguinte tenta de novo.
-  if (faltaMetadata) {
+  // Falha aqui não derruba nada: quem autorizou foi o t_usuario. Se a escrita
+  // no Clerk não passar, a requisição seguinte tenta de novo.
+  if (precisaAtualizarMetadata) {
     try {
       await clerkClient().users.updateUserMetadata(user.id, {
         publicMetadata: {
