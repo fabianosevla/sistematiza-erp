@@ -1,10 +1,11 @@
-import { auth, clerkClient } from '@clerk/nextjs/server'
+import { auth, clerkClient, currentUser } from '@clerk/nextjs/server'
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { getPublicDb, pool } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
 import { dbCliente, dbFornecedor, dbProduto, dbUsuario } from '@/lib/db/schemas/cadastros'
 import { eq } from 'drizzle-orm'
+import { tenantSlugPorEmail } from '@/lib/auth/tenant'
 import { ok, serverError, badRequest } from '@/lib/api/responses'
 
 const onboardingSchema = z.object({
@@ -19,6 +20,30 @@ export async function POST(req: NextRequest) {
   try {
     const body    = await req.json()
     const payload = onboardingSchema.parse(body)
+
+    // QUEM JÁ TEM EMPRESA NÃO CRIA OUTRA.
+    //
+    // A tela de onboarding é rota pública no middleware, então qualquer pessoa
+    // já autenticada consegue abri-la digitando /onboarding — inclusive um
+    // funcionário que colou um link antigo. Sem esta guarda, ela criaria um
+    // schema novo e vazio no banco, paralelo ao da empresa onde já trabalha.
+    //
+    // A checagem fica AQUI, e não na tela, de propósito: a tela é uma das
+    // várias formas de chegar nesta rota, e proteger a porta não protege a
+    // casa. Barrando no servidor, nenhuma URL ou requisição direta passa.
+    //
+    // Cadastro novo legítimo — um cliente seu abrindo a própria empresa —
+    // continua funcionando: o e-mail dele não é usuário ativo de tenant algum.
+    const quemPede = await currentUser()
+    const emailPede = quemPede?.emailAddresses?.[0]?.emailAddress
+    if (emailPede) {
+      const jaTem = await tenantSlugPorEmail(emailPede)
+      if (jaTem) {
+        return badRequest(
+          'Este e-mail já tem acesso a uma empresa. Entre por ela ou fale com o administrador.',
+        )
+      }
+    }
 
     const { db, release } = await getPublicDb()
     try {

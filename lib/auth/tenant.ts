@@ -37,6 +37,64 @@ import { eq } from 'drizzle-orm'
  * Usuários administra. E, com o cadastro em modo restrito no Clerk, ninguém
  * cria conta com um e-mail que não tenha sido convidado antes.
  */
+/**
+ * Descobre a que tenant um e-mail pertence, varrendo os schemas ativos.
+ *
+ * Existe para a raiz do app (`app/page.tsx`), que decide o destino do usuário
+ * ANTES de haver um tenant na URL — e por isso não passa pelo resolveTenant.
+ * Sem isso, quem aceita o convite e digita o domínio puro (em vez de clicar no
+ * link do e-mail) cai na tela "Criar minha empresa", com o metadata ainda
+ * vazio, e pode criar um schema duplicado sem querer.
+ *
+ * Devolve o slug do primeiro tenant onde o e-mail é usuário ATIVO, ou null.
+ *
+ * A varredura é sequencial porque o número de tenants é pequeno e isso só roda
+ * quando o metadata está ausente — ou seja, uma vez por usuário, no primeiro
+ * acesso. Depois disso o resolveTenant grava o vínculo e este caminho não é
+ * mais tocado.
+ */
+export async function tenantSlugPorEmail(email: string): Promise<string | null> {
+  const alvo = email?.trim()
+  if (!alvo) return null
+
+  const { db, release } = await getPublicDb()
+  let tenants: any[] = []
+  try {
+    tenants = await db.select().from(dbTenant).where(eq(dbTenant.activeFlag, true))
+  } finally {
+    release()
+  }
+
+  const client = await pool.connect()
+  try {
+    for (const t of tenants) {
+      if (!t.schemaName) continue
+
+      // Um tenant pode existir no t_tenant sem ter as tabelas criadas (o
+      // onboarding grava a linha antes de montar o schema). Sem esta guarda,
+      // um schema incompleto derrubaria a varredura inteira com "relation
+      // does not exist" e o usuário iria para o onboarding por engano.
+      const chk = await client.query(
+        `SELECT to_regclass($1) IS NOT NULL AS existe`,
+        [`"${t.schemaName}".t_usuario`],
+      )
+      if (!chk.rows[0]?.existe) continue
+
+      const achou = await client.query(
+        `SELECT 1 FROM "${t.schemaName}".t_usuario
+          WHERE LOWER(email) = LOWER($1) AND active_flg = true
+          LIMIT 1`,
+        [alvo],
+      )
+      if (achou.rows.length > 0) return t.slug as string
+    }
+  } finally {
+    client.release()
+  }
+
+  return null
+}
+
 export async function resolveTenant(tenantSlug: string) {
   const user = await currentUser()
   if (!user) throw new Error('UNAUTHORIZED')
