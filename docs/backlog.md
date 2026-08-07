@@ -115,7 +115,25 @@ porque a venda decrementa `estoque_atual` direto, sem registrar movimento.
 
 ---
 
-## 7. Telas e comportamento
+## 7. Fluxo pedido → conta a receber → venda
+
+Regra vigente desde a reforma:
+
+1. **Entrega do pedido** — baixa estoque do produto acabado (com movimentação
+   registrada), grava `data_entrega` e abre conta a receber. Não gera venda.
+   Insumo não sai aqui: saiu no registro de produção.
+2. **Baixa da conta a receber** — na quitação total, cria a venda com
+   `origem = 'pedido'`, os itens e o pagamento. Não mexe em estoque.
+   `t_pedido.venda_id` é a trava contra faturamento duplicado.
+
+Pendente de execução:
+
+- `node scripts/migrate-conta-receber-data-entrega.js --aplicar`
+- `node scripts/desfazer-vendas-de-pedido.js --aplicar`
+
+---
+
+## 8. Telas e comportamento
 
 - Chatbot no canto inferior direito.
 - Tabela de preço (era item de Comandas, que saiu; decidir onde entra).

@@ -235,9 +235,8 @@ export default function PedidosView({ tenantSlug }: Props) {
       qc.invalidateQueries({ queryKey: ['pedido', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['dashboard', tenantSlug] })
-      // A entrega gera venda e conta a receber — as duas telas precisam relerem.
-      qc.invalidateQueries({ queryKey: ['vendas', tenantSlug] })
-      qc.invalidateQueries({ queryKey: ['vendas-kpis', tenantSlug] })
+      // A entrega baixa estoque e abre conta a receber. A venda não nasce aqui:
+      // ela é criada na baixa da conta, quando o dinheiro entra.
       qc.invalidateQueries({ queryKey: ['contas-receber', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['contas-receber-kpis', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
@@ -248,8 +247,8 @@ export default function PedidosView({ tenantSlug }: Props) {
         entregue: 'Entrega confirmada.',
         cancelado:'Pedido cancelado.',
       }
-      // A entrega devolve uma mensagem própria, com o número da venda gerada,
-      // o vencimento da conta a receber e o aviso de estoque insuficiente.
+      // A entrega devolve uma mensagem própria, com o vencimento da conta a
+      // receber e o aviso de estoque insuficiente.
       const doServidor = _?.data?.message
       toast(doServidor ?? labels[vars.status] ?? 'Status atualizado!')
     },

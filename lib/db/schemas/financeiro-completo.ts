@@ -51,6 +51,10 @@ export const dbContaReceber = pgTable('t_conta_receber', {
   dataEmissao:      date('data_emissao').notNull(),
   dataVencimento:   date('data_vencimento').notNull(),
   dataRecebimento:  date('data_recebimento'),
+  // Quando a mercadoria saiu. Diferente do vencimento (quando deveria pagar) e
+  // do recebimento (quando pagou). Preenchida na entrega do pedido.
+  // Ver scripts/migrate-conta-receber-data-entrega.js
+  dataEntrega:      date('data_entrega'),
   status:           varchar('status', { length: 20 }).notNull().default('aberta'),
   formaRecebimento: varchar('forma_recebimento', { length: 50 }),
   observacao:       varchar('observacao', { length: 500 }),

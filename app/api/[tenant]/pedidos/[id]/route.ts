@@ -47,8 +47,9 @@ export async function GET(req: NextRequest, { params }: Params) {
 // ── EDITAR PEDIDO ────────────────────────────────────────────────────────────
 // PUT atualiza cliente, tipo, data do pedido, previsão de produção, previsão
 // de entrega, endereço, observação e a lista de itens. Só permitido enquanto
-// o pedido não foi entregue — depois da entrega existe venda emitida, e mudar
-// os itens tornaria a venda mentirosa.
+// o pedido não foi entregue — depois da entrega o estoque já saiu e existe
+// conta a receber aberta pelo valor, e mudar os itens tornaria a cobrança
+// mentirosa.
 const atualizarPedidoSchema = z.object({
   clienteId:         z.number().int().optional(),
   // Cliente avulso: só um nome, para quem não vale cadastrar.
@@ -122,10 +123,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         return ok({ ok: true, status, pedidoId, message: 'Status já era esse.' })
       }
 
-      // Entregue é irreversível: tem venda e conta a receber atrás dele.
+      // Entregue é irreversível: o estoque já saiu e existe conta a receber
+      // aberta pelo valor do pedido.
       if (statusAntigo === 'entregue' && status !== 'entregue') {
         return badRequest(
-          'Pedido já entregue não pode mudar de status. Existe venda e conta a receber vinculadas — cancele a venda se precisar desfazer.'
+          'Pedido já entregue não pode mudar de status. Exclua a conta a receber e ajuste o estoque se precisar desfazer.'
         )
       }
 
@@ -197,39 +199,21 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           [pedidoId]
         )
 
-        // 2. Venda — origem 'pedido' separa do que veio do PDV nos relatórios
-        const vendaRes = await client.query(`
-          INSERT INTO t_venda (
-            origem, cliente_id, status, tipo_entrega, data_entrega, endereco_entrega,
-            subtotal, desconto, total, observacao, vendida_em,
-            created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
-          ) VALUES (
-            'pedido', $1, 'concluida', $2, NOW(), $3,
-            $4, 0, $5, $6, NOW(),
-            1, 1, NOW(), NOW(), true, 0
-          )
-          RETURNING venda_id
-        `, [
-          pedido.cliente_id,
-          pedido.tipo_venda === 'balcao' ? 'Retirada' : 'Entrega',
-          pedido.endereco_entrega,
-          subtotal,
-          total,
-          `Pedido #${pedidoId}${pedido.observacao ? ' — ' + pedido.observacao : ''}`,
-        ])
-        const vendaId = vendaRes.rows[0].venda_id
+        // A VENDA NÃO NASCE AQUI.
+        //
+        // Antes, entregar criava a venda na mesma transação. O efeito era
+        // faturamento aparecendo no relatório de um pedido que ainda não tinha
+        // sido pago — e, se o cliente nunca pagasse, a venda continuava lá.
+        //
+        // Agora entrega e faturamento são momentos separados: a entrega move
+        // mercadoria e abre a cobrança; a venda só existe quando o dinheiro
+        // entra, na baixa da conta a receber (ContasReceberService.baixar).
+        //
+        // O insumo continua sem sair aqui: ele já saiu quando a produção foi
+        // registrada na grade. Debitar de novo derrubaria o estoque pelo dobro
+        // do que a fábrica consumiu.
 
-        // 3. Itens da venda
-        for (const it of itens) {
-          await client.query(`
-            INSERT INTO t_venda_item (
-              venda_id, produto_id, nome_produto, quantidade, preco_unitario, desconto, subtotal,
-              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
-            ) VALUES ($1,$2,$3,$4,$5,0,$6,1,1,NOW(),NOW(),true,0)
-          `, [vendaId, it.produto_id, it.nome_produto, it.quantidade, it.preco_unitario, it.subtotal])
-        }
-
-        // 4. Estoque do produto acabado sai. O insumo NÃO — ele saiu na produção.
+        // 2. Estoque do produto acabado sai.
         for (const it of itens) {
           await client.query(`
             UPDATE t_produto
@@ -246,24 +230,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           `, [it.produto_id, it.quantidade, `Entrega do pedido #${pedidoId}`])
         }
 
-        // 5. Vincula a venda ao pedido
-        await client.query(
-          `UPDATE t_pedido SET venda_id = $1, updated_dt = NOW() WHERE pedido_id = $2`,
-          [vendaId, pedidoId]
-        )
-
-        // 6. Conta a receber. Não há forma de pagamento definida na entrega —
-        //    ela é informada na baixa, e é lá que a taxa de cartão aparece.
+        // 3. Conta a receber. A forma de pagamento é informada na baixa, que é
+        //    onde a taxa de cartão aparece — e é lá que a venda vai nascer.
+        //    data_entrega registra quando a mercadoria saiu, que é diferente do
+        //    vencimento e do recebimento.
         await client.query(`
           INSERT INTO t_conta_receber (
             descricao, cliente_id, nome_cliente, categoria, numero_documento,
-            valor_original, valor_recebido, data_emissao, data_vencimento,
+            valor_original, valor_recebido, data_emissao, data_vencimento, data_entrega,
             status, observacao, origem, origem_id, parcela_atual, total_parcelas,
             created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
           ) VALUES (
             $1, $2, $3, 'Venda', $4,
-            $5, 0, $6, $7,
-            'aberta', $8, 'pedido', $9, 1, 1,
+            $5, 0, $6, $7, $8,
+            'aberta', $9, 'pedido', $10, 1, 1,
             1, 1, NOW(), NOW(), true, 0
           )
         `, [
@@ -274,7 +254,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           total,
           hoje,
           venc,
-          `Gerada automaticamente na entrega do pedido #${pedidoId}. Venda #${vendaId}.`,
+          hoje,
+          `Gerada na entrega do pedido #${pedidoId}.`,
           pedidoId,
         ])
 
@@ -288,11 +269,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ok: true,
           status: 'entregue',
           pedidoId,
-          vendaId,
           total,
           vencimento: venc,
           insuficientes,
-          message: `Entrega confirmada. Venda #${vendaId} gerada e conta a receber criada com vencimento em ${venc.split('-').reverse().join('/')}.${aviso}`,
+          message: `Entrega confirmada. Conta a receber criada com vencimento em ${venc.split('-').reverse().join('/')}.${aviso}`,
         })
       } catch (err) {
         await client.query('ROLLBACK')

@@ -154,10 +154,17 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       if (!res.ok) throw new Error(d.message)
       return d
     },
-    onSuccess: () => {
-      inv(); setShowBaixa(null)
+    onSuccess: (d: any) => {
+      inv()
+      // Quitar conta de pedido cria a venda. Estoque não muda — ele já saiu na
+      // entrega —, mas vendas, consultas e dashboard passam a contar o valor.
+      for (const chave of ['vendas', 'vendas-kpis', 'consultas', 'dashboard', 'pedidos']) {
+        qc.invalidateQueries({ queryKey: [chave] })
+      }
+      setShowBaixa(null)
       setBaixaForm({ valorRecebido: '', dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: '' })
-      toast('Recebimento registrado!')
+      const vendaId = d?.data?.vendaId
+      toast(vendaId ? `Recebimento registrado. Venda #${vendaId} gerada.` : 'Recebimento registrado.')
     },
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
@@ -214,16 +221,16 @@ export default function ContasReceberView({ tenantSlug }: Props) {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-100">
-              {['Descrição', 'Cliente', 'Vencimento', 'Valor', 'Status', ''].map((h, i) => (
-                <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 3 ? 'text-right' : ''}`}>{h}</th>
+              {['Descrição', 'Cliente', 'Entregue', 'Vencimento', 'Valor', 'Status', ''].map((h, i) => (
+                <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 4 ? 'text-right' : ''}`}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">Carregando...</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-sm text-gray-400">Carregando...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">Nenhum título encontrado.</td></tr>
+              <tr><td colSpan={7} className="text-center py-10 text-sm text-gray-400">Nenhum título encontrado.</td></tr>
             ) : rows.map((r: any) => {
               const vencida = isVencida(r)
               const saldo   = r.valorOriginal - r.valorRecebido
@@ -235,6 +242,9 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                     {r.totalParcelas > 1 && <p className="text-xs text-gray-400">{r.parcelaAtual}/{r.totalParcelas} parcelas</p>}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{r.nomeCliente || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">
+                    {r.dataEntrega ? fmtDate(r.dataEntrega) : '—'}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`text-sm ${vencida ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
                       {fmtDate(r.dataVencimento)}
