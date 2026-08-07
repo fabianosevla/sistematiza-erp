@@ -437,29 +437,12 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
           </span>
           <span className="text-base font-semibold text-gray-900">{fmt(somaTotal)}</span>
         </div>
+        {/* Mesmo rodapé de Consultas: só os dois totais. Contagem já aparece na
+            paginação, e remover filtro é operação do filtro na coluna. */}
         {temFiltro && (
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-            <span className="text-sm font-medium text-green-700">
-              Total filtrado
-              <span className="text-green-600/60 ml-1.5 font-normal">
-                ({itens.length} compra{itens.length !== 1 ? 's' : ''}
-                {somaTotal > 0 && ` · ${((somaFiltrada / somaTotal) * 100).toFixed(1)}% do período`})
-              </span>
-            </span>
-            <span className="text-lg font-bold text-green-700">{fmt(somaFiltrada)}</span>
-          </div>
-        )}
-        {temFiltro && (
-          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-            {Object.entries(filtros).map(([k, v]) => (
-              <span key={k} className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-[11px] text-green-700">
-                {v}
-                <button onClick={() => aplicarFiltro(k, '')} className="hover:text-green-900">×</button>
-              </span>
-            ))}
-            <button onClick={() => { setFiltros({}); setPagina(1) }} className="text-[11px] text-gray-400 hover:text-gray-700 ml-1">
-              limpar tudo
-            </button>
+            <span className="text-sm font-medium text-green-700">Total filtrado</span>
+            <span className="text-base font-semibold text-green-700">{fmt(somaFiltrada)}</span>
           </div>
         )}
       </div>

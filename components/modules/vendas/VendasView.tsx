@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, Download, Eye, Gift } from 'lucide-react'
+import { Plus, X, Trash2, Download, Eye, Gift, Pencil } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { SidePanel } from '@/components/ui/SidePanel'
+import { EditarVendaPanel } from '@/components/modules/vendas/EditarVendaPanel'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
@@ -91,6 +92,7 @@ export default function VendasView({ tenantSlug }: Props) {
 
   const [showModal, setShowModal]         = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<{ id: number } | null>(null)
+  const [editandoVenda, setEditandoVenda] = useState<number | null>(null)
   // Fluxo de finalização: "Registrar Venda" abre "Deseja confirmar a venda?"
   // (Sim/Não). Após registrar, abre "Deseja imprimir cupom?" (Sim/Não).
   const [confirmVenda, setConfirmVenda]   = useState(false)
@@ -262,9 +264,25 @@ export default function VendasView({ tenantSlug }: Props) {
     onError: (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
   })
 
+  // Cancelar uma venda desfaz o que ela fez: devolve estoque de produto e de
+  // insumo, estorna cashback e derruba o rascunho fiscal. Por isso o invalidate
+  // aqui é mais largo que o das outras mutações — estoque, produtos, insumos e
+  // dashboard mudaram, e não só a lista de vendas.
   const excluirMut = useMutation({
-    mutationFn: (id: number) => fetch(`${api}/${id}`, { method: 'DELETE' }).then(r => r.json()),
-    onSuccess: () => { invalidate(); toast('Venda excluída.') },
+    mutationFn: async (id: number) => {
+      const res  = await fetch(`${api}/${id}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao cancelar a venda')
+      return json
+    },
+    onSuccess: () => {
+      invalidate()
+      for (const chave of ['vendas-kpis', 'vendas-cashback', 'estoque', 'insumos', 'produtos', 'dashboard', 'consultas']) {
+        qc.invalidateQueries({ queryKey: [chave] })
+      }
+      toast('Venda cancelada e estoque devolvido.')
+    },
+    onError: (e: any) => toast(e?.message ?? 'Erro ao cancelar a venda', 'error'),
   })
 
   // ── Form helpers ──────────────────────────────────────────────────────────
@@ -489,7 +507,11 @@ export default function VendasView({ tenantSlug }: Props) {
               onClick={() => router.push(`/${tenantSlug}/vendas/${v.vendaId}`)}>
               <Eye size={14} />
             </BotaoIcone>
-            <BotaoIcone titulo="Excluir venda" variante="perigo"
+            <BotaoIcone titulo="Editar venda"
+              onClick={() => setEditandoVenda(v.vendaId)}>
+              <Pencil size={14} />
+            </BotaoIcone>
+            <BotaoIcone titulo="Cancelar venda" variante="perigo"
               onClick={() => setConfirmDelete({ id: v.vendaId })}>
               <Trash2 size={14} />
             </BotaoIcone>
@@ -824,11 +846,21 @@ export default function VendasView({ tenantSlug }: Props) {
       )}
 
       {/* ── Confirm delete ───────────────────────────────────────────────── */}
+      {editandoVenda !== null && (
+        <EditarVendaPanel
+          tenantSlug={tenantSlug}
+          vendaId={editandoVenda}
+          onClose={() => setEditandoVenda(null)}
+          onSalvo={invalidate}
+        />
+      )}
+
       {confirmDelete && (
         <ConfirmModal
-          title="Excluir venda"
-          message="Esta ação não pode ser desfeita. O cashback gerado/usado por esta venda será estornado."
-          confirmLabel="Excluir"
+          title="Cancelar venda"
+          message="O estoque dos produtos e dos insumos volta, o cashback é estornado e a venda sai dos relatórios. O registro fica gravado como cancelado."
+          confirmLabel="Cancelar venda"
+          cancelLabel="Voltar"
           danger
           onConfirm={() => { excluirMut.mutate(confirmDelete.id); setConfirmDelete(null) }}
           onCancel={() => setConfirmDelete(null)}

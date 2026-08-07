@@ -1,12 +1,11 @@
 // @ts-nocheck
 // ESTE ARQUIVO VAI EM: app/api/[tenant]/vendas/[id]/route.ts
 import type { NextRequest } from 'next/server'
-import { sql } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { VendaService } from '@/lib/services/vendas/VendaService'
-import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
-import { ok, serverError, notFound } from '@/lib/api/responses'
+import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
 
@@ -15,7 +14,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      const service = new VendaService(db)
+      const service = new VendaService(db, tenant.schemaName)
       const result  = await service.findById(Number(params.id))
       if (!result) return notFound('Venda não encontrada')
       return ok(result)
@@ -27,35 +26,67 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 }
 
-// DELETE — soft delete da venda (some da listagem) e estorno do cashback
-// gerado/usado por ela (remove crédito e devolve saldo usado). Não reverte
-// estoque (comportamento herdado; ajuste manual pelo módulo Estoque se preciso).
+// PUT — corrige os dados da venda que não afetam dinheiro nem estoque:
+// cliente, vendedor, entrega e observações. Item, quantidade, preço e forma de
+// pagamento não passam por aqui de propósito — para esses, cancela e refaz.
+export async function PUT(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body    = await req.json()
+      const userId  = await usuarioAtualIdDb(db)
+      const service = new VendaService(db, tenant.schemaName)
+
+      const atualizado = await service.atualizarDados(Number(params.id), {
+        clienteId:         body.clienteId,
+        nomeClienteAvulso: body.nomeClienteAvulso,
+        vendedor:          body.vendedor,
+        tipoEntrega:       body.tipoEntrega,
+        dataEntrega:       body.dataEntrega,
+        enderecoEntrega:   body.enderecoEntrega,
+        observacao:        body.observacao,
+        observacaoInterna: body.observacaoInterna,
+      }, userId)
+
+      if (!atualizado) return notFound('Venda não encontrada ou já cancelada')
+      return ok({ atualizado: true })
+    } finally {
+      release()
+    }
+  } catch (err) {
+    return serverError(err)
+  }
+}
+
+// DELETE — cancela a venda e desfaz os efeitos dela: devolve estoque de
+// produto e de insumo, derruba o rascunho fiscal e estorna o cashback.
+//
+// A venda não é apagada: fica com active_flg = false e status 'cancelada'.
+//
+// Antes, esta rota só inativava a linha e estornava cashback — o estoque
+// ficava errado em silêncio, e o próprio comentário do código admitia isso.
+// O schemaName passou a ser obrigatório na construção do service porque sem
+// ele a reversão de insumo iria para o schema errado.
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      const id = Number(params.id)
+      const userId  = await usuarioAtualIdDb(db)
+      const service = new VendaService(db, tenant.schemaName)
 
-      const existe = await db.execute(sql`SELECT venda_id FROM t_venda WHERE venda_id = ${id} AND active_flg = true`)
-      if (existe.rows.length === 0) return notFound('Venda não encontrada')
+      const resultado = await service.cancelar(Number(params.id), userId)
+      if (!resultado) return notFound('Venda não encontrada ou já cancelada')
 
-      // Estorna cashback ANTES de inativar (ainda encontra os movimentos por venda_id)
-      try {
-        await new CashbackService(db).estornarVenda(id, 1)
-      } catch (_) {
-        // fidelidade não configurada — ignora
-      }
-
-      await db.execute(sql`
-        UPDATE t_venda SET active_flg = false, updated_dt = NOW() WHERE venda_id = ${id}
-      `)
-
-      return ok({ deletado: true, estornoCashback: true })
+      return ok(resultado)
     } finally {
       release()
     }
   } catch (err) {
+    if ((err as Error)?.message === 'SCHEMA_AUSENTE') {
+      return badRequest('Não foi possível identificar a empresa desta venda.')
+    }
     return serverError(err)
   }
 }

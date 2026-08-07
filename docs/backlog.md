@@ -48,15 +48,26 @@ uma sessão manual de migração.
 
 ---
 
-## 3. Arquivos órfãos para excluir
+## 3. Código morto — verificado, quase tudo resolvido
 
-Precisam ser apagados manualmente (sem permissão de exclusão pela ferramenta):
+Varredura feita. Situação real:
 
-- `app/(dashboard)/[tenant]/comandas/`
-- `components/modules/financeiro/ConciliacaoView.tsx`
-- `lib/services/financeiro/ConciliacaoService.ts`
-- `app/api/[tenant]/conciliacao/`
-- Resíduos do módulo de compras que não forem mais usados
+**Já excluídos** — `app/(dashboard)/[tenant]/comandas/`,
+`components/modules/financeiro/ConciliacaoView.tsx`,
+`lib/services/financeiro/ConciliacaoService.ts` e
+`app/api/[tenant]/conciliacao/` não existem mais.
+
+**NÃO excluir `components/modules/comandas/ComandasView.tsx`.** Apesar do
+caminho sugerir módulo removido, ele é importado por `PdvMesas.tsx` e
+`PdvShell.tsx` — é a tela de comandas que vive dentro do PDV, que deve
+permanecer. Apagar quebra o PDV.
+
+**Encanamento morto (opcional):** `comandasAtivo` sai do banco
+(`t_configuracoes_tenant.comandas_ativo`), passa por
+`app/api/[tenant]/configuracoes/route.ts`, `app/(dashboard)/tenant-layout.tsx`
+e `components/layout/ClientShell.tsx` — e não é consumido em lugar nenhum
+desde que Comandas saiu do menu. Contra-argumento para deixar como está: é o
+gancho pronto caso um dia se queira ligar/desligar comandas por cliente.
 
 ---
 
@@ -70,14 +81,41 @@ Precisam ser apagados manualmente (sem permissão de exclusão pela ferramenta):
 
 ---
 
-## 5. Colunas mortas
+## 5. Colunas mortas no banco
 
-- `pedido_id` em `t_entrada_nfe` — sem uso desde a reforma de compras.
-- `conciliacao_bancaria_ativo` — sem uso desde a remoção da conciliação.
+Nenhuma tem referência em código de aplicação — só existem no Postgres:
+
+- `pedido_id` em `t_entrada_nfe` — a tabela nem está declarada no Drizzle.
+- `conciliacao_bancaria_ativo` — citada apenas em
+  `scripts/migrate-financeiro-completo.js` e `scripts/check-financeiro-completo.js`.
+
+Coluna sem uso não custa nada e não atrapalha consulta. `DROP COLUMN` em banco
+de produção, sim, tem risco. A recomendação é **deixar como estão** e só
+remover se um dia houver uma migração de estrutura maior — por exemplo, a do
+item 1.
 
 ---
 
-## 6. Telas e comportamento
+## 6. Venda — limitações conhecidas do cancelamento
+
+O cancelamento devolve estoque de produto e de insumo, estorna cashback e
+derruba o rascunho fiscal. Duas assimetrias permanecem, e as duas têm a mesma
+raiz: **a venda registra os produtos, não os insumos que consumiu.**
+
+- A baixa de insumo usa `Math.max(0, ...)`. Se o estoque estava abaixo do que
+  a ficha pedia, baixou menos do que deveria — e a devolução soma o valor
+  cheio, então o insumo pode voltar com mais do que saiu.
+- A devolução usa a ficha técnica **de agora**. Se a ficha mudou depois da
+  venda, recompõe pela receita nova.
+
+A correção é gravar o consumo de insumo por venda, numa tabela de movimentação
+ou em `t_venda_item`. Isso resolve as duas de uma vez e, de quebra, faz vendas
+aparecerem na consulta de movimentação de estoque — que hoje não as enxerga,
+porque a venda decrementa `estoque_atual` direto, sem registrar movimento.
+
+---
+
+## 7. Telas e comportamento
 
 - Chatbot no canto inferior direito.
 - Tabela de preço (era item de Comandas, que saiu; decidir onde entra).

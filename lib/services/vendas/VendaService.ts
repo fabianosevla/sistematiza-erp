@@ -168,6 +168,202 @@ export class VendaService {
     }
   }
 
+  /**
+   * CANCELAMENTO DE VENDA — desfaz o que `criarDireta` fez.
+   *
+   * A venda não é apagada: fica com `active_flg = false` e `status =
+   * 'cancelada'`. Some das listagens e dos relatórios, mas continua existindo.
+   * Venda apagada de verdade deixa buraco na numeração que ninguém consegue
+   * explicar seis meses depois.
+   *
+   * O que é revertido, nesta ordem, dentro de uma transação:
+   *
+   *   1. estoque do produto acabado  (devolve a quantidade vendida)
+   *   2. estoque dos insumos          (recompõe pela ficha técnica)
+   *   3. rascunho fiscal              (some, se ainda estiver pendente)
+   *   4. a própria venda              (inativa)
+   *
+   * O cashback é estornado fora da transação, pelo CashbackService, porque ele
+   * trabalha com o Drizzle e já é idempotente — reconhece estorno anterior e
+   * não credita duas vezes.
+   *
+   * DUAS ASSIMETRIAS CONHECIDAS, que não dá para resolver com o dado que a
+   * venda guarda hoje:
+   *
+   *   • A baixa de insumo usa `Math.max(0, ...)`: se o estoque já estava
+   *     abaixo do necessário, baixou menos do que a ficha pedia. A devolução
+   *     soma o valor cheio, então o insumo pode voltar com mais do que saiu.
+   *   • A recomposição usa a ficha técnica de AGORA. Se a ficha mudou depois
+   *     da venda, devolve pela receita nova. A venda não registra quais
+   *     insumos consumiu — só os produtos.
+   *
+   * Resolver as duas exige gravar o consumo de insumo por venda, o que é
+   * mudança de estrutura. Está no backlog, não aqui.
+   */
+  async cancelar(vendaId: number, userId: number) {
+    if (!this.schemaName) {
+      // Sem schema o SET search_path não acontece e as queries iriam para o
+      // schema errado. Falhar alto é melhor do que reverter estoque de outro
+      // cliente.
+      throw new Error('SCHEMA_AUSENTE')
+    }
+
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${this.schemaName}", public`)
+
+      // active_flg = true na condição é o que impede cancelar duas vezes e
+      // devolver o estoque em dobro.
+      const venda = await client.query(
+        `SELECT venda_id FROM t_venda WHERE venda_id = $1 AND active_flg = true`,
+        [vendaId],
+      )
+      if (venda.rows.length === 0) return null
+
+      const itens = await client.query(
+        `SELECT produto_id, quantidade FROM t_venda_item
+          WHERE venda_id = $1 AND active_flg = true`,
+        [vendaId],
+      )
+
+      await client.query('BEGIN')
+      try {
+        for (const it of itens.rows as any[]) {
+          const qtd = Number(it.quantidade)
+
+          // 1. Produto acabado volta para o estoque.
+          await client.query(
+            `UPDATE t_produto
+                SET estoque_atual = estoque_atual + $1, updated_dt = NOW(), updated_by = $2
+              WHERE produto_id = $3`,
+            [qtd, userId, it.produto_id],
+          )
+
+          // 2. Insumos da ficha voltam, com a mesma conversão de unidade da baixa.
+          const ficha = await client.query(
+            `SELECT pi.insumo_id, pi.quantidade AS qtd_por_unidade, pi.unidade AS unidade_ficha,
+                    i.unidade AS unidade_estoque, i.estoque_atual
+               FROM t_produto_insumo pi
+               JOIN t_insumo i ON i.insumo_id = pi.insumo_id AND i.active_flg = true
+              WHERE pi.produto_id = $1 AND pi.active_flg = true`,
+            [it.produto_id],
+          )
+          for (const fi of ficha.rows as any[]) {
+            const qtdTotal = converterUnidade(
+              Number(fi.qtd_por_unidade) * qtd,
+              fi.unidade_ficha,
+              fi.unidade_estoque,
+            )
+            const novo = parseFloat((Number(fi.estoque_atual) + qtdTotal).toFixed(4))
+            await client.query(
+              `UPDATE t_insumo
+                  SET estoque_atual = $1, updated_dt = NOW(), updated_by = $2
+                WHERE insumo_id = $3`,
+              [novo, userId, fi.insumo_id],
+            )
+          }
+        }
+
+        // 3. Rascunho fiscal. Só o que ainda está pendente — nota já emitida
+        //    não se desfaz por aqui, cancelamento na SEFAZ é outro processo.
+        const temNota = await client.query(
+          `SELECT to_regclass('t_nota_fiscal') IS NOT NULL AS existe`,
+        )
+        if (temNota.rows[0]?.existe) {
+          await client.query(
+            `UPDATE t_nota_fiscal
+                SET status = 'cancelada', active_flg = false, updated_dt = NOW(), updated_by = $1
+              WHERE venda_id = $2 AND status = 'pendente'`,
+            [userId, vendaId],
+          )
+        }
+
+        // 4. A venda.
+        await client.query(
+          `UPDATE t_venda
+              SET active_flg = false, status = 'cancelada', updated_dt = NOW(), updated_by = $1
+            WHERE venda_id = $2`,
+          [userId, vendaId],
+        )
+
+        await client.query('COMMIT')
+      } catch (e) {
+        await client.query('ROLLBACK')
+        throw e
+      }
+    } finally {
+      client.release()
+    }
+
+    // Fora da transação: o estorno é idempotente e a falta de fidelidade
+    // configurada não pode impedir o cancelamento da venda.
+    let estornoCashback = false
+    try {
+      await new CashbackService(this.db).estornarVenda(vendaId, userId)
+      estornoCashback = true
+    } catch (_) {}
+
+    return { cancelado: true, estornoCashback }
+  }
+
+  /**
+   * EDIÇÃO DE VENDA — só o que não mexe em dinheiro nem em estoque.
+   *
+   * Cliente, vendedor, entrega e observações podem ser corrigidos sem
+   * consequência: nenhum deles entra no cálculo de total, na baixa de estoque
+   * ou no cashback já creditado.
+   *
+   * Item, quantidade, preço e forma de pagamento ficam de fora de propósito.
+   * Mudar qualquer um deles exigiria refazer a baixa de estoque, a ficha
+   * técnica, o cashback e o rascunho fiscal — e um erro no meio disso deixa o
+   * estoque mentindo sem ninguém perceber. Para esses casos o caminho é
+   * cancelar e lançar de novo, que é como o operador de balcão já pensa.
+   */
+  async atualizarDados(
+    vendaId: number,
+    payload: {
+      clienteId?:         number | null
+      nomeClienteAvulso?: string | null
+      vendedor?:          string | null
+      tipoEntrega?:       string | null
+      dataEntrega?:       string | null
+      enderecoEntrega?:   string | null
+      observacao?:        string | null
+      observacaoInterna?: string | null
+    },
+    userId: number,
+  ) {
+    const updates: any = { updatedDt: new Date(), updatedBy: userId }
+
+    // Cliente cadastrado e nome avulso são excludentes: com cadastro, o
+    // cadastro manda. Mesma regra do criarDireta.
+    if (payload.clienteId !== undefined) {
+      updates.clienteId = payload.clienteId || null
+      if (payload.clienteId) updates.nomeClienteAvulso = null
+    }
+    if (payload.nomeClienteAvulso !== undefined && !payload.clienteId) {
+      updates.nomeClienteAvulso = payload.nomeClienteAvulso?.trim() || null
+    }
+    if (payload.vendedor          !== undefined) updates.vendedor          = payload.vendedor || null
+    // tipo_entrega é NOT NULL no banco: só sobrescreve com valor de verdade,
+    // senão um campo vazio no formulário derrubaria o UPDATE inteiro.
+    if (payload.tipoEntrega) updates.tipoEntrega = payload.tipoEntrega
+    if (payload.enderecoEntrega   !== undefined) updates.enderecoEntrega   = payload.enderecoEntrega || null
+    if (payload.observacao        !== undefined) updates.observacao        = payload.observacao || null
+    if (payload.observacaoInterna !== undefined) updates.observacaoInterna = payload.observacaoInterna || null
+    if (payload.dataEntrega       !== undefined) {
+      updates.dataEntrega = payload.dataEntrega ? new Date(payload.dataEntrega) : null
+    }
+
+    const [result] = await this.db
+      .update(dbVenda)
+      .set(updates)
+      .where(and(eq(dbVenda.vendaId, vendaId), eq(dbVenda.activeFlag, true)))
+      .returning({ vendaId: dbVenda.vendaId })
+
+    return result ?? null
+  }
+
   async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
     itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
     clienteId?:         number

@@ -16,7 +16,7 @@
 // antigo virou um caso particular: só continua semanal quando a periodicidade
 // é semanal.
 import { useState, useMemo, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Sprout, Receipt, FileBarChart, Printer, Boxes } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -24,6 +24,8 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { SidePanel } from '@/components/ui/SidePanel'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { EditarVendaPanel } from '@/components/modules/vendas/EditarVendaPanel'
 import {
   SeletorPeriodo, PERIODICIDADES, intervaloDe, deslocar,
   type Periodicidade,
@@ -63,6 +65,11 @@ const fmtDataHora = (d: any) =>
 function DetalheVenda({
   tenantSlug, vendaId, onClose,
 }: { tenantSlug: string; vendaId: number; onClose: () => void }) {
+  const { toast }   = useToast()
+  const queryClient = useQueryClient()
+  const [confirmarCancelamento, setConfirmarCancelamento] = useState(false)
+  const [editando, setEditando] = useState(false)
+
   const { data, isLoading } = useQuery({
     queryKey: ['venda-detalhe', tenantSlug, vendaId],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/vendas/${vendaId}`)).json(),
@@ -72,12 +79,54 @@ function DetalheVenda({
   const totalPago = (venda?.pagamentos ?? []).reduce((a: number, p: any) => a + p.valor, 0)
   const troco     = totalPago > (venda?.total ?? 0) ? totalPago - venda.total : 0
 
+  // Cancelar recarrega tudo que a venda alterou: as próprias listas, o estoque
+  // de produto e insumo, e os números do dashboard. Sem invalidar, a tela
+  // continuaria mostrando o estoque de antes do estorno.
+  const cancelarMut = useMutation({
+    mutationFn: async () => {
+      const res  = await fetch(`/api/${tenantSlug}/vendas/${vendaId}`, { method: 'DELETE' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json?.message ?? 'Erro ao cancelar a venda')
+      return json
+    },
+    onSuccess: () => {
+      for (const chave of ['consultas', 'vendas', 'estoque', 'insumos', 'produtos', 'dashboard', 'clientes']) {
+        queryClient.invalidateQueries({ queryKey: [chave] })
+      }
+      toast('Venda cancelada e estoque devolvido.')
+      onClose()
+    },
+    onError: (e: any) => toast(e?.message ?? 'Erro ao cancelar a venda', 'error'),
+  })
+
+  if (editando) {
+    return (
+      <EditarVendaPanel
+        tenantSlug={tenantSlug}
+        vendaId={vendaId}
+        onClose={() => setEditando(false)}
+      />
+    )
+  }
+
   return (
     <SidePanel
       titulo={`Venda #${String(vendaId).padStart(5, '0')}`}
       subtitulo={venda ? fmtDataHora(venda.vendidaEm) : undefined}
       largura="w-[30vw] min-w-[520px]"
       onClose={onClose}
+      rodape={venda ? (
+        <>
+          <Button variant="outline" onClick={() => setEditando(true)}>Editar</Button>
+          <Button
+            variant="destructive"
+            onClick={() => setConfirmarCancelamento(true)}
+            disabled={cancelarMut.isPending}
+          >
+            {cancelarMut.isPending ? 'Cancelando...' : 'Cancelar venda'}
+          </Button>
+        </>
+      ) : undefined}
     >
       <div className="p-6 space-y-4">
         {isLoading ? (
@@ -169,6 +218,18 @@ function DetalheVenda({
           </>
         )}
       </div>
+
+      {confirmarCancelamento && (
+        <ConfirmModal
+          title="Cancelar venda"
+          message="O estoque dos produtos e dos insumos volta, o cashback é estornado e a venda sai dos relatórios. O registro fica gravado como cancelado."
+          confirmLabel="Cancelar venda"
+          cancelLabel="Voltar"
+          danger
+          onConfirm={() => { setConfirmarCancelamento(false); cancelarMut.mutate() }}
+          onCancel={() => setConfirmarCancelamento(false)}
+        />
+      )}
     </SidePanel>
   )
 }
@@ -774,33 +835,14 @@ export default function ConsultasView({ tenantSlug }: Props) {
             <span className="text-base font-semibold text-gray-900">{fmt(somaTotal)}</span>
           </div>
 
+          {/* Sem contagem nem porcentagem: o número de registros já está na
+              paginação, e a porcentagem era leitura que ninguém fazia daqui.
+              Os chips de filtro e o "limpar tudo" saíram — remover filtro é
+              operação do próprio filtro, na coluna, e não de um rodapé. */}
           {temFiltro && (
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-              <span className="text-sm font-medium text-green-700">
-                Total filtrado
-                <span className="text-green-600/60 ml-1.5 font-normal">
-                  ({itens.length} registro{itens.length !== 1 ? 's' : ''}
-                  {somaTotal > 0 && ` · ${((somaFiltrada / somaTotal) * 100).toFixed(1)}% do período`})
-                </span>
-              </span>
-              <span className="text-lg font-bold text-green-700">{fmt(somaFiltrada)}</span>
-            </div>
-          )}
-
-          {temFiltro && (
-            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-              {Object.entries(filtros).map(([k, v]) => (
-                <span key={k} className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-[11px] text-green-700">
-                  {v}
-                  <button onClick={() => aplicarFiltro(k, '')} className="hover:text-green-900">×</button>
-                </span>
-              ))}
-              <button
-                onClick={() => { setFiltros({}); setPagina(1) }}
-                className="text-[11px] text-gray-400 hover:text-gray-700 ml-1"
-              >
-                limpar tudo
-              </button>
+              <span className="text-sm font-medium text-green-700">Total filtrado</span>
+              <span className="text-base font-semibold text-green-700">{fmt(somaFiltrada)}</span>
             </div>
           )}
         </div>
