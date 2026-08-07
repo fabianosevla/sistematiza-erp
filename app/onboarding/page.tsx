@@ -57,9 +57,15 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#0F1117' }}>
       <div className="w-full max-w-md px-4">
-        <div className="text-center mb-8">
-          <span className="text-3xl font-semibold text-white">sistematiza</span>
-          <span className="text-3xl font-semibold" style={{ color: '#2ecc71' }}>.ia</span>
+        {/* Marca igual à da Sidebar e do PDV: logo + Sistematiza.ai. */}
+        <div className="mb-8 flex flex-col items-center">
+          <div className="flex items-center gap-2">
+            <img src="/apple-icon.png" alt="" className="h-8 w-8 flex-shrink-0 rounded object-contain" />
+            <div className="flex items-baseline">
+              <span className="text-3xl font-bold text-white tracking-tight">Sistematiza</span>
+              <span className="text-3xl font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
+            </div>
+          </div>
           <p className="text-white/50 text-sm mt-2">Configure sua empresa para começar</p>
         </div>
 
@@ -74,7 +80,7 @@ export default function OnboardingPage() {
                 type="text"
                 value={name}
                 onChange={e => handleNameChange(e.target.value)}
-                placeholder="Ex: Zaghi Massas Caseiras"
+                placeholder="Ex: Minha Empresa Ltda"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                 required
               />
@@ -87,7 +93,7 @@ export default function OnboardingPage() {
                 type="text"
                 value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
-                placeholder="zaghi-massas"
+                placeholder="minha-empresa"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-400"
                 required
               />
