@@ -4,6 +4,7 @@
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { ContasReceberService } from '@/lib/services/financeiro/ContasReceberService'
 import { ok, created, serverError } from '@/lib/api/responses'
 
@@ -34,11 +35,16 @@ export async function POST(req: NextRequest, { params }: P) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
-      const body = await req.json()
+      const body   = await req.json()
+      const userId = await usuarioAtualIdDb(db)
+      const cent   = (v: any) => Math.round((Number(v) || 0) * 100)
       return created(await new ContasReceberService(db).criar({
         ...body,
-        valorOriginal: Math.round((body.valorOriginal ?? 0) * 100),
-      }, 1))
+        valorBase:     cent(body.valorBase ?? body.valorOriginal),
+        desconto:      cent(body.desconto),
+        acrescimo:     cent(body.acrescimo),
+        valorOriginal: cent(body.valorOriginal),
+      }, userId))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

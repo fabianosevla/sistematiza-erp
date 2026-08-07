@@ -20,6 +20,10 @@ export const dbDespesa = pgTable('t_despesa', {
   recorrente:         boolean('recorrente').notNull().default(false),
   periodoRecorrencia: varchar('periodo_recorrencia', { length: 20 }),
   observacao:         varchar('observacao', { length: 500 }),
+  // Preenchida quando a despesa nasceu do pagamento de uma conta a pagar.
+  // Serve de trava contra lançar a mesma despesa duas vezes.
+  // Ver scripts/migrate-despesa-de-conta-pagar.js
+  contaPagarId:       integer('conta_pagar_id'),
 })
 
 export const dbGastoFixoCategoria = pgTable('t_gasto_fixo_categoria', {

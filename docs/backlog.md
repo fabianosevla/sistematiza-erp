@@ -126,10 +126,23 @@ Regra vigente desde a reforma:
    `origem = 'pedido'`, os itens e o pagamento. Não mexe em estoque.
    `t_pedido.venda_id` é a trava contra faturamento duplicado.
 
+O espelho, do lado da despesa:
+
+3. **Compra à vista** — grava `t_despesa` na data da compra, como sempre.
+4. **Compra a prazo** — abre conta a pagar. A despesa nasce na **quitação**,
+   datada no dia do pagamento. `t_despesa.conta_pagar_id` é a trava contra
+   duplicar. Resolve o caso do cartão: comprou em agosto, vence em setembro, o
+   custo cai em setembro.
+
+Regra geral das duas pontas: **dinheiro entrou, receita; dinheiro saiu,
+despesa.** A movimentação de estoque continua acontecendo na entrega e na
+compra, independente do caixa.
+
 Pendente de execução:
 
 - `node scripts/migrate-conta-receber-data-entrega.js --aplicar`
 - `node scripts/desfazer-vendas-de-pedido.js --aplicar`
+- `node scripts/migrate-despesa-de-conta-pagar.js --aplicar`
 
 ---
 

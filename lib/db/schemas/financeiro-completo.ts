@@ -46,6 +46,17 @@ export const dbContaReceber = pgTable('t_conta_receber', {
   nomeCliente:      varchar('nome_cliente', { length: 200 }),
   categoria:        varchar('categoria', { length: 100 }),
   numeroDocumento:  varchar('numero_documento', { length: 50 }),
+  // valor_base é o valor cru: a soma dos itens do pedido, ou o que foi digitado
+  // numa conta manual. valor_original é o que o cliente deve de fato, depois de
+  // desconto e acréscimo — e continua sendo a referência de tudo que já existia
+  // (KPIs, status, comparação com valor_recebido).
+  //
+  //   valor_original = valor_base - desconto + acrescimo
+  //
+  // Ver scripts/migrate-conta-receber-ajustes.js
+  valorBase:        integer('valor_base'),
+  desconto:         integer('desconto').notNull().default(0),
+  acrescimo:        integer('acrescimo').notNull().default(0),
   valorOriginal:    integer('valor_original').notNull(),
   valorRecebido:    integer('valor_recebido').notNull().default(0),
   dataEmissao:      date('data_emissao').notNull(),

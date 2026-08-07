@@ -65,6 +65,8 @@ export class ContasReceberService {
     categoria?: string; numeroDocumento?: string
     valorOriginal: number; dataEmissao: string; dataVencimento: string
     formaRecebimento?: string; observacao?: string; totalParcelas?: number
+    // Base e ajustes chegam já em centavos, como valorOriginal.
+    valorBase?: number; desconto?: number; acrescimo?: number
   }, userId: number) {
     const now = new Date()
     const totalParcelas = payload.totalParcelas ?? 1
@@ -81,6 +83,11 @@ export class ContasReceberService {
         nomeCliente:     payload.nomeCliente,
         categoria:       payload.categoria,
         numeroDocumento: payload.numeroDocumento,
+        // Base e ajustes acompanham a divisão em parcelas, senão a soma das
+        // parcelas não bateria com a base gravada em cada uma.
+        valorBase:       Math.round((payload.valorBase ?? payload.valorOriginal) / totalParcelas),
+        desconto:        Math.round((payload.desconto  ?? 0) / totalParcelas),
+        acrescimo:       Math.round((payload.acrescimo ?? 0) / totalParcelas),
         valorOriginal:   Math.round(payload.valorOriginal / totalParcelas),
         dataEmissao:     payload.dataEmissao,
         dataVencimento:  dataVencParcela,

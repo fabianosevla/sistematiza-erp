@@ -139,7 +139,66 @@ export class ContasPagarService {
       updatedDt:       new Date(), updatedBy: userId,
     }).where(eq(dbContaPagar.contaPagarId, id))
       .returning({ id: dbContaPagar.contaPagarId, status: dbContaPagar.status })
-    return result
+
+    // A DESPESA NASCE AQUI, quando o dinheiro sai.
+    //
+    // Antes, compra a prazo abria conta a pagar e mais nada. O DRE e a consulta
+    // de Despesas leem só t_despesa, por data_despesa — então a compra a prazo
+    // não aparecia no resultado nem no mês da compra, nem no mês do pagamento.
+    // Simplesmente sumia do custo, e o lucro saía maior do que era.
+    //
+    // É o espelho da venda, que nasce na baixa do recebimento: dinheiro entrou,
+    // receita; dinheiro saiu, despesa. E resolve o caso do cartão — comprou em
+    // agosto, vence em setembro, o custo cai em setembro.
+    //
+    // Só na quitação total: pagamento parcial soma em valor_pago e a conta
+    // segue aberta.
+    let despesaId: number | null = null
+    if (pago) despesaId = await this.gerarDespesaDoPagamento(conta, dataPagamento, userId)
+
+    return { ...result, despesaId }
+  }
+
+  /**
+   * Lança em t_despesa o valor de uma conta a pagar quitada.
+   *
+   * `conta_pagar_id` é a trava: preenchida, a despesa daquela conta já existe e
+   * uma segunda chamada não duplica. Isso importa porque uma conta pode receber
+   * baixas parciais e chegar ao total mais de uma vez em cenários de correção.
+   */
+  private async gerarDespesaDoPagamento(
+    conta: any,
+    dataPagamento: string,
+    userId: number,
+  ): Promise<number | null> {
+    const jaExiste = await this.db.execute(sql`
+      SELECT despesa_id FROM t_despesa
+       WHERE conta_pagar_id = ${conta.contaPagarId} AND active_flg = true
+       LIMIT 1
+    `)
+    if ((jaExiste.rows as any[]).length > 0) return null
+
+    // A competência acompanha a data do pagamento, não a da emissão: é o mês em
+    // que o dinheiro saiu do caixa.
+    const dt = new Date(`${dataPagamento}T12:00:00`)
+
+    // mes_competencia e ano_competencia existem na tabela mas não estão
+    // declaradas no schema do Drizzle — entraram por script de migração. O
+    // ComprasService também as preenche; omitir aqui quebraria se forem NOT NULL.
+    const res = await this.db.execute(sql`
+      INSERT INTO t_despesa
+        (nome, categoria, valor, data_despesa, recorrente,
+         mes_competencia, ano_competencia, observacao, conta_pagar_id,
+         created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
+      VALUES
+        (${conta.descricao}, ${conta.categoria ?? 'Outros'}, ${conta.valorOriginal},
+         ${dataPagamento}::date, false,
+         ${dt.getMonth() + 1}, ${dt.getFullYear()},
+         ${`Pagamento da conta a pagar #${conta.contaPagarId}`}, ${conta.contaPagarId},
+         ${userId}, ${userId}, NOW(), NOW(), true, 0)
+      RETURNING despesa_id
+    `)
+    return Number((res.rows as any[])[0]?.despesa_id) || null
   }
 
   async excluir(id: number, userId: number) {

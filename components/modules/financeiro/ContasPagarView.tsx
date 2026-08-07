@@ -103,7 +103,17 @@ export default function ContasPagarView({ tenantSlug }: Props) {
     },
     // A baixa FECHA: é uma ação pontual sobre um título específico, e depois
     // dela não há o que continuar editando naquele painel.
-    onSuccess: () => { inv(); setShowBaixa(null); setBaixaForm({ valorPago: '', dataPagamento: new Date().toISOString().slice(0, 10), formaPagamento: '' }); toast('Baixa registrada!') },
+    onSuccess: (d: any) => {
+      inv()
+      // Quitar lança a despesa na data do pagamento — despesas, DRE e dashboard
+      // passam a contar esse custo.
+      for (const chave of ['despesas', 'consultas', 'dashboard', 'financeiro']) {
+        qc.invalidateQueries({ queryKey: [chave] })
+      }
+      setShowBaixa(null)
+      setBaixaForm({ valorPago: '', dataPagamento: new Date().toISOString().slice(0, 10), formaPagamento: '' })
+      toast(d?.data?.despesaId ? 'Baixa registrada e despesa lançada.' : 'Baixa registrada.')
+    },
     onError:   (e: any) => toast(e.message || 'Erro.', 'error'),
   })
 

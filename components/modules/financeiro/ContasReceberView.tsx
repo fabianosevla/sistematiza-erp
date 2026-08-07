@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 
@@ -21,9 +22,16 @@ function isVencida(row: any) {
 
 const FORM_VAZIO = {
   descricao: '', nomeCliente: '', categoria: '', numeroDocumento: '',
+  valorBase: '', desconto: '0', acrescimo: '',
   valorOriginal: '', dataEmissao: new Date().toISOString().slice(0, 10),
   dataVencimento: '', formaRecebimento: '', observacao: '', totalParcelas: '1',
 }
+
+const brl = (n: number) =>
+  (n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+/** Reais digitados com vírgula ou ponto. Campo vazio é zero, não NaN. */
+const num = (v: string) => parseFloat(String(v ?? '').replace(',', '.')) || 0
 
 export default function ContasReceberView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
@@ -45,6 +53,24 @@ export default function ContasReceberView({ tenantSlug }: Props) {
     valorRecebido: '', dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: '',
   })
   const setBF = (k: string, v: string) => setBaixaForm(p => ({ ...p, [k]: v }))
+
+  // Formas cadastradas em Cadastros → Formas de Pagamento. Combobox em vez de
+  // texto livre para que a consulta de vendas consiga filtrar por elas depois —
+  // "PIX", "pix" e "Pix" digitados à mão viram três formas diferentes.
+  const { data: formasRaw } = useQuery({
+    queryKey: ['formas-pagamento', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/formas-pagamento`)).json(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const formasNomes: string[] = (formasRaw?.data ?? [])
+    .map((f: any) => f.nome)
+    .filter(Boolean)
+
+  // Conta vinda de pedido tem o valor amarrado à soma dos itens. Ajuste se faz
+  // por desconto ou acréscimo, não reescrevendo o valor da mercadoria.
+  const vindoDePedido = editando?.origem === 'pedido'
+
+  const totalCalculado = Math.max(0, num(form.valorBase) - num(form.desconto) + num(form.acrescimo))
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['contas-receber', tenantSlug] })
@@ -84,6 +110,10 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       nomeCliente:      r.nomeCliente ?? '',
       categoria:        r.categoria ?? '',
       numeroDocumento:  r.numeroDocumento ?? '',
+      // Conta antiga não tem valor_base: o próprio total serve de base.
+      valorBase:        (((r.valorBase ?? r.valorOriginal ?? 0)) / 100).toFixed(2),
+      desconto:         ((r.desconto ?? 0) / 100).toFixed(2),
+      acrescimo:        ((r.acrescimo ?? 0) / 100).toFixed(2),
       valorOriginal:    ((r.valorOriginal ?? 0) / 100).toFixed(2),
       dataEmissao:      toInputDate(r.dataEmissao),
       dataVencimento:   toInputDate(r.dataVencimento),
@@ -106,7 +136,10 @@ export default function ContasReceberView({ tenantSlug }: Props) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...form,
-          valorOriginal: parseFloat(form.valorOriginal.replace(',', '.')) || 0,
+          valorBase:     num(form.valorBase),
+          desconto:      num(form.desconto),
+          acrescimo:     num(form.acrescimo),
+          valorOriginal: totalCalculado,
           totalParcelas: parseInt(form.totalParcelas) || 1,
         }),
       })
@@ -129,7 +162,10 @@ export default function ContasReceberView({ tenantSlug }: Props) {
           nomeCliente:      form.nomeCliente || null,
           categoria:        form.categoria || null,
           numeroDocumento:  form.numeroDocumento || null,
-          valorOriginal:    parseFloat(form.valorOriginal.replace(',', '.')) || 0,
+          // O total não vai: a rota o calcula a partir da base e dos ajustes.
+          valorBase:        num(form.valorBase),
+          desconto:         num(form.desconto),
+          acrescimo:        num(form.acrescimo),
           dataEmissao:      form.dataEmissao,
           dataVencimento:   form.dataVencimento,
           formaRecebimento: form.formaRecebimento || null,
@@ -319,9 +355,24 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                   <Input value={form.categoria} onChange={e => setF('categoria', e.target.value)} className="mt-1" placeholder="Ex: Venda, Serviço..." />
                 </div>
                 <div>
-                  <Label>Valor total (R$) *</Label>
-                  <Input type="number" step="0.01" inputMode="decimal" value={form.valorOriginal}
-                    onChange={e => setF('valorOriginal', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
+                  <Label className="flex items-center gap-1">
+                    Valor (R$) *
+                    <InfoTip titulo="Valor">Vindo de pedido, é a soma dos itens e não se edita.</InfoTip>
+                  </Label>
+                  <Input type="number" step="0.01" inputMode="decimal" value={form.valorBase}
+                    onChange={e => setF('valorBase', e.target.value)}
+                    disabled={vindoDePedido}
+                    className="sem-spinner mt-1" placeholder="0,00" />
+                </div>
+                <div>
+                  <Label>Desconto (R$)</Label>
+                  <Input type="number" step="0.01" inputMode="decimal" value={form.desconto}
+                    onChange={e => setF('desconto', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
+                </div>
+                <div>
+                  <Label>Acréscimo (R$)</Label>
+                  <Input type="number" step="0.01" inputMode="decimal" value={form.acrescimo}
+                    onChange={e => setF('acrescimo', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
                 </div>
                 <div>
                   <Label>Data emissão *</Label>
@@ -342,9 +393,25 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                 )}
                 <div>
                   <Label>Forma de recebimento</Label>
-                  <Input value={form.formaRecebimento} onChange={e => setF('formaRecebimento', e.target.value)} className="mt-1" placeholder="PIX, Boleto..." />
+                  <select
+                    value={form.formaRecebimento}
+                    onChange={e => setF('formaRecebimento', e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white"
+                  >
+                    <option value="">—</option>
+                    {formasNomes.map((f: string) => <option key={f} value={f}>{f}</option>)}
+                  </select>
                 </div>
               </div>
+
+              {/* O total é calculado, não digitado: base menos desconto mais
+                  acréscimo. Digitar o total direto permitia mudar a cobrança
+                  sem deixar registro do motivo. */}
+              <div className="flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3">
+                <span className="text-sm text-gray-500">Total a receber</span>
+                <span className="text-base font-semibold text-gray-900">{brl(totalCalculado)}</span>
+              </div>
+
               <div>
                 <Label>Observação</Label>
                 <Input value={form.observacao} onChange={e => setF('observacao', e.target.value)} className="mt-1" />
@@ -354,7 +421,7 @@ export default function ContasReceberView({ tenantSlug }: Props) {
               <Button variant="outline" onClick={fecharModal}>Cancelar</Button>
               <Button
                 onClick={() => (editando ? editarMut.mutate() : criarMut.mutate())}
-                disabled={!form.descricao || !form.valorOriginal || !form.dataVencimento || salvando}>
+                disabled={!form.descricao || !form.valorBase || !form.dataVencimento || salvando}>
                 {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Criar conta'}
               </Button>
             </div>
@@ -384,8 +451,18 @@ export default function ContasReceberView({ tenantSlug }: Props) {
                 <Input type="date" value={baixaForm.dataRecebimento} onChange={e => setBF('dataRecebimento', e.target.value)} className="mt-1" />
               </div>
               <div>
-                <Label>Forma de recebimento</Label>
-                <Input value={baixaForm.formaRecebimento} onChange={e => setBF('formaRecebimento', e.target.value)} className="mt-1" placeholder="PIX, Transferência..." />
+                <Label className="flex items-center gap-1">
+                  Forma de recebimento
+                  <InfoTip titulo="Forma de recebimento">Vai para a venda gerada na quitação e permite filtrar por ela em Consultas.</InfoTip>
+                </Label>
+                <select
+                  value={baixaForm.formaRecebimento}
+                  onChange={e => setBF('formaRecebimento', e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white"
+                >
+                  <option value="">—</option>
+                  {formasNomes.map((f: string) => <option key={f} value={f}>{f}</option>)}
+                </select>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <Button variant="outline" onClick={() => setShowBaixa(null)}>Cancelar</Button>

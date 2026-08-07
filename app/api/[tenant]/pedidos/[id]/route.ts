@@ -237,11 +237,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         await client.query(`
           INSERT INTO t_conta_receber (
             descricao, cliente_id, nome_cliente, categoria, numero_documento,
+            valor_base, desconto, acrescimo,
             valor_original, valor_recebido, data_emissao, data_vencimento, data_entrega,
             status, observacao, origem, origem_id, parcela_atual, total_parcelas,
             created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
           ) VALUES (
             $1, $2, $3, 'Venda', $4,
+            $5, 0, 0,
             $5, 0, $6, $7, $8,
             'aberta', $9, 'pedido', $10, 1, 1,
             1, 1, NOW(), NOW(), true, 0
