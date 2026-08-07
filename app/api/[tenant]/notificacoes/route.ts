@@ -13,7 +13,7 @@
 // 3 kg para 1 kg o texto muda, a assinatura gravada não bate mais e o alerta
 // reaparece como novo. Marcar como lido não silencia um problema que piorou.
 import type { NextRequest } from 'next/server'
-import { currentUser } from '@clerk/nextjs/server'
+import { idLogado } from '@/lib/auth/identidade'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { sql } from 'drizzle-orm'
@@ -33,8 +33,7 @@ type Notif = {
 // apagar o alerta de outro usuário do mesmo tenant.
 async function usuarioRef(): Promise<string> {
   try {
-    const u = await currentUser()
-    return u?.id ?? 'anon'
+    return (await idLogado()) ?? 'anon'
   } catch {
     return 'anon'
   }

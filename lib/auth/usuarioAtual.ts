@@ -14,7 +14,7 @@
 //
 // Em ambas, se não der para identificar (cron, webhook, sessão expirada),
 // devolve 1 — exatamente o comportamento de antes. Nenhuma rota quebra.
-import { currentUser } from '@clerk/nextjs/server'
+import { usuarioLogado } from '@/lib/auth/identidade'
 import { sql } from 'drizzle-orm'
 
 const PADRAO = 1
@@ -22,7 +22,7 @@ const PADRAO = 1
 /** Para rotas que usam `pool.connect()` (search_path já aplicado). */
 export async function usuarioAtualId(client: any): Promise<number> {
   try {
-    const u = await currentUser()
+    const u = await usuarioLogado()
     if (!u) return PADRAO
 
     // Vínculo forte: clerk_id.
@@ -35,7 +35,7 @@ export async function usuarioAtualId(client: any): Promise<number> {
     // Convite aceito mas ainda não vinculado: o registro local nasceu com
     // clerk_id = "pending_<email>". Casa pelo e-mail e aproveita para gravar
     // o vínculo — a próxima requisição já cai no caminho de cima.
-    const email = u.emailAddresses?.[0]?.emailAddress?.trim()
+    const email = u.email
     if (email) {
       const porEmail = await client.query(
         `SELECT usuario_id FROM t_usuario WHERE LOWER(email) = LOWER($1) LIMIT 1`,
@@ -59,7 +59,7 @@ export async function usuarioAtualId(client: any): Promise<number> {
 /** Para rotas que usam `getDbForTenant()` (Drizzle). */
 export async function usuarioAtualIdDb(db: any): Promise<number> {
   try {
-    const u = await currentUser()
+    const u = await usuarioLogado()
     if (!u) return PADRAO
 
     const porClerk = await db.execute(
@@ -67,7 +67,7 @@ export async function usuarioAtualIdDb(db: any): Promise<number> {
     )
     if (porClerk.rows.length > 0) return Number((porClerk.rows[0] as any).usuario_id)
 
-    const email = u.emailAddresses?.[0]?.emailAddress?.trim()
+    const email = u.email
     if (email) {
       const porEmail = await db.execute(
         sql`SELECT usuario_id FROM t_usuario WHERE LOWER(email) = LOWER(${email}) LIMIT 1`,

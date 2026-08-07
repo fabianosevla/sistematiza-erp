@@ -1,4 +1,4 @@
-import { currentUser, clerkClient } from '@clerk/nextjs/server'
+import { usuarioLogado, lembrarEmpresa } from '@/lib/auth/identidade'
 import { getPublicDb, pool } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
 import { eq } from 'drizzle-orm'
@@ -105,10 +105,10 @@ export async function tenantSlugPorEmail(email: string): Promise<string | null> 
 }
 
 export async function resolveTenant(tenantSlug: string) {
-  const user = await currentUser()
+  const user = await usuarioLogado()
   if (!user) throw new Error('UNAUTHORIZED')
 
-  const userTenantSlug = user.publicMetadata?.tenantSlug as string | undefined
+  const userTenantSlug = user.empresaLembrada
 
   // O METADATA DEIXOU DE AUTORIZAR. Quem autoriza é o t_usuario do schema
   // pedido, verificado mais abaixo — se o e-mail ou o clerk_id não estiverem
@@ -155,7 +155,7 @@ export async function resolveTenant(tenantSlug: string) {
 
     // 2. Se não encontrou, tenta pelo e-mail (convite pendente que aceitou)
     if (result.rows.length === 0) {
-      const userEmail = user.emailAddresses?.[0]?.emailAddress
+      const userEmail = user.email
       if (userEmail) {
         result = await client.query(
           `SELECT usuario_id, nome, active_flg, clerk_id, email
@@ -192,14 +192,9 @@ export async function resolveTenant(tenantSlug: string) {
   // no Clerk não passar, a requisição seguinte tenta de novo.
   if (precisaAtualizarMetadata) {
     try {
-      await clerkClient().users.updateUserMetadata(user.id, {
-        publicMetadata: {
-          ...(user.publicMetadata ?? {}),
-          tenantSlug,
-        },
-      })
+      await lembrarEmpresa(user.id, tenantSlug)
     } catch (err) {
-      console.warn('[resolveTenant] nao foi possivel gravar tenantSlug no Clerk:', err)
+      console.warn('[resolveTenant] nao foi possivel lembrar a empresa:', err)
     }
   }
 

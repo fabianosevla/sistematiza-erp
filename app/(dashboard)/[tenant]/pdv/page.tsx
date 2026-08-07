@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════
 // ESTE ARQUIVO VAI EM: app/(dashboard)/[tenant]/pdv/page.tsx
 // ════════════════════════════════════════════════════════════════════════
-import { auth } from '@clerk/nextjs/server'
+import { idLogado } from '@/lib/auth/identidade'
 import { redirect } from 'next/navigation'
 import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
 import { dbTenant } from '@/lib/db/schemas/public'
@@ -12,7 +12,7 @@ import PdvShell from './PdvShell'
 interface Props { params: { tenant: string } }
 
 export default async function PdvPage({ params }: Props) {
-  const { userId } = await auth()
+  const userId = await idLogado()
   if (!userId) redirect('/sign-in')
 
   const { db: publicDb, release: releasePublic } = await getPublicDb()

@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server'
+import { idLogado } from '@/lib/auth/identidade'
 import { redirect } from 'next/navigation'
 import { eq } from 'drizzle-orm'
 import { pool, getPublicDb } from '@/lib/db/connection'
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default async function TenantLayout({ children, tenantSlug }: Props) {
-  const { userId } = await auth()
+  const userId = await idLogado()
   if (!userId) redirect('/sign-in')
 
   const { db: publicDb, release: releasePublic } = await getPublicDb()

@@ -1,4 +1,5 @@
-import { auth, clerkClient, currentUser } from '@clerk/nextjs/server'
+import { idLogado } from '@/lib/auth/identidade'
+import { usuarioLogado, lembrarEmpresa } from '@/lib/auth/identidade'
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { getPublicDb, pool } from '@/lib/db/connection'
@@ -14,7 +15,7 @@ const onboardingSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const { userId } = await auth()
+  const userId = await idLogado()
   if (!userId) return serverError(new Error('UNAUTHORIZED'))
 
   try {
@@ -34,8 +35,8 @@ export async function POST(req: NextRequest) {
     //
     // Cadastro novo legítimo — um cliente seu abrindo a própria empresa —
     // continua funcionando: o e-mail dele não é usuário ativo de tenant algum.
-    const quemPede = await currentUser()
-    const emailPede = quemPede?.emailAddresses?.[0]?.emailAddress
+    const quemPede = await usuarioLogado()
+    const emailPede = quemPede?.email
     if (emailPede) {
       const jaTem = await tenantSlugPorEmail(emailPede)
       if (jaTem) {
@@ -183,14 +184,12 @@ export async function POST(req: NextRequest) {
         client.release()
       }
 
-      // 5. Atualizar metadata do usuário no Clerk
-      await clerkClient().users.updateUserMetadata(userId, {
-        publicMetadata: {
-          tenantSlug: payload.slug,
-          tenantName: payload.name,
-          role: 'admin',
-        },
-      })
+      // 5. Lembra a empresa recém-criada.
+      //
+      // Antes isso gravava tenantSlug, tenantName e role, e o acesso dependia
+      // desse metadado estar certo. Hoje quem autoriza e o t_usuario do schema:
+      // isto aqui e so memoria da ultima empresa acessada.
+      await lembrarEmpresa(userId, payload.slug)
 
       return ok({ tenantId: tenant.tenantId, slug: payload.slug })
     } finally {

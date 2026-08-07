@@ -1,6 +1,6 @@
 // @ts-nocheck
 import type { NextRequest } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { idLogado } from '@/lib/auth/identidade'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
@@ -9,7 +9,7 @@ type Params = { params: { tenant: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
-    const { userId } = await auth()
+    const userId = await idLogado()
     if (!userId) throw new Error('UNAUTHORIZED')
 
     const tenant = await resolveTenant(params.tenant)

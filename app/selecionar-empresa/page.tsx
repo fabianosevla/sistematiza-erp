@@ -1,6 +1,6 @@
-import { auth, currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { usuarioLogado } from '@/lib/auth/identidade'
 import { tenantsDoUsuarioPorEmail } from '@/lib/auth/tenant'
 
 // ESCOLHA DE EMPRESA.
@@ -13,12 +13,10 @@ import { tenantsDoUsuarioPorEmail } from '@/lib/auth/tenant'
 // pessoa digita em qual entra. Aqui a lista vem pronta, porque o sistema já
 // sabe quais são — e ninguém precisa decorar identificador.
 export default async function SelecionarEmpresa() {
-  const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
+  const user = await usuarioLogado()
+  if (!user) redirect('/sign-in')
 
-  const user  = await currentUser()
-  const email = user?.emailAddresses?.[0]?.emailAddress
-  const empresas = email ? await tenantsDoUsuarioPorEmail(email) : []
+  const empresas = user.email ? await tenantsDoUsuarioPorEmail(user.email) : []
 
   if (empresas.length === 0) redirect('/onboarding')
   if (empresas.length === 1) redirect(`/${empresas[0].slug}/selecionar-modulo`)

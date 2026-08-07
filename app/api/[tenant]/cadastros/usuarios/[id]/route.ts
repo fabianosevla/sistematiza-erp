@@ -7,7 +7,7 @@ import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { dbUsuario } from '@/lib/db/schemas/cadastros'
-import { clerkClient } from '@clerk/nextjs/server'
+import { atualizarNome, removerConta, ehProvisorio } from '@/lib/auth/identidade'
 import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
@@ -35,14 +35,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
       if (email?.trim())       updates.email   = email.trim()
       if (perfilId !== undefined) updates.perfilId = perfilId
       await db.update(dbUsuario).set(updates).where(eq(dbUsuario.usuarioId, id))
-      if (usuario.clerkId && !usuario.clerkId.startsWith('pending_') && nome?.trim()) {
-        try {
-          const partes = nome.trim().split(' ')
-          await clerkClient().users.updateUser(usuario.clerkId, {
-            firstName: partes[0],
-            lastName:  partes.slice(1).join(' ') || undefined,
-          })
-        } catch {}
+      if (usuario.clerkId && !ehProvisorio(usuario.clerkId) && nome?.trim()) {
+        // Best-effort: o nome do sistema e o que vale. Se o provedor de
+        // identidade estiver fora do ar, o cadastro nao pode falhar por isso.
+        try { await atualizarNome(usuario.clerkId, nome.trim()) } catch {}
       }
       return ok({ atualizado: true })
     } finally { release() }
@@ -81,9 +77,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       }
 
       // 2. Deleta do Clerk
-      if (usuario.clerkId && !usuario.clerkId.startsWith('pending_')) {
+      if (usuario.clerkId && !ehProvisorio(usuario.clerkId)) {
         try {
-          await clerkClient().users.deleteUser(usuario.clerkId)
+          await removerConta(usuario.clerkId)
         } catch (clerkErr: any) {
           const msg = clerkErr?.errors?.[0]?.message ?? ''
           if (!msg.includes('not found') && !msg.includes('does not exist')) {

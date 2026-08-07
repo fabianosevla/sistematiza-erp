@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { UsuarioService } from '@/lib/services/cadastros/UsuarioService'
-import { clerkClient } from '@clerk/nextjs/server'
+import { convidar, idProvisorio } from '@/lib/auth/identidade'
 import { ok, serverError, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
@@ -38,17 +38,18 @@ export async function POST(req: NextRequest, { params }: Params) {
       usuarioExistente = await service.findByEmail(email.trim())
     } finally { releaseCheck() }
 
-    // Envia o convite via Clerk
+    // Envia o convite. O tenantSlug vai junto por conveniência, mas quem
+    // autoriza o acesso é o registro em t_usuario logo abaixo — o convite não
+    // precisa propagar metadado nenhum para a pessoa conseguir entrar.
     try {
-      await clerkClient().invitations.createInvitation({
-        emailAddress: email.trim(),
-        redirectUrl:  `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://sistematiza-erp.vercel.app'}/${tenant.slug}`,
-        publicMetadata: {
+      await convidar({
+        email:       email.trim(),
+        redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://sistematiza-erp.vercel.app'}/${tenant.slug}`,
+        dados: {
           tenantSlug: tenant.slug,
           perfil:     perfil ?? 'user',
           nome:       nome.trim(),
         },
-        ignoreExisting: true, // Permite reenviar convite para e-mail já existente
       })
     } catch (clerkErr: any) {
       const msg = clerkErr?.errors?.[0]?.longMessage
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const service   = new UsuarioService(db)
-      const clerkIdProv = `pending_${email.trim().replace(/[^a-z0-9]/gi, '_')}`
+      const clerkIdProv = idProvisorio(email)
 
       // Se já existe no banco, atualiza o registro em vez de criar novo
       if (usuarioExistente) {

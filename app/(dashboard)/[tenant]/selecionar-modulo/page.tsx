@@ -1,5 +1,5 @@
 // app/(dashboard)/[tenant]/selecionar-modulo/page.tsx
-import { auth } from '@clerk/nextjs/server'
+import { idLogado } from '@/lib/auth/identidade'
 import { redirect } from 'next/navigation'
 import { eq, sql } from 'drizzle-orm'
 import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
@@ -10,7 +10,7 @@ import { PerfisService } from '@/lib/services/perfis/PerfisService'
 interface Props { params: { tenant: string } }
 
 export default async function SelecionarModuloPage({ params }: Props) {
-  const { userId } = await auth()
+  const userId = await idLogado()
   if (!userId) redirect('/sign-in')
 
   const { db: publicDb, release: releasePublic } = await getPublicDb()

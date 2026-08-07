@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { dbUsuario } from '@/lib/db/schemas/cadastros'
-import { clerkClient } from '@clerk/nextjs/server'
+import { convidar, gerarLinkDeAcesso, ehProvisorio } from '@/lib/auth/identidade'
 import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
@@ -23,24 +23,20 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (!usuario.email) return badRequest('Usuário sem e-mail cadastrado')
 
       // Usuário ainda não aceitou o convite — reenvia o convite
-      if (!usuario.clerkId || usuario.clerkId.startsWith('pending_')) {
-        await clerkClient().invitations.createInvitation({
-          emailAddress:   usuario.email,
-          redirectUrl:    `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://sistematiza-erp.vercel.app'}/sign-in`,
-          ignoreExisting: true,
-          publicMetadata: { tenantSlug: tenant.slug },
+      if (!usuario.clerkId || ehProvisorio(usuario.clerkId)) {
+        await convidar({
+          email:       usuario.email,
+          redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? 'https://sistematiza-erp.vercel.app'}/sign-in`,
+          dados:       { tenantSlug: tenant.slug },
         })
         return ok({ enviado: true, tipo: 'convite_reenviado' })
       }
 
       // Usuário existe no Clerk — gera token de acesso direto (válido 24h)
       // O admin copia o link e envia pro usuário, que clica e redefine a senha
-      const token = await clerkClient().signInTokens.createSignInToken({
-        userId:           usuario.clerkId,
-        expiresInSeconds: 60 * 60 * 24,
-      })
+      const url = await gerarLinkDeAcesso(usuario.clerkId)
 
-      return ok({ enviado: true, tipo: 'link_gerado', url: token.url })
+      return ok({ enviado: true, tipo: 'link_gerado', url })
     } finally {
       release()
     }

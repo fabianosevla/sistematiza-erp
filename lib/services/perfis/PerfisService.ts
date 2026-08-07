@@ -1,6 +1,6 @@
 // ESTE ARQUIVO VAI EM: lib/services/perfis/PerfisService.ts
 import { and, eq, asc, sql } from 'drizzle-orm'
-import { currentUser } from '@clerk/nextjs/server'
+import { usuarioLogado } from '@/lib/auth/identidade'
 import type { AppDB } from '@/lib/db/connection'
 import { dbPerfilAcesso, type TpDbPerfilAcessoInsert } from '@/lib/db/schemas/perfis'
 import { dbUsuario } from '@/lib/db/schemas/cadastros'
@@ -87,8 +87,8 @@ export class PerfisService {
     // Sem correspondência: tenta pelo e-mail da sessão.
     let email = ''
     try {
-      const u = await currentUser()
-      email = u?.emailAddresses?.[0]?.emailAddress?.trim() ?? ''
+      const u = await usuarioLogado()
+      email = u?.email ?? ''
     } catch { /* fora de contexto de requisição — segue sem e-mail */ }
     if (!email) return null
 

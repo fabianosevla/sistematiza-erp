@@ -1,13 +1,12 @@
-import { auth, currentUser } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
+import { usuarioLogado } from '@/lib/auth/identidade'
 import { tenantsDoUsuarioPorEmail } from '@/lib/auth/tenant'
 
 export default async function Home() {
-  const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
+  const user = await usuarioLogado()
+  if (!user) redirect('/sign-in')
 
-  const user  = await currentUser()
-  const email = user?.emailAddresses?.[0]?.emailAddress
+  const email = user.email
 
   // Quem manda é o cadastro, não o metadata do Clerk. A mesma pessoa pode
   // pertencer a mais de uma empresa — o suporte precisa disso, e um contador
