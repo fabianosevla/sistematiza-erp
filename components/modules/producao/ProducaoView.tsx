@@ -37,6 +37,112 @@ interface CelulaPendente {
   quantidade: number
 }
 
+// ─── CÉLULAS DA GRADE ────────────────────────────────────────────────────────
+//
+// ESTES COMPONENTES PRECISAM VIVER NO ESCOPO DO MÓDULO, NÃO DENTRO DA VIEW.
+//
+// Estavam declarados dentro do ProducaoView. Toda vez que a view renderizava —
+// e ela renderiza a cada tecla, porque o valor digitado é estado dela — o
+// JavaScript criava funções novas. Para o React, função nova é componente
+// diferente: ele desmontava o <input> e montava outro no lugar.
+//
+// O efeito para quem usa: o campo perdia o foco a cada dígito. Digitava "1",
+// o cursor sumia, precisava clicar de novo para digitar "2".
+//
+// No escopo do módulo a identidade é estável entre renders, o React reconhece
+// o mesmo elemento e o foco fica onde deveria. Por isso tudo que elas precisam
+// chega por prop — nenhuma delas fecha sobre o estado da view.
+
+const CELULA = 'inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium'
+
+function CelulaTravada({ produzida }: { produzida: number }) {
+  return (
+    <span
+      title={`Registrado: ${fmtQtd(produzida)} — insumo já debitado`}
+      className={`${CELULA} bg-gray-100 text-gray-400 cursor-not-allowed`}>
+      {produzida > 0 ? fmtQtd(produzida) : '—'}
+    </span>
+  )
+}
+
+function CelulaPedido({ valor }: { valor: number }) {
+  return (
+    <span className={`${CELULA} ${valor > 0 ? 'bg-blue-100 text-blue-700' : 'text-gray-200'}`}>
+      {valor > 0 ? valor : '—'}
+    </span>
+  )
+}
+
+/** Célula de Previsto. Depois de registrada fica cinza e perde o clique. */
+function CelulaEditavel({
+  registrado, isEdit, valor, valorCelula,
+  onChangeValor, onSalvar, onCancelar, onIniciar,
+}: {
+  registrado:    { produzida: number } | null
+  isEdit:        boolean
+  valor:         number
+  valorCelula:   string
+  onChangeValor: (v: string) => void
+  onSalvar:      () => void
+  onCancelar:    () => void
+  onIniciar:     () => void
+}) {
+  if (registrado) return <CelulaTravada produzida={registrado.produzida} />
+
+  if (isEdit) {
+    return (
+      <input type="number" min="0" value={valorCelula}
+        onChange={e => onChangeValor(e.target.value)}
+        onBlur={onSalvar}
+        onKeyDown={e => {
+          if (e.key === 'Enter')  onSalvar()
+          if (e.key === 'Escape') onCancelar()
+        }}
+        className="w-10 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
+    )
+  }
+
+  return (
+    <button onClick={onIniciar}
+      className={`w-10 h-6 rounded text-xs font-medium transition-colors ${
+        valor > 0 ? 'bg-green-100 text-green-700 hover:opacity-80' : 'text-gray-200 hover:bg-gray-100'
+      }`}>
+      {valor > 0 ? valor : '—'}
+    </button>
+  )
+}
+
+/** Célula de Produzido. Editável direto, sem ida ao servidor. */
+function CelulaProduzida({
+  registrado, futuro, valor, onChange,
+}: {
+  registrado: { produzida: number } | null
+  futuro:     boolean
+  valor:      number
+  onChange:   (v: number) => void
+}) {
+  if (registrado) return <CelulaTravada produzida={registrado.produzida} />
+
+  // Dia que ainda não chegou não tem produção: deixar editável convidaria a
+  // lançar baixa de insumo de algo que não aconteceu.
+  if (futuro) {
+    return <span className="inline-flex items-center justify-center w-10 h-6 text-xs text-gray-200">·</span>
+  }
+
+  return (
+    <input
+      type="number" min="0" value={valor || ''}
+      onChange={e => onChange(Number(e.target.value) || 0)}
+      placeholder="—"
+      className={`sem-spinner w-10 h-6 text-center text-xs rounded border transition-colors ${
+        valor > 0
+          ? 'border-green-300 bg-green-50 text-green-800 font-medium'
+          : 'border-gray-200 text-gray-400 hover:border-gray-300'
+      } focus:outline-none focus:border-green-400`}
+    />
+  )
+}
+
 export default function ProducaoView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
@@ -245,81 +351,6 @@ export default function ProducaoView({ tenantSlug }: Props) {
     setEditandoCelula(null)
   }
 
-  // Célula de PP. Depois de registrada fica cinza claro e some o clique —
-  // é o sinal visual de que aquele dia já baixou insumo e entrou no estoque.
-  function CelulaEditavel({ produtoId, data, valor }: { produtoId: number; data: string; valor: number }) {
-    const travada = jaRegistrada(produtoId, data)
-    const isEdit  = editandoCelula?.produtoId === produtoId && editandoCelula?.data === data && editandoCelula?.tipo === 'producao'
-
-    if (travada) {
-      const reg = registrados[produtoId][data]
-      return (
-        <span
-          title={`Registrado: ${fmtQtd(reg.produzida)} — insumo já debitado`}
-          className="inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
-          {reg.produzida > 0 ? fmtQtd(reg.produzida) : '—'}
-        </span>
-      )
-    }
-
-    if (isEdit) {
-      return (
-        <input type="number" min="0" value={valorCelula}
-          onChange={e => setValorCelula(e.target.value)}
-          onBlur={() => salvarCelula(produtoId, data, 'producao')}
-          onKeyDown={e => {
-            if (e.key === 'Enter') salvarCelula(produtoId, data, 'producao')
-            if (e.key === 'Escape') setEditandoCelula(null)
-          }}
-          className="w-10 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
-      )
-    }
-
-    return (
-      <button onClick={() => iniciarEdicao(produtoId, data, 'producao', valor)}
-        className={`w-10 h-6 rounded text-xs font-medium transition-colors ${
-          valor > 0 ? 'bg-green-100 text-green-700 hover:opacity-80' : 'text-gray-200 hover:bg-gray-100'
-        }`}>
-        {valor > 0 ? valor : '—'}
-      </button>
-    )
-  }
-
-  // Célula do PRODUZIDO. Editável direto, sem ida ao servidor: o valor só
-  // existe até o registro. Depois de registrada mostra o que foi lançado e
-  // trava, igual à de previsto.
-  function CelulaProduzida({ produtoId, data, futuro }: { produtoId: number; data: string; futuro: boolean }) {
-    const travada = jaRegistrada(produtoId, data)
-    if (travada) {
-      const reg = registrados[produtoId][data]
-      return (
-        <span
-          title={`Registrado: ${fmtQtd(reg.produzida)} — insumo já debitado`}
-          className="inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium bg-gray-100 text-gray-400 cursor-not-allowed">
-          {reg.produzida > 0 ? fmtQtd(reg.produzida) : '—'}
-        </span>
-      )
-    }
-    // Dia que ainda não chegou não tem produção: deixar editável convidaria a
-    // lançar baixa de insumo de algo que não aconteceu.
-    if (futuro) {
-      return <span className="inline-flex items-center justify-center w-10 h-6 text-xs text-gray-200">·</span>
-    }
-    const valor = getProduzida(produtoId, data)
-    return (
-      <input
-        type="number" min="0" value={valor || ''}
-        onChange={e => setProduzida(produtoId, data, Number(e.target.value) || 0)}
-        placeholder="—"
-        className={`sem-spinner w-10 h-6 text-center text-xs rounded border transition-colors ${
-          valor > 0
-            ? 'border-green-300 bg-green-50 text-green-800 font-medium'
-            : 'border-gray-200 text-gray-400 hover:border-gray-300'
-        } focus:outline-none focus:border-green-400`}
-      />
-    )
-  }
-
   // ── Replicar previsto no produzido ───────────────────────────────────────
   //
   // Na maioria dos dias a fábrica produz o que planejou. Obrigar a redigitar
@@ -348,15 +379,6 @@ export default function ProducaoView({ tenantSlug }: Props) {
     toast(`${replicaveis.length} célula(s) preenchida(s) com o previsto.`)
   }
 
-  function CelulaPedido({ valor }: { valor: number }) {
-    return (
-      <span className={`inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium ${
-        valor > 0 ? 'bg-blue-100 text-blue-700' : 'text-gray-200'
-      }`}>
-        {valor > 0 ? valor : '—'}
-      </span>
-    )
-  }
 
   const totaisPedDia: Record<string, number> = {}
   const totaisPrevDia: Record<string, number> = {}
@@ -495,10 +517,28 @@ export default function ProducaoView({ tenantSlug }: Props) {
                           <div className="grid grid-cols-3">
                             <span className="text-center"><CelulaPedido valor={ped} /></span>
                             <span className="text-center">
-                              <CelulaEditavel produtoId={p.produtoId} data={d} valor={celulas?.[p.produtoId]?.[d] ?? 0} />
+                              <CelulaEditavel
+                                registrado={jaRegistrada(p.produtoId, d) ? registrados[p.produtoId][d] : null}
+                                isEdit={
+                                  editandoCelula?.produtoId === p.produtoId &&
+                                  editandoCelula?.data === d &&
+                                  editandoCelula?.tipo === 'producao'
+                                }
+                                valor={celulas?.[p.produtoId]?.[d] ?? 0}
+                                valorCelula={valorCelula}
+                                onChangeValor={setValorCelula}
+                                onSalvar={() => salvarCelula(p.produtoId, d, 'producao')}
+                                onCancelar={() => setEditandoCelula(null)}
+                                onIniciar={() => iniciarEdicao(p.produtoId, d, 'producao', celulas?.[p.produtoId]?.[d] ?? 0)}
+                              />
                             </span>
                             <span className="text-center">
-                              <CelulaProduzida produtoId={p.produtoId} data={d} futuro={d > HOJE} />
+                              <CelulaProduzida
+                                registrado={jaRegistrada(p.produtoId, d) ? registrados[p.produtoId][d] : null}
+                                futuro={d > HOJE}
+                                valor={getProduzida(p.produtoId, d)}
+                                onChange={v => setProduzida(p.produtoId, d, v)}
+                              />
                             </span>
                           </div>
                         </td>
