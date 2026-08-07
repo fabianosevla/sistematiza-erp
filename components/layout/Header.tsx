@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store } from 'lucide-react'
+import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store, Download } from 'lucide-react'
 import { useClerk, useUser } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -452,6 +452,36 @@ export default function Header({
             {/* ══ ABA 1 — CONFIGURAÇÕES DE CONTA ══════════════════════════ */}
             {aba === 'conta' && (
                 <div className="p-6 space-y-6">
+
+                  {/* ── ATALHO DO PDV ─────────────────────────────────────
+                      Navegador nenhum imprime sem abrir a janela de impressão.
+                      A única exceção é o parâmetro --kiosk-printing, que só
+                      existe como argumento de atalho do sistema — e atalho é
+                      coisa que página web não cria, mas arquivo baixado cria.
+
+                      O .bat é gerado pelo servidor com o slug e o domínio do
+                      ambiente. Arquivo fixo serviria a um cliente só e voltaria
+                      a quebrar na próxima troca de domínio. */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1">
+                      Atalho do PDV
+                      <InfoTip titulo="Atalho do PDV">Cria um ícone que abre o PDV em tela limpa e imprime o cupom sem perguntar.</InfoTip>
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <a
+                        href={`/api/${tenantSlug}/atalho-pdv`}
+                        download
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+                        <Download size={13} />
+                        Instalar no computador
+                      </a>
+                      <p className="text-xs text-gray-400">
+                        Baixe e abra o arquivo no computador do balcão.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100" />
 
                   {/* ── MEU PERFIL ────────────────────────────────────────
                       A foto é gravada no Clerk, não no nosso banco: ele já
