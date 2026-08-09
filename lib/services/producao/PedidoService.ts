@@ -52,6 +52,7 @@ export class PedidoService {
         p.pedido_id, p.cliente_id, p.nome_cliente_avulso, p.tipo_venda, p.status,
         p.data_pedido, p.previsao_producao, p.previsao_entrega,
         p.valor_entrega, p.endereco_entrega, p.observacao, p.venda_id,
+        p.documento_fiscal, p.imprimir_nota, p.nota_id,
         p.active_flg, p.modification_num,
         p.created_dt, p.created_by, p.updated_dt, p.updated_by,
         cl.nome_completo AS cliente_razao,
@@ -88,6 +89,9 @@ export class PedidoService {
         valorEntrega:     Number(r.valor_entrega ?? 0),
         enderecoEntrega:  r.endereco_entrega,
         observacao:       r.observacao,
+        documentoFiscal:  r.documento_fiscal ?? 'nenhum',
+        imprimirNota:     r.imprimir_nota === true,
+        notaId:           r.nota_id ?? null,
         vendaId:          r.venda_id,
         activeFlag:       r.active_flg,
         modificationNum:  r.modification_num,
@@ -126,7 +130,7 @@ export class PedidoService {
     return { ...pedido, itens, clienteNome, clienteRazao }
   }
 
-  async criar({ clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
+  async criar({ clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, itens, userId }: {
     clienteId?:         number
     nomeClienteAvulso?: string
     tipoVenda:         string
@@ -136,6 +140,8 @@ export class PedidoService {
     valorEntrega:      number
     enderecoEntrega?:  string
     observacao?:       string
+    documentoFiscal?:  string
+    imprimirNota?:     boolean
     itens:             { produtoId: number; quantidade: number; precoUnitario: number }[]
     userId:            number
   }) {
@@ -154,6 +160,8 @@ export class PedidoService {
       valorEntrega,
       enderecoEntrega:  enderecoEntrega ?? null,
       observacao:       observacao ?? null,
+      documentoFiscal:  documentoFiscal ?? 'nenhum',
+      imprimirNota:     !!imprimirNota,
       createdBy:        userId,
       updatedBy:        userId,
       createdDt:        now,
@@ -187,7 +195,7 @@ export class PedidoService {
    * a rota só permite editar pedidos 'pendente'/'producao', onde o estoque
    * ainda não foi movimentado.
    */
-  async atualizar(id: number, { clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, itens, userId }: {
+  async atualizar(id: number, { clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, itens, userId }: {
     clienteId?:         number
     nomeClienteAvulso?: string
     tipoVenda:         string
@@ -197,6 +205,8 @@ export class PedidoService {
     valorEntrega:      number
     enderecoEntrega?:  string
     observacao?:       string
+    documentoFiscal?:  string
+    imprimirNota?:     boolean
     itens:             { produtoId: number; quantidade: number; precoUnitario: number }[]
     userId:            number
   }) {
@@ -212,6 +222,8 @@ export class PedidoService {
       valorEntrega,
       enderecoEntrega:  enderecoEntrega ?? null,
       observacao:       observacao ?? null,
+      documentoFiscal:  documentoFiscal ?? 'nenhum',
+      imprimirNota:     !!imprimirNota,
       updatedDt:        now,
       updatedBy:        userId,
     }).where(eq(dbPedido.pedidoId, id))

@@ -129,7 +129,15 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   //
   // Nasce desligado de propósito: emitir é decisão consciente, e no balcão a
   // maioria das vendas ao consumidor sai sem nota pedida.
-  const [comNota, setComNota]             = useState(false)
+  // NOTA LIGADA POR PADRÃO.
+  //
+  // O certo é emitir; não emitir é a exceção, e exceção é que deve custar um
+  // clique. Deixar desligado por padrão transformava o esquecimento em venda
+  // sem nota — erro que só aparece na apuração do mês.
+  const [comNota, setComNota]             = useState(true)
+  // Impressão desligada: emitir é obrigação com o fisco, imprimir é papel para
+  // o cliente, e a maioria não quer a via.
+  const [imprimirNota, setImprimirNota]   = useState(false)
 
   const { data: cfgFiscalRaw } = useQuery({
     queryKey: ['configuracoes', tenantSlug],
@@ -350,6 +358,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           vendedor:       vendedor || undefined,
           observacao:     observacao || undefined,
           documentoFiscal: comNota ? 'nfce' : 'nenhum',
+          imprimirNota:    comNota && imprimirNota,
           numeroCaixa:     numeroCaixa ?? undefined,
           // O desconto de cada linha vai no próprio item; o servidor soma tudo
           // no desconto da venda. tipoPrecao diz ao VendaService qual coluna de
@@ -410,9 +419,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       })
 
       setCarrinho([])
-      // Volta a desligar: cada venda decide de novo. Manter ligado faria a
-      // venda seguinte sair com nota sem ninguém ter pedido.
-      setComNota(false)
+      // Volta ao padrão: nota ligada, impressão desligada. A venda seguinte
+      // começa emitindo, e quem não quer nota desmarca — é a exceção que paga
+      // o clique, não a regra.
+      setComNota(true)
+      setImprimirNota(false)
       setDesconto('0')
       setAcrescimo('0')
       setValorRecebido('')
@@ -1564,15 +1575,42 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               {/* Emitir nota — só aparece com o módulo fiscal contratado.
                   Registra a intenção; a emissão acontece no módulo Fiscal. */}
               {fiscalAtivo && (
-                <label className="flex items-center gap-2 cursor-pointer rounded-xl border border-gray-100 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={comNota}
-                    onChange={e => setComNota(e.target.checked)}
-                    className="w-4 h-4 rounded"
-                  />
-                  <span className="text-sm text-gray-700">Emitir nota fiscal</span>
-                </label>
+                <div className="rounded-xl border border-gray-100 px-4 py-3 space-y-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={comNota}
+                      onChange={e => {
+                        setComNota(e.target.checked)
+                        // Desmarcar a nota derruba a impressão junto: não há
+                        // documento para imprimir.
+                        if (!e.target.checked) setImprimirNota(false)
+                      }}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Emitir nota fiscal</span>
+                  </label>
+
+                  {/* EMITIR E IMPRIMIR SÃO DECISÕES DIFERENTES.
+                      Emitir é obrigação com o fisco; imprimir é papel entregue
+                      ao cliente. Boa parte quer a nota emitida e não quer a via
+                      impressa — e bobina custa. */}
+                  <label className={`flex items-center gap-2 pl-6 ${comNota ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}>
+                    <input
+                      type="checkbox"
+                      checked={imprimirNota}
+                      disabled={!comNota}
+                      onChange={e => setImprimirNota(e.target.checked)}
+                      className="w-4 h-4 rounded"
+                    />
+                    <span className="text-sm text-gray-700 inline-flex items-center gap-1.5">
+                      Imprimir a nota
+                      <InfoTip titulo="Imprimir a nota">
+                        Sem marcar, a nota é emitida e fica guardada no módulo Fiscal — só não sai na impressora.
+                      </InfoTip>
+                    </span>
+                  </label>
+                </div>
               )}
 
               {/* Impedimento real: sem endereço a venda de delivery não fecha. */}

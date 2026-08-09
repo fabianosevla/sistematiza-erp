@@ -80,6 +80,13 @@ export const dbPedido = pgTable('t_pedido', {
   enderecoEntrega:   varchar('endereco_entrega', { length: 300 }),
   observacao:        varchar('observacao', { length: 500 }),
   vendaId:           integer('venda_id'),
+  // Intenção fiscal, decidida no cadastro do pedido. A nota é emitida na
+  // ENTREGA — mercadoria em trânsito precisa de documento, e a duplicata
+  // vence depois. `notaId` trava a segunda emissão, como vendaId faz com o
+  // faturamento.
+  documentoFiscal:   varchar('documento_fiscal', { length: 10 }).notNull().default('nenhum'),
+  imprimirNota:      boolean('imprimir_nota').notNull().default(false),
+  notaId:            integer('nota_id'),
 })
 export type TpDbPedidoRow    = InferSelectModel<typeof dbPedido>
 export type TpDbPedidoInsert = InferInsertModel<typeof dbPedido>

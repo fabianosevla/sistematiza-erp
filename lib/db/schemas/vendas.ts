@@ -104,6 +104,9 @@ export const dbVenda = pgTable('t_venda', {
   // no módulo Fiscal, e depende de parametrização e credenciamento.
   // Ver scripts/migrate-fiscal-parametrizacao.js
   documentoFiscal:   varchar('documento_fiscal', { length: 10 }).notNull().default('nenhum'),
+  // Sair na impressora depois de autorizada. Emitir é obrigação fiscal;
+  // imprimir é a via de papel para o cliente, e nem todo cliente quer.
+  imprimirNota:      boolean('imprimir_nota').notNull().default(false),
   // De qual caixa e de qual turno saiu esta venda.
   //
   // Sem isto, o fechamento sabe que a loja ficou R$ 50 curta mas não em qual

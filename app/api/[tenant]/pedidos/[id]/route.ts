@@ -28,6 +28,8 @@ import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { PedidoService } from '@/lib/services/producao/PedidoService'
+import { FiscalService } from '@/lib/services/fiscal/FiscalService'
+import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
@@ -61,6 +63,9 @@ const atualizarPedidoSchema = z.object({
   valorEntrega:     z.number().int().default(0),
   enderecoEntrega:  z.string().max(300).optional(),
   observacao:       z.string().max(500).optional(),
+  // Intencao fiscal: a NF-e do pedido nasce na ENTREGA, nao na baixa.
+  documentoFiscal:  z.enum(['nenhum', 'nfce', 'nfe']).optional(),
+  imprimirNota:     z.boolean().optional(),
   itens: z.array(z.object({
     produtoId:     z.number().int(),
     quantidade:    z.number().int().min(1),
@@ -108,8 +113,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         SELECT p.pedido_id, p.status, p.cliente_id, p.nome_cliente_avulso, p.venda_id,
                p.tipo_venda, p.endereco_entrega, p.observacao,
                p.previsao_entrega, p.valor_entrega,
+               COALESCE(p.documento_fiscal, 'nenhum') AS documento_fiscal,
+               p.nota_id,
                cl.nome_completo AS cliente_razao,
-               cl.nome_fantasia AS cliente_fantasia
+               cl.nome_fantasia AS cliente_fantasia,
+               cl.cnpj_cpf     AS cliente_documento,
+               cl.uf           AS cliente_uf
         FROM t_pedido p
         LEFT JOIN t_cliente cl ON cl.cliente_id = p.cliente_id
         WHERE p.pedido_id = $1 AND p.active_flg = true
@@ -263,8 +272,59 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
         await client.query('COMMIT')
 
+        // ── NOTA FISCAL — FORA DA TRANSAÇÃO, DEPOIS DO COMMIT ──────────────
+        //
+        // A NF-e do pedido nasce AQUI, na entrega, e não na baixa da conta a
+        // receber. Mercadoria em trânsito precisa de documento: a própria
+        // NF-e 3.313 da Zaghi saiu em 07/08 com duplicata para 28/08. Pendurar
+        // a nota no pagamento faria a carga viajar sem DANFE.
+        //
+        // Fora da transação de propósito: o FiscalService usa outra conexão, e
+        // uma falha fiscal não pode desfazer a entrega e o estoque que já
+        // foram gravados. Se falhar, a entrega vale e a nota fica pendente.
+        let notaId: number | null = null
+        if (pedido.documento_fiscal !== 'nenhum' && !pedido.nota_id) {
+          try {
+            const { db, release } = await getDbForTenant(tenant.schemaName)
+            try {
+              const cfg = await new ConfiguracoesService(db).get()
+              if (cfg?.fiscalAtivo) {
+                const nota = await new FiscalService(db).criarNota({
+                  tipo: pedido.documento_fiscal === 'nfce' ? 'NFC-e' : 'NF-e',
+                  cnpjCpf:     pedido.cliente_documento ?? undefined,
+                  razaoSocial: nomeCliente ?? undefined,
+                  uf:          pedido.cliente_uf ?? undefined,
+                  valorTotal:  total,
+                  // produtoId vai junto: é por ele que o FiscalService acha o
+                  // NCM e o perfil tributário do item.
+                  itens: itens.map((i: any) => ({
+                    produtoId:     i.produto_id,
+                    descricao:     i.nome_produto,
+                    quantidade:    Number(i.quantidade),
+                    precoUnitario: Number(i.preco_unitario ?? 0),
+                  })),
+                  userId: 1,
+                })
+                notaId = (nota as any)?.notaId ?? (nota as any)?.nota_id ?? null
+                if (notaId) {
+                  await client.query(
+                    `UPDATE t_pedido SET nota_id = $1, updated_dt = NOW() WHERE pedido_id = $2`,
+                    [notaId, pedidoId])
+                }
+              }
+            } finally { release() }
+          } catch (_) {
+            // Nota não criada: a entrega continua válida. O módulo Fiscal
+            // mostra o pedido sem nota, e dá para gerar de lá.
+          }
+        }
+
         const aviso = insuficientes.length > 0
           ? ` Atenção: ${insuficientes.map(i => `${i.nome} (precisava ${i.precisa}, tinha ${i.tem})`).join('; ')}. O estoque desses produtos ficou zerado — confira se a produção foi registrada na grade.`
+          : ''
+
+        const avisoNota = pedido.documento_fiscal !== 'nenhum'
+          ? (notaId ? ' Nota fiscal gerada — emita no módulo Fiscal.' : ' A nota não pôde ser gerada; verifique o módulo Fiscal.')
           : ''
 
         return ok({
@@ -272,9 +332,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           status: 'entregue',
           pedidoId,
           total,
+          notaId,
           vencimento: venc,
           insuficientes,
-          message: `Entrega confirmada. Conta a receber criada com vencimento em ${venc.split('-').reverse().join('/')}.${aviso}`,
+          message: `Entrega confirmada. Conta a receber criada com vencimento em ${venc.split('-').reverse().join('/')}.${avisoNota}${aviso}`,
         })
       } catch (err) {
         await client.query('ROLLBACK')

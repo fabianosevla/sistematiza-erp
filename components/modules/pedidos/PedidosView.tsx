@@ -173,6 +173,17 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [previsaoEntrega, setPrevisaoEntrega]   = useState('')
   const [enderecoEntrega, setEnderecoEntrega]   = useState('')
   const [enderecoCadastro, setEnderecoCadastro] = useState('')
+  // Intenção fiscal do pedido. A nota nasce na ENTREGA, não na baixa: a
+  // mercadoria não pode sair sem documento, e o pagamento vem depois.
+  const [comNota, setComNota]             = useState(true)
+  const [imprimirNota, setImprimirNota]   = useState(false)
+
+  const { data: cfgFiscalRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const fiscalAtivo = cfgFiscalRaw?.data?.fiscalAtivo === true
   const [observacao, setObservacao]       = useState('')
   const [valorEntregaEdit, setValorEntregaEdit] = useState(0)
   const [qtdProduto, setQtdProduto]       = useState(1)
@@ -226,6 +237,8 @@ export default function PedidosView({ tenantSlug }: Props) {
           previsaoEntrega:  previsaoEntrega  || undefined,
           valorEntrega: 0,
           enderecoEntrega:  enderecoEntrega  || undefined,
+          documentoFiscal:  comNota ? 'nfe' : 'nenhum',
+          imprimirNota:     comNota && imprimirNota,
           observacao:       observacao       || undefined,
           itens: itens.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade, precoUnitario: i.precoUnitario })),
         }),
@@ -256,6 +269,8 @@ export default function PedidosView({ tenantSlug }: Props) {
           previsaoEntrega:  previsaoEntrega  || undefined,
           valorEntrega:     valorEntregaEdit ?? 0,
           enderecoEntrega:  enderecoEntrega  || undefined,
+          documentoFiscal:  comNota ? 'nfe' : 'nenhum',
+          imprimirNota:     comNota && imprimirNota,
           observacao:       observacao       || undefined,
           itens: itens.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade, precoUnitario: i.precoUnitario })),
         }),
@@ -324,6 +339,7 @@ export default function PedidosView({ tenantSlug }: Props) {
     setDataPedido(new Date().toISOString().slice(0, 10))
     setPrevisaoProducao(''); setPrevisaoEntrega('')
     setEnderecoEntrega(''); setEnderecoCadastro(''); setObservacao(''); setQtdProduto(1)
+    setComNota(true); setImprimirNota(false)
     setValorEntregaEdit(0)
     setEditandoPedidoId(null)
     setTabelaPreco('varejo')
@@ -411,6 +427,8 @@ export default function PedidosView({ tenantSlug }: Props) {
       setPrevisaoProducao(toInputDate(ped.previsaoProducao))
       setPrevisaoEntrega(toInputDate(ped.previsaoEntrega))
       setEnderecoEntrega(ped.enderecoEntrega ?? '')
+      setComNota((ped.documentoFiscal ?? 'nenhum') !== 'nenhum')
+      setImprimirNota(ped.imprimirNota === true)
       setObservacao(ped.observacao ?? '')
       setValorEntregaEdit(ped.valorEntrega ?? 0)
       setItens((ped.itens ?? []).map((i: any) => ({
@@ -725,6 +743,32 @@ export default function PedidosView({ tenantSlug }: Props) {
                     </span>
                     <span className="text-sm font-bold text-gray-900">{fmt(totalPedidos)}</span>
                   </div>
+                </div>
+              )}
+
+              {/* NOTA FISCAL DO PEDIDO.
+                  A NF-e é emitida na ENTREGA, junto com a saída da mercadoria
+                  — não na baixa do pagamento. Mercadoria em trânsito precisa
+                  de documento, e a duplicata vence depois. */}
+              {fiscalAtivo && (
+                <div className="rounded-xl border border-gray-100 px-4 py-3 space-y-2.5">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={comNota}
+                      onChange={e => { setComNota(e.target.checked); if (!e.target.checked) setImprimirNota(false) }}
+                      className="w-4 h-4 rounded" />
+                    <span className="text-sm text-gray-700 inline-flex items-center gap-1.5">
+                      Emitir nota fiscal na entrega
+                      <InfoTip titulo="Nota do pedido">
+                        A NF-e é gerada quando o pedido é marcado como entregue, não quando a conta a receber é baixada.
+                      </InfoTip>
+                    </span>
+                  </label>
+                  <label className={`flex items-center gap-2 pl-6 ${comNota ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`}>
+                    <input type="checkbox" checked={imprimirNota} disabled={!comNota}
+                      onChange={e => setImprimirNota(e.target.checked)}
+                      className="w-4 h-4 rounded" />
+                    <span className="text-sm text-gray-700">Imprimir a nota</span>
+                  </label>
                 </div>
               )}
 

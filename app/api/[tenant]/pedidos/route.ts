@@ -44,6 +44,9 @@ const criarPedidoSchema = z.object({
   valorEntrega:     z.number().int().default(0),
   enderecoEntrega:  z.string().max(300).optional(),
   observacao:       z.string().max(500).optional(),
+  // Intencao fiscal: a NF-e do pedido nasce na ENTREGA, nao na baixa.
+  documentoFiscal:  z.enum(['nenhum', 'nfce', 'nfe']).optional(),
+  imprimirNota:     z.boolean().optional(),
   itens: z.array(z.object({
     produtoId:     z.number().int(),
     quantidade:    z.number().int().min(1),
