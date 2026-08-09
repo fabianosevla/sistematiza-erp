@@ -63,7 +63,14 @@ const CAMPOS_EMPRESA = [
   'cidade', 'uf', 'mensagemCupom',
 ] as const
 
-type Aba = 'conta' | 'modulos'
+// Campos da aba "Fiscal". Correspondem a Tabela A do kit entregue ao contador
+// (docs/Kit-Fiscal-Contador.pdf) — o que ele devolve, alguem digita aqui.
+const CAMPOS_FISCAIS = [
+  'crt', 'regimeTributario', 'serieNfce', 'serieNfe',
+  'cnae', 'mensagemFiscal', 'focusNfeToken', 'focusNfeAmbiente',
+] as const
+
+type Aba = 'conta' | 'fiscal' | 'modulos'
 
 export default function Header({
   tenantSlug, tenantName, config, darkMode,
@@ -154,6 +161,11 @@ export default function Header({
     if (!configApi || empresaTocada) return
     const carregado: Record<string, string> = {}
     for (const c of CAMPOS_EMPRESA) carregado[c] = configApi[c] ?? ''
+    for (const c of CAMPOS_FISCAIS) carregado[c] = configApi[c] ?? ''
+    // Credenciamento e booleano, nao texto: guardado como '1'/'' para caber no
+    // mesmo estado dos demais campos e convertido de volta no envio.
+    carregado.credenciadoNfce = configApi.credenciadoNfce ? '1' : ''
+    carregado.credenciadoNfe  = configApi.credenciadoNfe  ? '1' : ''
     setEmpresa(carregado)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configApi])
@@ -202,6 +214,8 @@ export default function Header({
   const salvarContaMut = useMutation({
     mutationFn: async () => {
       const body: Record<string, any> = { ...empresa }
+      body.credenciadoNfce = empresa.credenciadoNfce === '1'
+      body.credenciadoNfe  = empresa.credenciadoNfe  === '1'
       if (logoPendente !== undefined) body.logoBase64 = logoPendente
       return gravar(body)
     },
@@ -407,7 +421,7 @@ export default function Header({
           subtitulo={String(empresa.nomeFantasia ?? "").trim() || tenantName}
           onClose={fecharModal}
           largura="w-[34vw] min-w-[560px]"
-          rodape={aba === 'conta' ? (
+          rodape={(aba === 'conta' || aba === 'fiscal') ? (
             <>
               <Button variant="outline" size="sm" onClick={fecharModal}>Fechar</Button>
               <Button size="sm"
@@ -436,6 +450,9 @@ export default function Header({
               <button className={abaCls('conta')} onClick={() => setAba('conta')}>
                 Configurações de conta
                 {contaPendente && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
+              </button>
+              <button className={abaCls('fiscal')} onClick={() => setAba('fiscal')}>
+                Fiscal
               </button>
               <button className={abaCls('modulos')} onClick={() => setAba('modulos')}>
                 Habilitações de módulos
@@ -660,6 +677,113 @@ export default function Header({
             )}
 
             {/* ══ ABA 2 — HABILITAÇÕES DE MÓDULOS ═════════════════════════ */}
+            {/* ══ ABA — FISCAL ═══════════════════════════════════════════
+                Corresponde a Tabela A do kit entregue ao contador. O que ele
+                devolve, alguem digita aqui — e o painel de prontidao em
+                Fiscal > Parametrizacao mostra o que ainda falta. */}
+            {aba === 'fiscal' && (
+              <div className="p-6 space-y-6">
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Regime</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="inline-flex items-center gap-1">
+                        CRT
+                        <InfoTip titulo="CRT">Codigo do regime: 1 Simples, 2 Simples com excesso, 3 Regime Normal.</InfoTip>
+                      </Label>
+                      <select value={empresa.crt ?? ''} onChange={e => setEmp('crt', e.target.value)}
+                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                        <option value="">— não informado —</option>
+                        <option value="1">1 — Simples Nacional</option>
+                        <option value="2">2 — Simples Nacional, excesso de sublimite</option>
+                        <option value="3">3 — Regime Normal</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label>CNAE principal</Label>
+                      <Input value={empresa.cnae ?? ''} onChange={e => setEmp('cnae', e.target.value)}
+                        className="mt-1 h-9 text-sm" />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Credenciamento na SEFAZ</p>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={empresa.credenciadoNfce === '1'}
+                        onChange={e => setEmp('credenciadoNfce', e.target.checked ? '1' : '')}
+                        className="w-4 h-4 rounded" />
+                      <span className="text-sm text-gray-700 inline-flex items-center gap-1">
+                        Credenciada para NFC-e
+                        <InfoTip titulo="Credenciamento">Autorizacao do estado para emitir. Sem ela a SEFAZ recusa.</InfoTip>
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={empresa.credenciadoNfe === '1'}
+                        onChange={e => setEmp('credenciadoNfe', e.target.checked ? '1' : '')}
+                        className="w-4 h-4 rounded" />
+                      <span className="text-sm text-gray-700">Credenciada para NF-e</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Séries</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Série NFC-e</Label>
+                      <Input value={empresa.serieNfce ?? ''} onChange={e => setEmp('serieNfce', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="1" />
+                    </div>
+                    <div>
+                      <Label>Série NF-e</Label>
+                      <Input value={empresa.serieNfe ?? ''} onChange={e => setEmp('serieNfe', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="1" />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Emissor</p>
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="inline-flex items-center gap-1">
+                        Token do emissor
+                        <InfoTip titulo="Token">Um por empresa, gerado no painel do emissor apos cadastrar o CNPJ.</InfoTip>
+                      </Label>
+                      <Input type="password" value={empresa.focusNfeToken ?? ''}
+                        onChange={e => setEmp('focusNfeToken', e.target.value)}
+                        className="mt-1 h-9 text-sm" placeholder="••••••••" />
+                    </div>
+                    <div>
+                      <Label className="inline-flex items-center gap-1">
+                        Ambiente
+                        <InfoTip titulo="Ambiente">Homologacao emite nota de teste, sem valor fiscal.</InfoTip>
+                      </Label>
+                      <select value={empresa.focusNfeAmbiente ?? 'homologacao'}
+                        onChange={e => setEmp('focusNfeAmbiente', e.target.value)}
+                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                        <option value="homologacao">Homologação — testes</option>
+                        <option value="producao">Produção — nota válida</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    Mensagem fiscal do rodapé
+                    <InfoTip titulo="Mensagem fiscal">No Simples Nacional o texto e exigido por lei na nota.</InfoTip>
+                  </Label>
+                  <Input value={empresa.mensagemFiscal ?? ''} onChange={e => setEmp('mensagemFiscal', e.target.value)}
+                    className="mt-1 h-9 text-sm"
+                    placeholder="Documento emitido por ME optante pelo Simples Nacional" />
+                </div>
+              </div>
+            )}
+
             {aba === 'modulos' && (
                 <div className="p-6 space-y-6">
                   {grupos.map(grupo => (
