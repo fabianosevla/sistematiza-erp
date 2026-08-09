@@ -224,9 +224,10 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const produtos = Array.isArray(grade.produtos) ? grade.produtos : []
   const celulas = grade.grade ?? {}     // grade[produtoId][data] = qtd produção
   const celulasPed = grade.pedidos ?? {}   // pedidos[produtoId][data] = qtd pedido
-  // prontos[produtoId] = qtd em pedido pronto e não entregue. Está no estoque,
-  // mas já tem dono.
-  const prontos: Record<number, number> = grade.prontos ?? {}
+  // comprometido[produtoId] = tudo que foi vendido e não saiu, de qualquer
+  // data. A coluna Ped mostra só a semana; a Prev. Est. usa este total, porque
+  // o estoque com que ela compara também não tem semana.
+  const comprometido: Record<number, number> = grade.comprometido ?? {}
 
   // registrados[produtoId][data] = { planejada, produzida, ... }
   const registrados = registrosData?.data?.porProdutoData ?? {}
@@ -490,7 +491,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                   <span className="inline-flex items-center gap-1">
                     Prev. Est.
                     <InfoTip titulo="Previsão de estoque">
-                      Estoque de hoje mais o que ainda será produzido, menos tudo que já tem dono e não saiu — inclusive pedido pronto aguardando retirada.
+                      Estoque de hoje mais o que ainda será produzido, menos todo pedido não entregue — de qualquer data, não só o desta semana.
                     </InfoTip>
                   </span>
                 </th>
@@ -564,10 +565,10 @@ export default function ProducaoView({ tenantSlug }: Props) {
                     <td className="px-2 py-3 text-center align-middle">
                       {(() => {
                         // Estoque de agora + o que ainda vai ser produzido
-                        // − tudo que já tem dono e não saiu (pedido em aberto
-                        // na semana + pedido pronto aguardando retirada).
-                        const comprometido = totalPed + (prontos[p.produtoId] ?? 0)
-                        const prevEst = estoque + totalPrevAberto - comprometido
+                        // − tudo que já tem dono e não saiu. Sem o total do
+                        // servidor, cai na soma da semana visível.
+                        const naoEntregue = comprometido[p.produtoId] ?? totalPed
+                        const prevEst = estoque + totalPrevAberto - naoEntregue
                         return <span className={`text-sm font-semibold ${prevEst < 0 ? 'text-red-600' : 'text-gray-700'}`}>{prevEst}</span>
                       })()}
                     </td>

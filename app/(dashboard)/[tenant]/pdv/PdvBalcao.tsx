@@ -1119,15 +1119,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <span className="ml-2 text-xs font-normal opacity-70">(F10)</span>
                 <ChevronRight size={16} className="ml-1" />
               </Button>
-              {/* O F8 sempre pulou a revisão e caiu no pagamento, mas isso só
-                  estava escrito no InfoTip de atalhos. Quem usa o balcão sem
-                  mouse não descobre o que a tela não mostra. */}
-              <button
-                onClick={() => { abrirPainel('pagamento'); setTimeout(() => pgtoRef.current?.focus(), 120) }}
-                disabled={carrinho.length === 0}
-                className="h-12 px-4 text-sm font-medium text-gray-500 hover:text-gray-900 disabled:opacity-40 disabled:hover:text-gray-500">
-                Pagamento <span className="text-xs opacity-70">(F8)</span>
-              </button>
             </div>
           </>
         )}
@@ -1160,7 +1151,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   disabled={carrinho.length === 0}
                   className="h-11 px-6"
                 >
-                  Ir para pagamento <ChevronRight size={16} className="ml-1" />
+                  Ir para pagamento
+                  <span className="ml-2 text-xs font-normal opacity-70">(F8)</span>
+                  <ChevronRight size={16} className="ml-1" />
                 </Button>
               </>
             ) : (

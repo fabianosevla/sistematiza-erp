@@ -60,6 +60,17 @@ export async function GET(req: NextRequest, { params }: Params) {
 
       // Pedidos da semana (por produto e data de previsão de produção)
       //
+      // 'pronto' ENTRA AQUI.
+      //
+      // A versão anterior contava só 'pendente' e 'producao', partindo de que
+      // pronto já tinha sido produzido e registrado na coluna PP. Na prática a
+      // fábrica marca pronto pelo andamento do pedido, sem que isso dependa do
+      // registro na grade — e o pedido sumia da demanda antes de a mercadoria
+      // existir. Some da grade, some da previsão de insumo, e ninguém produz.
+      //
+      // O risco de produzir duas vezes continua coberto: o dia com produção
+      // registrada aparece travado em cinza na própria linha.
+      //
       // pi.active_flg É OBRIGATÓRIO AQUI.
       //
       // Editar um pedido não altera as linhas de item: inativa as antigas e
@@ -74,7 +85,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         JOIN t_pedido p ON pi.pedido_id = p.pedido_id
         WHERE p.active_flg = true
           AND pi.active_flg = true
-          AND p.status IN ('pendente', 'producao')
+          AND p.status IN ('pendente', 'producao', 'pronto')
           AND COALESCE(p.previsao_producao, p.data_pedido)::date BETWEEN $1::date AND $2::date
         GROUP BY pi.produto_id, COALESCE(p.previsao_producao, p.data_pedido)::date
       `, [inicio, fim]).catch(() => ({ rows: [] }))
@@ -86,31 +97,28 @@ export async function GET(req: NextRequest, { params }: Params) {
         pedidos[row.produto_id][data] = Number(row.qtd)
       }
 
-      // PEDIDO PRONTO E NÃO ENTREGUE — mercadoria comprometida.
+      // TUDO QUE JÁ TEM DONO E NÃO SAIU — para a Prev. Est.
       //
-      // Não entra na coluna Ped de propósito: Ped é o que ainda falta produzir,
-      // e pronto já foi produzido. Somar ali mandaria a fábrica produzir de
-      // novo a mesma coisa.
+      // A coluna Ped mostra a demanda da SEMANA visível. A Prev. Est. compara
+      // com estoque_atual, que é de agora e não tem semana: pedido de duas
+      // semanas atrás que nunca foi entregue continua ocupando prateleira.
       //
-      // Mas entra na Prev. Est., porque essas unidades estão dentro do
-      // estoque_atual e já têm dono. Sem descontar, a previsão oferece para
-      // venda o que está separado esperando o cliente buscar.
-      //
-      // Sem recorte de data: o estoque é de agora, e o compromisso também.
-      const prontosRes = await client.query(`
+      // Por isso este total não tem recorte de data. Se usasse a soma da
+      // semana, a previsão ofereceria para venda mercadoria já separada.
+      const comprometidoRes = await client.query(`
         SELECT pi.produto_id, SUM(pi.quantidade) AS qtd
         FROM t_pedido_item pi
         JOIN t_pedido p ON pi.pedido_id = p.pedido_id
         WHERE p.active_flg = true
           AND pi.active_flg = true
-          AND p.status = 'pronto'
+          AND p.status IN ('pendente', 'producao', 'pronto')
         GROUP BY pi.produto_id
       `).catch(() => ({ rows: [] }))
 
-      const prontos: Record<number, number> = {}
-      for (const row of prontosRes.rows) prontos[row.produto_id] = Number(row.qtd)
+      const comprometido: Record<number, number> = {}
+      for (const row of comprometidoRes.rows) comprometido[row.produto_id] = Number(row.qtd)
 
-      return ok({ produtos, grade, pedidos, prontos, inicio, fim })
+      return ok({ produtos, grade, pedidos, comprometido, inicio, fim })
     } finally {
       client.release()
     }
