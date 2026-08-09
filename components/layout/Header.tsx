@@ -68,6 +68,10 @@ const CAMPOS_EMPRESA = [
 
 // Campos da aba "Fiscal". Correspondem a Tabela A do kit entregue ao contador
 // (docs/Kit-Fiscal-Contador.pdf) — o que ele devolve, alguem digita aqui.
+// Operação de caixa. Ficam na aba de conta e não na fiscal: caixa é controle
+// de dinheiro, não de documento fiscal.
+const CAMPOS_CAIXA = ['qtdCaixas', 'regimeTurno'] as const
+
 const CAMPOS_FISCAIS = [
   'crt', 'regimeTributario', 'serieNfce', 'serieNfe',
   'cnae', 'mensagemFiscal', 'focusNfeToken', 'focusNfeAmbiente',
@@ -172,6 +176,7 @@ export default function Header({
     const carregado: Record<string, string> = {}
     for (const c of CAMPOS_EMPRESA) carregado[c] = configApi[c] ?? ''
     for (const c of CAMPOS_FISCAIS) carregado[c] = configApi[c] ?? ''
+    for (const c of CAMPOS_CAIXA)   carregado[c] = String(configApi[c] ?? (c === 'qtdCaixas' ? 1 : 'dia'))
     // Credenciamento e booleano, nao texto: guardado como '1'/'' para caber no
     // mesmo estado dos demais campos e convertido de volta no envio.
     carregado.credenciadoNfce = configApi.credenciadoNfce ? '1' : ''
@@ -224,6 +229,7 @@ export default function Header({
   const salvarContaMut = useMutation({
     mutationFn: async () => {
       const body: Record<string, any> = { ...empresa }
+      body.qtdCaixas = Math.max(1, Number(empresa.qtdCaixas ?? 1) || 1)
       body.credenciadoNfce = empresa.credenciadoNfce === '1'
       body.credenciadoNfe  = empresa.credenciadoNfe  === '1'
       if (logoPendente !== undefined) body.logoBase64 = logoPendente
@@ -483,6 +489,43 @@ export default function Header({
             {/* ══ ABA 1 — CONFIGURAÇÕES DE CONTA ══════════════════════════ */}
             {aba === 'conta' && (
                 <div className="p-6 space-y-6">
+
+                  {/* ── CAIXA ────────────────────────────────────────────
+                      Só aparece com o controle de caixa contratado. Com um PC
+                      só, o sistema assume o caixa 1 e nunca pergunta qual é —
+                      perguntar num balcão único é cerimônia sem função. */}
+                  {config.turnoCaixaAtivo && (
+                    <>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Caixa</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="inline-flex items-center gap-1">
+                              Computadores vendendo
+                              <InfoTip titulo="Quantos caixas">Com mais de um, cada máquina informa seu número uma vez.</InfoTip>
+                            </Label>
+                            <Input type="number" min="1" value={empresa.qtdCaixas ?? '1'}
+                              onChange={e => setEmp('qtdCaixas', e.target.value)}
+                              className="sem-spinner mt-1 h-9 text-sm" />
+                          </div>
+                          <div>
+                            <Label className="inline-flex items-center gap-1">
+                              Um turno por
+                              <InfoTip titulo="Regime do turno">Por dia, a loja fecha um caixa só; por operador, cada um fecha o seu.</InfoTip>
+                            </Label>
+                            <select value={empresa.regimeTurno ?? 'dia'}
+                              onChange={e => setEmp('regimeTurno', e.target.value)}
+                              className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                              <option value="dia">Dia — um turno para a loja</option>
+                              <option value="operador">Operador — um turno por caixa</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-gray-100" />
+                    </>
+                  )}
 
                   {/* ── ATALHO DO PDV ─────────────────────────────────────
                       Navegador nenhum imprime sem abrir a janela de impressão.
