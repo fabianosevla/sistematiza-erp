@@ -332,16 +332,8 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     // Só aparece com o controle contratado. Módulo desligado tem que esconder
     // TUDO que é dele, não só o menu — foi o princípio aplicado ao fiscal, e
     // esta aba tinha ficado de fora.
-    ...(turnoCaixaAtivo ? [{ key: 'caixa' as Aba, label: 'Caixa' }] : []),
+    ...(config?.turnoCaixaAtivo ? [{ key: 'caixa' as Aba, label: 'Caixa' }] : []),
   ]
-
-  // Chave do controle de caixa. Sem ela, nem a aba nem a rota respondem.
-  const { data: cfgCaixaRaw } = useQuery({
-    queryKey: ['configuracoes', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
-    staleTime: 5 * 60 * 1000,
-  })
-  const turnoCaixaAtivo = cfgCaixaRaw?.data?.turnoCaixaAtivo === true
 
   // KPIs calculados do DRE
   const receitaMes  = kpis?.receitaMes  ?? 0
