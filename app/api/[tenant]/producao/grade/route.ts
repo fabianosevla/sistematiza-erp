@@ -59,6 +59,13 @@ export async function GET(req: NextRequest, { params }: Params) {
       }))
 
       // Pedidos da semana (por produto e data de previsão de produção)
+      //
+      // pi.active_flg É OBRIGATÓRIO AQUI.
+      //
+      // Editar um pedido não altera as linhas de item: inativa as antigas e
+      // grava as novas. Sem este filtro, a coluna Ped somava a quantidade
+      // velha junto com a nova, e todo pedido corrigido aparecia inflado —
+      // fazendo a fábrica planejar produção para demanda que não existe.
       const pedidosRes = await client.query(`
         SELECT pi.produto_id,
                COALESCE(p.previsao_producao, p.data_pedido)::date as data_ref,
@@ -66,6 +73,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         FROM t_pedido_item pi
         JOIN t_pedido p ON pi.pedido_id = p.pedido_id
         WHERE p.active_flg = true
+          AND pi.active_flg = true
           AND p.status IN ('pendente', 'producao')
           AND COALESCE(p.previsao_producao, p.data_pedido)::date BETWEEN $1::date AND $2::date
         GROUP BY pi.produto_id, COALESCE(p.previsao_producao, p.data_pedido)::date
@@ -78,7 +86,31 @@ export async function GET(req: NextRequest, { params }: Params) {
         pedidos[row.produto_id][data] = Number(row.qtd)
       }
 
-      return ok({ produtos, grade, pedidos, inicio, fim })
+      // PEDIDO PRONTO E NÃO ENTREGUE — mercadoria comprometida.
+      //
+      // Não entra na coluna Ped de propósito: Ped é o que ainda falta produzir,
+      // e pronto já foi produzido. Somar ali mandaria a fábrica produzir de
+      // novo a mesma coisa.
+      //
+      // Mas entra na Prev. Est., porque essas unidades estão dentro do
+      // estoque_atual e já têm dono. Sem descontar, a previsão oferece para
+      // venda o que está separado esperando o cliente buscar.
+      //
+      // Sem recorte de data: o estoque é de agora, e o compromisso também.
+      const prontosRes = await client.query(`
+        SELECT pi.produto_id, SUM(pi.quantidade) AS qtd
+        FROM t_pedido_item pi
+        JOIN t_pedido p ON pi.pedido_id = p.pedido_id
+        WHERE p.active_flg = true
+          AND pi.active_flg = true
+          AND p.status = 'pronto'
+        GROUP BY pi.produto_id
+      `).catch(() => ({ rows: [] }))
+
+      const prontos: Record<number, number> = {}
+      for (const row of prontosRes.rows) prontos[row.produto_id] = Number(row.qtd)
+
+      return ok({ produtos, grade, pedidos, prontos, inicio, fim })
     } finally {
       client.release()
     }

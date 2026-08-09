@@ -45,7 +45,10 @@ export async function GET(req: NextRequest, { params }: Params) {
           SELECT pi.produto_id, SUM(pi.quantidade) as qtd_pendente
           FROM t_pedido_item pi
           JOIN t_pedido p ON pi.pedido_id = p.pedido_id
+          -- pi.active_flg: editar pedido inativa os itens antigos e grava
+          -- novos. Sem o filtro, pedido corrigido conta duas vezes.
           WHERE p.status IN ('pendente','producao') AND p.active_flg = true
+            AND pi.active_flg = true
           GROUP BY pi.produto_id
         `).catch(() => ({ rows: [] }))
         const pedidosPorProduto = {}

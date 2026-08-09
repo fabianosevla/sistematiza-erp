@@ -28,15 +28,20 @@ body {
 ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-/* Campos de valor sem as setinhas do navegador.
-   Em campo de dinheiro elas atrapalham: um clique sem querer muda o valor
-   em um centavo, e o teclado já resolve melhor. Aplique a classe
-   `sem-spinner` no <input type="number"> onde não fizerem sentido. */
+/* NENHUM CAMPO NUMÉRICO TEM SETINHA.
+   Elas atrapalham em toda parte: um clique sem querer muda o valor, e em
+   campo estreito ainda comem espaço da própria leitura. O teclado resolve
+   melhor. Regra global — não depende mais de lembrar da classe em cada tela.
+   A classe `sem-spinner` continua existindo por compatibilidade com o que
+   já a usa; hoje ela é redundante. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button,
 .sem-spinner::-webkit-outer-spin-button,
 .sem-spinner::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+input[type='number'],
 .sem-spinner {
   -moz-appearance: textfield;
   appearance: textfield;

@@ -8,11 +8,48 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { MarcaEndereco, enderecoDoCadastro } from '@/components/ui/MarcaEndereco'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 import { TIPOS_PRECO } from '@/lib/constants'
 
 interface Props { tenantSlug: string }
+
+/**
+ * QUANTIDADE DO ITEM — DIGITADA, NÃO CLICADA.
+ *
+ * Os botões − e + serviam para 1 ou 2 unidades. Num pedido de 25 eram 25
+ * cliques, e a tentação de contar errado.
+ *
+ * Vive no escopo do módulo, e não dentro da view: componente declarado dentro
+ * do corpo de outro é recriado a cada render e o campo perde o foco a cada
+ * dígito — foi exatamente o bug da grade de Produção.
+ *
+ * O rascunho preserva o que está sendo digitado. Sem ele, apagar o "5" para
+ * escrever "25" mandaria quantidade 0 e o item sumiria da lista no meio da
+ * digitação. Campo vazio ao sair vira 1; quem quer remover usa a lixeira.
+ */
+function CampoQtdItem({ valor, onChange, altura = 'h-7' }: { valor: number; onChange: (n: number) => void; altura?: string }) {
+  const [rascunho, setRascunho] = useState<string | null>(null)
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={rascunho ?? String(valor)}
+      onFocus={e => { setRascunho(String(valor)); e.currentTarget.select() }}
+      onChange={e => {
+        const t = e.target.value.replace(/\D/g, '')
+        setRascunho(t)
+        if (t) onChange(Number(t))
+      }}
+      onBlur={e => {
+        setRascunho(null)
+        onChange(Math.max(1, Number(e.target.value.replace(/\D/g, '')) || 1))
+      }}
+      className={`w-14 ${altura} text-center text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-green-400`}
+    />
+  )
+}
 
 // CORREÇÃO ("Invalid Date"): a API devolve timestamp completo
 // ("2026-07-30T00:00:00.000Z"), e a versão anterior concatenava 'T12:00:00'
@@ -87,16 +124,27 @@ function precosDoProduto(p: any) {
   }
 }
 
-// Mesma cadeia de fallback de VendaService.resolverPreco():
-// faixa escolhida → atacado legado → varejo.
+/**
+ * PREÇO DA FAIXA — SEM CAIR NO VAREJO.
+ *
+ * A cascata antiga era faixa → atacado legado → varejo, e é a que o PDV e o
+ * VendaService ainda usam. O motivo original era não deixar sair venda a zero.
+ *
+ * O efeito colateral era pior que o problema: produto sem a faixa preenchida
+ * cobrava o preço de varejo de um cliente de atacado, sem nada na tela dizendo
+ * isso. Cadastro incompleto virava sobrepreço silencioso.
+ *
+ * Agora, em faixa de atacado, só o varejo sai da cascata. O `legado` continua
+ * valendo porque É um preço de atacado — a coluna única de antes das faixas —
+ * e removê-lo zeraria produtos que hoje dependem dela.
+ *
+ * Zero aqui é informação: significa "esta faixa não está cadastrada".
+ */
 function precoNaTabela(precos: any, tabela: string): number {
   if (!precos) return 0
   const escolhido = numeroDe(precos[tabela])
   if (escolhido > 0) return escolhido
-  if (tabela !== 'varejo') {
-    if (precos.legado > 0) return precos.legado
-    if (precos.varejo > 0) return precos.varejo
-  }
+  if (tabela !== 'varejo') return numeroDe(precos.legado)
   return numeroDe(precos.varejo)
 }
 
@@ -124,6 +172,7 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [previsaoProducao, setPrevisaoProducao] = useState('')
   const [previsaoEntrega, setPrevisaoEntrega]   = useState('')
   const [enderecoEntrega, setEnderecoEntrega]   = useState('')
+  const [enderecoCadastro, setEnderecoCadastro] = useState('')
   const [observacao, setObservacao]       = useState('')
   const [valorEntregaEdit, setValorEntregaEdit] = useState(0)
   const [qtdProduto, setQtdProduto]       = useState(1)
@@ -150,13 +199,18 @@ export default function PedidosView({ tenantSlug }: Props) {
 
   const { data: clientesData } = useQuery({
     queryKey: ['clientes-pedido', tenantSlug, buscaCliente],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=6&search=${encodeURIComponent(buscaCliente)}`)).json(),
+    // Mesmo motivo do produto: com teto de 6, sobrenome comum ou razão social
+    // parecida derrubava o cliente certo da lista sem aviso.
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=50&search=${encodeURIComponent(buscaCliente)}`)).json(),
     enabled:  buscaCliente.length > 1,
   })
 
   const { data: produtosData } = useQuery({
     queryKey: ['produtos-pedido', tenantSlug, buscaProduto],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=8&search=${encodeURIComponent(buscaProduto)}`)).json(),
+    // limit 50: "rondelli" sozinho já passa de 8 produtos nesta fábrica. Com o
+    // teto baixo, o item existia e simplesmente não estava na lista — e não
+    // havia como saber que faltava alguém.
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=50&search=${encodeURIComponent(buscaProduto)}`)).json(),
     enabled:  buscaProduto.length > 0,
   })
 
@@ -269,7 +323,7 @@ export default function PedidosView({ tenantSlug }: Props) {
     setBuscaProduto(''); setTipoVenda('entrega')
     setDataPedido(new Date().toISOString().slice(0, 10))
     setPrevisaoProducao(''); setPrevisaoEntrega('')
-    setEnderecoEntrega(''); setObservacao(''); setQtdProduto(1)
+    setEnderecoEntrega(''); setEnderecoCadastro(''); setObservacao(''); setQtdProduto(1)
     setValorEntregaEdit(0)
     setEditandoPedidoId(null)
     setTabelaPreco('varejo')
@@ -281,8 +335,10 @@ export default function PedidosView({ tenantSlug }: Props) {
   function reprecificar(novaTabela: string) {
     setItens(prev => prev.map(i => {
       if (!i.precos) return i
-      const novo = precoNaTabela(i.precos, novaTabela)
-      return novo > 0 ? { ...i, precoUnitario: novo } : i
+      // Aplica inclusive o zero. Guardar o preço anterior quando a nova faixa
+      // está vazia era o mesmo defeito por outro caminho: o item continuaria
+      // com o valor da tabela antiga sem ninguém perceber.
+      return { ...i, precoUnitario: precoNaTabela(i.precos, novaTabela) }
     }))
   }
 
@@ -294,7 +350,9 @@ export default function PedidosView({ tenantSlug }: Props) {
     const nova = c.tabelaPreco ?? 'varejo'
     setTabelaPreco(nova)
     reprecificar(nova)
-    if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+    const doCadastro = enderecoDoCadastro(c)
+    setEnderecoCadastro(doCadastro)
+    if (doCadastro) setEnderecoEntrega(doCadastro)
     if (nova !== 'varejo') toast(`Preço de ${(TIPOS_PRECO as any)[nova]} aplicado.`)
   }
 
@@ -302,6 +360,7 @@ export default function PedidosView({ tenantSlug }: Props) {
     setClienteSelecionado(null)
     setTabelaPreco('varejo')
     reprecificar('varejo')
+    setEnderecoCadastro('')
   }
 
   // Abre o modal em modo edição, pré-preenchido com os dados do pedido
@@ -320,6 +379,9 @@ export default function PedidosView({ tenantSlug }: Props) {
       let clienteNome   = ''
       let clienteRazao  = ''
       let clienteTabela = 'varejo'
+      // Também na edição: sem isto a marca não teria com o que comparar, e um
+      // pedido que já foi salvo com endereço avulso abriria sem sinal nenhum.
+      let doCadastro    = ''
       if (ped.clienteId) {
         try {
           const cr = await fetch(`/api/${tenantSlug}/cadastros/clientes?limit=1000`)
@@ -329,8 +391,10 @@ export default function PedidosView({ tenantSlug }: Props) {
           clienteNome   = achado ? nomeExibicao(achado) : `Cliente #${ped.clienteId}`
           clienteRazao  = achado?.nomeCompleto ?? ''
           clienteTabela = achado?.tabelaPreco ?? 'varejo'
+          doCadastro    = enderecoDoCadastro(achado)
         } catch { clienteNome = `Cliente #${ped.clienteId}` }
       }
+      setEnderecoCadastro(doCadastro)
 
       setEditandoPedidoId(ped.pedidoId)
       setNomeAvulso(ped.clienteId ? '' : (ped.nomeClienteAvulso ?? ''))
@@ -416,12 +480,15 @@ export default function PedidosView({ tenantSlug }: Props) {
             </button>
           ))}
         </div>
-        {filtroStatus === '' && (
-          <select value={periodo} onChange={e => setPeriodo(e.target.value)}
-            className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-            {PERIODOS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </select>
-        )}
+        {/* O PERÍODO VALE EM TODAS AS ABAS.
+            Ele era exibido só em "Todos", mas o recorte era aplicado sempre —
+            em Pendentes a lista vinha cortada em "Este mês" sem que houvesse
+            como ver nem trocar. Filtro que age escondido faz o operador
+            concluir que o pedido sumiu. */}
+        <select value={periodo} onChange={e => setPeriodo(e.target.value)}
+          className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+          {PERIODOS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
       </div>
 
       {/* Lista */}
@@ -537,7 +604,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                       </InfoTip>
                     </div>
                     {buscaCliente.length > 1 && clientes.length > 0 && (
-                      <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
+                      <div className="mt-1 border border-gray-100 rounded-lg overflow-y-auto max-h-72 shadow-sm">
                         {/* Nome fantasia em cima, razão social embaixo: a busca
                             casa nos dois, então os dois têm que aparecer. */}
                         {clientes.map((c: any) => (
@@ -591,6 +658,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                 <div>
                   <Label>Endereço de entrega</Label>
                   <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1" placeholder="Rua, número, bairro, cidade" />
+                  <MarcaEndereco cadastro={enderecoCadastro} atual={enderecoEntrega} onRestaurar={setEnderecoEntrega} />
                 </div>
               )}
 
@@ -600,22 +668,27 @@ export default function PedidosView({ tenantSlug }: Props) {
                 <div className="flex gap-2 mt-1">
                   <Input value={buscaProduto} onChange={e => setBuscaProduto(e.target.value)}
                     placeholder="Buscar produto..." className="flex-1" />
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => setQtdProduto(q => Math.max(1, q - 1))} className="w-8 h-9 rounded-lg border border-gray-200 flex items-center justify-center font-bold hover:bg-gray-50">−</button>
-                    <Input type="number" min="1" value={qtdProduto} onChange={e => setQtdProduto(Math.max(1, Number(e.target.value)))} className="text-center w-14 h-9" />
-                    <button onClick={() => setQtdProduto(q => q + 1)} className="w-8 h-9 rounded-lg border border-gray-200 flex items-center justify-center font-bold hover:bg-gray-50">+</button>
-                  </div>
+                  {/* Mesma regra do item já adicionado: digita-se a quantidade.
+                      O `Math.max(1, ...)` de antes impedia até apagar o campo
+                      para trocar o número — sempre voltava a 1. */}
+                  <CampoQtdItem valor={qtdProduto} onChange={setQtdProduto} altura="h-9" />
                 </div>
                 {buscaProduto && produtos.length > 0 && (
-                  <div className="mt-1 border border-gray-100 rounded-lg overflow-hidden shadow-sm">
-                    {produtos.slice(0, 6).map((p: any) => {
+                  {/* Rola quando a busca traz muitos: a lista inteira aparece,
+                      sem cortar em silêncio. */}
+                  <div className="mt-1 border border-gray-100 rounded-lg overflow-y-auto max-h-72 shadow-sm">
+                    {produtos.map((p: any) => {
                       // Mostra o preço da tabela do cliente, não o varejo fixo
                       const precoLista = precoNaTabela(precosDoProduto(p), tabelaPreco)
                       return (
                         <button key={p.produtoId} onClick={() => addItem(p)}
                           className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
                           <span className="text-sm font-medium text-gray-900">{p.nome}</span>
-                          <span className="text-sm text-gray-500">{fmt(precoLista)}/{p.unidade}</span>
+                          {precoLista === 0 && ehAtacado ? (
+                            <span className="text-xs font-medium text-amber-600">{rotuloTabela} não cadastrado</span>
+                          ) : (
+                            <span className="text-sm text-gray-500">{fmt(precoLista)}/{p.unidade}</span>
+                          )}
                         </button>
                       )
                     })}
@@ -630,13 +703,18 @@ export default function PedidosView({ tenantSlug }: Props) {
                     <div key={item.produtoId} className="flex items-center gap-3 px-3 py-2.5 border-b border-gray-50 last:border-0">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900">{item.nomeProduto}</p>
-                        <p className="text-[11px] text-gray-400">{fmt(item.precoUnitario)} un</p>
+                        {/* Zero em faixa de atacado não é preço: é cadastro
+                            faltando. Dizer isso evita o pedido sair de graça. */}
+                        {item.precoUnitario === 0 && ehAtacado ? (
+                          <p className="text-[11px] font-medium text-amber-600">{rotuloTabela} não cadastrado neste produto</p>
+                        ) : (
+                          <p className="text-[11px] text-gray-400">{fmt(item.precoUnitario)} un</p>
+                        )}
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => updateQtdItem(item.produtoId, item.quantidade - 1)} className="w-6 h-6 rounded border border-gray-200 flex items-center justify-center text-xs hover:bg-gray-50">−</button>
-                        <span className="text-sm font-medium w-8 text-center">{item.quantidade}</span>
-                        <button onClick={() => updateQtdItem(item.produtoId, item.quantidade + 1)} className="w-6 h-6 rounded border border-gray-200 flex items-center justify-center text-xs hover:bg-gray-50">+</button>
-                      </div>
+                      <CampoQtdItem
+                        valor={item.quantidade}
+                        onChange={q => updateQtdItem(item.produtoId, q)}
+                      />
                       <p className="text-sm font-semibold text-gray-900 w-20 text-right">{fmt(item.quantidade * item.precoUnitario)}</p>
                       <button onClick={() => setItens(prev => prev.filter(i => i.produtoId !== item.produtoId))} className="text-gray-300 hover:text-red-500"><Trash2 size={13} /></button>
                     </div>

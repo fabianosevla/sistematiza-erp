@@ -51,7 +51,10 @@ export class ComprasService {
         SELECT pi.insumo_id,
                SUM(pi.quantidade * ps.quantidade)::numeric AS previsto
         FROM t_producao_semanal ps
-        JOIN t_produto_insumo pi ON pi.produto_id = ps.produto_id
+        -- pi.active_flg: insumo retirado da ficha técnica é inativado, não
+        -- apagado. Sem o filtro, a sugestão de compra continuaria pedindo um
+        -- ingrediente que a receita não usa mais.
+        JOIN t_produto_insumo pi ON pi.produto_id = ps.produto_id AND pi.active_flg = true
         WHERE ps.active_flg = true
           AND ps.data_producao >= ${hojeStr}::date
           AND ps.data_producao <= ${fimStr}::date

@@ -1,11 +1,12 @@
 'use client'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Gift, Tag } from 'lucide-react'
+import { Search, X, Plus, Minus, Trash2, CheckCircle, Loader2, ShoppingCart, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Gift, Tag, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { MarcaEndereco, enderecoDoCadastro } from '@/components/ui/MarcaEndereco'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -169,7 +170,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   // Tabela de preço em vigor nesta venda. Sem cliente = varejo.
   const [tabelaPreco, setTabelaPreco]         = useState<string>('varejo')
   const [showCadastrarCliente, setShowCadastrarCliente] = useState(false)
-  const CLI_VAZIO = { tipoPessoa: 'PF', documento: '', nomeCompleto: '', nomeFantasia: '', email: '', celular: '', cidade: '', uf: '', observacao: '' }
+  const CLI_VAZIO = {
+    tipoPessoa: 'PF', documento: '', nomeCompleto: '', nomeFantasia: '',
+    email: '', celular: '', telefone: '',
+    // Endereço: o PDV vende para entrega, e cliente cadastrado aqui sem
+    // endereço obriga a redigitar a rua na venda e em toda venda seguinte.
+    cep: '', endereco: '', numero: '', complemento: '', bairro: '',
+    cidade: '', uf: '', observacao: '',
+  }
   const [novoCli, setNovoCli] = useState(CLI_VAZIO)
   const setCli = (k: string, v: string) => setNovoCli(p => ({ ...p, [k]: v }))
   const [buscaCliente, setBuscaCliente]       = useState('')
@@ -181,6 +189,13 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [observacao, setObservacao]           = useState('')
   const [dataEntrega, setDataEntrega]         = useState('')
   const [enderecoEntrega, setEnderecoEntrega] = useState('')
+  const [enderecoCadastro, setEnderecoCadastro] = useState('')
+
+  // Reimpressão: painel das vendas de hoje. `linhaSel` é o índice destacado,
+  // para o operador escolher com as setas e imprimir com Enter — no balcão a
+  // mão está no teclado, não no mouse.
+  const [showVendasDia, setShowVendasDia] = useState(false)
+  const [linhaSel, setLinhaSel]           = useState(0)
 
   // Fidelidade / cashback
   const [usarCashback, setUsarCashback]       = useState(false)
@@ -247,6 +262,19 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   })
   const cashback = cashbackRaw?.data
 
+  // Vendas de hoje, para reimprimir. Só busca com o painel aberto, e recarrega
+  // ao abrir: a venda que o operador acabou de fazer tem que estar na lista.
+  const hojeIso = new Date().toISOString().slice(0, 10)
+  const { data: vendasDiaRaw, isFetching: carregandoVendas } = useQuery({
+    queryKey: ['pdv-vendas-dia', tenantSlug, hojeIso],
+    queryFn:  async () => (await fetch(
+      `/api/${tenantSlug}/vendas?dataInicio=${hojeIso}&dataFim=${hojeIso}&limit=100`
+    )).json(),
+    enabled:  showVendasDia,
+    staleTime: 0,
+  })
+  const vendasDia: any[] = vendasDiaRaw?.data?.data ?? vendasDiaRaw?.data ?? []
+
   const criarClienteMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/${tenantSlug}/cadastros/clientes`, {
@@ -258,6 +286,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           nomeFantasia: novoCli.nomeFantasia.trim() || undefined,
           email:        novoCli.email.trim() || undefined,
           celular:      novoCli.celular.trim() || undefined,
+          telefone:     novoCli.telefone.trim() || undefined,
+          cep:          novoCli.cep.trim() || undefined,
+          endereco:     novoCli.endereco.trim() || undefined,
+          numero:       novoCli.numero.trim() || undefined,
+          complemento:  novoCli.complemento.trim() || undefined,
+          bairro:       novoCli.bairro.trim() || undefined,
           cidade:       novoCli.cidade.trim() || undefined,
           uf:           novoCli.uf.trim().toUpperCase().slice(0, 2) || undefined,
           observacao:   novoCli.observacao.trim() || undefined,
@@ -275,6 +309,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         // Cliente criado aqui nasce em varejo. Para outra tabela, use o
         // cadastro completo em Cadastros → Clientes.
         setTabelaPreco('varejo')
+        // Mesma montagem de selecionarCliente: quem acabou de digitar o
+        // endereço não deve digitar de novo no campo de entrega.
+        const doCadastro = enderecoDoCadastro({
+          endereco: novoCli.endereco.trim(), numero: novoCli.numero.trim(),
+          cidade:   novoCli.cidade.trim(),   uf:     novoCli.uf.trim().toUpperCase(),
+        })
+        setEnderecoCadastro(doCadastro)
+        if (doCadastro) setEnderecoEntrega(doCadastro)
       }
       setShowCadastrarCliente(false)
       setNovoCli(CLI_VAZIO)
@@ -356,7 +398,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         tabela:    ehAtacado ? rotuloTabela : '',
         empresa,
         qtdItens:  carrinho.reduce((a, i) => a + i.quantidade, 0),
-        enderecoEntrega: isDelivery ? enderecoEntrega : '',
+        // O QUE MANDA É TER ENDEREÇO, NÃO O MODO DA TELA.
+        //
+        // Antes só saía no cupom quando o PDV estava em Delivery. Mas o campo
+        // de endereço também existe em Balcão, dentro de Dados adicionais, e a
+        // venda grava o que for digitado ali. O cupom era o único que ignorava:
+        // o entregador recebia a via sem o endereço que o operador tinha
+        // acabado de preencher.
+        enderecoEntrega: enderecoEntrega.trim(),
         dataHora:  new Date().toLocaleString('pt-BR'),
       })
 
@@ -376,6 +425,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       setObservacao('')
       setDataEntrega('')
       setEnderecoEntrega('')
+      setEnderecoCadastro('')
       setUsarCashback(false)
       setShowExtras(false)
       setShowCadastrarCliente(false)
@@ -461,7 +511,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     // É aqui que a tabela de preço do cliente entra em vigor.
     setTabelaPreco(c.tabelaPreco ?? 'varejo')
     setBuscaCliente('')
-    if (c.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+    const doCadastro = enderecoDoCadastro(c)
+    setEnderecoCadastro(doCadastro)
+    if (doCadastro) setEnderecoEntrega(doCadastro)
     if (c.tabelaPreco && c.tabelaPreco !== 'varejo') {
       toast(`Preço de ${(TIPOS_PRECO as any)[c.tabelaPreco]} aplicado.`)
     }
@@ -471,6 +523,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setUsarCashback(false)
     setNomeAvulso('')
     setTabelaPreco('varejo')
+    setEnderecoCadastro('')
   }
 
   function handleBuscaKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -562,7 +615,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     setPainelAberto(true)
   }
 
-  // Atalhos: F2 busca · F3 cliente · F6 desconto · F8 pagamento · F10 avança
+  // Atalhos: F2 busca · F3 cliente · F6 desconto · F8 vai direto ao pagamento,
+  // pulando a revisão · F10 avança uma etapa por vez · Ctrl+P reimprime
   // Ctrl+Delete limpa o carrinho · Esc volta uma etapa.
   //
   // O ouvinte roda na fase de captura e interrompe a propagação quando há um
@@ -570,6 +624,37 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   // chegaria também ao SidePanel e fecharia o painel de finalização junto.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // ── Reimpressão: Ctrl+P ────────────────────────────────────────────────
+      //
+      // Toma o lugar do imprimir do navegador de propósito. Num PDV, Ctrl+P
+      // significa cupom; a impressão da página inteira nunca serve para nada
+      // aqui e só desperdiça bobina.
+      //
+      // Vem antes de tudo para funcionar mesmo com painel ou modal aberto: o
+      // cliente pede a segunda via a qualquer momento.
+      if (e.key.toLowerCase() === 'p' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        setLinhaSel(0)
+        setShowVendasDia(v => !v)
+        return
+      }
+
+      // Dentro do painel de vendas o teclado manda: setas escolhem, Enter
+      // imprime, Esc fecha. Sem isso o operador teria que largar o teclado.
+      if (showVendasDia) {
+        if (e.key === 'Escape')    { e.preventDefault(); e.stopImmediatePropagation(); setShowVendasDia(false); return }
+        if (e.key === 'ArrowDown') { e.preventDefault(); e.stopImmediatePropagation(); setLinhaSel(i => Math.min(i + 1, Math.max(0, vendasDia.length - 1))); return }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); e.stopImmediatePropagation(); setLinhaSel(i => Math.max(0, i - 1)); return }
+        if (e.key === 'Enter') {
+          e.preventDefault(); e.stopImmediatePropagation()
+          const v = vendasDia[linhaSel]
+          if (v) reimprimir(v.vendaId)
+          return
+        }
+        return
+      }
+
       const algumModal = confirmVenda || !!cupomVenda || confirmLimpar
       if (e.key === 'Escape' && algumModal) {
         e.stopImmediatePropagation()
@@ -599,7 +684,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, painelAberto, etapa])
+  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, painelAberto, etapa, showVendasDia, vendasDia, linhaSel])
 
   // Carrinho esvaziado com o painel aberto: não há o que conferir nem pagar.
   useEffect(() => {
@@ -703,6 +788,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       <hr/>
       <p class="c titulo">CUPOM NÃO FISCAL</p>
       <p class="c mini">Sem valor fiscal · não substitui a NFC-e</p>
+      ${v.segundaVia ? `<p class="c titulo">** 2ª VIA — REIMPRESSÃO **</p>` : ''}
       <hr/>
 
       <table class="peq">
@@ -752,6 +838,62 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     win.document.close()
     win.focus()
     setTimeout(() => { win.print(); win.close() }, 300)
+  }
+
+  // ── REIMPRESSÃO ───────────────────────────────────────────────────────────
+  //
+  // Busca a venda gravada e remonta o cupom. Não é o mesmo objeto do momento
+  // da venda: o banco guarda o que aconteceu, não o que foi digitado.
+  //
+  // O que não volta, e por quê:
+  //   troco     — nunca foi gravado; era conta de tela, do valor recebido
+  //   acréscimo — entra somado ao desconto como "desconto líquido" na venda
+  //   unidade e código de barras do item — t_venda_item guarda só o nome
+  //
+  // O resto — itens, quantidades, valores, forma de pagamento, cliente — sai
+  // igual, porque isso está no banco.
+  async function reimprimir(vendaId: number) {
+    try {
+      const r = await fetch(`/api/${tenantSlug}/vendas/${vendaId}`)
+      const d = await r.json()
+      const v = d?.data
+      if (!r.ok || !v) { toast(d?.message ?? 'Venda não encontrada.', 'error'); return }
+
+      const itens = (v.itens ?? []).map((i: any) => ({
+        produtoId:     i.produtoId,
+        nomeProduto:   i.nomeProduto,
+        quantidade:    Number(i.quantidade),
+        precoUnitario: Number(i.precoUnitario ?? 0),
+        subtotal:      Number(i.subtotal ?? 0),
+        desconto:      Number(i.desconto ?? 0),
+        unidade:       'UN',
+        codigoBarras:  '',
+      }))
+
+      const pgto = (v.pagamentos ?? [])[0]
+
+      imprimirCupom({
+        segundaVia: true,
+        vendaId:    v.vendaId,
+        itens,
+        subtotal:   Number(v.subtotal ?? 0),
+        desconto:   Number(v.desconto ?? 0),
+        acrescimo:  0,
+        cashbackUsado: 0,
+        total:      Number(v.total ?? 0),
+        forma:      pgto?.forma ?? '—',
+        troco:      0,
+        cliente:    v.clienteNome ?? '',
+        vendedor:   v.vendedor ?? '',
+        tabela:     '',
+        empresa,
+        qtdItens:   itens.reduce((a: number, i: any) => a + i.quantidade, 0),
+        enderecoEntrega: v.enderecoEntrega ?? '',
+        dataHora:   new Date(v.vendidaEm).toLocaleString('pt-BR'),
+      })
+    } catch {
+      toast('Erro ao buscar a venda.', 'error')
+    }
   }
 
   // Nome legível a partir do slug, só como último recurso de identificação
@@ -832,12 +974,16 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               </button>
             ))}
           </div>
+          <Button variant="outline" size="sm" onClick={() => { setLinhaSel(0); setShowVendasDia(true) }}>
+            <Printer size={14} className="mr-1.5" /> 2ª via <span className="ml-1.5 text-gray-400">(Ctrl+P)</span>
+          </Button>
           <InfoTip titulo="Atalhos" ariaLabel="Atalhos de teclado">
             <span className="block">F2 — buscar produto</span>
             <span className="block">F3 — cliente</span>
             <span className="block">F6 — desconto</span>
-            <span className="block">F8 — forma de pagamento</span>
+            <span className="block">F8 — ir direto ao pagamento</span>
             <span className="block">F10 — avançar / finalizar</span>
+            <span className="block">Ctrl + P — reimprimir cupom do dia</span>
             <span className="block">Ctrl + Delete — limpar carrinho</span>
             <span className="block">Esc — voltar</span>
           </InfoTip>
@@ -973,6 +1119,15 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <span className="ml-2 text-xs font-normal opacity-70">(F10)</span>
                 <ChevronRight size={16} className="ml-1" />
               </Button>
+              {/* O F8 sempre pulou a revisão e caiu no pagamento, mas isso só
+                  estava escrito no InfoTip de atalhos. Quem usa o balcão sem
+                  mouse não descobre o que a tela não mostra. */}
+              <button
+                onClick={() => { abrirPainel('pagamento'); setTimeout(() => pgtoRef.current?.focus(), 120) }}
+                disabled={carrinho.length === 0}
+                className="h-12 px-4 text-sm font-medium text-gray-500 hover:text-gray-900 disabled:opacity-40 disabled:hover:text-gray-500">
+                Pagamento <span className="text-xs opacity-70">(F8)</span>
+              </button>
             </div>
           </>
         )}
@@ -1214,9 +1369,42 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                       <Input value={novoCli.celular} onChange={e => setCli('celular', e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 00000-0000" />
                     </div>
                   </div>
-                  <div>
-                    <Label className="text-xs">E-mail</Label>
-                    <Input type="email" value={novoCli.email} onChange={e => setCli('email', e.target.value)} className="mt-1 h-9 text-sm" placeholder="email@exemplo.com" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      {/* O gerencial guarda fixo e celular em colunas separadas.
+                          Com um campo só aqui, o fixo caía em `celular` e depois
+                          ninguém achava o número no cadastro completo. */}
+                      <Label className="text-xs">Telefone fixo</Label>
+                      <Input value={novoCli.telefone} onChange={e => setCli('telefone', e.target.value)} className="mt-1 h-9 text-sm" placeholder="(00) 0000-0000" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">E-mail</Label>
+                      <Input type="email" value={novoCli.email} onChange={e => setCli('email', e.target.value)} className="mt-1 h-9 text-sm" placeholder="email@exemplo.com" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs">CEP</Label>
+                      <Input value={novoCli.cep} onChange={e => setCli('cep', e.target.value)} className="mt-1 h-9 text-sm" placeholder="00000-000" />
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Endereço</Label>
+                      <Input value={novoCli.endereco} onChange={e => setCli('endereco', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Rua, avenida..." />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <Label className="text-xs">Número</Label>
+                      <Input value={novoCli.numero} onChange={e => setCli('numero', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Nº" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Compl.</Label>
+                      <Input value={novoCli.complemento} onChange={e => setCli('complemento', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Apto" />
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-xs">Bairro</Label>
+                      <Input value={novoCli.bairro} onChange={e => setCli('bairro', e.target.value)} className="mt-1 h-9 text-sm" placeholder="Bairro" />
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-3">
                     <div className="col-span-2">
@@ -1253,6 +1441,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <Label className="text-xs">Endereço de entrega *</Label>
                     <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)}
                       className="mt-1 h-9 text-sm" placeholder="Rua, número, bairro, cidade" />
+                    <MarcaEndereco cadastro={enderecoCadastro} atual={enderecoEntrega} onRestaurar={setEnderecoEntrega} />
                   </div>
                   <div>
                     <Label className="text-xs">Data de entrega</Label>
@@ -1368,6 +1557,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                       <div>
                         <Label className="text-xs">Endereço de entrega</Label>
                         <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                        <MarcaEndereco cadastro={enderecoCadastro} atual={enderecoEntrega} onRestaurar={setEnderecoEntrega} />
                       </div>
                     </>
                   )}
@@ -1402,6 +1592,56 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               </div>
             </div>
           )}
+        </SidePanel>
+      )}
+
+      {/* VENDAS DO DIA — REIMPRESSÃO.
+          Painel próprio, e não um item do menu gerencial: o cliente que volta
+          pedindo a segunda via está no balcão, e quem atende é o operador. */}
+      {showVendasDia && (
+        <SidePanel
+          titulo="Vendas de hoje"
+          subtitulo="Setas para escolher · Enter imprime · Esc fecha"
+          onClose={() => setShowVendasDia(false)}
+          largura="w-[34vw] min-w-[480px]"
+        >
+          <div className="p-4">
+            {carregandoVendas ? (
+              <p className="text-center text-sm text-gray-400 py-10">Carregando...</p>
+            ) : vendasDia.length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-10">Nenhuma venda registrada hoje.</p>
+            ) : (
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                {vendasDia.map((v: any, i: number) => (
+                  <div
+                    key={v.vendaId}
+                    onMouseEnter={() => setLinhaSel(i)}
+                    className={`flex items-center gap-3 px-3 py-2.5 border-b border-gray-50 last:border-0 ${
+                      i === linhaSel ? 'bg-green-50/70' : ''
+                    }`}>
+                    <span className="text-xs text-gray-400 w-14 flex-shrink-0">
+                      #{String(v.vendaId).padStart(4, '0')}
+                    </span>
+                    <span className="text-xs text-gray-500 w-12 flex-shrink-0">
+                      {new Date(v.vendidaEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-sm text-gray-900 flex-1 min-w-0 truncate" title={v.clienteNome}>
+                      {v.clienteNome}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-900 w-24 text-right flex-shrink-0">
+                      {fmt(Number(v.total ?? 0))}
+                    </span>
+                    <Button size="sm" variant="outline" onClick={() => reimprimir(v.vendaId)}>
+                      <Printer size={13} className="mr-1" /> 2ª via
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-[11px] text-gray-400">
+              A reimpressão sai marcada como 2ª via. Troco e acréscimo não constam: não ficam gravados na venda.
+            </p>
+          </div>
         </SidePanel>
       )}
 

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { MarcaEndereco, enderecoDoCadastro } from '@/components/ui/MarcaEndereco'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { EditarVendaPanel } from '@/components/modules/vendas/EditarVendaPanel'
 import { PageHeader } from '@/components/ui/PageHeader'
@@ -113,6 +114,9 @@ export default function VendasView({ tenantSlug }: Props) {
   const [vendidaEm, setVendidaEm] = useState(localNow())
   const [dataEntrega, setDataEntrega]         = useState('')
   const [enderecoEntrega, setEnderecoEntrega] = useState('')
+  // Guarda o endereço do cadastro do cliente escolhido, para a marca saber
+  // comparar e para o botão de restaurar ter o que devolver.
+  const [enderecoCadastro, setEnderecoCadastro] = useState('')
   const [vendedor, setVendedor]               = useState('')
   const [observacao, setObservacao]           = useState('')
   const [desconto, setDesconto]               = useState('0')
@@ -291,7 +295,7 @@ export default function VendasView({ tenantSlug }: Props) {
     setItens([novoItem()])
     setPagamentos([{ forma: formasNomes[0] ?? 'PIX', valor: '' }])
     setClienteId(''); setClienteNomeDisplay(''); setBuscaCliente(''); setTipoEntrega('')
-    setDataEntrega(''); setEnderecoEntrega(''); setVendedor(''); setObservacao(''); setDesconto('0'); setAcrescimo('0')
+    setDataEntrega(''); setEnderecoEntrega(''); setEnderecoCadastro(''); setVendedor(''); setObservacao(''); setDesconto('0'); setAcrescimo('0')
     setUsarCashback(false); setVendidaEm(localNow())
   }
 
@@ -553,7 +557,9 @@ export default function VendasView({ tenantSlug }: Props) {
                       setUsarCashback(false)
                       // Auto-preenche endereço se disponível
                       const c = clientes.find((x: any) => String(x.clienteId) === e.target.value)
-                      if (c?.endereco) setEnderecoEntrega(`${c.endereco}${c.numero ? ', ' + c.numero : ''} — ${c.cidade}/${c.uf}`)
+                      const doCadastro = enderecoDoCadastro(c)
+                      setEnderecoCadastro(doCadastro)
+                      if (doCadastro) setEnderecoEntrega(doCadastro)
                     }}
                     className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none"
                   >
@@ -597,6 +603,7 @@ export default function VendasView({ tenantSlug }: Props) {
                 <div>
                   <Label>Endereço Entrega</Label>
                   <Input value={enderecoEntrega} onChange={e => setEnderecoEntrega(e.target.value)} className="mt-1 h-9 text-sm" />
+                  <MarcaEndereco cadastro={enderecoCadastro} atual={enderecoEntrega} onRestaurar={setEnderecoEntrega} />
                 </div>
               </div>
 

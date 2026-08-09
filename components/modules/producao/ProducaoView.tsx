@@ -224,6 +224,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const produtos = Array.isArray(grade.produtos) ? grade.produtos : []
   const celulas = grade.grade ?? {}     // grade[produtoId][data] = qtd produção
   const celulasPed = grade.pedidos ?? {}   // pedidos[produtoId][data] = qtd pedido
+  // prontos[produtoId] = qtd em pedido pronto e não entregue. Está no estoque,
+  // mas já tem dono.
+  const prontos: Record<number, number> = grade.prontos ?? {}
 
   // registrados[produtoId][data] = { planejada, produzida, ... }
   const registrados = registrosData?.data?.porProdutoData ?? {}
@@ -483,7 +486,14 @@ export default function ProducaoView({ tenantSlug }: Props) {
                   </th>
                 ))}
                 <th className="sticky top-0 z-20 text-center text-xs font-medium text-blue-600 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Total Pedido</th>
-                <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prev. Est.</th>
+                <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">
+                  <span className="inline-flex items-center gap-1">
+                    Prev. Est.
+                    <InfoTip titulo="Previsão de estoque">
+                      Estoque de hoje mais o que ainda será produzido, menos tudo que já tem dono e não saiu — inclusive pedido pronto aguardando retirada.
+                    </InfoTip>
+                  </span>
+                </th>
                 <th className="sticky top-0 z-20 text-center text-xs font-bold text-orange-600 px-2 py-2 w-24 bg-orange-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prod. Semanal Necessária</th>
               </tr>
             </thead>
@@ -492,7 +502,10 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 <tr><td colSpan={3 + DIAS.length * 3 + 3} className="px-4 py-12 text-center text-sm text-gray-400">Nenhum produto cadastrado.</td></tr>
               ) : produtos.map((p: any) => {
                 const estoque = p.estoqueAtual ?? 0
-                let totalPed = 0, totalPrev = 0
+                // totalPrevAberto: só o planejado que AINDA NÃO foi registrado.
+                // Registrar produção já soma no estoque_atual — contar a célula
+                // registrada de novo somaria a mesma fornada duas vezes.
+                let totalPed = 0, totalPrevAberto = 0
 
                 return (
                   <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/30 last:border-0">
@@ -511,9 +524,8 @@ export default function ProducaoView({ tenantSlug }: Props) {
                       const d = isoDate(dia)
                       const ped = celulasPed?.[p.produtoId]?.[d] ?? 0
                       const reg = registrados?.[p.produtoId]?.[d]
-                      const prev = reg ? Number(reg.produzida) : (celulas?.[p.produtoId]?.[d] ?? 0)
                       totalPed += ped
-                      totalPrev += prev
+                      if (!reg) totalPrevAberto += (celulas?.[p.produtoId]?.[d] ?? 0)
                       return (
                         <td key={`dia-${d}`} className="px-0 py-2 align-middle" colSpan={3}>
                           <div className="grid grid-cols-3">
@@ -551,7 +563,11 @@ export default function ProducaoView({ tenantSlug }: Props) {
                     </td>
                     <td className="px-2 py-3 text-center align-middle">
                       {(() => {
-                        const prevEst = estoque + totalPrev - totalPed
+                        // Estoque de agora + o que ainda vai ser produzido
+                        // − tudo que já tem dono e não saiu (pedido em aberto
+                        // na semana + pedido pronto aguardando retirada).
+                        const comprometido = totalPed + (prontos[p.produtoId] ?? 0)
+                        const prevEst = estoque + totalPrevAberto - comprometido
                         return <span className={`text-sm font-semibold ${prevEst < 0 ? 'text-red-600' : 'text-gray-700'}`}>{prevEst}</span>
                       })()}
                     </td>
