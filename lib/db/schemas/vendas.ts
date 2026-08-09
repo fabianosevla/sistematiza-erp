@@ -27,6 +27,10 @@ export const dbConfiguracoesTenant = pgTable('t_configuracoes_tenant', {
   // emite nota pode querer o controle mesmo assim.
   // Ver scripts/migrate-turno-caixa.js
   turnoCaixaAtivo:   boolean('turno_caixa_ativo').notNull().default(false),
+  // Quantos computadores vendem. Com 1, o PDV assume o caixa 1 e não pergunta.
+  qtdCaixas:         integer('qtd_caixas').notNull().default(1),
+  // dia | operador — ver lib/services/caixa/CaixaService.ts
+  regimeTurno:       varchar('regime_turno', { length: 10 }).notNull().default('dia'),
   consultasAtivo:    boolean('consultas_ativo').notNull().default(true),
   pedidosAtivo:      boolean('pedidos_ativo').notNull().default(true),
   planoAcaoAtivo:    boolean('plano_acao_ativo').notNull().default(true),

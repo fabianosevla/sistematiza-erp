@@ -59,6 +59,9 @@ const COLUNAS = {
   t_configuracoes_tenant: [
     // dia | operador
     ['regime_turno', "VARCHAR(10) NOT NULL DEFAULT 'dia'"],
+    // Quantos PCs vendem. Com 1, o sistema nao pergunta qual maquina e —
+    // perguntar numa loja de balcao unico e cerimonia sem funcao.
+    ['qtd_caixas',   'INTEGER NOT NULL DEFAULT 1'],
   ],
   t_turno_caixa: [
     // Preenchido no fechamento: o que o sistema calculou que deveria haver.

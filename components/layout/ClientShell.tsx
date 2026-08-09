@@ -10,6 +10,8 @@ export interface Config {
   estoqueAtivo:    boolean
   fiscalAtivo:     boolean
   turnoCaixaAtivo: boolean
+  qtdCaixas:       number
+  regimeTurno:     string
   consultasAtivo:  boolean
   pedidosAtivo:    boolean
   planoAcaoAtivo:  boolean

@@ -9,6 +9,7 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import PainelCaixa, { useNumeroCaixa } from '@/components/modules/caixa/PainelCaixa'
 import { fmtMoeda as fmt } from '@/lib/format'
 import { TIPOS_PRECO } from '@/lib/constants'
 
@@ -137,17 +138,22 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const fiscalAtivo     = cfgFiscalRaw?.data?.fiscalAtivo === true
   const turnoObrigatorio = cfgFiscalRaw?.data?.turnoCaixaAtivo === true
 
+  // Número desta máquina. Vive no navegador — dois PCs na mesma rede são
+  // idênticos para o servidor, então não há como deduzir.
+  const qtdCaixas = Number(cfgFiscalRaw?.data?.qtdCaixas ?? 1)
+  const { numero: numeroCaixa } = useNumeroCaixa(qtdCaixas)
+
   // TURNO DE CAIXA.
   //
   // Só vale quando o cliente contratou o controle. Desligado — que é o padrão
   // — nada disto aparece e o PDV vende como sempre vendeu.
   const { data: turnoRaw } = useQuery({
-    queryKey: ['turno-caixa', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fiscal?turno=true`)).json(),
+    queryKey: ['caixa', tenantSlug, numeroCaixa],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/caixa?numeroCaixa=${numeroCaixa ?? ''}`)).json(),
     enabled:  turnoObrigatorio,
     refetchInterval: turnoObrigatorio ? 60000 : false,
   })
-  const turnoAberto = turnoRaw?.data ?? null
+  const turnoAberto = turnoRaw?.data?.meu ?? null
   const caixaTravado = turnoObrigatorio && !turnoAberto
 
   // Fluxo de finalização: "Finalizar" abre "Deseja confirmar a venda?" (Sim/Não).
@@ -302,6 +308,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           vendedor:       vendedor || undefined,
           observacao:     observacao || undefined,
           documentoFiscal: comNota ? 'nfce' : 'nenhum',
+          numeroCaixa:     numeroCaixa ?? undefined,
           // O desconto de cada linha vai no próprio item; o servidor soma tudo
           // no desconto da venda. tipoPrecao diz ao VendaService qual coluna de
           // preço usar — e fica gravado em t_venda_item para o histórico.
@@ -1374,11 +1381,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 </label>
               )}
 
-              {/* Caixa fechado: impedimento anterior a qualquer outro. */}
-              {caixaTravado && (
-                <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  Caixa fechado. Abra o turno em Fiscal para vender.
-                </p>
+              {/* Controle de caixa: abrir, sangria, suprimento e fechamento.
+                  Fica aqui, no PDV, porque quem opera o caixa é quem vende — o
+                  perfil Vendedor não tem acesso ao gerencial. */}
+              {turnoObrigatorio && (
+                <PainelCaixa tenantSlug={tenantSlug} operador={vendedor} qtdCaixas={qtdCaixas} compacto />
               )}
 
               {/* Impedimento real: sem endereço a venda de delivery não fecha. */}

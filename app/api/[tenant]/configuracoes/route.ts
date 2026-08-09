@@ -22,6 +22,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         estoqueAtivo:    r.estoque_ativo    ?? true,
         fiscalAtivo:     r.fiscal_ativo     ?? false,
         turnoCaixaAtivo: r.turno_caixa_ativo ?? false,
+        qtdCaixas:       r.qtd_caixas   ?? 1,
+        regimeTurno:     r.regime_turno ?? 'dia',
         consultasAtivo:  r.consultas_ativo  ?? true,
         pedidosAtivo:    r.pedidos_ativo    ?? true,
         planoAcaoAtivo:  r.plano_acao_ativo ?? false,
@@ -100,6 +102,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['estoque_ativo',            body.estoqueAtivo],
         ['fiscal_ativo',             body.fiscalAtivo],
         ['turno_caixa_ativo',        body.turnoCaixaAtivo],
+        ['qtd_caixas',               body.qtdCaixas],
+        ['regime_turno',             body.regimeTurno],
         // Fiscal — parametrização
         ['crt',                      body.crt],
         ['regime_tributario',        body.regimeTributario],
