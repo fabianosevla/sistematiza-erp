@@ -31,10 +31,10 @@ type CelulaKey = { produtoId: number; data: string; tipo: 'producao' | 'pedido' 
 // Precisa ser tipada porque `produtos` vem da API como any e o TS não
 // consegue inferir o item do flatMap sozinho.
 interface CelulaPendente {
-  produtoId:  number
-  nome:       string
-  unidade:    string
-  data:       string
+  produtoId: number
+  nome: string
+  unidade: string
+  data: string
   quantidade: number
 }
 
@@ -79,38 +79,37 @@ function CelulaEditavel({
   registrado, isEdit, valor, valorCelula,
   onChangeValor, onSalvar, onCancelar, onIniciar,
 }: {
-  registrado:    { produzida: number } | null
-  isEdit:        boolean
-  valor:         number
-  valorCelula:   string
+  registrado: { produzida: number } | null
+  isEdit: boolean
+  valor: number
+  valorCelula: string
   onChangeValor: (v: string) => void
-  onSalvar:      () => void
-  onCancelar:    () => void
-  onIniciar:     () => void
+  onSalvar: () => void
+  onCancelar: () => void
+  onIniciar: () => void
 }) {
   if (registrado) return <CelulaTravada produzida={registrado.produzida} />
 
   if (isEdit) {
+    // Texto, não number: a tecla decimal do teclado numérico brasileiro é a
+    // vírgula, e <input type="number"> devolve string vazia para "1," —
+    // o número digitado sumia no meio.
     return (
-      {/* Texto, não number: a tecla decimal do teclado numérico brasileiro é a
-          vírgula, e <input type="number"> devolve string vazia para "1," —
-          o número digitado sumia no meio. */}
       <input type="text" inputMode="decimal" value={valorCelula}
         onChange={e => onChangeValor(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.'))}
         onBlur={onSalvar}
         onKeyDown={e => {
-          if (e.key === 'Enter')  onSalvar()
+          if (e.key === 'Enter') onSalvar()
           if (e.key === 'Escape') onCancelar()
         }}
         className="w-10 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
-    )
+
   }
 
   return (
     <button onClick={onIniciar}
-      className={`w-10 h-6 rounded text-xs font-medium transition-colors ${
-        valor > 0 ? 'bg-green-100 text-green-700 hover:opacity-80' : 'text-gray-200 hover:bg-gray-100'
-      }`}>
+      className={`w-10 h-6 rounded text-xs font-medium transition-colors ${valor > 0 ? 'bg-green-100 text-green-700 hover:opacity-80' : 'text-gray-200 hover:bg-gray-100'
+        }`}>
       {valor > 0 ? valor : '—'}
     </button>
   )
@@ -121,9 +120,9 @@ function CelulaProduzida({
   registrado, futuro, valor, onChange,
 }: {
   registrado: { produzida: number } | null
-  futuro:     boolean
-  valor:      number
-  onChange:   (v: number) => void
+  futuro: boolean
+  valor: number
+  onChange: (v: number) => void
 }) {
   if (registrado) return <CelulaTravada produzida={registrado.produzida} />
 
@@ -138,27 +137,26 @@ function CelulaProduzida({
       valor={valor} decimais={3}
       onChange={onChange}
       placeholder="—"
-      className={`w-10 h-6 text-center text-xs rounded border transition-colors ${
-        valor > 0
+      className={`w-10 h-6 text-center text-xs rounded border transition-colors ${valor > 0
           ? 'border-green-300 bg-green-50 text-green-800 font-medium'
           : 'border-gray-200 text-gray-400 hover:border-gray-300'
-      } focus:outline-none focus:border-green-400`}
+        } focus:outline-none focus:border-green-400`}
     />
   )
 }
 
 export default function ProducaoView({ tenantSlug }: Props) {
-  const qc        = useQueryClient()
+  const qc = useQueryClient()
   const { toast } = useToast()
 
-  const [weekOffset, setWeekOffset]         = useState(0)
+  const [weekOffset, setWeekOffset] = useState(0)
   const [editandoCelula, setEditandoCelula] = useState<CelulaKey | null>(null)
-  const [valorCelula, setValorCelula]       = useState('')
-  const [showPrevisao, setShowPrevisao]     = useState(false)
-  const [showRegistro, setShowRegistro]     = useState(false)
+  const [valorCelula, setValorCelula] = useState('')
+  const [showPrevisao, setShowPrevisao] = useState(false)
+  const [showRegistro, setShowRegistro] = useState(false)
   // Dias marcados no modal. Vazio = nada será registrado.
   const [diasSelecionados, setDiasSelecionados] = useState<string[]>([])
-  const [ciente, setCiente]                 = useState(false)
+  const [ciente, setCiente] = useState(false)
 
   // ── PREVISTO × PRODUZIDO ─────────────────────────────────────────────────
   //
@@ -183,31 +181,31 @@ export default function ProducaoView({ tenantSlug }: Props) {
     return produzidas?.[produtoId]?.[data] ?? 0
   }
 
-  const dias   = getWeekDates(weekOffset)
+  const dias = getWeekDates(weekOffset)
   const inicio = isoDate(dias[0])
-  const fim    = isoDate(dias[5])
+  const fim = isoDate(dias[5])
 
   const { data: gradeData } = useQuery({
     queryKey: ['producao-grade', tenantSlug, inicio, fim],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/grade?inicio=${inicio}&fim=${fim}`)).json(),
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/producao/grade?inicio=${inicio}&fim=${fim}`)).json(),
   })
 
   // Células já lançadas: viram cinza e param de aceitar edição.
   const { data: registrosData } = useQuery({
     queryKey: ['producao-registros', tenantSlug, inicio, fim],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/registrar?inicio=${inicio}&fim=${fim}`)).json(),
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/producao/registrar?inicio=${inicio}&fim=${fim}`)).json(),
   })
 
   const { data: previsaoData } = useQuery({
     queryKey: ['producao-previsao', tenantSlug, inicio, fim],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/producao/previsao?inicio=${inicio}&fim=${fim}`)).json(),
-    enabled:  showPrevisao,
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/producao/previsao?inicio=${inicio}&fim=${fim}`)).json(),
+    enabled: showPrevisao,
   })
 
   // Previsão semanal necessária — média histórica de todos os meses anteriores ÷ 4
   const { data: prevSemanalData } = useQuery({
     queryKey: ['previsao-semanal', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/metas?tipo=previsao&mes=${new Date().getMonth() + 1}&ano=${new Date().getFullYear()}&mesesHistorico=12`)).json(),
+    queryFn: async () => (await fetch(`/api/${tenantSlug}/metas?tipo=previsao&mes=${new Date().getMonth() + 1}&ano=${new Date().getFullYear()}&mesesHistorico=12`)).json(),
     staleTime: 300000,
   })
 
@@ -222,9 +220,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
     },
   })
 
-  const grade      = gradeData?.data ?? gradeData ?? {}
-  const produtos   = Array.isArray(grade.produtos) ? grade.produtos : []
-  const celulas    = grade.grade ?? {}     // grade[produtoId][data] = qtd produção
+  const grade = gradeData?.data ?? gradeData ?? {}
+  const produtos = Array.isArray(grade.produtos) ? grade.produtos : []
+  const celulas = grade.grade ?? {}     // grade[produtoId][data] = qtd produção
   const celulasPed = grade.pedidos ?? {}   // pedidos[produtoId][data] = qtd pedido
 
   // registrados[produtoId][data] = { planejada, produzida, ... }
@@ -234,9 +232,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
   }
 
   const previsao = Array.isArray(previsaoData?.data?.itens) ? previsaoData.data.itens
-    : Array.isArray(previsaoData?.data)  ? previsaoData.data
-    : Array.isArray(previsaoData?.itens) ? previsaoData.itens
-    : Array.isArray(previsaoData) ? previsaoData : []
+    : Array.isArray(previsaoData?.data) ? previsaoData.data
+      : Array.isArray(previsaoData?.itens) ? previsaoData.itens
+        : Array.isArray(previsaoData) ? previsaoData : []
 
   const prevSemanal: Record<number, number> = {}
   for (const p of (prevSemanalData?.data?.produtos ?? [])) {
@@ -252,10 +250,10 @@ export default function ProducaoView({ tenantSlug }: Props) {
       .map(d => isoDate(d))
       .filter((d: string) => d <= HOJE)
       .map((d: string): CelulaPendente => ({
-        produtoId:  p.produtoId,
-        nome:       p.nome,
-        unidade:    p.unidade,
-        data:       d,
+        produtoId: p.produtoId,
+        nome: p.nome,
+        unidade: p.unidade,
+        data: d,
         quantidade: getProduzida(p.produtoId, d),
       }))
       .filter((c: CelulaPendente) => c.quantidade > 0 && !jaRegistrada(c.produtoId, c.data))
@@ -269,9 +267,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
     .map((d: string) => {
       const doDia = pendentes.filter(c => c.data === d)
       return {
-        data:     d,
+        data: d,
         produtos: doDia.length,
-        total:    doDia.reduce((a, c) => a + c.quantidade, 0),
+        total: doDia.reduce((a, c) => a + c.quantidade, 0),
       }
     })
     .filter(d => d.produtos > 0)
@@ -284,7 +282,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
 
   const { data: previaRaw, isFetching: carregandoPrevia } = useQuery({
     queryKey: ['producao-previa-lote', tenantSlug, JSON.stringify(itensSelecionados)],
-    queryFn:  async () => {
+    queryFn: async () => {
       const res = await fetch(`/api/${tenantSlug}/producao/registrar`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmar: false, itens: itensSelecionados }),
@@ -388,7 +386,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const totaisPrevDia: Record<string, number> = {}
   for (const dia of dias) {
     const d = isoDate(dia)
-    totaisPedDia[d]  = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
+    totaisPedDia[d] = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
     totaisPrevDia[d] = produtos.reduce((a: number, p: any) => {
       const reg = registrados?.[p.produtoId]?.[d]
       return a + (reg ? Number(reg.produzida) : (celulas?.[p.produtoId]?.[d] ?? 0))
@@ -510,11 +508,11 @@ export default function ProducaoView({ tenantSlug }: Props) {
                       <span className={`text-sm font-semibold ${estoque <= (p.estoqueMinimo ?? 0) ? 'text-red-600' : 'text-gray-700'}`}>{estoque}</span>
                     </td>
                     {dias.map(dia => {
-                      const d    = isoDate(dia)
-                      const ped  = celulasPed?.[p.produtoId]?.[d] ?? 0
-                      const reg  = registrados?.[p.produtoId]?.[d]
+                      const d = isoDate(dia)
+                      const ped = celulasPed?.[p.produtoId]?.[d] ?? 0
+                      const reg = registrados?.[p.produtoId]?.[d]
                       const prev = reg ? Number(reg.produzida) : (celulas?.[p.produtoId]?.[d] ?? 0)
-                      totalPed  += ped
+                      totalPed += ped
                       totalPrev += prev
                       return (
                         <td key={`dia-${d}`} className="px-0 py-2 align-middle" colSpan={3}>
@@ -679,13 +677,12 @@ export default function ProducaoView({ tenantSlug }: Props) {
               <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
                 {diasComPendencia.map(d => {
                   const marcado = diasSelecionados.includes(d.data)
-                  const rotulo  = DIAS[dias.findIndex(x => isoDate(x) === d.data)] ?? ''
+                  const rotulo = DIAS[dias.findIndex(x => isoDate(x) === d.data)] ?? ''
                   return (
                     <label
                       key={d.data}
-                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                        marcado ? 'bg-green-50/60' : 'hover:bg-gray-50'
-                      }`}>
+                      className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${marcado ? 'bg-green-50/60' : 'hover:bg-gray-50'
+                        }`}>
                       <input
                         type="checkbox"
                         checked={marcado}
