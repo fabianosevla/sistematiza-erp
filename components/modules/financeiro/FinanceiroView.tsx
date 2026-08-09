@@ -14,6 +14,7 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { SidePanel }    from '@/components/ui/SidePanel'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
+import HistoricoCaixaTab from '@/components/modules/caixa/HistoricoCaixaTab'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -30,7 +31,7 @@ const CATEGORIAS_DESPESA = [
 
 // 'conciliacao' saiu: era o importador de extrato bancário OFX, ferramenta de
 // escritório contábil que ninguém usava aqui.
-type Aba = 'despesas' | 'dre' | 'gastos-fixos' | 'demonstrativo' | 'a-pagar' | 'a-receber'
+type Aba = 'despesas' | 'dre' | 'gastos-fixos' | 'demonstrativo' | 'a-pagar' | 'a-receber' | 'caixa'
 
 export default function FinanceiroView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
@@ -324,6 +325,10 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     { key: 'demonstrativo', label: 'Demonstrativo' },
     { key: 'a-pagar',       label: 'A Pagar'       },
     { key: 'a-receber',     label: 'A Receber'     },
+    // Caixa é controle de dinheiro, e por isso mora aqui — não no fiscal,
+    // onde estava por acidente de história. A operação (abrir, sangria,
+    // fechar) fica no PDV, com o operador; aqui é a leitura do gestor.
+    { key: 'caixa',         label: 'Caixa'         },
   ]
 
   // KPIs calculados do DRE
@@ -806,6 +811,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
 
       {aba === 'a-pagar'     && <ContasPagarView   tenantSlug={tenantSlug} />}
       {aba === 'a-receber'   && <ContasReceberView tenantSlug={tenantSlug} />}
+      {aba === 'caixa'       && <HistoricoCaixaTab tenantSlug={tenantSlug} />}
 
       {/* Painel despesa */}
       {showDespesa && (

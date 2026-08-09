@@ -5,28 +5,80 @@ promessa de fazer agora; é garantia de não esquecer.
 
 ---
 
-## 0. Scripts pendentes de execução
+## 0. TESTES PENDENTES — nada disso foi validado em uso real
+
+Três frentes construídas e não testadas. Enquanto ninguém usou, é teoria.
+
+### Novo Financeiro
+
+Caixa, e o fluxo de dinheiro que mudou de lugar.
+
+- Abrir caixa no PDV, vender, sangria, suprimento, fechar conferindo
+- Conferir se a diferença calculada bate com a conta feita à mão
+- Histórico em Financeiro → Caixa: diferença por turno e por caixa
+- Entrega de pedido gera conta a receber e **não** gera venda
+- Baixa da conta a receber **gera** a venda, datada no recebimento
+- Pagamento de conta a pagar gera a despesa, datada no pagamento
+- Venda com e sem nota, e a coluna Nota em Consultas
+- **Pendente de decisão:** quebrar Financeiro em 4 submenus
+  (Contas a Pagar · Contas a Receber · Despesas · Resultado).
+  Adiado de propósito: refatoração de 904 linhas em cima de muita mudança
+  não testada esconde a causa quando algo quebra.
+
+### Tenantização — clientes novos
+
+- Provisionar um `tenant_teste` e rodar `comparar-schemas.js`
+- Navegar o sistema inteiro por ele: PDV, pedidos, produção, estoque,
+  compras, financeiro, consultas
+- Cadastrar o mesmo e-mail em duas empresas e conferir a tela de escolha
+- Convidar alguém e confirmar que o vínculo se faz sozinho no primeiro acesso
+
+O passo mais provável de revelar buraco é o cadastro da empresa em
+Configurações: a linha de `t_configuracoes_tenant` é montada por inspeção de
+colunas, e é a parte do provisionamento com mais chance de ter errado.
+
+### Fiscal — a desenvolver junto com a Zaghi e o contador
+
+Não é teste de tela: é implantação com terceiros.
+
+1. Conta na Focus NFe, com o CNPJ da Zaghi
+2. Certificado A1 — **confirmar que não é A3**
+3. Tabela A com o contador (8 campos, não depende dos produtos)
+4. Emitir em **homologação** pelo módulo Fiscal
+5. Só então Tabelas B e C, e produção
+
+O desenho do PDV fiscal — o que fazer quando a nota não sai com o cliente
+esperando — fica para depois da primeira emissão em homologação. É lá que se
+descobre quanto tempo a autorização demora e o que a SEFAZ devolve quando cai.
+
+**Série diferente do Everest.** Everest na 1, Sistematiza na 2. Mesma série
+nos dois sistemas gera duplicidade de numeração.
+
+---
+
+## 0.1 Scripts pendentes de execução
 
 Cada um simula por padrão e só grava com `--aplicar`. **Rode a simulação e leia
-a saída antes de aplicar.** A ordem importa: os de estrutura vêm antes dos de
-dado.
+a saída antes de aplicar.** Estrutura antes de dado.
 
 ```
 # Estrutura
 node scripts/migrate-conta-receber-ajustes.js
 node scripts/migrate-conta-receber-data-entrega.js
 node scripts/migrate-fiscal-parametrizacao.js
+node scripts/migrate-turno-caixa.js
+node scripts/migrate-caixa-e-fiscal.js
 
 # Dado
 node scripts/migrate-despesa-de-conta-pagar.js
-node scripts/desfazer-vendas-de-pedido.js
 node scripts/fix-estoque-canelloni.js
+node scripts/desfazer-vendas-de-pedido.js
 ```
 
-**`desfazer-vendas-de-pedido` por último, e sabendo o que faz:** ele inativa as
-vendas geradas pela regra antiga de entrega. O faturamento de meses passados
-vai cair, e volta conforme as contas a receber forem baixadas. Não é perda de
-dado — é a régua nova aplicada ao histórico.
+**`desfazer-vendas-de-pedido` por último.** Ele inativa as vendas geradas pela
+regra antiga de entrega. O faturamento de meses passados cai e volta conforme
+as contas a receber forem baixadas. Não é perda de dado — é a régua nova
+aplicada ao histórico. Você já inativou manualmente parte desses pedidos.
 
 **`migrate-despesa-de-conta-pagar` piora o DRE passado.** Compra a prazo nunca
 virava despesa; agora vira, datada no pagamento. O lucro que aparecia estava
