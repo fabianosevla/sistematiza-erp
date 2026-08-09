@@ -20,7 +20,27 @@ export const dbTurnoCaixa = pgTable('t_turno_caixa', {
   status:          varchar('status', { length: 20 }).notNull().default('aberto'),
   valorAbertura:   integer('valor_abertura').notNull().default(0),
   valorFechamento: integer('valor_fechamento'),
+  // Congelados no fechamento, e não recalculados depois: uma venda cancelada
+  // amanhã mudaria o "esperado" de um turno já conferido e assinado.
+  valorEsperado:   integer('valor_esperado'),
+  diferenca:       integer('diferenca'),
   observacao:      varchar('observacao', { length: 500 }),
+})
+
+// SANGRIA E SUPRIMENTO.
+//
+// Retirar dinheiro para o cofre no meio do dia é operação normal. Sem
+// registro, toda retirada legítima vira falta no fechamento — e o operador
+// leva bronca por dinheiro que foi guardado corretamente.
+export const dbMovimentoCaixa = pgTable('t_movimento_caixa', {
+  movimentoId:  serial('movimento_id').primaryKey(),
+  ...auditFields,
+  turnoId:      integer('turno_id').notNull(),
+  // sangria = saiu da gaveta · suprimento = entrou
+  tipo:         varchar('tipo', { length: 12 }).notNull(),
+  valor:        integer('valor').notNull(),
+  motivo:       varchar('motivo', { length: 300 }),
+  ocorridoEm:   timestamp('ocorrido_em', { withTimezone: true }).notNull(),
 })
 
 // PERFIL TRIBUTARIO — a peça que torna o fiscal parametrizável.
@@ -121,6 +141,19 @@ export const dbNotaFiscalItem = pgTable('t_nota_fiscal_item', {
   valorIpi:       integer('valor_ipi').notNull().default(0),
   baseSt:         integer('base_st').notNull().default(0),
   valorSt:        integer('valor_st').notNull().default(0),
+  // PIS e COFINS: o perfil tributário guardava e a nota não tinha onde
+  // receber. A emissão mandava '07' — isento — para todo mundo, e alimento
+  // com alíquota zero saía igual a alimento tributado.
+  // Ver scripts/migrate-caixa-e-fiscal.js
+  cstPis:         varchar('cst_pis', { length: 2 }),
+  aliqPis:        numeric('aliq_pis', { precision: 5, scale: 4 }).notNull().default('0'),
+  valorPis:       integer('valor_pis').notNull().default(0),
+  cstCofins:      varchar('cst_cofins', { length: 2 }),
+  aliqCofins:     numeric('aliq_cofins', { precision: 5, scale: 4 }).notNull().default('0'),
+  valorCofins:    integer('valor_cofins').notNull().default(0),
+  // Nacional ou importada. Vem do produto.
+  origem:         varchar('origem', { length: 1 }).default('0'),
+  cest:           varchar('cest', { length: 10 }),
 })
 
 export type TpDbTurnoCaixaRow       = InferSelectModel<typeof dbTurnoCaixa>

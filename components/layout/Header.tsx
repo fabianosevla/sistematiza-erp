@@ -49,6 +49,9 @@ const MODULOS = [
   { key: 'fidelidadeAtivo',label: 'Fidelidade',        group: 'Gerencial'   },
   { key: 'planoAcaoAtivo', label: 'Plano de Ação',     group: 'Gerencial'   },
   { key: 'fiscalAtivo',    label: 'Fiscal (NFC-e)',    group: 'Gerencial'   },
+  // Turno de caixa nao e item de menu: e uma exigencia no PDV. Fica aqui
+  // porque e o mesmo tipo de escolha — o cliente contrata ou nao o controle.
+  { key: 'turnoCaixaAtivo', label: 'Turno de caixa no PDV', group: 'Operacional' },
 
   // NÃO acrescente aqui o que não é item do menu lateral.
   // Contas a Pagar, Contas a Receber e Conciliação são ABAS dentro de

@@ -71,7 +71,12 @@ export default function NovaNotaModal({ tenantSlug, tipoInicial, onClose }: Prop
           razaoSocial: razaoSocial || undefined,
           uf: uf || undefined,
           valorTotal,
+          // produtoId é o que liga o item ao NCM e ao perfil tributário. Sem
+          // ele a nota nasce sem classificação fiscal e a emissão recusa —
+          // e a tela deixava o operador escolher o produto do cadastro só
+          // para descartar o vínculo na hora de enviar.
           itens: itens.map(i => ({
+            produtoId:     i.produtoId,
             descricao:     i.descricao,
             quantidade:    i.quantidade,
             precoUnitario: Math.round(parseFloat(i.precoUnitario.replace(',', '.') || '0') * 100),

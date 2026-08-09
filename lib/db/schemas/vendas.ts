@@ -22,6 +22,11 @@ export const dbConfiguracoesTenant = pgTable('t_configuracoes_tenant', {
   producaoAtivo:     boolean('producao_ativo').notNull().default(true),
   estoqueAtivo:      boolean('estoque_ativo').notNull().default(true),
   fiscalAtivo:       boolean('fiscal_ativo').notNull().default(false),
+  // Controle de caixa: abrir com um valor, vender, fechar conferindo.
+  // Chave PRÓPRIA, e não carona no fiscal: NFC-e não exige turno, e quem não
+  // emite nota pode querer o controle mesmo assim.
+  // Ver scripts/migrate-turno-caixa.js
+  turnoCaixaAtivo:   boolean('turno_caixa_ativo').notNull().default(false),
   consultasAtivo:    boolean('consultas_ativo').notNull().default(true),
   pedidosAtivo:      boolean('pedidos_ativo').notNull().default(true),
   planoAcaoAtivo:    boolean('plano_acao_ativo').notNull().default(true),
@@ -95,6 +100,15 @@ export const dbVenda = pgTable('t_venda', {
   // no módulo Fiscal, e depende de parametrização e credenciamento.
   // Ver scripts/migrate-fiscal-parametrizacao.js
   documentoFiscal:   varchar('documento_fiscal', { length: 10 }).notNull().default('nenhum'),
+  // De qual caixa e de qual turno saiu esta venda.
+  //
+  // Sem isto, o fechamento sabe que a loja ficou R$ 50 curta mas não em qual
+  // máquina — e, com vários turnos abertos ao mesmo tempo, um relatório que
+  // filtra por horário mostraria o faturamento da loja inteira em cada caixa.
+  // Ver scripts/migrate-caixa-e-fiscal.js
+  turnoId:           integer('turno_id'),
+  numeroCaixa:       integer('numero_caixa'),
+  regimeTurno:       varchar('regime_turno', { length: 10 }),
   vendidaEm:         timestamp('vendida_em', { withTimezone: true }).notNull(),
 })
 

@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { ok, created, serverError } from '@/lib/api/responses'
@@ -20,6 +21,13 @@ export async function GET(req: NextRequest, { params }: Params) {
       const turno     = searchParams.get('turno')     === 'true'
       const relatorio = searchParams.get('relatorio') ?? undefined
       const service   = new FiscalService(db)
+
+      // Resumo do turno aberto: o que passou pelo caixa desde a abertura.
+      // Leitura, por isso GET.
+      if (searchParams.get('resumoTurno') === 'true') {
+        const t = await service.getTurnoAberto()
+        return ok(t ? await service.resumoTurno(t.turnoId) : null)
+      }
 
       if (relatorio === 'resumo-mensal') {
         const ano = Number(searchParams.get('ano') ?? new Date().getFullYear())
@@ -75,12 +83,16 @@ export async function POST(req: NextRequest, { params }: Params) {
 
       const fiscal  = new FiscalService(db)
       const config  = new ConfiguracoesService(db)
+      // Quem abriu o caixa, quem cancelou a nota. Antes ia 1 fixo nas cinco
+      // acoes — e num controle que existe para atribuir responsabilidade,
+      // gravar sempre a mesma pessoa anula o proposito.
+      const userId  = await usuarioAtualIdDb(db)
 
       if (action === 'abrir-turno') {
-        return created(await fiscal.abrirTurno({ ...body, userId: 1 }))
+        return created(await fiscal.abrirTurno({ ...body, userId }))
       }
       if (action === 'fechar-turno') {
-        return ok(await fiscal.fecharTurno({ ...body, userId: 1 }))
+        return ok(await fiscal.fecharTurno({ ...body, userId }))
       }
       if (action === 'emitir') {
         const cfg = await config.get()
@@ -98,7 +110,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
 
       const payload = notaSchema.parse(body)
-      const result  = await fiscal.criarNota({ ...payload, userId: 1 })
+      const result  = await fiscal.criarNota({ ...payload, userId })
       return created(result)
     } finally { release() }
   } catch (err) { return serverError(err) }

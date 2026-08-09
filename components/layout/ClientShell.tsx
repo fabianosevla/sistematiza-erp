@@ -9,6 +9,7 @@ export interface Config {
   producaoAtivo:   boolean
   estoqueAtivo:    boolean
   fiscalAtivo:     boolean
+  turnoCaixaAtivo: boolean
   consultasAtivo:  boolean
   pedidosAtivo:    boolean
   planoAcaoAtivo:  boolean

@@ -94,7 +94,7 @@ export default function FiscalView({ tenantSlug }: Props) {
 
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
         {([
-          { value: 'pdv',         label: 'PDV / Caixa' },
+          { value: 'pdv',         label: 'Caixa' },
           { value: 'nfe-saida',   label: 'NF-e Saída' },
           { value: 'nfe-entrada', label: 'NF-e Entrada' },
           { value: 'relatorios',  label: 'Relatórios' },
@@ -115,8 +115,7 @@ export default function FiscalView({ tenantSlug }: Props) {
                 <h2 className="text-sm font-semibold text-gray-700 inline-flex items-center gap-1">
                   Turno de Caixa
                   <InfoTip titulo="Turno de caixa">
-                    Enquanto o turno está aberto, as vendas do PDV podem gerar NFC-e.
-                    Ao fechar, o sistema registra o encerramento do período do operador.
+                    Controle de gaveta: abre com um valor, vende, fecha conferindo.
                   </InfoTip>
                 </h2>
                 {turno ? (
@@ -145,16 +144,16 @@ export default function FiscalView({ tenantSlug }: Props) {
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">NFC-e — Nota Fiscal do Consumidor</h2>
-              <Button size="sm" onClick={() => { setFiltroTipo('NFC-e'); setShowNovaNota(true) }} disabled={!turno}>
+              {/* A NFC-e NÃO depende do turno.
+                  Antes o botão ficava desabilitado com a mensagem "abra o turno
+                  de caixa para emitir NFC-e" — regra que esta tela inventou.
+                  Emissão de documento fiscal não tem relação com controle de
+                  gaveta, e o bloqueio viraria chamado de suporte no primeiro
+                  dia de uso em produção. */}
+              <Button size="sm" onClick={() => { setFiltroTipo('NFC-e'); setShowNovaNota(true) }}>
                 <Plus size={14} className="mr-1.5" /> Nova NFC-e
               </Button>
             </div>
-            {/* Condição real do sistema — não é explicação, continua na tela */}
-            {!turno && (
-              <Aviso tom="atencao" icone={<AlertTriangle size={15} className="text-amber-500 flex-shrink-0" />}>
-                Abra o turno de caixa para emitir NFC-e.
-              </Aviso>
-            )}
           </div>
 
           <NotasList notas={notas.filter((n: any) => n.tipo === 'NFC-e')} isLoading={isLoading}

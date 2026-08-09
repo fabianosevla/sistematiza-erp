@@ -134,7 +134,21 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
     staleTime: 5 * 60 * 1000,
   })
-  const fiscalAtivo = cfgFiscalRaw?.data?.fiscalAtivo === true
+  const fiscalAtivo     = cfgFiscalRaw?.data?.fiscalAtivo === true
+  const turnoObrigatorio = cfgFiscalRaw?.data?.turnoCaixaAtivo === true
+
+  // TURNO DE CAIXA.
+  //
+  // Só vale quando o cliente contratou o controle. Desligado — que é o padrão
+  // — nada disto aparece e o PDV vende como sempre vendeu.
+  const { data: turnoRaw } = useQuery({
+    queryKey: ['turno-caixa', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fiscal?turno=true`)).json(),
+    enabled:  turnoObrigatorio,
+    refetchInterval: turnoObrigatorio ? 60000 : false,
+  })
+  const turnoAberto = turnoRaw?.data ?? null
+  const caixaTravado = turnoObrigatorio && !turnoAberto
 
   // Fluxo de finalização: "Finalizar" abre "Deseja confirmar a venda?" (Sim/Não).
   // Após registrar, abre "Deseja imprimir cupom?" (Sim/Não) com os dados da
@@ -529,7 +543,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - totalAPagar) : 0
 
   const enderecoOk = !isDelivery || enderecoEntrega.trim().length > 0
-  const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk
+  // Caixa fechado bloqueia a venda — é o ponto do controle de turno. Sem esta
+  // linha o turno seria enfeite: abriria, fecharia, e as vendas aconteceriam
+  // do mesmo jeito, que era exatamente a situação de antes.
+  const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk && !caixaTravado
   const qtdItens = carrinho.reduce((a, i) => a + i.quantidade, 0)
 
   function abrirPainel(destino: EtapaPainel = 'itens') {
@@ -1355,6 +1372,13 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   />
                   <span className="text-sm text-gray-700">Emitir nota fiscal</span>
                 </label>
+              )}
+
+              {/* Caixa fechado: impedimento anterior a qualquer outro. */}
+              {caixaTravado && (
+                <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Caixa fechado. Abra o turno em Fiscal para vender.
+                </p>
               )}
 
               {/* Impedimento real: sem endereço a venda de delivery não fecha. */}

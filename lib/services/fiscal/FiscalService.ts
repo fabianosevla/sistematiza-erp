@@ -29,6 +29,55 @@ export class FiscalService {
     return result
   }
 
+  /**
+   * O que passou pelo caixa desde a abertura do turno.
+   *
+   * Sem isto o fechamento seria um campo de valor solto: o operador digitaria
+   * quanto tem na gaveta sem nada com que comparar. Aqui ele vê o esperado —
+   * abertura mais o que entrou em dinheiro — e a diferença aparece sozinha.
+   *
+   * Só DINHEIRO conta para a gaveta. Cartão e PIX não passam por ela, então
+   * somá-los criaria uma diferença que não existe.
+   */
+  async resumoTurno(turnoId: number) {
+    const [turno] = await this.db.select().from(dbTurnoCaixa)
+      .where(eq(dbTurnoCaixa.turnoId, turnoId))
+    if (!turno) return null
+
+    const r = await this.db.execute(sql`
+      SELECT vp.forma,
+             COUNT(DISTINCT v.venda_id)::int AS vendas,
+             COALESCE(SUM(vp.valor), 0)::int AS total
+        FROM t_venda v
+        JOIN t_venda_pagamento vp ON vp.venda_id = v.venda_id AND vp.active_flg = true
+       WHERE v.active_flg = true
+         AND v.vendida_em >= ${turno.abertoEm}
+         AND (${turno.fechadoEm}::timestamptz IS NULL OR v.vendida_em <= ${turno.fechadoEm})
+       GROUP BY vp.forma
+       ORDER BY vp.forma
+    `)
+
+    const formas = (r.rows as any[]).map(x => ({
+      forma:  x.forma,
+      vendas: Number(x.vendas),
+      total:  Number(x.total),
+    }))
+
+    // "Dinheiro" é o nome cadastrado na forma de pagamento. A comparação é
+    // frouxa de propósito: cada cliente cadastra o nome que quiser.
+    const emDinheiro = formas
+      .filter(f => /dinheiro|especie|espécie/i.test(f.forma))
+      .reduce((a, f) => a + f.total, 0)
+
+    return {
+      turno,
+      formas,
+      totalVendido:    formas.reduce((a, f) => a + f.total, 0),
+      emDinheiro,
+      esperadoGaveta:  turno.valorAbertura + emDinheiro,
+    }
+  }
+
   async fecharTurno({ turnoId, valorFechamento, observacao, userId }: {
     turnoId: number; valorFechamento: number; observacao?: string; userId: number
   }) {
@@ -143,6 +192,18 @@ export class FiscalService {
         aliqIcms: String(aliqIcms),
         valorIcms: Math.round(valorTotal * aliqIcms / 100),
         aliqIpi: String(fiscal.aliq_ipi ?? 0),
+        // PIS e COFINS vêm do perfil. Antes a emissão mandava '07' — isento —
+        // para todo item, e alimento com alíquota zero saía igual a alimento
+        // tributado. Ninguém percebia, porque a nota era autorizada do mesmo
+        // jeito.
+        cstPis:      fiscal.cst_pis    ?? null,
+        aliqPis:     String(fiscal.aliq_pis ?? 0),
+        valorPis:    Math.round(valorTotal * Number(fiscal.aliq_pis ?? 0) / 100),
+        cstCofins:   fiscal.cst_cofins ?? null,
+        aliqCofins:  String(fiscal.aliq_cofins ?? 0),
+        valorCofins: Math.round(valorTotal * Number(fiscal.aliq_cofins ?? 0) / 100),
+        origem:      fiscal.origem ?? '0',
+        cest:        fiscal.cest   ?? null,
         createdBy: payload.userId, updatedBy: payload.userId, createdDt: now, updatedDt: now,
       })
     }
@@ -186,11 +247,25 @@ export class FiscalService {
     // Dados da empresa. Sem CRT nao da para decidir entre CSOSN e CST, e sem
     // saber isso o payload sai errado de um jeito que a SEFAZ aceita.
     const cfgRes = await this.db.execute(sql`
-      SELECT crt, mensagem_fiscal FROM t_configuracoes_tenant LIMIT 1
+      SELECT crt, mensagem_fiscal, credenciado_nfce, credenciado_nfe
+        FROM t_configuracoes_tenant LIMIT 1
     `)
     const cfg: any = (cfgRes.rows as any[])[0] ?? {}
     if (!String(cfg.crt ?? '').trim()) {
       throw new Error('Regime tributario (CRT) nao configurado. Preencha em Configuracoes > Fiscal.')
+    }
+
+    // CREDENCIAMENTO ANTES DE TRANSMITIR.
+    //
+    // Sem credenciamento na SEFAZ a transmissao falha — mas falha com um codigo
+    // de rejeicao que ninguem no balcao vai entender. Barrar aqui devolve uma
+    // frase que diz o que fazer.
+    const ehNfce = String(nota.tipo).toUpperCase() === 'NFC-E'
+    if (ehNfce && !cfg.credenciado_nfce) {
+      throw new Error('Empresa nao credenciada para NFC-e na SEFAZ. Confirme em Configuracoes > Fiscal.')
+    }
+    if (!ehNfce && !cfg.credenciado_nfe) {
+      throw new Error('Empresa nao credenciada para NF-e na SEFAZ. Confirme em Configuracoes > Fiscal.')
     }
 
     const payload = {
@@ -253,9 +328,35 @@ export class FiscalService {
     return result
   }
 
+  /**
+   * Cancelamento, com o prazo verificado ANTES de chamar a SEFAZ.
+   *
+   * NFC-e: 30 minutos. NF-e: 24 horas. Passou disso, a SEFAZ recusa — e a
+   * recusa vem como codigo numerico, que no balcao nao ajuda ninguem.
+   *
+   * Alguns estados adotam prazos menores. O que esta aqui e a regra geral;
+   * quando a SEFAZ recusar dentro do prazo, e porque o estado e mais curto.
+   */
   async cancelarNota(notaId: number, motivo: string, config: { token: string; ambiente: string }) {
     const [nota] = await this.db.select().from(dbNotaFiscal).where(eq(dbNotaFiscal.notaId, notaId))
     if (!nota) throw new Error('Nota não encontrada')
+
+    if (nota.status === 'cancelada') throw new Error('Esta nota ja esta cancelada.')
+
+    // So nota autorizada tem prazo a respeitar. Rascunho pendente nao foi
+    // transmitido e pode ser descartado a qualquer momento.
+    if (nota.status === 'autorizada' && nota.dataEmissao) {
+      const ehNfce   = String(nota.tipo).toUpperCase() === 'NFC-E'
+      const limiteMs = ehNfce ? 30 * 60 * 1000 : 24 * 60 * 60 * 1000
+      const passado  = Date.now() - new Date(nota.dataEmissao).getTime()
+      if (passado > limiteMs) {
+        const limite = ehNfce ? '30 minutos' : '24 horas'
+        throw new Error(
+          `Prazo de cancelamento vencido: ${limite} apos a autorizacao. ` +
+          'A correcao passa a ser por nota de devolucao — fale com o contador.'
+        )
+      }
+    }
 
     if (config.token && nota.chaveAcesso) {
       const baseUrl = config.ambiente === 'producao'
