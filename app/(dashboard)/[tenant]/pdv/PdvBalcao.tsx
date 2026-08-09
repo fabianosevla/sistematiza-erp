@@ -844,6 +844,17 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         </div>
       </div>
 
+      {/* CONTROLE DE CAIXA — no topo, sempre visível.
+          Estava dentro do drawer de fechamento da venda, e isso criava um beco
+          sem saída: com o caixa fechado a venda fica bloqueada, então o
+          operador não conseguia abrir o painel onde ficava o botão de abrir o
+          caixa. Aqui ele é a primeira coisa da tela, como deve ser. */}
+      {turnoObrigatorio && (
+        <div className="flex-shrink-0">
+          <PainelCaixa tenantSlug={tenantSlug} operador={vendedor} qtdCaixas={qtdCaixas} />
+        </div>
+      )}
+
       <div className="relative flex-shrink-0">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <Input ref={searchRef} value={busca} onChange={e => setBusca(e.target.value)}
@@ -1379,13 +1390,6 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   />
                   <span className="text-sm text-gray-700">Emitir nota fiscal</span>
                 </label>
-              )}
-
-              {/* Controle de caixa: abrir, sangria, suprimento e fechamento.
-                  Fica aqui, no PDV, porque quem opera o caixa é quem vende — o
-                  perfil Vendedor não tem acesso ao gerencial. */}
-              {turnoObrigatorio && (
-                <PainelCaixa tenantSlug={tenantSlug} operador={vendedor} qtdCaixas={qtdCaixas} compacto />
               )}
 
               {/* Impedimento real: sem endereço a venda de delivery não fecha. */}

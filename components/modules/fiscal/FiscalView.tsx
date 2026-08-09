@@ -94,7 +94,7 @@ export default function FiscalView({ tenantSlug }: Props) {
 
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
         {([
-          { value: 'pdv',         label: 'Caixa' },
+          { value: 'pdv',         label: 'NFC-e' },
           { value: 'nfe-saida',   label: 'NF-e Saída' },
           { value: 'nfe-entrada', label: 'NF-e Entrada' },
           { value: 'relatorios',  label: 'Relatórios' },
@@ -109,47 +109,22 @@ export default function FiscalView({ tenantSlug }: Props) {
 
       {aba === 'pdv' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-700 inline-flex items-center gap-1">
-                  Turno de Caixa
-                  <InfoTip titulo="Turno de caixa">
-                    Controle de gaveta: abre com um valor, vende, fecha conferindo.
-                  </InfoTip>
-                </h2>
-                {turno ? (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Caixa #{turno.numeroCaixa} — {turno.operador} — aberto às {new Date(turno.abertoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                ) : (
-                  <p className="text-xs text-gray-400 mt-1">Nenhum turno aberto</p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                {!turno ? (
-                  <Button onClick={() => setShowAbrirTurno(true)} size="sm">
-                    <Play size={14} className="mr-1.5" /> Abrir turno
-                  </Button>
-                ) : (
-                  <Button variant="outline" size="sm" className="text-red-500 border-red-200"
-                    onClick={() => setConfirmFechar(turno)}>
-                    <Square size={14} className="mr-1.5" /> Fechar turno
-                  </Button>
-                )}
-              </div>
-            </div>
+          {/* O CONTROLE DE CAIXA SAIU DAQUI.
+              Ele vivia no módulo fiscal por acidente de história — a tabela
+              t_turno_caixa nasceu no schema fiscal. Mas caixa é controle de
+              dinheiro: quem nunca emitiu nota ainda precisa conferir a gaveta.
+              Abrir, sangria e fechar ficam no PDV, com o operador. O histórico
+              fica em Financeiro, com o gestor. Aqui não sobrou nada. */}
+          <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+            <p className="text-sm text-gray-600 font-medium inline-flex items-center gap-1">
+              O controle de caixa fica no PDV e em Financeiro
+              <InfoTip titulo="Onde fica">Abrir e fechar no PDV; histórico e diferenças em Financeiro.</InfoTip>
+            </p>
           </div>
 
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">NFC-e — Nota Fiscal do Consumidor</h2>
-              {/* A NFC-e NÃO depende do turno.
-                  Antes o botão ficava desabilitado com a mensagem "abra o turno
-                  de caixa para emitir NFC-e" — regra que esta tela inventou.
-                  Emissão de documento fiscal não tem relação com controle de
-                  gaveta, e o bloqueio viraria chamado de suporte no primeiro
-                  dia de uso em produção. */}
               <Button size="sm" onClick={() => { setFiltroTipo('NFC-e'); setShowNovaNota(true) }}>
                 <Plus size={14} className="mr-1.5" /> Nova NFC-e
               </Button>
