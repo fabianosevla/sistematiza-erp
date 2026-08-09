@@ -120,9 +120,48 @@ const REGRAS = [
 
   // Massa recheada / cozida
   { chaves: ['sorrentino'],                      ncm: '19022000', cest: '00.000.00', suspeito: 'CEST zerado no Everest, enquanto os outros recheados tem 17.048.02.' },
-  { chaves: ['rondelli', 'canelloni', 'canneloni', 'conchiglioni', 'sofioli', 'sofiolli', 'ravioli', 'capeletti', 'agnoline'],
+  // 'capeleti' com um T so: e como esta escrito no cadastro. A grafia com dois
+  // T fica junto porque as duas aparecem por ai.
+  { chaves: ['rondelli', 'canelloni', 'canneloni', 'conchiglioni', 'sofioli', 'sofiolli', 'ravioli', 'capeleti', 'capeletti', 'agnoline'],
                                                  ncm: '19022000', cest: '17.048.02' },
 ]
+
+// ─── FORA DA NOTA — produto-insumo ──────────────────────────────────────────
+//
+// Etapa de receita nao e mercadoria: nunca sai em nota de venda, e cobrar NCM
+// dela so enche a lista de pendencia com coisa que ninguem vai resolver.
+//
+// A marca usada e t_produto.insumo_flg, que o ProntidaoFiscalService ja
+// respeita. EFEITO COLATERAL: telas que listam so o que e vendavel deixam de
+// mostrar estes itens. Para os "- Producao" e o Parmesao isso e o desejado.
+const INSUMOS = [
+  'creme - producao',
+  'frango cozido - producao',
+  'massa crua - producao',
+  'shimeji cozido - producao',
+  'molho bolonhesa - producao',
+  'molho ao sugo - producao',
+  'molho branco - producao',
+  'massa conchiglioni (12 conchas) - producao',
+  'parmesao',
+]
+
+// ─── PENDENTES DE CLASSIFICACAO ─────────────────────────────────────────────
+//
+// Nao invento NCM para estes. O Everest ja os classificou — e de la que o
+// numero deve vir, igual aos outros 29. Cada um com o motivo de nao dar para
+// deduzir a partir do que ja temos.
+const PENDENTES = {
+  'vinho bordo demi-sec quinta dos camargo': 'REVENDA. Bebida alcoolica tem ST propria em MG, com MVA diferente da massa, e CFOP de revenda, nao de producao propria.',
+  'vinho bordo seco quinta dos camargo':     'REVENDA. Idem.',
+  'vinho bordo suave quinta dos camargo':    'REVENDA. Idem.',
+  'vinho branco suave quinta dos camargo':   'REVENDA. Idem.',
+  'pao de queijo':    'Producao propria, mas capitulo diferente do das massas (padaria, nao massa alimenticia).',
+  'pastel redondo':   'Depende de ser massa crua ou produto assado — muda o capitulo inteiro.',
+  'pastel rolo':      'Idem.',
+  'massa crua 1kg':   'Se e vendida, leva NCM de massa; confirmar se e a mesma da "Massa crua - Producao".',
+  'entrega':          'FRETE, nao mercadoria. Vai em campo proprio da NF-e. Nao classificar como item.',
+}
 
 const semAcento = (s) => String(s ?? '')
   .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
@@ -169,6 +208,12 @@ async function main() {
     // 28/08.
     const NOVAS = {
       t_venda:  [['imprimir_nota', 'BOOLEAN NOT NULL DEFAULT FALSE']],
+      // A base e o valor de ST ja existiam; faltavam as duas taxas. Sem elas a
+      // emissao nao remonta o grupo de ST, e a SEFAZ exige o grupo inteiro.
+      t_nota_fiscal_item: [
+        ['mva',     'NUMERIC(6,2) NOT NULL DEFAULT 0'],
+        ['aliq_st', 'NUMERIC(5,2) NOT NULL DEFAULT 0'],
+      ],
       t_pedido: [
         ['documento_fiscal', "VARCHAR(10) NOT NULL DEFAULT 'nenhum'"],
         ['imprimir_nota',    'BOOLEAN NOT NULL DEFAULT FALSE'],
@@ -244,28 +289,80 @@ async function main() {
     if (!colsProd.has('ncm')) {
       console.log('  t_produto.ncm nao existe. Rode antes: node scripts/migrate-fiscal-parametrizacao.js --aplicar')
     } else {
+      // PERFIL PADRAO DOS PRODUTOS.
+      //
+      // O FiscalService le o perfil PELO PRODUTO (t_produto.perfil_trib_id),
+      // entao cada produto tem um so. Escolhemos o de contribuinte porque e a
+      // operacao que a Zaghi documenta hoje — a NF-e 3.313 e exatamente essa.
+      //
+      // LIMITACAO CONHECIDA: com um perfil por produto, o mesmo item nao muda
+      // de CFOP entre venda a contribuinte e venda a consumidor final. Para o
+      // balcao isso precisa de decisao — esta anotado no fim.
+      const PERFIL_PADRAO = 'Massa com ST - venda a contribuinte'
+      let perfilId = null
+      if (colsProd.has('perfil_trib_id')) {
+        const { rows } = await c.query(
+          `SELECT perfil_trib_id FROM t_perfil_tributario WHERE nome = $1 AND active_flg = true LIMIT 1`,
+          [PERFIL_PADRAO])
+        perfilId = rows[0]?.perfil_trib_id ?? null
+        if (!perfilId) console.log(`  (perfil "${PERFIL_PADRAO}" ainda nao existe — rode com --aplicar)`)
+      }
+
       const { rows: produtos } = await c.query(
-        `SELECT produto_id, nome, ncm, cest FROM t_produto WHERE active_flg = true ORDER BY nome`)
+        `SELECT produto_id, nome, ncm, cest, perfil_trib_id, COALESCE(insumo_flg, false) AS insumo_flg
+           FROM t_produto WHERE active_flg = true ORDER BY nome`)
+
+      // ── Marca os produto-insumo, para sairem da lista de pendencia ───────
+      const virandoInsumo = produtos.filter(p => !p.insumo_flg && INSUMOS.includes(semAcento(p.nome)))
+      if (virandoInsumo.length) {
+        console.log('\n  Marcando como produto-insumo (nao vao para nota):')
+        for (const p of virandoInsumo) console.log(`    - ${p.nome}`)
+        if (APLICAR) {
+          await c.query(`UPDATE t_produto SET insumo_flg = true, updated_dt = NOW() WHERE produto_id = ANY($1::int[])`,
+            [virandoInsumo.map(p => p.produto_id)])
+          console.log(`    -> ${virandoInsumo.length} marcado(s).`)
+          for (const p of virandoInsumo) p.insumo_flg = true
+        }
+      }
 
       const semRegra = []
-      let tocados = 0
+      let tocados = 0, perfilados = 0
       for (const p of produtos) {
+        // Insumo nao vai em nota: nao recebe NCM nem perfil.
+        if (p.insumo_flg) continue
         const r = regraDoProduto(p.nome)
         if (!r) { semRegra.push(p.nome); continue }
         const mudou = p.ncm !== r.ncm || p.cest !== r.cest
-        console.log(`  ${mudou ? '*' : ' '} ${String(p.nome).slice(0, 42).padEnd(44)} ${r.ncm}  ${r.cest}`)
+        const semPerfil = perfilId && !p.perfil_trib_id
+        console.log(`  ${mudou || semPerfil ? '*' : ' '} ${String(p.nome).slice(0, 42).padEnd(44)} ${r.ncm}  ${r.cest}`)
         if (r.suspeito) suspeitos.push(`${p.nome}: ${r.suspeito}`)
-        if (!APLICAR || !mudou) continue
-        await c.query(
-          `UPDATE t_produto SET ncm = $1, cest = $2, origem = COALESCE(origem, '0'), updated_dt = NOW()
-            WHERE produto_id = $3`, [r.ncm, r.cest, p.produto_id])
-        tocados++
+        if (!APLICAR) continue
+        if (mudou) {
+          await c.query(
+            `UPDATE t_produto SET ncm = $1, cest = $2, origem = COALESCE(origem, '0'), updated_dt = NOW()
+              WHERE produto_id = $3`, [r.ncm, r.cest, p.produto_id])
+          tocados++
+        }
+        // O perfil vale para todo produto que tem regra, inclusive os que ja
+        // estavam com NCM certo. Sem ele a emissao recusa do mesmo jeito.
+        if (semPerfil) {
+          await c.query(`UPDATE t_produto SET perfil_trib_id = $1, updated_dt = NOW() WHERE produto_id = $2`,
+            [perfilId, p.produto_id])
+          perfilados++
+        }
       }
 
-      console.log(`\n  ${produtos.length} produtos ativos · ${tocados} atualizados · ${semRegra.length} sem regra`)
+      console.log(`\n  ${produtos.length} produtos ativos · ${tocados} com NCM/CEST atualizado · ${perfilados} ligados ao perfil · ${semRegra.length} sem regra`)
       if (semRegra.length) {
-        console.log('\n  SEM NCM — nenhuma palavra-chave casou. Estes nao emitem nota:')
-        for (const n of semRegra) console.log(`    - ${n}`)
+        console.log('\n  ' + '-'.repeat(66))
+        console.log('  SEM NCM — precisam do numero vindo do Everest, que ja os classificou.')
+        console.log('  Abra cada um la e mande NCM + CEST. Nao invento esses numeros:')
+        console.log('  ' + '-'.repeat(66))
+        for (const n of semRegra) {
+          const motivo = PENDENTES[semAcento(n)]
+          console.log(`    - ${n}`)
+          if (motivo) console.log(`        ${motivo}`)
+        }
       }
     }
 
@@ -276,6 +373,23 @@ async function main() {
       console.log('='.repeat(70))
       for (const s of [...new Set(suspeitos)]) console.log(`  ! ${s}`)
     }
+
+    console.log('\n' + '='.repeat(70))
+    console.log('UM PERFIL POR PRODUTO — limitacao a decidir')
+    console.log('='.repeat(70))
+    console.log(`
+  Todos os produtos ficaram no perfil de VENDA A CONTRIBUINTE (CFOP 5401),
+  que e a operacao da NF-e 3.313 e do que sai por pedido.
+
+  A venda de balcao a consumidor final usa outro CFOP. Como o perfil esta
+  preso ao produto, hoje o mesmo item nao troca de CFOP conforme o comprador.
+
+  Duas saidas, para decidir com o contador:
+    a) O FiscalService escolher o perfil pelo tipo de nota (NFC-e usa o de
+       consumidor final, NF-e usa o de contribuinte). Muda codigo, nao dado.
+    b) Manter um perfil so, se o contador disser que o CFOP e o mesmo nos
+       dois casos.
+`)
 
     console.log('\n' + '='.repeat(70))
     console.log('NUMERACAO DA NOTA — leia antes de emitir')

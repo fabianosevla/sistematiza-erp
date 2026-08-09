@@ -3,6 +3,50 @@ import type { AppDB } from '@/lib/db/connection'
 import { dbNotaFiscal, dbNotaFiscalItem, dbTurnoCaixa } from '@/lib/db/schemas/fiscal'
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
 
+/**
+ * Grupo de ST do item, no formato que a Focus NFe espera.
+ *
+ * Só sai quando houve ST calculada. Item sem ST não pode levar o grupo vazio:
+ * a SEFAZ recusa o mesmo tanto por falta quanto por excesso.
+ *
+ * modalidade 4 = Margem de Valor Agregado, que é como MG trata a massa.
+ */
+function grupoSt(item: any) {
+  const base = Number(item.baseSt ?? 0)
+  if (base <= 0) return {}
+  return {
+    icms_modalidade_base_calculo_st: '4',
+    icms_margem_valor_adicionado_st: String(Number(item.mva ?? 0)),
+    icms_base_calculo_st:            (base / 100).toFixed(2),
+    icms_aliquota_st:                String(Number(item.aliqSt ?? 0)),
+    icms_valor_st:                   (Number(item.valorSt ?? 0) / 100).toFixed(2),
+  }
+}
+
+/**
+ * Nome da forma de pagamento → código tPag da NF-e.
+ *
+ * O que não casa vira 99 (outros), que é verdadeiro. Mapear para 01 seria
+ * dizer que entrou dinheiro sem ter entrado.
+ */
+function codigoFormaPagamento(nome: any): string {
+  const n = String(nome ?? '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  if (/dinheiro|especie/.test(n))            return '01'
+  if (/cheque/.test(n))                      return '02'
+  if (/credito/.test(n) && /cart/.test(n))   return '03'
+  if (/debito/.test(n))                      return '04'
+  if (/cartao/.test(n))                      return '03'
+  if (/vale.*aliment/.test(n))               return '10'
+  if (/vale.*refei/.test(n))                 return '11'
+  if (/boleto/.test(n))                      return '15'
+  if (/deposito/.test(n))                    return '16'
+  if (/pix/.test(n))                         return '17'
+  if (/transfer/.test(n))                    return '18'
+  if (/fidelidade|cashback/.test(n))         return '19'
+  return '99'
+}
+
 export class FiscalService {
   constructor(private db: AppDB) {}
 
@@ -176,6 +220,29 @@ export class FiscalService {
       const valorTotal = item.precoUnitario * item.quantidade
       const aliqIcms = Number(fiscal.aliq_icms ?? 0)
 
+      // ── SUBSTITUIÇÃO TRIBUTÁRIA ──────────────────────────────────────────
+      //
+      // O perfil guardava MVA e alíquota e nada disso chegava na nota: a
+      // emissão saía sem o grupo de ST, que a SEFAZ exige quando o CSOSN é
+      // 201. Rejeição na certa.
+      //
+      // A conta reproduz exatamente a NF-e 3.313 do Everest:
+      //   base ST = valor × (1 + MVA)        1.317,00 × 1,35 = 1.777,95 ✓
+      //   ST      = base × alíq − valor × alíq
+      //             1.777,95 × 18% − 1.317,00 × 18% = 82,97   (DANFE: 82,98,
+      //             diferença de arredondamento por item)
+      //
+      // A dedução usa a mesma alíquota interna como "ICMS próprio presumido",
+      // que é o tratamento do Simples em MG. O contador precisa confirmar —
+      // está anotado no kit.
+      const temSt   = fiscal.tem_st === true
+      const mva     = temSt ? Number(fiscal.mva ?? 0) : 0
+      const aliqSt  = temSt ? Number(fiscal.aliq_icms_st ?? 0) : 0
+      const baseSt  = temSt ? Math.round(valorTotal * (1 + mva / 100)) : 0
+      const valorSt = temSt
+        ? Math.max(0, Math.round(baseSt * aliqSt / 100) - Math.round(valorTotal * aliqSt / 100))
+        : 0
+
       await this.db.insert(dbNotaFiscalItem).values({
         notaId: nota.notaId,
         produtoId: item.produtoId ?? null,
@@ -192,6 +259,7 @@ export class FiscalService {
         aliqIcms: String(aliqIcms),
         valorIcms: Math.round(valorTotal * aliqIcms / 100),
         aliqIpi: String(fiscal.aliq_ipi ?? 0),
+        baseSt, valorSt, mva: String(mva), aliqSt: String(aliqSt),
         // PIS e COFINS vêm do perfil. Antes a emissão mandava '07' — isento —
         // para todo item, e alimento com alíquota zero saía igual a alimento
         // tributado. Ninguém percebia, porque a nota era autorizada do mesmo
@@ -208,6 +276,36 @@ export class FiscalService {
       })
     }
     return { notaId: nota.notaId }
+  }
+
+  /**
+   * FORMAS DE PAGAMENTO REAIS.
+   *
+   * A emissão mandava sempre `01` — dinheiro — qualquer que fosse o meio
+   * cobrado. Numa NFC-e isso é declarar ao fisco que a loja recebeu em
+   * espécie quando recebeu em cartão, e o cruzamento com a operadora não bate.
+   *
+   * Sem venda vinculada (nota digitada à mão) não há o que consultar, e aí o
+   * dinheiro é o padrão honesto: 99 "outros" também serviria, mas esconde.
+   */
+  private async formasDePagamento(nota: any) {
+    const total = (nota.valorTotal / 100).toFixed(2)
+    if (!nota.vendaId) return [{ forma_pagamento: '01', valor_pagamento: total }]
+
+    try {
+      const r = await this.db.execute(sql`
+        SELECT forma, valor FROM t_venda_pagamento
+         WHERE venda_id = ${nota.vendaId} AND active_flg = true
+      `)
+      const linhas = r.rows as any[]
+      if (linhas.length === 0) return [{ forma_pagamento: '01', valor_pagamento: total }]
+      return linhas.map(l => ({
+        forma_pagamento: codigoFormaPagamento(l.forma),
+        valor_pagamento: (Number(l.valor ?? 0) / 100).toFixed(2),
+      }))
+    } catch {
+      return [{ forma_pagamento: '01', valor_pagamento: total }]
+    }
   }
 
   async emitirViaFocusNfe(notaId: number, config: { token: string; ambiente: string }) {
@@ -268,15 +366,39 @@ export class FiscalService {
       throw new Error('Empresa nao credenciada para NF-e na SEFAZ. Confirme em Configuracoes > Fiscal.')
     }
 
+    // ── NATUREZA DA OPERAÇÃO E TIPO DE COMPRADOR ──────────────────────────
+    //
+    // Estava tudo fixo em "VENDA A CONSUMIDOR", presença 4 (entrega a
+    // domicílio) e consumidor final 1. Isso descreve o balcão, e descreve
+    // errado a venda por pedido: a NF-e 3.313 da Zaghi sai como "Venda de
+    // produção do estabelecimento", para um comprador que é contribuinte.
+    //
+    // Quem tem CNPJ na nota é empresa comprando para revenda; quem não tem é
+    // consumidor final. A distinção muda três campos e o CFOP no perfil.
+    const ehParaContribuinte = !ehNfce && !!nota.cnpjCpf
+    const natureza = ehParaContribuinte
+      ? 'Venda de producao do estabelecimento'
+      : 'VENDA A CONSUMIDOR'
+
+    // ── DESTINATÁRIO EM HOMOLOGAÇÃO ───────────────────────────────────────
+    //
+    // A SEFAZ exige que, no ambiente de teste, a razão social do destinatário
+    // seja exatamente esta frase. Mandar o nome real derruba a nota, e o
+    // código de rejeição não diz o motivo com clareza.
+    const homologacao  = config.ambiente !== 'producao'
+    const RAZAO_TESTE  = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+    const razaoDestino = homologacao ? RAZAO_TESTE : nota.razaoSocial
+
     const payload = {
-      natureza_operacao: 'VENDA A CONSUMIDOR',
+      natureza_operacao: natureza,
       data_emissao: new Date().toISOString(),
       tipo_documento: '1',
       finalidade_emissao: '1',
-      consumidor_final: '1',
-      presenca_comprador: '4',
+      consumidor_final:   ehParaContribuinte ? '0' : '1',
+      // 1 = operação presencial (balcão) · 4 = entrega a domicílio
+      presenca_comprador: ehNfce ? '1' : '4',
       ...(cfg.mensagem_fiscal ? { informacoes_adicionais_contribuinte: String(cfg.mensagem_fiscal) } : {}),
-      ...(nota.cnpjCpf ? { cnpj_destinatario: nota.cnpjCpf, razao_social_destinatario: nota.razaoSocial } : {}),
+      ...(nota.cnpjCpf ? { cnpj_destinatario: nota.cnpjCpf, razao_social_destinatario: razaoDestino } : {}),
       itens: nota.itens.map((item, i) => {
         const aliqPis    = Number((item as any).aliqPis ?? 0)
         const aliqCofins = Number((item as any).aliqCofins ?? 0)
@@ -284,6 +406,7 @@ export class FiscalService {
           numero_item: String(i + 1),
           descricao: item.descricao,
           codigo_ncm: item.ncm,
+          ...((item as any).cest ? { cest: String((item as any).cest).replace(/\D/g, '') } : {}),
           cfop: item.cfop,
           unidade_comercial: item.unidade || 'UN',
           quantidade_comercial: String(parseFloat(String(item.quantidade))),
@@ -295,13 +418,14 @@ export class FiscalService {
           icms_situacao_tributaria: item.cstCsosn,
           icms_origem: (item as any).origem ?? '0',
           ...(Number(item.aliqIcms) > 0 ? { icms_aliquota: String(item.aliqIcms) } : {}),
+          ...grupoSt(item),
           pis_situacao_tributaria:    (item as any).cstPis    ?? '07',
           ...(aliqPis    > 0 ? { pis_aliquota_porcentual:    String(aliqPis) }    : {}),
           cofins_situacao_tributaria: (item as any).cstCofins ?? '07',
           ...(aliqCofins > 0 ? { cofins_aliquota_porcentual: String(aliqCofins) } : {}),
         }
       }),
-      formas_pagamento: [{ forma_pagamento: '01', valor_pagamento: (nota.valorTotal / 100).toFixed(2) }],
+      formas_pagamento: await this.formasDePagamento(nota),
     }
 
     const response = await fetch(`${baseUrl}/v2/${nota.tipo.toLowerCase()}?ref=${ref}`, {

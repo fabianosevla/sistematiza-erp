@@ -141,6 +141,11 @@ export const dbNotaFiscalItem = pgTable('t_nota_fiscal_item', {
   valorIpi:       integer('valor_ipi').notNull().default(0),
   baseSt:         integer('base_st').notNull().default(0),
   valorSt:        integer('valor_st').notNull().default(0),
+  // Congelados junto com a base e o valor. Sem as duas taxas o payload da
+  // emissão não consegue remontar o grupo de ST, e a SEFAZ exige o grupo
+  // inteiro — não só o valor final.
+  mva:            numeric('mva', { precision: 6, scale: 2 }).notNull().default('0'),
+  aliqSt:         numeric('aliq_st', { precision: 5, scale: 2 }).notNull().default('0'),
   // PIS e COFINS: o perfil tributário guardava e a nota não tinha onde
   // receber. A emissão mandava '07' — isento — para todo mundo, e alimento
   // com alíquota zero saía igual a alimento tributado.
