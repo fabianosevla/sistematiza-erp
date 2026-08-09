@@ -3,6 +3,11 @@
 Registro do que ficou combinado e ainda não foi feito. Item aqui não é
 promessa de fazer agora; é garantia de não esquecer.
 
+> **Como este arquivo é usado.** Quando o Fabiano diz "guarda no backlog", o
+> item entra aqui — e quando ele pergunta "o que temos para fazer?", a resposta
+> sai daqui, não da memória da conversa. Este arquivo é a fonte: ele sobrevive
+> ao fim da sessão, a conversa não.
+
 ---
 
 ## 0. TESTES PENDENTES — nada disso foi validado em uso real
@@ -101,6 +106,62 @@ Ver `docs/Kit-Fiscal-Contador.pdf` e `docs/Primeira-Nota-Fiscal.pdf`.
 **Série diferente do Everest.** Os dois sistemas não podem emitir na mesma
 série: disputam o mesmo número e a SEFAZ rejeita por duplicidade. Everest na 1,
 Sistematiza na 2.
+
+---
+
+## 0.2 Backend — observabilidade e contrato
+
+**O diagnóstico, em uma frase:** o backend não está bagunçado no sentido de
+faltar separação — cada rota já é uma função isolada. O que falta é o que torna
+essa separação utilizável: **documentação, endereços previsíveis e um
+identificador de requisição.**
+
+Nasceu de uma dificuldade concreta: abrir o DevTools para descobrir por que uma
+venda não voltava em Consultas, e não conseguir achar a resposta no meio das
+chamadas.
+
+**O que NÃO é problema:** cada rota já é uma função isolada. São 90 arquivos
+`route.ts`, e cada um vira uma serverless function na Vercel. O modelo de "uma
+chamada, uma função" já existe.
+
+**O que enche o DevTools:** 13 telas com `refetchInterval`. O PDV recarrega a
+cada 5 e 10 segundos; Comandas a cada 5; Contas a pagar e receber a cada 30.
+É decisão de tela, não do backend — mas torna a aba Network ilegível.
+Paliativo imediato: filtrar por **Fetch/XHR** no DevTools.
+
+### O que precisa ser feito
+
+**1. Documentar a API.** 90 rotas, nenhum contrato escrito. Para saber o que
+uma devolve é preciso abrir o arquivo. Solução: OpenAPI gerado a partir dos
+schemas Zod que já existem em `lib/validations/`.
+
+**2. Padronizar `?action=` para caminho próprio.** Dez rotas decidem o que
+fazer por parâmetro de query:
+
+```
+fiscal · caixa · compras · consultas · contas-pagar
+contas-receber · financeiro · metas · vendas · fidelidade/movimentos
+```
+
+`/api/x/fiscal?action=emitir` deveria ser `/api/x/fiscal/notas/[id]/emitir`.
+Uma coisa, um endereço, uma resposta — que é o que permite depurar olhando a
+URL. **Parte disso é dívida nova:** a rota de caixa foi escrita hoje seguindo
+o padrão existente em vez de corrigi-lo.
+
+**3. Rastreio de requisição.** Não há identificador para correlacionar o que o
+usuário viu com o que o servidor registrou. Um `x-request-id` gerado no
+middleware, devolvido no header e impresso no log resolve — e é o que faltou
+no dia em que isto foi anotado.
+
+**4. Reduzir os 59 `@ts-nocheck`.** Verificação de tipo desligada justamente na
+fronteira onde os dados entram. Por rota tocada, nunca em bloco.
+
+**5. Revisar os intervalos de recarga.** Cinco segundos no PDV é agressivo para
+dado que muda a cada minuto. Cada recarga é uma conexão do pool — e o pool tem
+teto de 20 por instância.
+
+Nada disso é urgente. Mas os itens 1 e 3 são o que separa "depurar abrindo
+arquivo" de "depurar olhando a resposta".
 
 ---
 

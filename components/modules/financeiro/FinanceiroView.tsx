@@ -328,8 +328,20 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     // Caixa é controle de dinheiro, e por isso mora aqui — não no fiscal,
     // onde estava por acidente de história. A operação (abrir, sangria,
     // fechar) fica no PDV, com o operador; aqui é a leitura do gestor.
-    { key: 'caixa',         label: 'Caixa'         },
+    //
+    // Só aparece com o controle contratado. Módulo desligado tem que esconder
+    // TUDO que é dele, não só o menu — foi o princípio aplicado ao fiscal, e
+    // esta aba tinha ficado de fora.
+    ...(turnoCaixaAtivo ? [{ key: 'caixa' as Aba, label: 'Caixa' }] : []),
   ]
+
+  // Chave do controle de caixa. Sem ela, nem a aba nem a rota respondem.
+  const { data: cfgCaixaRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const turnoCaixaAtivo = cfgCaixaRaw?.data?.turnoCaixaAtivo === true
 
   // KPIs calculados do DRE
   const receitaMes  = kpis?.receitaMes  ?? 0
