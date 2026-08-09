@@ -90,7 +90,7 @@ function CelulaEditavel({
 }) {
   if (registrado) return <CelulaTravada produzida={registrado.produzida} />
 
-  if (isEdit) {
+if (isEdit) {
     // Texto, não number: a tecla decimal do teclado numérico brasileiro é a
     // vírgula, e <input type="number"> devolve string vazia para "1," —
     // o número digitado sumia no meio.
@@ -99,11 +99,11 @@ function CelulaEditavel({
         onChange={e => onChangeValor(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.'))}
         onBlur={onSalvar}
         onKeyDown={e => {
-          if (e.key === 'Enter') onSalvar()
+          if (e.key === 'Enter')  onSalvar()
           if (e.key === 'Escape') onCancelar()
         }}
         className="w-10 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
-
+    ) // <--- ADICIONE ESTE PARÊNTESES AQUI
   }
 
   return (
