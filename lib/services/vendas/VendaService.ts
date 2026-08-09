@@ -7,6 +7,7 @@ import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
+import { CaixaService } from '@/lib/services/caixa/CaixaService'
 import { converterUnidade } from '@/lib/unidades'
 
 function resolverPreco(produto: any, tipoPrecao: string): number {
@@ -364,7 +365,7 @@ export class VendaService {
     return result ?? null
   }
 
-  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, documentoFiscal, userId }: {
+  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, documentoFiscal, numeroCaixa, userId }: {
     itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
     clienteId?:         number
     // Cliente avulso: só um nome. Sem cliente_id não há cashback nem
@@ -381,6 +382,8 @@ export class VendaService {
     usarCashback?:      number   // centavos que o cliente quer resgatar
     // nenhum | nfce | nfe. Decidido no fechamento, no PDV.
     documentoFiscal?:   string
+    // Qual máquina fez a venda. Cada PC guarda o próprio número.
+    numeroCaixa?:       number
     userId:             number
   }) {
     const now = new Date()
@@ -424,6 +427,13 @@ export class VendaService {
     // Nome avulso só vale sem cliente cadastrado — com cadastro, o cadastro manda.
     const avulso = clienteId ? null : (nomeClienteAvulso?.trim() || null)
 
+    // Turno em que esta venda entra. Null quando o controle de caixa está
+    // desligado — que é o padrão — e a venda segue normalmente.
+    let turnoDaVenda: any = null
+    try {
+      turnoDaVenda = await new CaixaService(this.db).turnoDaVenda(numeroCaixa)
+    } catch (_) { /* controle de caixa ausente ou desligado */ }
+
     const [venda] = await this.db.insert(dbVenda).values({
       origem:            'direta',
       clienteId:         clienteId ?? null,
@@ -437,6 +447,11 @@ export class VendaService {
       observacaoInterna: observacaoInterna || null,
       vendedor:          vendedor || null,
       documentoFiscal:   documentoFiscal || 'nenhum',
+      // De qual caixa e de qual turno saiu. Sem isto o fechamento sabe que a
+      // loja ficou curta, mas não em qual máquina — e, com vários turnos
+      // simultâneos, o relatório de cada caixa mostraria o total da loja.
+      turnoId:           turnoDaVenda?.turnoId ?? null,
+      numeroCaixa:       numeroCaixa ?? turnoDaVenda?.numeroCaixa ?? null,
       vendidaEm:         now,
       createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
     }).returning({ vendaId: dbVenda.vendaId })

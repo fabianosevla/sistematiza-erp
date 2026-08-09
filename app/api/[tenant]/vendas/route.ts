@@ -65,6 +65,8 @@ const criarVendaSchema = z.object({
   // venda nasceria como 'nenhum' — já aconteceu neste projeto com o tipo do
   // produto e com os preços de atacado.
   documentoFiscal:    z.enum(['nenhum', 'nfce', 'nfe']).optional(),
+  // Qual maquina fez a venda. Cada PC guarda o proprio numero.
+  numeroCaixa:        z.number().int().positive().optional(),
 })
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -97,6 +99,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         nomeClienteAvulso: payload.nomeClienteAvulso ?? undefined,
         usarCashback: payload.usarCashback ?? undefined,
         documentoFiscal: payload.documentoFiscal ?? 'nenhum',
+        numeroCaixa:     payload.numeroCaixa ?? undefined,
         userId: await usuarioAtualIdDb(db),
       })
       return created(result)
