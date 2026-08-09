@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { CampoNumero } from '@/components/ui/CampoNumero'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { SidePanel } from '@/components/ui/SidePanel'
@@ -251,12 +252,24 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
     },
     { chave: 'documento', titulo: 'Documento', esconderAte: 'md', render: (i: any) => i.documento || <span className="text-gray-300">—</span> },
     {
-      chave: 'itensTexto', titulo: 'Itens', esconderAte: 'lg',
-      render: (i: any) => (
-        <span className="text-sm text-gray-600" title={i.itensTexto}>
-          {i.qtdItens} {i.qtdItens === 1 ? 'item' : 'itens'}
-        </span>
-      ),
+      // O NOME DO INSUMO À VISTA, não a contagem.
+      //
+      // "1 item" não responde nada: para saber o que foi comprado era preciso
+      // abrir a compra ou parar o mouse em cima. Quem olha o histórico está
+      // procurando o que entrou, e a contagem só ajuda quando são muitos.
+      chave: 'itensTexto', titulo: 'Itens', filtravel: true, esconderAte: 'lg',
+      render: (i: any) => {
+        const nomes = String(i.itensTexto ?? '').trim()
+        if (!nomes) return <span className="text-gray-300">—</span>
+        return (
+          <span className="text-sm text-gray-600" title={nomes}>
+            {nomes}
+            {i.qtdItens > 1 && (
+              <span className="text-gray-400 ml-1.5">({i.qtdItens} itens)</span>
+            )}
+          </span>
+        )
+      },
     },
     {
       chave: 'condicao', titulo: 'Condição', filtravel: true,
@@ -562,16 +575,18 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
                           <p className="text-[11px] text-gray-400">{it.unidade}</p>
                         </td>
                         <td className="px-1 py-2">
-                          <input type="number" min="0" step="0.001" value={it.quantidade}
-                            onChange={e => alterarItem(idx, 'quantidade', Number(e.target.value) || 0)}
-                            className="sem-spinner w-20 h-7 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-green-400" />
+                          <CampoNumero valor={it.quantidade} decimais={3}
+                            onChange={v => alterarItem(idx, 'quantidade', v)}
+                            className="w-20 h-7 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-green-400" />
                         </td>
                         <td className="px-1 py-2">
-                          <input type="number" min="0" step="0.01"
-                            value={it.valorUnitario ? (it.valorUnitario / 100).toFixed(2) : ''}
-                            onChange={e => alterarItem(idx, 'valorUnitario', Math.round((parseFloat(e.target.value) || 0) * 100))}
+                          {/* Guardado em centavos, digitado em reais. A conversão só
+                              acontece na saída — reformatar a cada tecla impedia
+                              digitar o segundo dígito. */}
+                          <CampoNumero valor={it.valorUnitario / 100} decimais={2} fixo
+                            onChange={v => alterarItem(idx, 'valorUnitario', Math.round(v * 100))}
                             placeholder="0,00"
-                            className="sem-spinner w-20 h-7 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-green-400" />
+                            className="w-20 h-7 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-green-400" />
                         </td>
                         <td className="px-3 py-2 text-right text-sm font-semibold text-gray-900">
                           {fmt(Math.round(it.quantidade * it.valorUnitario))}

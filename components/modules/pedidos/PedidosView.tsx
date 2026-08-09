@@ -235,6 +235,15 @@ export default function PedidosView({ tenantSlug }: Props) {
       qc.invalidateQueries({ queryKey: ['pedido', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['dashboard', tenantSlug] })
+      // A TELA DE ESTOQUE TEM CHAVE PRÓPRIA.
+      //
+      // 'produtos' é a busca de produto do formulário; quem alimenta o módulo
+      // Estoque é 'estoque-produtos'. Invalidar só a primeira deixava a entrega
+      // baixar o estoque no banco e a tela continuar mostrando o número velho —
+      // parecia que a baixa da conta é que descontava, quando na verdade era só
+      // o cache expirando mais tarde.
+      qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-kpis', tenantSlug] })
       // A entrega baixa estoque e abre conta a receber. A venda não nasce aqui:
       // ela é criada na baixa da conta, quando o dinheiro entra.
       qc.invalidateQueries({ queryKey: ['contas-receber', tenantSlug] })

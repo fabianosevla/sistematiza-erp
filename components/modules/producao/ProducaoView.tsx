@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Factory, CopyCheck, AlertTriangle, CheckCircle, X, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { CampoNumero } from '@/components/ui/CampoNumero'
 import { useToast } from '@/components/ui/Toast'
 import { FormModal } from '@/components/ui/FormModal'
 import { fmtQtd, fmtDataCurta as fmtDate } from '@/lib/format'
@@ -91,8 +92,11 @@ function CelulaEditavel({
 
   if (isEdit) {
     return (
-      <input type="number" min="0" value={valorCelula}
-        onChange={e => onChangeValor(e.target.value)}
+      {/* Texto, não number: a tecla decimal do teclado numérico brasileiro é a
+          vírgula, e <input type="number"> devolve string vazia para "1," —
+          o número digitado sumia no meio. */}
+      <input type="text" inputMode="decimal" value={valorCelula}
+        onChange={e => onChangeValor(e.target.value.replace(/[^\d.,]/g, '').replace(',', '.'))}
         onBlur={onSalvar}
         onKeyDown={e => {
           if (e.key === 'Enter')  onSalvar()
@@ -130,11 +134,11 @@ function CelulaProduzida({
   }
 
   return (
-    <input
-      type="number" min="0" value={valor || ''}
-      onChange={e => onChange(Number(e.target.value) || 0)}
+    <CampoNumero
+      valor={valor} decimais={3}
+      onChange={onChange}
       placeholder="—"
-      className={`sem-spinner w-10 h-6 text-center text-xs rounded border transition-colors ${
+      className={`w-10 h-6 text-center text-xs rounded border transition-colors ${
         valor > 0
           ? 'border-green-300 bg-green-50 text-green-800 font-medium'
           : 'border-gray-200 text-gray-400 hover:border-gray-300'
