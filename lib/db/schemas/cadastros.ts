@@ -34,6 +34,15 @@ export const dbCliente = pgTable('t_cliente', {
   // O PDV e o VendaService leem daqui para escolher o preço do produto —
   // ver TIPOS_PRECO em lib/constants.ts e scripts/migrate-cliente-tabela-preco.js
   tabelaPreco:  varchar('tabela_preco', { length: 20 }).notNull().default('varejo'),
+  // ── FISCAL ──────────────────────────────────────────────────────────────
+  //
+  // As colunas existiam desde scripts/migrate-fiscal-parametrizacao.js e não
+  // estavam declaradas aqui — então a edição do cliente nunca as gravava.
+  //
+  // indicadorIe: 1 contribuinte · 2 isento · 9 não contribuinte. Decide se a
+  // NF-e leva inscrição estadual do destinatário, e o CFOP da operação.
+  inscricaoEstadual: varchar('inscricao_estadual', { length: 20 }),
+  indicadorIe:       varchar('indicador_ie', { length: 1 }).default('9'),
 })
 
 export type TpDbClienteRow    = InferSelectModel<typeof dbCliente>

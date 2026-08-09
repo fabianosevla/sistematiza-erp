@@ -104,7 +104,7 @@ export default function ClientesView({ tenantSlug }: Props) {
   })
 
   function handleNew() {
-    form.reset({ tipoPessoa: 'PF', tabelaPreco: 'varejo' }); setEditItem(null); setFormError(''); setShowForm(true)
+    form.reset({ tipoPessoa: 'PF', tabelaPreco: 'varejo', indicadorIe: '9' }); setEditItem(null); setFormError(''); setShowForm(true)
   }
 
   function handleEdit(item: any) {
@@ -115,6 +115,8 @@ export default function ClientesView({ tenantSlug }: Props) {
       cep: item.cep, endereco: item.endereco, numero: item.numero, complemento: item.complemento,
       bairro: item.bairro, cidade: item.cidade, uf: item.uf, observacao: item.observacao,
       tabelaPreco: item.tabelaPreco ?? 'varejo',
+      inscricaoEstadual: item.inscricaoEstadual ?? '',
+      indicadorIe: item.indicadorIe ?? '9',
     })
     setShowForm(true)
   }
@@ -326,6 +328,32 @@ export default function ClientesView({ tenantSlug }: Props) {
             <div className="grid grid-cols-3 gap-4">
               <div className="col-span-2"><Label>Cidade</Label><Input {...form.register('cidade')} className="mt-1" /></div>
               <div><Label>UF</Label><Input {...form.register('uf')} className="mt-1" maxLength={2} /></div>
+            </div>
+
+            {/* FISCAL.
+                A NF-e precisa saber se quem compra é contribuinte de ICMS.
+                As colunas existiam e nada as preenchia: toda nota saía com o
+                cliente como não contribuinte, inclusive empresa comprando
+                para revenda. */}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Indicador de IE
+                  <InfoTip titulo="Indicador de inscrição estadual">
+                    Contribuinte é quem compra para revender e tem IE ativa; consumidor comum é não contribuinte.
+                  </InfoTip>
+                </Label>
+                <select {...form.register('indicadorIe')}
+                  className="mt-1 w-full h-8 rounded-lg border border-gray-200 px-2 text-sm focus:outline-none focus:border-green-400">
+                  <option value="9">Não contribuinte</option>
+                  <option value="1">Contribuinte de ICMS</option>
+                  <option value="2">Contribuinte isento</option>
+                </select>
+              </div>
+              <div className="col-span-2">
+                <Label>Inscrição estadual</Label>
+                <Input {...form.register('inscricaoEstadual')} className="mt-1" placeholder="Somente números" />
+              </div>
             </div>
             <div>
               <Label>Observação</Label>

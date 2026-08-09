@@ -42,6 +42,11 @@ export async function GET(req: NextRequest, { params }: Params) {
                  estoque_atual, estoque_minimo, preco_custo, preco_varejo,
                  preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
                  insumo_flg, revenda, active_flg, modification_num,
+                 -- CAMPOS FISCAIS.
+                 -- A tela sempre teve os campos e a gravação sempre aceitou,
+                 -- mas este SELECT não os trazia: o formulário abria vazio e
+                 -- salvar por cima apagava o que o script tinha preenchido.
+                 ncm, cest, origem, unidade_tributavel, perfil_trib_id,
                  created_dt, created_by, updated_dt, updated_by
           FROM t_produto ${where}
           ORDER BY nome ASC
@@ -71,6 +76,11 @@ export async function GET(req: NextRequest, { params }: Params) {
         precoAtacadoD:  Number(r.preco_atacado_d ?? 0),
         precoAtacadoE:  Number(r.preco_atacado_e ?? 0),
         insumoFlg:      r.insumo_flg === true,
+        ncm:               r.ncm ?? '',
+        cest:              r.cest ?? '',
+        origem:            r.origem ?? '0',
+        unidadeTributavel: r.unidade_tributavel ?? '',
+        perfilTribId:      r.perfil_trib_id ?? null,
         // Flag própria de revenda (independente do tipo). Mantém o fallback
         // pelo tipo='Revenda' para dados anteriores à migration.
         revenda: r.revenda === true,

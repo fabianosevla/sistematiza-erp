@@ -41,6 +41,17 @@ export const clienteInsertSchema = z.object({
   // Tabela de preço padrão do cliente. O PDV usa para escolher entre varejo e
   // as cinco faixas de atacado — ver TIPOS_PRECO em lib/constants.ts.
   tabelaPreco:  z.enum(['varejo','atacado_a','atacado_b','atacado_c','atacado_d','atacado_e']).default('varejo'),
+  // ── FISCAL ────────────────────────────────────────────────────────────────
+  //
+  // A NF-e exige saber se o comprador é contribuinte de ICMS, e a IE quando
+  // for. As colunas existiam desde a migração fiscal e nada as preenchia: a
+  // nota saía com todo cliente como "não contribuinte", inclusive empresa
+  // comprando para revenda.
+  //
+  // 1 contribuinte · 2 isento · 9 não contribuinte. O padrão é 9 porque a
+  // maioria é consumidor comum, e supor contribuinte seria pior.
+  inscricaoEstadual: z.string().max(20).optional().nullable(),
+  indicadorIe:       z.enum(['1', '2', '9']).default('9'),
 })
 
 /**

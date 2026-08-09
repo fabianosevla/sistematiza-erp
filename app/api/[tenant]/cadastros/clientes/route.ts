@@ -49,6 +49,8 @@ export async function GET(req: NextRequest, { params }: Params) {
           SELECT cliente_id, tipo_pessoa, nome_completo, nome_fantasia, documento,
                  email, telefone, celular, cep, endereco, numero, complemento,
                  bairro, cidade, uf, observacao, tabela_preco,
+                 -- Fiscal: a NF-e precisa saber se o comprador e contribuinte.
+                 inscricao_estadual, indicador_ie,
                  active_flg, modification_num, created_dt, created_by, updated_dt, updated_by
           FROM t_cliente ${where}
           ORDER BY nome_completo ASC
@@ -80,6 +82,9 @@ export async function GET(req: NextRequest, { params }: Params) {
         observacao:      r.observacao,
         // Tabela de preço do cliente — o PDV usa para escolher varejo/atacado
         tabelaPreco:     r.tabela_preco ?? 'varejo',
+        inscricaoEstadual: r.inscricao_estadual ?? '',
+        // 1 contribuinte · 2 isento · 9 nao contribuinte
+        indicadorIe:       r.indicador_ie ?? '9',
         activeFlag:      r.active_flg,
         modificationNum: r.modification_num,
         createdDt:       r.created_dt,
@@ -134,8 +139,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         INSERT INTO t_cliente (
           tipo_pessoa, nome_completo, nome_fantasia, documento, email, telefone, celular,
           cep, endereco, numero, complemento, bairro, cidade, uf, observacao, tabela_preco,
+          inscricao_estadual, indicador_ie,
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,0,$17,$17,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,true,0,$19,$19,NOW(),NOW())
         RETURNING cliente_id as "clienteId"
       `, [
         body.tipoPessoa?.trim() || 'PF',
@@ -156,6 +162,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         // Valor fora da lista vira 'varejo' — nunca grava lixo na coluna
         (['varejo','atacado_a','atacado_b','atacado_c','atacado_d','atacado_e']
           .includes(String(body.tabelaPreco)) ? body.tabelaPreco : 'varejo'),
+        body.inscricaoEstadual?.trim() || null,
+        (['1','2','9'].includes(String(body.indicadorIe)) ? body.indicadorIe : '9'),
         uid,
       ])
       return created(res.rows[0])
