@@ -673,9 +673,9 @@ export default function PedidosView({ tenantSlug }: Props) {
                       para trocar o número — sempre voltava a 1. */}
                   <CampoQtdItem valor={qtdProduto} onChange={setQtdProduto} altura="h-9" />
                 </div>
+                {/* Rola quando a busca traz muitos: a lista inteira aparece,
+                    sem cortar em silêncio. */}
                 {buscaProduto && produtos.length > 0 && (
-                  {/* Rola quando a busca traz muitos: a lista inteira aparece,
-                      sem cortar em silêncio. */}
                   <div className="mt-1 border border-gray-100 rounded-lg overflow-y-auto max-h-72 shadow-sm">
                     {produtos.map((p: any) => {
                       // Mostra o preço da tabela do cliente, não o varejo fixo
