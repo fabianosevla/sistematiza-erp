@@ -88,6 +88,13 @@ export const dbVenda = pgTable('t_venda', {
   observacao:        varchar('observacao', { length: 500 }),
   observacaoInterna: varchar('observacao_interna', { length: 500 }),
   vendedor:          varchar('vendedor', { length: 100 }),
+  // nenhum | nfce | nfe — decidido no fechamento da venda.
+  //
+  // Separa o que foi faturado do que não foi. É informação GERENCIAL: não
+  // emite nada por si, só registra a intenção. A emissão de verdade acontece
+  // no módulo Fiscal, e depende de parametrização e credenciamento.
+  // Ver scripts/migrate-fiscal-parametrizacao.js
+  documentoFiscal:   varchar('documento_fiscal', { length: 10 }).notNull().default('nenhum'),
   vendidaEm:         timestamp('vendida_em', { withTimezone: true }).notNull(),
 })
 

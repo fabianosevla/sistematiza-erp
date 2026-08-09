@@ -119,6 +119,23 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [painelAberto, setPainelAberto]   = useState(false)
   const [etapa, setEtapa]                 = useState<EtapaPainel>('itens')
 
+  // COM NOTA OU SEM NOTA.
+  //
+  // Registra a intenção no momento da venda. Não emite nada por si — a emissão
+  // vive no módulo Fiscal e depende de parametrização e credenciamento. O que
+  // isto faz é separar, no gerencial, o que foi faturado do que não foi.
+  //
+  // Nasce desligado de propósito: emitir é decisão consciente, e no balcão a
+  // maioria das vendas ao consumidor sai sem nota pedida.
+  const [comNota, setComNota]             = useState(false)
+
+  const { data: cfgFiscalRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const fiscalAtivo = cfgFiscalRaw?.data?.fiscalAtivo === true
+
   // Fluxo de finalização: "Finalizar" abre "Deseja confirmar a venda?" (Sim/Não).
   // Após registrar, abre "Deseja imprimir cupom?" (Sim/Não) com os dados da
   // venda congelados em cupomVenda (o carrinho já foi resetado nesse ponto).
@@ -270,6 +287,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           enderecoEntrega: enderecoEntrega || undefined,
           vendedor:       vendedor || undefined,
           observacao:     observacao || undefined,
+          documentoFiscal: comNota ? 'nfce' : 'nenhum',
           // O desconto de cada linha vai no próprio item; o servidor soma tudo
           // no desconto da venda. tipoPrecao diz ao VendaService qual coluna de
           // preço usar — e fica gravado em t_venda_item para o histórico.
@@ -322,6 +340,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       })
 
       setCarrinho([])
+      // Volta a desligar: cada venda decide de novo. Manter ligado faria a
+      // venda seguinte sair com nota sem ninguém ter pedido.
+      setComNota(false)
       setDesconto('0')
       setAcrescimo('0')
       setValorRecebido('')
@@ -1320,6 +1341,20 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" />
                   </div>
                 </div>
+              )}
+
+              {/* Emitir nota — só aparece com o módulo fiscal contratado.
+                  Registra a intenção; a emissão acontece no módulo Fiscal. */}
+              {fiscalAtivo && (
+                <label className="flex items-center gap-2 cursor-pointer rounded-xl border border-gray-100 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={comNota}
+                    onChange={e => setComNota(e.target.checked)}
+                    className="w-4 h-4 rounded"
+                  />
+                  <span className="text-sm text-gray-700">Emitir nota fiscal</span>
+                </label>
               )}
 
               {/* Impedimento real: sem endereço a venda de delivery não fecha. */}

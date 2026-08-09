@@ -506,6 +506,13 @@ export default function ConsultasView({ tenantSlug }: Props) {
     { chave: 'origem',   titulo: 'Origem',    esconderAte: 'md', render: (i: any) => i.origem },
     { chave: 'qtdItens', titulo: 'Itens',     alinhamento: 'right', esconderAte: 'md', render: (i: any) => fmtQtd(i.qtdItens) },
     { chave: 'formas',   titulo: 'Pagamento', filtravel: true, esconderAte: 'lg', render: (i: any) => i.formas },
+    {
+      chave: 'nota', titulo: 'Nota', filtravel: true, esconderAte: 'lg',
+      cabecalho: <InfoTip titulo="Nota">Separa o que saiu faturado do que saiu sem documento fiscal.</InfoTip>,
+      render: (i: any) => (
+        <span className={i.nota === 'Com nota' ? 'text-gray-700' : 'text-gray-400'}>{i.nota}</span>
+      ),
+    },
     { chave: 'desconto', titulo: 'Desconto',  alinhamento: 'right', render: (i: any) => i.desconto > 0 ? <span className="text-red-600">-{fmt(i.desconto)}</span> : <span className="text-gray-300">—</span> },
     { chave: 'total',    titulo: 'Total',     alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
   ]

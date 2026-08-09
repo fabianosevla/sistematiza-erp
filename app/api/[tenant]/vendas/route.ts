@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { VendaService } from '@/lib/services/vendas/VendaService'
 import { ok, created, serverError, badRequest } from '@/lib/api/responses'
 
@@ -60,6 +61,10 @@ const criarVendaSchema = z.object({
   vendidaEm:          z.string().optional(),
   // Fidelidade: quanto de cashback o cliente quer resgatar (centavos)
   usarCashback:       z.number().int().min(0).optional(),
+  // nenhum | nfce | nfe. Sem isso o Zod DESCARTA o campo em silêncio e toda
+  // venda nasceria como 'nenhum' — já aconteceu neste projeto com o tipo do
+  // produto e com os preços de atacado.
+  documentoFiscal:    z.enum(['nenhum', 'nfce', 'nfe']).optional(),
 })
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -91,7 +96,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         clienteId:  payload.clienteId ?? undefined,
         nomeClienteAvulso: payload.nomeClienteAvulso ?? undefined,
         usarCashback: payload.usarCashback ?? undefined,
-        userId: 1,
+        documentoFiscal: payload.documentoFiscal ?? 'nenhum',
+        userId: await usuarioAtualIdDb(db),
       })
       return created(result)
     } finally {

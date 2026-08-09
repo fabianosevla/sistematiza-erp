@@ -364,7 +364,7 @@ export class VendaService {
     return result ?? null
   }
 
-  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, userId }: {
+  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, documentoFiscal, userId }: {
     itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
     clienteId?:         number
     // Cliente avulso: só um nome. Sem cliente_id não há cashback nem
@@ -379,6 +379,8 @@ export class VendaService {
     observacaoInterna?: string
     vendedor?:          string
     usarCashback?:      number   // centavos que o cliente quer resgatar
+    // nenhum | nfce | nfe. Decidido no fechamento, no PDV.
+    documentoFiscal?:   string
     userId:             number
   }) {
     const now = new Date()
@@ -434,6 +436,7 @@ export class VendaService {
       observacao:        observacao || null,
       observacaoInterna: observacaoInterna || null,
       vendedor:          vendedor || null,
+      documentoFiscal:   documentoFiscal || 'nenhum',
       vendidaEm:         now,
       createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
     }).returning({ vendaId: dbVenda.vendaId })
@@ -515,8 +518,11 @@ export class VendaService {
 
     // Gera rascunho fiscal se módulo ativo
     try {
+      // O rascunho só nasce se a venda pediu nota. Antes ele era criado em
+      // toda venda com o módulo ligado, e o balcão acumulava rascunho de
+      // cupom que ninguém ia emitir — sujando a fila do módulo Fiscal.
       const cfg = await new ConfiguracoesService(this.db).get()
-      if (cfg?.fiscalAtivo) {
+      if (cfg?.fiscalAtivo && documentoFiscal && documentoFiscal !== 'nenhum') {
         await new FiscalService(this.db).criarNota({
           tipo: 'NFC-e', valorTotal: total, vendaId: venda.vendaId,
           // produtoId vai junto: é por ele que o FiscalService acha o NCM e o

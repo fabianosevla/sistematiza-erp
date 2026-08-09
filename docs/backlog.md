@@ -5,6 +5,53 @@ promessa de fazer agora; é garantia de não esquecer.
 
 ---
 
+## 0. Scripts pendentes de execução
+
+Cada um simula por padrão e só grava com `--aplicar`. **Rode a simulação e leia
+a saída antes de aplicar.** A ordem importa: os de estrutura vêm antes dos de
+dado.
+
+```
+# Estrutura
+node scripts/migrate-conta-receber-ajustes.js
+node scripts/migrate-conta-receber-data-entrega.js
+node scripts/migrate-fiscal-parametrizacao.js
+
+# Dado
+node scripts/migrate-despesa-de-conta-pagar.js
+node scripts/desfazer-vendas-de-pedido.js
+node scripts/fix-estoque-canelloni.js
+```
+
+**`desfazer-vendas-de-pedido` por último, e sabendo o que faz:** ele inativa as
+vendas geradas pela regra antiga de entrega. O faturamento de meses passados
+vai cair, e volta conforme as contas a receber forem baixadas. Não é perda de
+dado — é a régua nova aplicada ao histórico.
+
+**`migrate-despesa-de-conta-pagar` piora o DRE passado.** Compra a prazo nunca
+virava despesa; agora vira, datada no pagamento. O lucro que aparecia estava
+otimista.
+
+---
+
+## 0.1 Bloqueado em terceiros — fiscal
+
+Nada disso depende de código. É o que trava a primeira nota:
+
+- Conta na Focus NFe, com o CNPJ da Zaghi cadastrado
+- Certificado A1 da Zaghi carregado no painel da Focus
+  (**confirmar que não é A3** — token USB não serve)
+- Tabela A preenchida pelo contador — 8 campos, não depende dos produtos
+- Tabelas B e C — perfis e NCM por produto
+
+Ver `docs/Kit-Fiscal-Contador.pdf` e `docs/Primeira-Nota-Fiscal.pdf`.
+
+**Série diferente do Everest.** Os dois sistemas não podem emitir na mesma
+série: disputam o mesmo número e a SEFAZ rejeita por duplicidade. Everest na 1,
+Sistematiza na 2.
+
+---
+
 ## 1. Provisionamento de tenant e reestruturação do schema
 
 **Por que existe:** hoje é impossível criar uma empresa funcional. A rota

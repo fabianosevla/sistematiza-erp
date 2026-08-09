@@ -41,6 +41,7 @@ export class ConsultasService {
         v.total,
         v.desconto,
         v.origem,
+        COALESCE(v.documento_fiscal, 'nenhum') AS documento_fiscal,
         v.cliente_id,
         v.nome_cliente_avulso,
         cl.nome_completo  AS cliente_razao,
@@ -86,6 +87,9 @@ export class ConsultasService {
           : (avulso || 'Consumidor Final'),
         clienteAvulso: !r.cliente_id && !!avulso,
         origem:      r.origem ?? 'pdv',
+        // Faturado x não faturado. Filtrável na tabela, e é a separacao que
+        // permite comparar o gerencial com o que foi declarado.
+        nota:        r.documento_fiscal === 'nenhum' ? 'Sem nota' : 'Com nota',
         formas:      r.formas ?? '—',
         produtos:    Array.isArray(r.produtos) ? r.produtos.filter(Boolean) : [],
         qtdItens:    Number(r.qtd_itens ?? 0),
