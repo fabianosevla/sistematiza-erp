@@ -7,9 +7,9 @@ import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
  * Grupo de ST do item, no formato que a Focus NFe espera.
  *
  * Só sai quando houve ST calculada. Item sem ST não pode levar o grupo vazio:
- * a SEFAZ recusa o mesmo tanto por falta quanto por excesso.
+ * a SEFAZ recusa tanto por falta quanto por excesso.
  *
- * modalidade 4 = Margem de Valor Agregado, que é como MG trata a massa.
+ * Modalidade 4 = Margem de Valor Agregado, que é como MG trata a massa.
  */
 function grupoSt(item: any) {
   const base = Number(item.baseSt ?? 0)
@@ -27,23 +27,21 @@ function grupoSt(item: any) {
  * Nome da forma de pagamento → código tPag da NF-e.
  *
  * O que não casa vira 99 (outros), que é verdadeiro. Mapear para 01 seria
- * dizer que entrou dinheiro sem ter entrado.
+ * declarar dinheiro que não entrou, e o cruzamento com a operadora não bate.
  */
 function codigoFormaPagamento(nome: any): string {
-  const n = String(nome ?? '')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-  if (/dinheiro|especie/.test(n))            return '01'
-  if (/cheque/.test(n))                      return '02'
-  if (/credito/.test(n) && /cart/.test(n))   return '03'
-  if (/debito/.test(n))                      return '04'
-  if (/cartao/.test(n))                      return '03'
-  if (/vale.*aliment/.test(n))               return '10'
-  if (/vale.*refei/.test(n))                 return '11'
-  if (/boleto/.test(n))                      return '15'
-  if (/deposito/.test(n))                    return '16'
-  if (/pix/.test(n))                         return '17'
-  if (/transfer/.test(n))                    return '18'
-  if (/fidelidade|cashback/.test(n))         return '19'
+  const n = String(nome ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (/dinheiro|especie/.test(n))          return '01'
+  if (/cheque/.test(n))                    return '02'
+  if (/debito/.test(n))                    return '04'
+  if (/credito|cartao/.test(n))            return '03'
+  if (/vale.*aliment/.test(n))             return '10'
+  if (/vale.*refei/.test(n))               return '11'
+  if (/boleto/.test(n))                    return '15'
+  if (/deposito/.test(n))                  return '16'
+  if (/pix/.test(n))                       return '17'
+  if (/transfer/.test(n))                  return '18'
+  if (/fidelidade|cashback/.test(n))       return '19'
   return '99'
 }
 
@@ -172,6 +170,8 @@ export class FiscalService {
   async criarNota(payload: {
     tipo: string; cnpjCpf?: string; razaoSocial?: string; uf?: string
     cfop?: string; valorTotal: number; vendaId?: number
+    /** Congela o endereço do destinatário, exigido na NF-e modelo 55. */
+    clienteId?: number
     itens: { produtoId?: number; descricao: string; quantidade: number; precoUnitario: number }[]
     userId: number
   }) {
@@ -188,10 +188,33 @@ export class FiscalService {
     const dentroDoEstado = !ufDestino || ufDestino === ufEmpresa
     const simples = ['1', '2'].includes(String(cfg.crt ?? ''))
 
+    // Endereço do destinatário, congelado agora. Buscar na hora de emitir
+    // faria uma nota de agosto sair com o endereço que o cliente passou a ter
+    // em outubro.
+    let dest: any = {}
+    if (payload.clienteId) {
+      const r = await this.db.execute(sql`
+        SELECT cep, endereco, numero, complemento, bairro, cidade, uf,
+               inscricao_estadual, indicador_ie
+          FROM t_cliente WHERE cliente_id = ${payload.clienteId} LIMIT 1
+      `)
+      dest = (r.rows as any[])[0] ?? {}
+    }
+
     const [nota] = await this.db.insert(dbNotaFiscal).values({
       tipo: payload.tipo, status: 'pendente', dataEmissao: now,
       cnpjCpf: payload.cnpjCpf ?? null, razaoSocial: payload.razaoSocial ?? null,
-      uf: payload.uf ?? null, cfop: payload.cfop ?? null,
+      uf: payload.uf ?? dest.uf ?? null, cfop: payload.cfop ?? null,
+      ie:          dest.inscricao_estadual ?? null,
+      // 1 contribuinte · 2 isento · 9 não contribuinte. Sem cadastro, 9 é a
+      // suposição segura: consumidor comum.
+      indicadorIe: dest.indicador_ie ?? '9',
+      cep:         dest.cep ?? null,
+      logradouro:  dest.endereco ?? null,
+      numero:      dest.numero ?? null,
+      complemento: dest.complemento ?? null,
+      bairro:      dest.bairro ?? null,
+      municipio:   dest.cidade ?? null,
       valorProdutos: subtotal, valorTotal: payload.valorTotal,
       vendaId: payload.vendaId ?? null,
       createdBy: payload.userId, updatedBy: payload.userId, createdDt: now, updatedDt: now,
@@ -308,6 +331,13 @@ export class FiscalService {
     }
   }
 
+  /**
+   * Emite a nota pelo emissor configurado no tenant.
+   *
+   * O nome ainda diz "Focus" por compatibilidade com quem chama; o método já
+   * não sabe qual fornecedor é. Renomear fica para quando não houver mais
+   * chamada antiga por aí.
+   */
   async emitirViaFocusNfe(notaId: number, config: { token: string; ambiente: string }) {
     const nota = await this.findNotaById(notaId)
     if (!nota) throw new Error('Nota não encontrada')
@@ -316,6 +346,8 @@ export class FiscalService {
       ? 'https://api.focusnfe.com.br'
       : 'https://homologacao.focusnfe.com.br'
 
+    // Identificador desta emissão no nosso sistema. Serve para consultar e
+    // para não emitir duas vezes por engano.
     const ref = `sistematiza_${notaId}_${Date.now()}`
 
     // RECUSA ANTES DE EMITIR.
@@ -345,13 +377,14 @@ export class FiscalService {
     // Dados da empresa. Sem CRT nao da para decidir entre CSOSN e CST, e sem
     // saber isso o payload sai errado de um jeito que a SEFAZ aceita.
     const cfgRes = await this.db.execute(sql`
-      SELECT crt, mensagem_fiscal, credenciado_nfce, credenciado_nfe
+      SELECT crt, mensagem_fiscal, credenciado_nfce, credenciado_nfe, uf
         FROM t_configuracoes_tenant LIMIT 1
     `)
     const cfg: any = (cfgRes.rows as any[])[0] ?? {}
     if (!String(cfg.crt ?? '').trim()) {
       throw new Error('Regime tributario (CRT) nao configurado. Preencha em Configuracoes > Fiscal.')
     }
+    const ufEmpresaAtual = String(cfg.uf ?? '').toUpperCase()
 
     // CREDENCIAMENTO ANTES DE TRANSMITIR.
     //
@@ -380,43 +413,98 @@ export class FiscalService {
       ? 'Venda de producao do estabelecimento'
       : 'VENDA A CONSUMIDOR'
 
-    // ── DESTINATÁRIO EM HOMOLOGAÇÃO ───────────────────────────────────────
+    // Em homologação a SEFAZ exige que o destinatário se chame exatamente
+    // isto. Mandar o nome real derruba a nota, com um código que não explica.
+    const RAZAO_HOMOLOGACAO = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
+    const homologacao = config.ambiente !== 'producao'
+
+    const soDigitos = (v: any) => String(v ?? '').replace(/\D/g, '')
+    const doc         = soDigitos(nota.cnpjCpf)
+    const mesmoEstado = !nota.uf || String(nota.uf).toUpperCase() === ufEmpresaAtual
+
+    // Na NF-e o destinatário é obrigatório, e faltar campo aqui devolve um
+    // código de rejeição que ninguém decifra. Melhor barrar com o nome do
+    // campo em português.
+    if (!ehNfce) {
+      const obrig: [string, any][] = [
+        ['CNPJ/CPF',   doc],
+        ['logradouro', (nota as any).logradouro],
+        ['bairro',     (nota as any).bairro],
+        ['município',  (nota as any).municipio],
+        ['UF',         nota.uf],
+        ['CEP',        (nota as any).cep],
+      ]
+      const semDados = obrig.filter(([, v]) => !String(v ?? '').trim()).map(([k]) => k)
+      if (semDados.length > 0) {
+        throw new Error(
+          `Nao e possivel emitir NF-e: falta ${semDados.join(', ')} do destinatario.\n` +
+          'Complete o cadastro do cliente em Cadastros > Clientes e gere a nota de novo.'
+        )
+      }
+    }
+
+    // ── DESTINATÁRIO ──────────────────────────────────────────────────────
     //
-    // A SEFAZ exige que, no ambiente de teste, a razão social do destinatário
-    // seja exatamente esta frase. Mandar o nome real derruba a nota, e o
-    // código de rejeição não diz o motivo com clareza.
-    const homologacao  = config.ambiente !== 'producao'
-    const RAZAO_TESTE  = 'NF-E EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL'
-    const razaoDestino = homologacao ? RAZAO_TESTE : nota.razaoSocial
+    // Só CNPJ e razão social não bastam na NF-e modelo 55: a SEFAZ exige o
+    // endereço inteiro e o indicador de IE. Na NFC-e o destinatário é
+    // opcional, e mandar endereço de consumidor de balcão só cria erro.
+    //
+    // Nome do campo é `nome_destinatario`, e não `razao_social_destinatario`.
+    let destinatario: Record<string, any> = {}
+    if (doc) {
+      destinatario = {
+        nome_destinatario: homologacao ? RAZAO_HOMOLOGACAO : nota.razaoSocial,
+        ...(doc.length > 11 ? { cnpj_destinatario: doc } : { cpf_destinatario: doc }),
+      }
+      if (!ehNfce) {
+        Object.assign(destinatario, {
+          indicador_inscricao_estadual_destinatario: Number((nota as any).indicadorIe ?? 9),
+          ...((nota as any).ie ? { inscricao_estadual_destinatario: soDigitos((nota as any).ie) } : {}),
+          logradouro_destinatario: (nota as any).logradouro ?? '',
+          numero_destinatario:     (nota as any).numero || 'S/N',
+          ...((nota as any).complemento ? { complemento_destinatario: (nota as any).complemento } : {}),
+          bairro_destinatario:     (nota as any).bairro ?? '',
+          municipio_destinatario:  (nota as any).municipio ?? '',
+          uf_destinatario:         nota.uf ?? '',
+          cep_destinatario:        soDigitos((nota as any).cep),
+        })
+      }
+    }
 
     const payload = {
-      natureza_operacao: natureza,
-      data_emissao: new Date().toISOString(),
-      tipo_documento: '1',
+      natureza_operacao:  natureza,
+      data_emissao:       new Date().toISOString(),
+      tipo_documento:     '1',
       finalidade_emissao: '1',
       consumidor_final:   ehParaContribuinte ? '0' : '1',
-      // 1 = operação presencial (balcão) · 4 = entrega a domicílio
+      // 1 presencial (balcão) · 4 entrega em domicílio
       presenca_comprador: ehNfce ? '1' : '4',
+      // 1 interna · 2 interestadual. A SEFAZ usa para validar o CFOP do item.
+      local_destino:      mesmoEstado ? '1' : '2',
+      // 9 = sem frete, igual à NF-e 3.313 do Everest.
+      modalidade_frete:   '9',
       ...(cfg.mensagem_fiscal ? { informacoes_adicionais_contribuinte: String(cfg.mensagem_fiscal) } : {}),
-      ...(nota.cnpjCpf ? { cnpj_destinatario: nota.cnpjCpf, razao_social_destinatario: razaoDestino } : {}),
-      itens: nota.itens.map((item, i) => {
+      ...destinatario,
+      // `items`, não `itens`. É o nome do campo na API da Focus; com o nome
+      // errado a nota ia sem item nenhum.
+      items: nota.itens.map((item, i) => {
         const aliqPis    = Number((item as any).aliqPis ?? 0)
         const aliqCofins = Number((item as any).aliqCofins ?? 0)
         return {
-          numero_item: String(i + 1),
-          descricao: item.descricao,
-          codigo_ncm: item.ncm,
-          ...((item as any).cest ? { cest: String((item as any).cest).replace(/\D/g, '') } : {}),
-          cfop: item.cfop,
-          unidade_comercial: item.unidade || 'UN',
-          quantidade_comercial: String(parseFloat(String(item.quantidade))),
-          valor_unitario_comercial: (item.precoUnitario / 100).toFixed(2),
+          numero_item:               String(i + 1),
+          descricao:                 item.descricao,
+          codigo_ncm:                item.ncm,
+          ...((item as any).cest ? { cest: soDigitos((item as any).cest) } : {}),
+          cfop:                      item.cfop,
+          unidade_comercial:         item.unidade || 'UN',
+          quantidade_comercial:      String(parseFloat(String(item.quantidade))),
+          valor_unitario_comercial:  (item.precoUnitario / 100).toFixed(2),
           valor_unitario_tributavel: (item.precoUnitario / 100).toFixed(2),
-          quantidade_tributavel: String(parseFloat(String(item.quantidade))),
-          valor_bruto: (item.valorTotal / 100).toFixed(2),
-          inclui_no_total: '1',
-          icms_situacao_tributaria: item.cstCsosn,
-          icms_origem: (item as any).origem ?? '0',
+          quantidade_tributavel:     String(parseFloat(String(item.quantidade))),
+          valor_bruto:               (item.valorTotal / 100).toFixed(2),
+          inclui_no_total:           '1',
+          icms_situacao_tributaria:  item.cstCsosn,
+          icms_origem:               (item as any).origem ?? '0',
           ...(Number(item.aliqIcms) > 0 ? { icms_aliquota: String(item.aliqIcms) } : {}),
           ...grupoSt(item),
           pis_situacao_tributaria:    (item as any).cstPis    ?? '07',
@@ -428,7 +516,14 @@ export class FiscalService {
       formas_pagamento: await this.formasDePagamento(nota),
     }
 
-    const response = await fetch(`${baseUrl}/v2/${nota.tipo.toLowerCase()}?ref=${ref}`, {
+    // ROTA: /v2/nfe e /v2/nfce.
+    //
+    // Antes era `nota.tipo.toLowerCase()`, com o tipo gravado como 'NF-e' e
+    // 'NFC-e' — montava /v2/nf-e e /v2/nfc-e, endereços que não existem.
+    // Nenhuma emissão teria funcionado, nem a do balcão.
+    const rota = ehNfce ? 'nfce' : 'nfe'
+
+    const response = await fetch(`${baseUrl}/v2/${rota}?ref=${encodeURIComponent(ref)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -437,17 +532,27 @@ export class FiscalService {
       body: JSON.stringify(payload),
     })
 
-    const result = await response.json()
+    const result = await response.json().catch(() => ({} as any))
     const now = new Date()
 
     await this.db.update(dbNotaFiscal).set({
       status:      result.status === 'autorizado' ? 'autorizada' : 'pendente',
-      chaveAcesso: result.chave_nfe ?? null,
+      chaveAcesso: result.chave_nfe ?? result.chave_nfce ?? null,
       numero:      result.numero ?? null,
+      serie:       result.serie ?? null,
       xmlUrl:      result.caminho_xml_nota_fiscal ?? null,
       danfeUrl:    result.caminho_danfe ?? null,
       updatedDt:   now, updatedBy: 1,
     }).where(eq(dbNotaFiscal.notaId, notaId))
+
+    // Recusa da SEFAZ não pode voltar como sucesso silencioso: a tela mostraria
+    // "emitida" para uma nota que não existe.
+    if (!response.ok && response.status !== 202) {
+      throw new Error(
+        result?.mensagem_sefaz ?? result?.mensagem ?? result?.erros?.[0]?.mensagem ??
+        'A emissao foi recusada. Verifique no modulo Fiscal.'
+      )
+    }
 
     return result
   }
@@ -487,7 +592,9 @@ export class FiscalService {
         ? 'https://api.focusnfe.com.br'
         : 'https://homologacao.focusnfe.com.br'
 
-      await fetch(`${baseUrl}/v2/${nota.tipo.toLowerCase()}/${nota.chaveAcesso}`, {
+      // Mesma correção da emissão: 'NFC-e'.toLowerCase() virava 'nfc-e'.
+      const rotaCancel = String(nota.tipo).toUpperCase() === 'NFC-E' ? 'nfce' : 'nfe'
+      await fetch(`${baseUrl}/v2/${rotaCancel}/${nota.chaveAcesso}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

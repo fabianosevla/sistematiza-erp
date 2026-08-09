@@ -294,6 +294,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
                   cnpjCpf:     pedido.cliente_documento ?? undefined,
                   razaoSocial: nomeCliente ?? undefined,
                   uf:          pedido.cliente_uf ?? undefined,
+                  // Congela endereço e IE do destinatário: a NF-e modelo 55
+                  // exige, e buscar depois traria o endereço de hoje numa
+                  // nota de meses atrás.
+                  clienteId:   pedido.cliente_id ?? undefined,
                   valorTotal:  total,
                   // produtoId vai junto: é por ele que o FiscalService acha o
                   // NCM e o perfil tributário do item.

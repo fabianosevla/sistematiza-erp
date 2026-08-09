@@ -56,6 +56,9 @@ const EMPRESA = {
   email:              'mariajulia.zaghi@hotmail.com',
   // 1 = Simples Nacional. A NF-e traz "EMPRESA ME OU EPP OPTANTE PELO SIMPLES".
   crt:                '1',
+  // 1094-5/00 — Fabricacao de massas alimenticias. Do contrato social, e
+  // coerente com os NCMs do capitulo 1902 que os produtos usam.
+  cnae:               '1094500',
   // Texto obrigatorio no rodape, copiado da nota do Everest. A parte do
   // credito de 1,25% e exigencia da Portaria SUTRI 837/2019 de MG, e o valor
   // impresso batia: 1.317,00 x 1,25% = 16,46.
@@ -213,6 +216,17 @@ async function main() {
       t_nota_fiscal_item: [
         ['mva',     'NUMERIC(6,2) NOT NULL DEFAULT 0'],
         ['aliq_st', 'NUMERIC(5,2) NOT NULL DEFAULT 0'],
+      ],
+      // Endereco do destinatario: obrigatorio na NF-e modelo 55. A nota
+      // guardava so CNPJ, razao social e UF.
+      t_nota_fiscal: [
+        ['indicador_ie', 'VARCHAR(1)'],
+        ['cep',          'VARCHAR(10)'],
+        ['logradouro',   'VARCHAR(200)'],
+        ['numero',       'VARCHAR(20)'],
+        ['complemento',  'VARCHAR(100)'],
+        ['bairro',       'VARCHAR(100)'],
+        ['municipio',    'VARCHAR(100)'],
       ],
       t_pedido: [
         ['documento_fiscal', "VARCHAR(10) NOT NULL DEFAULT 'nenhum'"],

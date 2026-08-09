@@ -192,6 +192,36 @@ uma sessão manual de migração.
 - Decidir o fluxo comercial: cliente cria a própria empresa (self-service,
   como hoje) ou o schema é provisionado por você antes de convidar o dono.
 
+### 1.1 Cadastro na Focus NFe como etapa do provisionamento
+
+**Só para quem contratar o módulo fiscal.** Cliente sem fiscal não precisa de
+nada disso, e não deve pagar por isso.
+
+O modelo da Focus casa com o nosso: **uma conta** (da Sistematiza) contendo
+**várias empresas**, uma por CNPJ, cada uma com **token próprio**. É exatamente
+o desenho de `t_configuracoes_tenant.focus_nfe_token`, que já é por tenant.
+
+Hoje isso seria manual a cada cliente: criar a empresa no painel, subir o
+certificado, definir a série, copiar o token, colar em Configurações → Fiscal.
+
+**A automatizar**, usando a API de empresas da Focus
+(`doc.focusnfe.com.br/reference/empresas` — criar, listar, atualizar, excluir):
+
+- No provisionamento, se o plano incluir fiscal: criar a empresa na Focus com
+  CNPJ, IE, endereço e regime tributário do tenant, e gravar o token devolvido
+  direto na configuração do tenant.
+- Upload do certificado A1 continua sendo passo manual e consciente — é
+  documento do cliente, com senha, e não deve trafegar por automação sem que
+  alguém tenha decidido isso explicitamente.
+- Série: usar sempre uma série nova por cliente, nunca a 1, para conviver com
+  o sistema fiscal que ele já usa durante a migração.
+- Ao desativar um tenant, decidir o que fazer com a empresa na Focus: manter
+  (obrigação de guarda dos XMLs) ou excluir. Provavelmente manter.
+
+**Ponto contratual, não técnico:** o certificado é do cliente e responde pelo
+CNPJ dele, mesmo hospedado na sua conta. Isso precisa estar escrito no contrato
+antes do primeiro cliente pago.
+
 ---
 
 ## 2. Segurança e faxina

@@ -81,7 +81,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       const { searchParams } = new URL(req.url)
       const action  = searchParams.get('action')
 
-      const fiscal  = new FiscalService(db)
+      // schemaName vai junto: e o prefixo do tenant no arquivo de XML.
+      const fiscal  = new FiscalService(db, tenant.schemaName)
       const config  = new ConfiguracoesService(db)
       // Quem abriu o caixa, quem cancelou a nota. Antes ia 1 fixo nas cinco
       // acoes — e num controle que existe para atribuir responsabilidade,

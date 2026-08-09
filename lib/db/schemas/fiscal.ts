@@ -105,6 +105,21 @@ export const dbNotaFiscal = pgTable('t_nota_fiscal', {
   razaoSocial:         varchar('razao_social', { length: 300 }),
   uf:                  varchar('uf', { length: 2 }),
   ie:                  varchar('ie', { length: 20 }),
+  // ENDEREÇO DO DESTINATÁRIO — obrigatório na NF-e modelo 55.
+  //
+  // A nota guardava só CNPJ, razão social e UF. A SEFAZ exige o destinatário
+  // inteiro, e sem isso toda nota de pedido seria rejeitada.
+  //
+  // Fica congelado aqui, e não buscado no cadastro na hora de emitir: o
+  // cliente pode mudar de endereço depois, e a nota tem que continuar
+  // contando a história que era verdade no dia da saída.
+  indicadorIe:         varchar('indicador_ie', { length: 1 }),
+  cep:                 varchar('cep', { length: 10 }),
+  logradouro:          varchar('logradouro', { length: 200 }),
+  numero:              varchar('numero', { length: 20 }),
+  complemento:         varchar('complemento', { length: 100 }),
+  bairro:              varchar('bairro', { length: 100 }),
+  municipio:           varchar('municipio', { length: 100 }),
   cfop:                varchar('cfop', { length: 10 }),
   valorProdutos:       integer('valor_produtos').notNull().default(0),
   valorDesconto:       integer('valor_desconto').notNull().default(0),
