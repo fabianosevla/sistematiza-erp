@@ -223,7 +223,9 @@ async function main() {
         ['indicador_ie', 'VARCHAR(1)'],
         ['cep',          'VARCHAR(10)'],
         ['logradouro',   'VARCHAR(200)'],
-        ['numero',       'VARCHAR(20)'],
+        // numero_dest, e nao numero: a tabela ja tem `numero`, que e o numero
+        // DA NOTA. Com o mesmo nome o endereco nao teria onde ser gravado.
+        ['numero_dest',  'VARCHAR(20)'],
         ['complemento',  'VARCHAR(100)'],
         ['bairro',       'VARCHAR(100)'],
         ['municipio',    'VARCHAR(100)'],

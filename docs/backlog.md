@@ -224,6 +224,41 @@ antes do primeiro cliente pago.
 
 ---
 
+## 1.2 Varredura de "coluna existe, mas não chega na tela"
+
+Feita em 09/08/2026, depois que os campos fiscais do produto apareceram
+vazios. O padrão é sempre o mesmo: a coluna entrou por script de migração e
+alguma das quatro camadas não foi atualizada junto — schema do Drizzle,
+validação, SELECT da API, formulário.
+
+**Corrigido na varredura:**
+
+- `t_produto`: o SELECT de `cadastros/produtos` não trazia `ncm`, `cest`,
+  `origem`, `unidade_tributavel`, `perfil_trib_id`. O formulário abria vazio e
+  **salvar por cima apagava** o que o seed fiscal tinha preenchido.
+- `t_produto.preco_atacado`: a coluna única de atacado, anterior às cinco
+  faixas, também não era selecionada. `precoNaTabela` a usa como reserva
+  quando a faixa do cliente está vazia — reserva que nunca funcionou.
+- `t_cliente`: `inscricao_estadual` e `indicador_ie` existiam desde
+  `migrate-fiscal-parametrizacao.js` e faltavam nas quatro camadas. Toda NF-e
+  sairia com o comprador como não contribuinte.
+
+**Pendente:**
+
+- **`ConfiguracoesService` enxerga menos que a tabela.** O schema do Drizzle
+  declara um subconjunto de `t_configuracoes_tenant`; `crt`, `cnae`,
+  `mensagem_fiscal`, `serie_nfe`, `serie_nfce`, `credenciado_nfce`,
+  `credenciado_nfe`, `qtd_caixas` e `regime_turno` ficam de fora. Não há bug
+  hoje porque quem precisa delas usa SQL cru, e o `update()` do serviço não é
+  chamado por ninguém. É armadilha, não defeito. Decidir: completar o schema
+  do Drizzle ou remover o serviço e deixar só a rota.
+- **`t_cliente.consumidor_final`** existe no banco e nada lê nem escreve.
+  Provavelmente redundante com `indicador_ie = 9`. Candidata a coluna morta.
+- Falta um teste que compare, para cada tabela, as colunas do banco com as
+  quatro camadas. Enquanto for varredura manual, o padrão volta.
+
+---
+
 ## 2. Segurança e faxina
 
 - Regenerar a `CLERK_SECRET_KEY` de produção (a chave passou por um chat) e

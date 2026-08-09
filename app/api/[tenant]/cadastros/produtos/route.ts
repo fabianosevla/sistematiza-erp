@@ -41,6 +41,11 @@ export async function GET(req: NextRequest, { params }: Params) {
           SELECT produto_id, nome, descricao, codigo_barras, unidade, tipo, categoria,
                  estoque_atual, estoque_minimo, preco_custo, preco_varejo,
                  preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
+                 -- Coluna única de atacado, de antes das cinco faixas. Continua
+                 -- valendo como reserva quando a faixa escolhida está vazia —
+                 -- ver precoNaTabela em PedidosView. Sem trazê-la aqui, essa
+                 -- reserva nunca funcionava.
+                 preco_atacado,
                  insumo_flg, revenda, active_flg, modification_num,
                  -- CAMPOS FISCAIS.
                  -- A tela sempre teve os campos e a gravação sempre aceitou,
@@ -75,6 +80,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         precoAtacadoC:  Number(r.preco_atacado_c ?? 0),
         precoAtacadoD:  Number(r.preco_atacado_d ?? 0),
         precoAtacadoE:  Number(r.preco_atacado_e ?? 0),
+        precoAtacado:   Number(r.preco_atacado ?? 0),
         insumoFlg:      r.insumo_flg === true,
         ncm:               r.ncm ?? '',
         cest:              r.cest ?? '',

@@ -116,7 +116,10 @@ export const dbNotaFiscal = pgTable('t_nota_fiscal', {
   indicadorIe:         varchar('indicador_ie', { length: 1 }),
   cep:                 varchar('cep', { length: 10 }),
   logradouro:          varchar('logradouro', { length: 200 }),
-  numero:              varchar('numero', { length: 20 }),
+  // `numero_dest`, e não `numero`: a tabela já tem `numero`, que é o número
+  // DA NOTA. Com o mesmo nome, o endereço não teria onde ser gravado e a
+  // emissão mandaria o número da nota como número da rua.
+  numeroDest:          varchar('numero_dest', { length: 20 }),
   complemento:         varchar('complemento', { length: 100 }),
   bairro:              varchar('bairro', { length: 100 }),
   municipio:           varchar('municipio', { length: 100 }),
