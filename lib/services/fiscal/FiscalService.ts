@@ -62,14 +62,39 @@ export class FiscalService {
     return { ...nota, itens }
   }
 
+  /**
+   * Cria o rascunho da nota, JÁ COM A TRIBUTAÇÃO RESOLVIDA.
+   *
+   * A resolução acontece aqui, e não na hora de emitir, de propósito: nota é
+   * documento, e documento retrata o momento em que foi feito. Se o contador
+   * mudar o perfil de um produto amanhã, as notas de ontem continuam contando
+   * a história que era verdade ontem.
+   *
+   * O que NÃO acontece aqui: inventar valor que falta. Item sem NCM ou sem
+   * perfil é gravado com o campo vazio, e a emissão recusa depois. Preencher
+   * com um padrão plausível — CFOP 5102, CSOSN 102 — produziria nota
+   * autorizada com tributação que ninguém escolheu, e isso não dá erro: dá
+   * autuação, meses depois.
+   */
   async criarNota(payload: {
     tipo: string; cnpjCpf?: string; razaoSocial?: string; uf?: string
     cfop?: string; valorTotal: number; vendaId?: number
-    itens: { descricao: string; quantidade: number; precoUnitario: number; ncm?: string; cfop?: string; cstCsosn?: string; aliqIcms?: number }[]
+    itens: { produtoId?: number; descricao: string; quantidade: number; precoUnitario: number }[]
     userId: number
   }) {
     const now = new Date()
     const subtotal = payload.itens.reduce((a, i) => a + i.precoUnitario * i.quantidade, 0)
+
+    // UF do destinatário decide entre CFOP interno e interestadual.
+    const cfgRes = await this.db.execute(sql`
+      SELECT uf, crt FROM t_configuracoes_tenant LIMIT 1
+    `)
+    const cfg: any = (cfgRes.rows as any[])[0] ?? {}
+    const ufEmpresa = String(cfg.uf ?? '').toUpperCase()
+    const ufDestino = String(payload.uf ?? ufEmpresa).toUpperCase()
+    const dentroDoEstado = !ufDestino || ufDestino === ufEmpresa
+    const simples = ['1', '2'].includes(String(cfg.crt ?? ''))
+
     const [nota] = await this.db.insert(dbNotaFiscal).values({
       tipo: payload.tipo, status: 'pendente', dataEmissao: now,
       cnpjCpf: payload.cnpjCpf ?? null, razaoSocial: payload.razaoSocial ?? null,
@@ -80,14 +105,44 @@ export class FiscalService {
     }).returning({ notaId: dbNotaFiscal.notaId })
 
     for (const item of payload.itens) {
+      // Busca o que o contador parametrizou. Sem produtoId — item avulso
+      // digitado à mão — os campos ficam vazios e a emissão vai reclamar.
+      let fiscal: any = {}
+      if (item.produtoId) {
+        const r = await this.db.execute(sql`
+          SELECT p.ncm, p.cest, p.origem, p.unidade_tributavel,
+                 pt.cfop_interno, pt.cfop_interestadual,
+                 pt.csosn, pt.cst_icms, pt.aliq_icms,
+                 pt.cst_pis, pt.aliq_pis, pt.cst_cofins, pt.aliq_cofins,
+                 pt.cst_ipi, pt.aliq_ipi, pt.tem_st, pt.mva, pt.aliq_icms_st
+            FROM t_produto p
+            LEFT JOIN t_perfil_tributario pt ON pt.perfil_trib_id = p.perfil_trib_id
+           WHERE p.produto_id = ${item.produtoId}
+           LIMIT 1
+        `)
+        fiscal = (r.rows as any[])[0] ?? {}
+      }
+
+      const cfop = dentroDoEstado ? fiscal.cfop_interno : fiscal.cfop_interestadual
+      const valorTotal = item.precoUnitario * item.quantidade
+      const aliqIcms = Number(fiscal.aliq_icms ?? 0)
+
       await this.db.insert(dbNotaFiscalItem).values({
-        notaId: nota.notaId, descricao: item.descricao,
+        notaId: nota.notaId,
+        produtoId: item.produtoId ?? null,
+        descricao: item.descricao,
         quantidade: String(item.quantidade),
         precoUnitario: item.precoUnitario,
-        valorTotal: item.precoUnitario * item.quantidade,
-        ncm: item.ncm ?? null, cfop: item.cfop ?? null,
-        cstCsosn: item.cstCsosn ?? '102',
-        aliqIcms: String(item.aliqIcms ?? 0),
+        valorTotal,
+        ncm:  fiscal.ncm  ?? null,
+        cfop: cfop ?? null,
+        unidade: fiscal.unidade_tributavel ?? null,
+        // No Simples vale o CSOSN; no regime normal, o CST. Guardar o que não
+        // se aplica só confundiria quem for conferir a nota depois.
+        cstCsosn: (simples ? fiscal.csosn : fiscal.cst_icms) ?? null,
+        aliqIcms: String(aliqIcms),
+        valorIcms: Math.round(valorTotal * aliqIcms / 100),
+        aliqIpi: String(fiscal.aliq_ipi ?? 0),
         createdBy: payload.userId, updatedBy: payload.userId, createdDt: now, updatedDt: now,
       })
     }
@@ -104,6 +159,40 @@ export class FiscalService {
 
     const ref = `sistematiza_${notaId}_${Date.now()}`
 
+    // RECUSA ANTES DE EMITIR.
+    //
+    // A versao anterior completava o que faltava: NCM '00000000', CFOP '5102',
+    // CSOSN '102', PIS e COFINS '07'. O NCM invalido ao menos era rejeitado
+    // pela SEFAZ. Os outros passavam — e nota autorizada com tributacao que
+    // ninguem escolheu nao da erro, da autuacao meses depois.
+    //
+    // Agora nada e completado. Falta informacao, a emissao para aqui e diz
+    // exatamente qual item e qual campo.
+    const faltando: string[] = []
+    for (const item of nota.itens) {
+      const f: string[] = []
+      if (!item.ncm)      f.push('NCM')
+      if (!item.cfop)     f.push('CFOP')
+      if (!item.cstCsosn) f.push('CSOSN/CST')
+      if (f.length > 0)   faltando.push(`${item.descricao}: sem ${f.join(', ')}`)
+    }
+    if (faltando.length > 0) {
+      throw new Error(
+        'Nao e possivel emitir: falta parametrizacao fiscal.\n' + faltando.join('\n') +
+        '\nCadastre em Fiscal > Perfis tributarios e no cadastro do produto.'
+      )
+    }
+
+    // Dados da empresa. Sem CRT nao da para decidir entre CSOSN e CST, e sem
+    // saber isso o payload sai errado de um jeito que a SEFAZ aceita.
+    const cfgRes = await this.db.execute(sql`
+      SELECT crt, mensagem_fiscal FROM t_configuracoes_tenant LIMIT 1
+    `)
+    const cfg: any = (cfgRes.rows as any[])[0] ?? {}
+    if (!String(cfg.crt ?? '').trim()) {
+      throw new Error('Regime tributario (CRT) nao configurado. Preencha em Configuracoes > Fiscal.')
+    }
+
     const payload = {
       natureza_operacao: 'VENDA A CONSUMIDOR',
       data_emissao: new Date().toISOString(),
@@ -111,24 +200,32 @@ export class FiscalService {
       finalidade_emissao: '1',
       consumidor_final: '1',
       presenca_comprador: '4',
+      ...(cfg.mensagem_fiscal ? { informacoes_adicionais_contribuinte: String(cfg.mensagem_fiscal) } : {}),
       ...(nota.cnpjCpf ? { cnpj_destinatario: nota.cnpjCpf, razao_social_destinatario: nota.razaoSocial } : {}),
-      itens: nota.itens.map((item, i) => ({
-        numero_item: String(i + 1),
-        descricao: item.descricao,
-        codigo_ncm: item.ncm || '00000000',
-        cfop: item.cfop || '5102',
-        unidade_comercial: 'UN',
-        quantidade_comercial: String(parseFloat(String(item.quantidade))),
-        valor_unitario_comercial: (item.precoUnitario / 100).toFixed(2),
-        valor_unitario_tributavel: (item.precoUnitario / 100).toFixed(2),
-        quantidade_tributavel: String(parseFloat(String(item.quantidade))),
-        valor_bruto: (item.valorTotal / 100).toFixed(2),
-        inclui_no_total: '1',
-        icms_situacao_tributaria: item.cstCsosn || '102',
-        icms_origem: '0',
-        pis_situacao_tributaria: '07',
-        cofins_situacao_tributaria: '07',
-      })),
+      itens: nota.itens.map((item, i) => {
+        const aliqPis    = Number((item as any).aliqPis ?? 0)
+        const aliqCofins = Number((item as any).aliqCofins ?? 0)
+        return {
+          numero_item: String(i + 1),
+          descricao: item.descricao,
+          codigo_ncm: item.ncm,
+          cfop: item.cfop,
+          unidade_comercial: item.unidade || 'UN',
+          quantidade_comercial: String(parseFloat(String(item.quantidade))),
+          valor_unitario_comercial: (item.precoUnitario / 100).toFixed(2),
+          valor_unitario_tributavel: (item.precoUnitario / 100).toFixed(2),
+          quantidade_tributavel: String(parseFloat(String(item.quantidade))),
+          valor_bruto: (item.valorTotal / 100).toFixed(2),
+          inclui_no_total: '1',
+          icms_situacao_tributaria: item.cstCsosn,
+          icms_origem: (item as any).origem ?? '0',
+          ...(Number(item.aliqIcms) > 0 ? { icms_aliquota: String(item.aliqIcms) } : {}),
+          pis_situacao_tributaria:    (item as any).cstPis    ?? '07',
+          ...(aliqPis    > 0 ? { pis_aliquota_porcentual:    String(aliqPis) }    : {}),
+          cofins_situacao_tributaria: (item as any).cstCofins ?? '07',
+          ...(aliqCofins > 0 ? { cofins_aliquota_porcentual: String(aliqCofins) } : {}),
+        }
+      }),
       formas_pagamento: [{ forma_pagamento: '01', valor_pagamento: (nota.valorTotal / 100).toFixed(2) }],
     }
 

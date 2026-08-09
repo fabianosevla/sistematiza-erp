@@ -519,7 +519,11 @@ export class VendaService {
       if (cfg?.fiscalAtivo) {
         await new FiscalService(this.db).criarNota({
           tipo: 'NFC-e', valorTotal: total, vendaId: venda.vendaId,
+          // produtoId vai junto: é por ele que o FiscalService acha o NCM e o
+          // perfil tributário. Sem isso a nota nasce sem classificação fiscal
+          // e a emissão recusa.
           itens: itemsDetalhados.map(item => ({
+            produtoId: item.produtoId,
             descricao: item.nomeProduto, quantidade: item.quantidade, precoUnitario: item.precoUnitario,
           })),
           userId,

@@ -12,6 +12,7 @@ import { Aviso } from '@/components/ui/Aviso'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FormModal } from '@/components/ui/FormModal'
 import NovaNotaModal from './NovaNotaModal'
+import PerfisTributariosTab from './PerfisTributariosTab'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -30,7 +31,7 @@ const Anchor = 'a' as const
 export default function FiscalView({ tenantSlug }: Props) {
   const qc = useQueryClient()
   const api = `/api/${tenantSlug}/fiscal`
-  const [aba, setAba]                     = useState<'pdv' | 'nfe-saida' | 'nfe-entrada' | 'relatorios'>('pdv')
+  const [aba, setAba]                     = useState<'pdv' | 'nfe-saida' | 'nfe-entrada' | 'relatorios' | 'parametros'>('pdv')
   const [filtroTipo, setFiltroTipo]       = useState('NFC-e')
   const [showNovaNota, setShowNovaNota]   = useState(false)
   const [showCancelar, setShowCancelar]   = useState<number | null>(null)
@@ -97,6 +98,7 @@ export default function FiscalView({ tenantSlug }: Props) {
           { value: 'nfe-saida',   label: 'NF-e Saída' },
           { value: 'nfe-entrada', label: 'NF-e Entrada' },
           { value: 'relatorios',  label: 'Relatórios' },
+          { value: 'parametros',  label: 'Parametrização' },
         ] as const).map(a => (
           <button key={a.value} onClick={() => setAba(a.value)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -193,6 +195,10 @@ export default function FiscalView({ tenantSlug }: Props) {
       )}
 
       {aba === 'relatorios' && <RelatoriosFiscal tenantSlug={tenantSlug} />}
+
+      {/* Parametrização fica por último na ordem das abas, mas é a primeira a
+          ser usada numa implantação: sem ela, nenhuma das outras emite nada. */}
+      {aba === 'parametros' && <PerfisTributariosTab tenantSlug={tenantSlug} />}
 
       {showAbrirTurno && (
         <FormModal titulo="Abrir Turno de Caixa" onClose={() => setShowAbrirTurno(false)} largura="max-w-sm">

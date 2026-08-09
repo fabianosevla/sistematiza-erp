@@ -1,0 +1,40 @@
+// @ts-nocheck
+// ESTE ARQUIVO VAI EM: app/api/[tenant]/fiscal/perfis/[id]/route.ts
+import type { NextRequest } from 'next/server'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { getDbForTenant } from '@/lib/db/connection'
+import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
+import { PerfilTributarioService } from '@/lib/services/fiscal/PerfilTributarioService'
+import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
+
+type Params = { params: { tenant: string; id: string } }
+
+export async function PUT(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const body   = await req.json()
+      const userId = await usuarioAtualIdDb(db)
+      const r = await new PerfilTributarioService(db).atualizar(Number(params.id), body, userId)
+      if (!r) return notFound('Perfil não encontrado')
+      return ok(r)
+    } finally { release() }
+  } catch (err) { return serverError(err) }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const userId = await usuarioAtualIdDb(db)
+      return ok(await new PerfilTributarioService(db).excluir(Number(params.id), userId))
+    } finally { release() }
+  } catch (err) {
+    // "Em uso por N produtos" é resposta de negócio, não erro de servidor.
+    const msg = (err as Error)?.message ?? ''
+    if (msg.includes('em uso')) return badRequest(msg)
+    return serverError(err)
+  }
+}
