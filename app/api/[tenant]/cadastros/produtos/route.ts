@@ -116,8 +116,13 @@ export async function POST(req: NextRequest, { params }: Params) {
           nome, descricao, codigo_barras, unidade, tipo, categoria,
           estoque_atual, estoque_minimo, preco_custo, preco_varejo,
           preco_atacado_a, preco_atacado_b, preco_atacado_c, preco_atacado_d, preco_atacado_e,
-          insumo_flg, revenda, active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,true,0,$18,$18,NOW(),NOW())
+          insumo_flg, revenda,
+          -- Fiscais: descrevem a mercadoria. A tributação vem do perfil.
+          ncm, cest, origem, unidade_tributavel, perfil_trib_id,
+          active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+                  $18,$19,$20,$21,$22,
+                  true,0,$23,$23,NOW(),NOW())
         RETURNING produto_id as "produtoId"
       `, [
         body.nome.trim(),
@@ -137,6 +142,11 @@ export async function POST(req: NextRequest, { params }: Params) {
         Number(body.precoAtacadoE ?? 0),
         body.insumoFlg === true,
         body.revenda === true,
+        body.ncm?.trim() || null,
+        body.cest?.trim() || null,
+        body.origem?.trim() || '0',
+        body.unidadeTributavel?.trim() || null,
+        body.perfilTribId ? Number(body.perfilTribId) : null,
         uid,
       ])
       return created(res.rows[0])

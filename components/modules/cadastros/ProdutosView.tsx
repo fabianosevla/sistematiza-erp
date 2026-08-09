@@ -62,9 +62,27 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [revenda, setRevenda]         = useState(false)
   const [insumoAtivo, setInsumoAtivo] = useState(false)
 
+  // ── Fiscais ──────────────────────────────────────────────────────────────
+  // Descrevem a mercadoria. A tributação vem do perfil, cadastrado pelo
+  // contador em Fiscal > Parametrização.
+  const [ncm, setNcm]                 = useState('')
+  const [cest, setCest]               = useState('')
+  const [origem, setOrigem]           = useState('0')
+  const [unidadeTrib, setUnidadeTrib] = useState('')
+  const [perfilTrib, setPerfilTrib]   = useState('')
+
   useEffect(() => { setPage(1) }, [busca])
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
+
+  // Perfis tributários para o seletor. staleTime alto: muda raramente, e é o
+  // contador quem mexe — não faz sentido rebuscar a cada abertura do painel.
+  const { data: perfisRaw } = useQuery({
+    queryKey: ['perfis-tributarios', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fiscal/perfis`)).json(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const perfisTrib: any[] = perfisRaw?.data?.perfis ?? []
 
   const { data: raw, isLoading } = useQuery({
     queryKey: ['produtos', tenantSlug, page, limit, busca, showInativos],
@@ -107,6 +125,11 @@ export default function ProdutosView({ tenantSlug }: Props) {
         precoAtacadoD: parseP(atacados.D),
         precoAtacadoE: parseP(atacados.E),
         estoqueMinimo: Number(estoqueMin),
+        ncm:               ncm.trim() || null,
+        cest:              cest.trim() || null,
+        origem:            origem || '0',
+        unidadeTributavel: unidadeTrib.trim() || null,
+        perfilTribId:      perfilTrib ? Number(perfilTrib) : null,
         // inclui modificationNum para suportar o optimistic locking da rota PUT
         ...(editando?.modificationNum !== undefined
           ? { modificationNum: editando.modificationNum }
@@ -195,6 +218,11 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setAtivo(item.activeFlag ?? true)
       setRevenda(item.tipo === 'Revenda' || item.revenda === true)
       setInsumoAtivo(item.insumoFlg === true)
+      setNcm(item.ncm ?? '')
+      setCest(item.cest ?? '')
+      setOrigem(item.origem ?? '0')
+      setUnidadeTrib(item.unidadeTributavel ?? '')
+      setPerfilTrib(item.perfilTribId ? String(item.perfilTribId) : '')
     } else {
       setEditando(null)
       setNome('')
@@ -211,6 +239,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setAtivo(true)
       setRevenda(false)
       setInsumoAtivo(false)
+      setNcm(''); setCest(''); setOrigem('0'); setUnidadeTrib(''); setPerfilTrib('')
     }
     setShowPainel(true)
   }
@@ -528,6 +557,63 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </Label>
                 <Input type="number" min="0" value={estoqueMin}
                   onChange={e => setEstoqueMin(e.target.value)} className="mt-1" />
+              </div>
+            </div>
+
+            {/* ── FISCAL ──────────────────────────────────────────────────
+                Só o que descreve a mercadoria. Como ela é tributada vem do
+                perfil, cadastrado pelo contador em Fiscal > Parametrizacao.
+                Campos vazios não impedem operar: impedem apenas emitir nota. */}
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 inline-flex items-center gap-1">
+                Fiscal
+                <InfoTip titulo="Classificação fiscal">Preenchida pelo contador — sem ela o produto não entra em nota.</InfoTip>
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    NCM
+                    <InfoTip titulo="NCM">Código de 8 dígitos que diz ao fisco o que é a mercadoria.</InfoTip>
+                  </Label>
+                  <Input value={ncm} onChange={e => setNcm(e.target.value)}
+                    placeholder="19022000" maxLength={10} className="mt-1" />
+                </div>
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    CEST
+                    <InfoTip titulo="CEST">Só existe para mercadoria com substituição tributária.</InfoTip>
+                  </Label>
+                  <Input value={cest} onChange={e => setCest(e.target.value)}
+                    maxLength={10} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Origem</Label>
+                  <select value={origem} onChange={e => setOrigem(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                    <option value="0">0 — Nacional</option>
+                    <option value="1">1 — Importação direta</option>
+                    <option value="2">2 — Adquirida no mercado interno, importada</option>
+                    <option value="3">3 — Nacional, mais de 40% importado</option>
+                    <option value="4">4 — Nacional, processo produtivo básico</option>
+                    <option value="5">5 — Nacional, até 40% importado</option>
+                    <option value="6">6 — Importação direta, sem similar nacional</option>
+                    <option value="7">7 — Mercado interno, sem similar nacional</option>
+                    <option value="8">8 — Nacional, mais de 70% importado</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    Perfil tributário
+                    <InfoTip titulo="Perfil tributário">Define CFOP, CSOSN e alíquotas deste produto na nota.</InfoTip>
+                  </Label>
+                  <select value={perfilTrib} onChange={e => setPerfilTrib(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                    <option value="">— não classificado —</option>
+                    {perfisTrib.map((pf: any) => (
+                      <option key={pf.perfilTribId} value={pf.perfilTribId}>{pf.nome}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 

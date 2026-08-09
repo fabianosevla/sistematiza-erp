@@ -120,6 +120,19 @@ export const produtoInsertSchema = z.object({
   revenda:       z.boolean().default(false),
   // Necessário para o botão "Reativar" da tela de produtos funcionar
   activeFlag:    z.boolean().optional(),
+
+  // ── FISCAIS ────────────────────────────────────────────────────────────
+  // Descrevem a MERCADORIA. A tributação — CFOP, CSOSN, alíquotas — vem do
+  // perfil tributário, e por isso não está aqui.
+  //
+  // Todos opcionais: a empresa opera sem eles enquanto o contador não devolve
+  // a classificação. O que não pode é emitir nota sem eles, e quem barra isso
+  // é o ProntidaoFiscalService.
+  ncm:               z.string().max(10).optional().nullable(),
+  cest:              z.string().max(10).optional().nullable(),
+  origem:            z.string().max(1).optional().nullable(),
+  unidadeTributavel: z.string().max(6).optional().nullable(),
+  perfilTribId:      z.number().int().optional().nullable(),
 })
 export const produtoUpdateSchema = produtoInsertSchema.partial().extend({ modificationNum: z.number().int().optional() })
 export type ProdutoInsertInput = z.infer<typeof produtoInsertSchema>

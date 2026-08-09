@@ -36,6 +36,18 @@ export async function GET(req: NextRequest, { params }: Params) {
         // Financeiro Completo
         contasPagarAtivo:         r.contas_pagar_ativo         ?? false,
         contasReceberAtivo:       r.contas_receber_ativo       ?? false,
+        // Fiscal — parametrização da empresa. Preenchida pelo contador.
+        // Ver scripts/migrate-fiscal-parametrizacao.js
+        crt:              r.crt              ?? null,
+        regimeTributario: r.regime_tributario ?? null,
+        serieNfce:        r.serie_nfce       ?? '1',
+        serieNfe:         r.serie_nfe        ?? '1',
+        credenciadoNfce:  r.credenciado_nfce ?? false,
+        credenciadoNfe:   r.credenciado_nfe  ?? false,
+        cnae:             r.cnae             ?? null,
+        mensagemFiscal:   r.mensagem_fiscal  ?? null,
+        focusNfeToken:    r.focus_nfe_token  ?? null,
+        focusNfeAmbiente: r.focus_nfe_ambiente ?? 'homologacao',
         // Aparência
         logoBase64: r.logo_base64 ?? null,
         darkMode:   r.dark_mode   ?? false,
@@ -86,6 +98,17 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['producao_ativo',           body.producaoAtivo],
         ['estoque_ativo',            body.estoqueAtivo],
         ['fiscal_ativo',             body.fiscalAtivo],
+        // Fiscal — parametrização
+        ['crt',                      body.crt],
+        ['regime_tributario',        body.regimeTributario],
+        ['serie_nfce',               body.serieNfce],
+        ['serie_nfe',                body.serieNfe],
+        ['credenciado_nfce',         body.credenciadoNfce],
+        ['credenciado_nfe',          body.credenciadoNfe],
+        ['cnae',                     body.cnae],
+        ['mensagem_fiscal',          body.mensagemFiscal],
+        ['focus_nfe_token',          body.focusNfeToken],
+        ['focus_nfe_ambiente',       body.focusNfeAmbiente],
         ['consultas_ativo',          body.consultasAtivo],
         ['pedidos_ativo',            body.pedidosAtivo],
         ['plano_acao_ativo',         body.planoAcaoAtivo],

@@ -91,6 +91,19 @@ export const dbProduto = pgTable('t_produto', {
   precoAtacadoC:  integer('preco_atacado_c').notNull().default(0),
   precoAtacadoD:  integer('preco_atacado_d').notNull().default(0),
   precoAtacadoE:  integer('preco_atacado_e').notNull().default(0),
+
+  // ── FISCAIS ──────────────────────────────────────────────────────────────
+  // Descrevem a MERCADORIA: o que ela é para o fisco. Como ela é tributada —
+  // CFOP, CSOSN, alíquotas — vem do perfil apontado por perfilTribId.
+  //
+  // Ficam nulos até o contador classificar. A empresa opera sem eles; só a
+  // emissão de nota é barrada, pelo ProntidaoFiscalService.
+  // Ver scripts/migrate-fiscal-parametrizacao.js
+  ncm:               varchar('ncm', { length: 10 }),
+  cest:              varchar('cest', { length: 10 }),
+  origem:            varchar('origem', { length: 1 }).default('0'),
+  unidadeTributavel: varchar('unidade_tributavel', { length: 6 }),
+  perfilTribId:      integer('perfil_trib_id'),
 })
 export type TpDbProdutoRow    = InferSelectModel<typeof dbProduto>
 export type TpDbProdutoInsert = InferInsertModel<typeof dbProduto>
