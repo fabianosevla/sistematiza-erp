@@ -8,7 +8,8 @@ import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ProntidaoFiscalService } from '@/lib/services/fiscal/ProntidaoFiscalService'
-import { ok, serverError } from '@/lib/api/responses'
+import { fiscalLigado } from '@/app/api/[tenant]/fiscal/perfis/route'
+import { ok, forbidden, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
 
@@ -17,6 +18,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
+      if (!(await fiscalLigado(db))) return forbidden()
       return ok(await new ProntidaoFiscalService(db).verificar())
     } finally { release() }
   } catch (err) { return serverError(err) }

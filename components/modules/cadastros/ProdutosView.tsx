@@ -75,6 +75,19 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
 
+  // MÓDULO FISCAL COMO INTERRUPTOR GERAL.
+  //
+  // Não basta esconder o menu: empresa que não emite nota não deve ver NCM,
+  // CEST nem perfil tributário no cadastro de produto. Campo que ninguém vai
+  // preencher é campo que confunde — e, num sistema vendido por assinatura,
+  // mostrar o que o cliente não contratou é pior ainda.
+  const { data: cfgRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const fiscalAtivo = cfgRaw?.data?.fiscalAtivo === true
+
   // Perfis tributários para o seletor. staleTime alto: muda raramente, e é o
   // contador quem mexe — não faz sentido rebuscar a cada abertura do painel.
   const { data: perfisRaw } = useQuery({
@@ -560,6 +573,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
               </div>
             </div>
 
+            {fiscalAtivo && (
+            <>
             {/* ── FISCAL ──────────────────────────────────────────────────
                 Só o que descreve a mercadoria. Como ela é tributada vem do
                 perfil, cadastrado pelo contador em Fiscal > Parametrizacao.
@@ -616,6 +631,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </div>
               </div>
             </div>
+            </>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <label className="flex items-center gap-2 cursor-pointer">

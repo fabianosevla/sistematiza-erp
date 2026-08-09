@@ -85,6 +85,13 @@ export default function Header({
   const [showNotifs, setShowNotifs]     = useState(false)
   const [aba, setAba]                   = useState<Aba>('conta')
 
+  // Desligar o módulo fiscal com a aba dele aberta deixaria o painel mostrando
+  // uma aba que não existe mais no cabeçalho, e o rodapé salvando campos que
+  // ninguém enxerga. Volta para a primeira aba.
+  useEffect(() => {
+    if (aba === 'fiscal' && !config.fiscalAtivo) setAba('conta')
+  }, [aba, config.fiscalAtivo])
+
   // ── Foto do usuário ──────────────────────────────────────────────────────
   // Vai direto para o Clerk via setProfileImage. Fica fora do fluxo de
   // "pendente + Salvar" das outras configurações de propósito: é upload de
@@ -451,9 +458,13 @@ export default function Header({
                 Configurações de conta
                 {contaPendente && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
               </button>
-              <button className={abaCls('fiscal')} onClick={() => setAba('fiscal')}>
-                Fiscal
-              </button>
+              {/* A aba some junto com o módulo: sem emissão de nota, não há o
+                  que configurar aqui. */}
+              {config.fiscalAtivo && (
+                <button className={abaCls('fiscal')} onClick={() => setAba('fiscal')}>
+                  Fiscal
+                </button>
+              )}
               <button className={abaCls('modulos')} onClick={() => setAba('modulos')}>
                 Habilitações de módulos
                 {modulosPendentes > 0 && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}

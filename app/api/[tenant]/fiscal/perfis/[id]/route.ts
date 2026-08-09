@@ -5,7 +5,8 @@ import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { PerfilTributarioService } from '@/lib/services/fiscal/PerfilTributarioService'
-import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
+import { fiscalLigado } from '@/app/api/[tenant]/fiscal/perfis/route'
+import { ok, forbidden, serverError, notFound, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
 
@@ -14,6 +15,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
+      if (!(await fiscalLigado(db))) return forbidden()
       const body   = await req.json()
       const userId = await usuarioAtualIdDb(db)
       const r = await new PerfilTributarioService(db).atualizar(Number(params.id), body, userId)
@@ -28,6 +30,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
+      if (!(await fiscalLigado(db))) return forbidden()
       const userId = await usuarioAtualIdDb(db)
       return ok(await new PerfilTributarioService(db).excluir(Number(params.id), userId))
     } finally { release() }
