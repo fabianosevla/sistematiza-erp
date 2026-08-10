@@ -16,7 +16,7 @@
 // naquele computador — mesma ideia do atalho do PDV.
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Square, ArrowDownToLine, ArrowUpFromLine, Monitor } from 'lucide-react'
+import { Play, Square, ArrowDownToLine, ArrowUpFromLine, Monitor, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,6 +24,7 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt } from '@/lib/format'
+import { imprimirFechamentoCaixa } from '@/lib/print/fechamentoCaixa'
 
 interface Props {
   tenantSlug: string
@@ -137,6 +138,19 @@ export default function PainelCaixa({ tenantSlug, operador = '', qtdCaixas = 1, 
     },
     onError: (e: any) => toast(e?.message ?? 'Erro ao fechar o caixa', 'error'),
   })
+
+  function imprimirDescritivoFechamento() {
+    if (!turno || !resumo) return
+    imprimirFechamentoCaixa({
+      numeroCaixa: turno.numeroCaixa ?? numeroCaixa ?? 1,
+      operador:    turno.operador,
+      abertoEm:    turno.abertoEm,
+      resumo,
+      contado:    form.conferido !== '' ? cent(form.conferido) : null,
+      diferenca:  form.conferido !== '' ? cent(form.conferido) - resumo.esperadoGaveta : null,
+      observacao: form.obs || null,
+    }, () => toast('Habilite pop-ups para imprimir.', 'error'))
+  }
 
   // Máquina ainda sem número: primeira coisa a resolver.
   if (numeroCaixa === null) {
@@ -260,6 +274,9 @@ export default function PainelCaixa({ tenantSlug, operador = '', qtdCaixas = 1, 
           onClose={() => setPainel(null)}
           rodape={
             <>
+              <Button variant="outline" onClick={() => imprimirDescritivoFechamento()}>
+                <Printer size={14} className="mr-1.5" /> Imprimir descritivo de fechamento de caixa
+              </Button>
               <Button variant="outline" onClick={() => setPainel(null)}>Fechar</Button>
               <Button variant="destructive" onClick={() => fecharMut.mutate()}
                 disabled={form.conferido === '' || fecharMut.isPending}>

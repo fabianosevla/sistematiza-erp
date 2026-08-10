@@ -11,7 +11,7 @@
 // não o total vendido — faturamento já existe em Consultas.
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Download } from 'lucide-react'
+import { Download, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { SidePanel } from '@/components/ui/SidePanel'
@@ -23,6 +23,7 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt } from '@/lib/format'
+import { imprimirFechamentoCaixa } from '@/lib/print/fechamentoCaixa'
 
 interface Props { tenantSlug: string }
 
@@ -172,6 +173,23 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
           subtitulo={fmtDataHora(detalhe.aberto_em)}
           largura="w-[30vw] min-w-[480px]"
           onClose={() => setDetalhe(null)}
+          rodape={
+            <Button variant="outline" disabled={!resumo} onClick={() => {
+              if (!resumo) return
+              imprimirFechamentoCaixa({
+                numeroCaixa: detalhe.numero_caixa,
+                operador:    detalhe.operador,
+                abertoEm:    detalhe.aberto_em,
+                fechadoEm:   detalhe.status === 'fechado' ? detalhe.fechado_em : null,
+                resumo,
+                contado:    detalhe.valor_fechamento ?? null,
+                diferenca:  detalhe.status === 'fechado' ? Number(detalhe.diferenca ?? 0) : null,
+                observacao: detalhe.observacao ?? null,
+              }, () => toast('Habilite pop-ups para imprimir.', 'error'))
+            }}>
+              <Printer size={14} className="mr-1.5" /> Imprimir descritivo de fechamento de caixa
+            </Button>
+          }
         >
           <div className="p-6 space-y-4">
             {!resumo ? (
