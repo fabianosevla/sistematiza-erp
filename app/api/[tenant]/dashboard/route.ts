@@ -13,95 +13,101 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
-      const [fat6m, vendasDia, topProd, receita6m, despesas6m, estCritico, porForma, kpisHoje] = await Promise.all([
-        client.query(`
-          SELECT TO_CHAR(DATE_TRUNC('month', vendida_em), 'Mon/YY') as mes,
-                 COALESCE(SUM(total),0)::bigint as valor, COUNT(*)::int as qtd
-          FROM t_venda WHERE active_flg=true AND vendida_em >= NOW()-INTERVAL '6 months'
-          GROUP BY DATE_TRUNC('month', vendida_em) ORDER BY DATE_TRUNC('month', vendida_em)
-        `),
-        client.query(`
-          SELECT EXTRACT(DAY FROM vendida_em AT TIME ZONE 'America/Sao_Paulo')::int as dia,
-                 COALESCE(SUM(total),0)::bigint as valor
-          FROM t_venda WHERE active_flg=true
-            AND DATE_TRUNC('month', vendida_em AT TIME ZONE 'America/Sao_Paulo')
-                = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
-          GROUP BY EXTRACT(DAY FROM vendida_em AT TIME ZONE 'America/Sao_Paulo')
-          ORDER BY dia
-        `),
-        client.query(`
-          SELECT vi.nome_produto, COALESCE(SUM(vi.quantidade),0)::int as qtd,
-                 COALESCE(SUM(vi.subtotal),0)::bigint as valor
-          FROM t_venda_item vi JOIN t_venda v ON vi.venda_id=v.venda_id
-          WHERE v.active_flg=true
-            AND DATE_TRUNC('month', v.vendida_em AT TIME ZONE 'America/Sao_Paulo')
-                = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
-          GROUP BY vi.nome_produto ORDER BY qtd DESC LIMIT 5
-        `),
-        client.query(`
-          SELECT TO_CHAR(DATE_TRUNC('month', vendida_em), 'Mon/YY') as mes,
-                 COALESCE(SUM(total),0)::bigint as valor
-          FROM t_venda WHERE active_flg=true AND vendida_em >= NOW()-INTERVAL '6 months'
-          GROUP BY DATE_TRUNC('month', vendida_em) ORDER BY DATE_TRUNC('month', vendida_em)
-        `),
-        client.query(`
-          SELECT TO_CHAR(DATE_TRUNC('month', data_despesa), 'Mon/YY') as mes,
-                 COALESCE(SUM(valor),0)::bigint as valor
-          FROM t_despesa WHERE active_flg=true AND data_despesa >= NOW()-INTERVAL '6 months'
-          GROUP BY DATE_TRUNC('month', data_despesa) ORDER BY DATE_TRUNC('month', data_despesa)
-        `).catch(() => ({ rows: [] })),
-        client.query(`
-          SELECT nome, estoque_atual::float as estoque_atual, estoque_minimo::float as estoque_minimo, 'produto' as tipo
-          FROM t_produto
-          WHERE active_flg=true AND estoque_minimo > 0 AND estoque_atual <= estoque_minimo
-          UNION ALL
-          SELECT nome, estoque_atual::float, estoque_minimo::float, 'insumo' as tipo
-          FROM t_insumo
-          WHERE active_flg=true AND estoque_minimo > 0 AND estoque_atual <= estoque_minimo
-          ORDER BY estoque_atual LIMIT 12
-        `),
-        client.query(`
-          SELECT vp.forma, COALESCE(SUM(vp.valor),0)::bigint as total
-          FROM t_venda_pagamento vp JOIN t_venda v ON vp.venda_id=v.venda_id
-          WHERE v.active_flg=true
-            AND DATE_TRUNC('month', v.vendida_em AT TIME ZONE 'America/Sao_Paulo')
-                = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
-          GROUP BY vp.forma ORDER BY total DESC
-        `),
+      const [
+        kpisHoje, pedidosStatus, producaoHoje, estCritico, caixaAberto, contasAVencer,
+      ] = await Promise.all([
         client.query(`
           SELECT
             COALESCE(SUM(CASE WHEN DATE_TRUNC('day', vendida_em AT TIME ZONE 'America/Sao_Paulo')
                               = DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Sao_Paulo')
                          THEN total ELSE 0 END), 0)::bigint as receita_hoje,
-            COALESCE(SUM(CASE WHEN DATE_TRUNC('month', vendida_em AT TIME ZONE 'America/Sao_Paulo')
-                              = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
-                         THEN total ELSE 0 END), 0)::bigint as receita_mes,
-            COUNT(CASE WHEN DATE_TRUNC('month', vendida_em AT TIME ZONE 'America/Sao_Paulo')
-                            = DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Sao_Paulo')
-                  THEN 1 END)::int as qtd_mes
+            COALESCE(SUM(CASE WHEN DATE_TRUNC('day', vendida_em AT TIME ZONE 'America/Sao_Paulo')
+                              = DATE_TRUNC('day', NOW() AT TIME ZONE 'America/Sao_Paulo') - INTERVAL '1 day'
+                         THEN total ELSE 0 END), 0)::bigint as receita_ontem
           FROM t_venda WHERE active_flg=true
         `),
+        // Só os três status que ainda pedem atenção — entregue e cancelado já
+        // saíram do fluxo. A soma dos três é o número de "pedidos em aberto".
+        client.query(`
+          SELECT status, COUNT(*)::int as qtd
+          FROM t_pedido
+          WHERE active_flg=true AND status IN ('pendente','producao','pronto')
+          GROUP BY status
+        `),
+        // Previsto (t_producao_semanal, a grade) x realizado (t_producao_registro,
+        // o que de fato foi lançado) para hoje.
+        client.query(`
+          SELECT
+            COALESCE((SELECT SUM(quantidade) FROM t_producao_semanal
+                       WHERE active_flg=true AND data_producao = CURRENT_DATE), 0)::int as previsto,
+            COALESCE((SELECT SUM(qtd_produzida) FROM t_producao_registro
+                       WHERE data_producao = CURRENT_DATE), 0)::int as realizado
+        `).catch(() => ({ rows: [{ previsto: 0, realizado: 0 }] })),
+        client.query(`
+          SELECT COUNT(*)::int as qtd FROM (
+            SELECT 1 FROM t_produto
+             WHERE active_flg=true AND estoque_minimo > 0 AND estoque_atual <= estoque_minimo
+            UNION ALL
+            SELECT 1 FROM t_insumo
+             WHERE active_flg=true AND estoque_minimo > 0 AND estoque_atual <= estoque_minimo
+          ) x
+        `),
+        // Turnos de caixa abertos agora, com o vendido de cada um.
+        client.query(`
+          SELECT t.turno_id, t.numero_caixa, t.operador, t.aberto_em, t.valor_abertura,
+                 COALESCE((SELECT SUM(v.total) FROM t_venda v
+                            WHERE v.turno_id = t.turno_id AND v.active_flg = true), 0)::bigint as vendido
+          FROM t_turno_caixa t
+          WHERE t.status = 'aberto' AND t.active_flg = true
+          ORDER BY t.aberto_em
+        `).catch(() => ({ rows: [] })),
+        // Contas a pagar/receber vencendo nos próximos 7 dias, ainda abertas.
+        client.query(`
+          SELECT
+            COALESCE((SELECT COUNT(*) FROM t_conta_receber
+                       WHERE status = 'aberta'
+                         AND data_vencimento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'), 0)::int as receber_qtd,
+            COALESCE((SELECT SUM(valor_original - valor_recebido) FROM t_conta_receber
+                       WHERE status = 'aberta'
+                         AND data_vencimento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'), 0)::bigint as receber_valor,
+            COALESCE((SELECT COUNT(*) FROM t_conta_pagar
+                       WHERE status = 'aberta'
+                         AND data_vencimento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'), 0)::int as pagar_qtd,
+            COALESCE((SELECT SUM(valor_original - valor_pago) FROM t_conta_pagar
+                       WHERE status = 'aberta'
+                         AND data_vencimento BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '7 days'), 0)::bigint as pagar_valor
+        `).catch(() => ({ rows: [{ receber_qtd: 0, receber_valor: 0, pagar_qtd: 0, pagar_valor: 0 }] })),
       ])
 
-      const mesesSet = new Set([...receita6m.rows.map(r => r.mes), ...despesas6m.rows.map(r => r.mes)])
-      const receitaVsDespesas = Array.from(mesesSet).map(mes => ({
-        mes,
-        receita:  Number(receita6m.rows.find(r => r.mes === mes)?.valor ?? 0) / 100,
-        despesas: Number(despesas6m.rows.find(r => r.mes === mes)?.valor ?? 0) / 100,
-      }))
+      const kpi  = kpisHoje.rows[0] ?? {}
+      const prod = producaoHoje.rows[0] ?? { previsto: 0, realizado: 0 }
+      const cta  = contasAVencer.rows[0] ?? { receber_qtd: 0, receber_valor: 0, pagar_qtd: 0, pagar_valor: 0 }
 
-      const kpi = kpisHoje.rows[0] ?? {}
+      const porStatus: Record<string, number> = { pendente: 0, producao: 0, pronto: 0 }
+      for (const r of pedidosStatus.rows) porStatus[r.status] = Number(r.qtd)
 
       return ok({
-        receitaHoje:       Number(kpi.receita_hoje ?? 0) / 100,
-        receitaMes:        Number(kpi.receita_mes ?? 0) / 100,
-        qtdMes:            Number(kpi.qtd_mes ?? 0),
-        faturamento6m:     fat6m.rows.map(r => ({ mes: r.mes, valor: Number(r.valor)/100, qtd: Number(r.qtd) })),
-        vendasDia:         vendasDia.rows.map(r => ({ dia: String(r.dia), valor: Number(r.valor)/100 })),
-        topProdutos:       topProd.rows.map(r => ({ nome: r.nome_produto, qtd: Number(r.qtd), valor: Number(r.valor)/100 })),
-        receitaVsDespesas,
-        estoqueCritico:    estCritico.rows.map(r => ({ nome: r.nome, estoqueAtual: Number(r.estoque_atual), estoqueMinimo: Number(r.estoque_minimo) })),
-        porForma:          porForma.rows.map(r => ({ forma: r.forma, valor: Number(r.total)/100 })),
+        receitaHoje:  Number(kpi.receita_hoje  ?? 0) / 100,
+        receitaOntem: Number(kpi.receita_ontem ?? 0) / 100,
+        pedidosPorStatus: porStatus,
+        pedidosAbertos:   porStatus.pendente + porStatus.producao + porStatus.pronto,
+        producaoHoje: {
+          previsto:  Number(prod.previsto),
+          realizado: Number(prod.realizado),
+        },
+        estoqueCriticoQtd: Number(estCritico.rows[0]?.qtd ?? 0),
+        caixaAberto: caixaAberto.rows.map(r => ({
+          turnoId:       r.turno_id,
+          numeroCaixa:   r.numero_caixa,
+          operador:      r.operador,
+          abertoEm:      r.aberto_em,
+          valorAbertura: Number(r.valor_abertura) / 100,
+          vendido:       Number(r.vendido) / 100,
+        })),
+        contasAVencer: {
+          receber: { qtd: Number(cta.receber_qtd), valor: Number(cta.receber_valor) / 100 },
+          pagar:   { qtd: Number(cta.pagar_qtd),   valor: Number(cta.pagar_valor)   / 100 },
+        },
       })
     } finally {
       client.release()
