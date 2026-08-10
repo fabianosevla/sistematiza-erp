@@ -15,7 +15,7 @@ import { SidePanel }    from '@/components/ui/SidePanel'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import HistoricoCaixaTab from '@/components/modules/caixa/HistoricoCaixaTab'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -427,7 +427,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.nome ?? d.descricao}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">{d.categoria || '—'}</td>
                     <td className="px-4 py-3 text-sm text-gray-500">
-                      {d.data_despesa || d.dataDespesa ? new Date((d.data_despesa || d.dataDespesa) + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}
+                      {/* INVALID DATE.
+                          Antes: new Date(valor + 'T12:00:00'). Isso só vale se
+                          o valor for AAAA-MM-DD puro, e a API devolve
+                          timestamp completo — o resultado era
+                          "2026-08-01T00:00:00.000ZT12:00:00", que não é data.
+                          fmtData lê dia/mês/ano do ISO sem passar por fuso. */}
+                      {fmtData(d.data_despesa ?? d.dataDespesa)}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{d.recorrente ? '✓' : '—'}</td>
                     <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(d.valor)}</td>
