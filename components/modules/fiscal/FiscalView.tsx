@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Play, Square, FileText, AlertTriangle, ArrowRight } from 'lucide-react'
+import { Plus, Play, Square, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -31,7 +31,7 @@ const Anchor = 'a' as const
 export default function FiscalView({ tenantSlug }: Props) {
   const qc = useQueryClient()
   const api = `/api/${tenantSlug}/fiscal`
-  const [aba, setAba]                     = useState<'pdv' | 'nfe-saida' | 'nfe-entrada' | 'relatorios' | 'parametros'>('pdv')
+  const [aba, setAba]                     = useState<'pdv' | 'nfe-saida' | 'relatorios' | 'parametros'>('pdv')
   const [filtroTipo, setFiltroTipo]       = useState('NFC-e')
   const [showNovaNota, setShowNovaNota]   = useState(false)
   const [showCancelar, setShowCancelar]   = useState<number | null>(null)
@@ -94,9 +94,11 @@ export default function FiscalView({ tenantSlug }: Props) {
 
       <div className="flex gap-1 mb-4 bg-gray-100 rounded-lg p-1 w-fit">
         {([
+          // A aba "NF-e Entrada" saiu: ela só existia para dizer que a entrada
+          // de nota de fornecedor fica em Estoque Avançado. Aba promete tela;
+          // entregar aviso de mudança de endereço é dívida de navegação.
           { value: 'pdv',         label: 'NFC-e' },
           { value: 'nfe-saida',   label: 'NF-e Saída' },
-          { value: 'nfe-entrada', label: 'NF-e Entrada' },
           { value: 'relatorios',  label: 'Relatórios' },
           { value: 'parametros',  label: 'Parametrização' },
         ] as const).map(a => (
@@ -114,14 +116,10 @@ export default function FiscalView({ tenantSlug }: Props) {
               t_turno_caixa nasceu no schema fiscal. Mas caixa é controle de
               dinheiro: quem nunca emitiu nota ainda precisa conferir a gaveta.
               Abrir, sangria e fechar ficam no PDV, com o operador. O histórico
-              fica em Financeiro, com o gestor. Aqui não sobrou nada. */}
-          <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-            <p className="text-sm text-gray-600 font-medium inline-flex items-center gap-1">
-              O controle de caixa fica no PDV e em Financeiro
-              <InfoTip titulo="Onde fica">Abrir e fechar no PDV; histórico e diferenças em Financeiro.</InfoTip>
-            </p>
-          </div>
+              fica em Financeiro, com o gestor.
 
+              O aviso que anunciava essa mudança também saiu: tela não é lugar
+              de explicar ausência. Quem abre esta aba quer ver notas. */}
           <div className="bg-white rounded-xl border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-gray-700">NFC-e — Nota Fiscal do Consumidor</h2>
@@ -148,23 +146,6 @@ export default function FiscalView({ tenantSlug }: Props) {
           <NotasList notas={notas.filter((n: any) => n.tipo === 'NF-e')} isLoading={isLoading}
             onEmitir={id => emitirMut.mutate(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
-        </div>
-      )}
-
-      {aba === 'nfe-entrada' && (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-          <FileText size={32} className="mx-auto text-gray-200 mb-3" />
-          <p className="text-sm text-gray-600 font-medium inline-flex items-center gap-1">
-            Entrada de NF-e de fornecedor fica no Estoque Avançado
-            <InfoTip titulo="Por que fica lá">
-              O fluxo é único: upload do XML, vínculo com insumos, entrada no estoque e
-              geração da conta a pagar — sem duplicar lançamento.
-            </InfoTip>
-          </p>
-          <Anchor href={`/${tenantSlug}/estoque-avancado`}
-            className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 rounded-lg text-sm font-medium bg-gray-900 text-white hover:bg-gray-800 transition-colors">
-            Ir para Entrada NF-e <ArrowRight size={14} />
-          </Anchor>
         </div>
       )}
 
