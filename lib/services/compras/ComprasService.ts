@@ -276,11 +276,12 @@ export class ComprasService {
         const dt  = new Date(`${payload.dataCompra}T12:00:00`)
         const dsp = await this.db.execute(sql`
           INSERT INTO t_despesa
-            (nome, categoria, valor, data_despesa, recorrente,
+            (nome, categoria, valor, data_despesa, data_pagamento, recorrente,
              mes_competencia, ano_competencia, observacao,
              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
           VALUES
-            (${descricao}, 'Insumos', ${valorTotal}, ${payload.dataCompra}::date, false,
+            -- A vista: compra e pagamento no mesmo dia.
+            (${descricao}, 'Insumos', ${valorTotal}, ${payload.dataCompra}::date, ${payload.dataCompra}::date, false,
              ${dt.getMonth() + 1}, ${dt.getFullYear()}, ${payload.observacao ?? null},
              ${uid}, ${uid}, NOW(), NOW(), true, 0)
           RETURNING despesa_id

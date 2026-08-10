@@ -17,6 +17,8 @@ const despesaSchema = z.object({
   recorrente:         z.boolean().default(false),
   periodoRecorrencia: z.string().optional(),
   observacao:         z.string().max(500).optional(),
+  // Quando o dinheiro sai. Vazia = a vista. E ela que define a competencia.
+  dataPagamento:      z.string().optional().nullable(),
   mes:                z.number().int().min(1).max(12).optional(),
   ano:                z.number().int().min(2020).optional(),
 })

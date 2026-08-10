@@ -145,22 +145,38 @@ export class FinanceiroService {
     })
   }
 
+  /**
+   * DUAS DATAS, E A COMPETÊNCIA VEM DA SEGUNDA.
+   *
+   * `dataDespesa` é quando a compra aconteceu; `dataPagamento`, quando o
+   * dinheiro sai. O DRE agrupa por competência, e competência é o mês do
+   * PAGAMENTO — compra no cartão em agosto com fatura em setembro pesa em
+   * setembro. Sem data de pagamento, é à vista e as duas coincidem.
+   *
+   * O QUE SAIU DAQUI: `payload.mes ?? ...`. A tela mandava o mês do FILTRO DE
+   * PERÍODO junto com o cadastro, e ele tinha prioridade sobre a data. Quem
+   * lançasse uma despesa de setembro olhando agosto via ela cair em agosto —
+   * a data digitada era simplesmente ignorada. Era o cartão QA #84.
+   */
   async criar(payload: {
     nome: string; categoria: string; valor: number
-    dataDespesa: string; recorrente: boolean
+    dataDespesa: string; dataPagamento?: string | null; recorrente: boolean
     periodoRecorrencia?: string; observacao?: string; userId: number
-    mes?: number; ano?: number
   }) {
     const now = new Date()
     const dt  = new Date(payload.dataDespesa)
-    const mes = payload.mes ?? dt.getMonth() + 1
-    const ano = payload.ano ?? dt.getFullYear()
+    const dtPag = payload.dataPagamento ? new Date(payload.dataPagamento) : null
+    // A competência segue o pagamento. Sem pagamento informado, a compra.
+    const base = dtPag ?? dt
+    const mes = base.getMonth() + 1
+    const ano = base.getFullYear()
 
     const [result] = await this.db.insert(dbDespesa).values({
       nome:               payload.nome,
       categoria:          payload.categoria,
       valor:              payload.valor,
       dataDespesa:        dt,
+      dataPagamento:      dtPag,
       recorrente:         payload.recorrente,
       periodoRecorrencia: payload.periodoRecorrencia ?? null,
       observacao:         payload.observacao ?? null,
@@ -191,9 +207,9 @@ export class FinanceiroService {
    */
   async atualizar(id: number, payload: {
     nome?: string; categoria?: string; valor?: number
-    dataDespesa?: string; recorrente?: boolean
+    dataDespesa?: string; dataPagamento?: string | null; recorrente?: boolean
     periodoRecorrencia?: string | null; observacao?: string | null
-    mes?: number; ano?: number; userId: number
+    userId: number
   }) {
     const now = new Date()
     const campos: any = { updatedDt: now, updatedBy: payload.userId }
@@ -202,20 +218,34 @@ export class FinanceiroService {
     if (payload.categoria !== undefined)          campos.categoria = payload.categoria
     if (payload.valor !== undefined)              campos.valor = payload.valor
     if (payload.dataDespesa !== undefined)        campos.dataDespesa = new Date(payload.dataDespesa)
+    if (payload.dataPagamento !== undefined)      campos.dataPagamento = payload.dataPagamento ? new Date(payload.dataPagamento) : null
     if (payload.recorrente !== undefined)         campos.recorrente = payload.recorrente
     if (payload.periodoRecorrencia !== undefined) campos.periodoRecorrencia = payload.periodoRecorrencia
     if (payload.observacao !== undefined)         campos.observacao = payload.observacao
 
     await this.db.update(dbDespesa).set(campos).where(eq(dbDespesa.despesaId, id))
 
-    // Competência: se a tela mandou mes/ano usa eles; se mandou só a data,
-    // deriva dela. Sem nenhum dos dois, não mexe.
-    let mes = payload.mes
-    let ano = payload.ano
-    if ((mes === undefined || ano === undefined) && payload.dataDespesa) {
-      const dt = new Date(payload.dataDespesa)
-      mes = mes ?? dt.getMonth() + 1
-      ano = ano ?? dt.getFullYear()
+    // COMPETENCIA RECALCULADA A PARTIR DAS DATAS, NUNCA DO FILTRO DA TELA.
+    //
+    // Antes o `mes`/`ano` enviado pela tela tinha prioridade, e a tela mandava
+    // o mes que estava sendo VISUALIZADO. Editar uma despesa olhando agosto
+    // jogava a competencia para agosto, qualquer que fosse a data.
+    //
+    // Le do banco quando o payload nao trouxe a data, para nao perder a
+    // competencia numa edicao parcial.
+    let mes: number | undefined
+    let ano: number | undefined
+    if (payload.dataDespesa !== undefined || payload.dataPagamento !== undefined) {
+      const atual = await this.db.select().from(dbDespesa).where(eq(dbDespesa.despesaId, id))
+      const linha: any = atual[0] ?? {}
+      const dtCompra = payload.dataDespesa !== undefined
+        ? new Date(payload.dataDespesa)
+        : (linha.dataDespesa ? new Date(linha.dataDespesa) : null)
+      const dtPag = payload.dataPagamento !== undefined
+        ? (payload.dataPagamento ? new Date(payload.dataPagamento) : null)
+        : (linha.dataPagamento ? new Date(linha.dataPagamento) : null)
+      const base = dtPag ?? dtCompra
+      if (base) { mes = base.getMonth() + 1; ano = base.getFullYear() }
     }
     if (mes !== undefined && ano !== undefined) {
       await this.withSchema(async client => {

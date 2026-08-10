@@ -16,7 +16,15 @@ export const dbDespesa = pgTable('t_despesa', {
   nome:               varchar('nome', { length: 200 }).notNull(),
   categoria:          varchar('categoria', { length: 100 }).notNull(),
   valor:              integer('valor').notNull(),
+  // DATA DA COMPRA. O nome da coluna ficou por compatibilidade — dezenas de
+  // consultas já a leem —, mas o significado é este: quando a compra ocorreu.
   dataDespesa:        timestamp('data_despesa', { withTimezone: true }).notNull(),
+  // QUANDO O DINHEIRO SAI. Vazia significa à vista.
+  //
+  // É ela que define a competência, e portanto o mês em que a despesa pesa no
+  // DRE: compra no cartão em agosto com fatura paga em setembro sai do caixa
+  // em setembro. Ver scripts/migrate-despesa-duas-datas.js
+  dataPagamento:      timestamp('data_pagamento', { withTimezone: true }),
   recorrente:         boolean('recorrente').notNull().default(false),
   periodoRecorrencia: varchar('periodo_recorrencia', { length: 20 }),
   observacao:         varchar('observacao', { length: 500 }),

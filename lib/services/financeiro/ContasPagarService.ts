@@ -178,8 +178,8 @@ export class ContasPagarService {
     `)
     if ((jaExiste.rows as any[]).length > 0) return null
 
-    // A competência acompanha a data do pagamento, não a da emissão: é o mês em
-    // que o dinheiro saiu do caixa.
+    // DUAS DATAS: a compra é a emissão do título; o pagamento é a baixa.
+    // A competência acompanha o pagamento — é o mês em que o dinheiro saiu.
     const dt = new Date(`${dataPagamento}T12:00:00`)
 
     // mes_competencia e ano_competencia existem na tabela mas não estão
@@ -187,12 +187,12 @@ export class ContasPagarService {
     // ComprasService também as preenche; omitir aqui quebraria se forem NOT NULL.
     const res = await this.db.execute(sql`
       INSERT INTO t_despesa
-        (nome, categoria, valor, data_despesa, recorrente,
+        (nome, categoria, valor, data_despesa, data_pagamento, recorrente,
          mes_competencia, ano_competencia, observacao, conta_pagar_id,
          created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
       VALUES
         (${conta.descricao}, ${conta.categoria ?? 'Outros'}, ${conta.valorOriginal},
-         ${dataPagamento}::date, false,
+         ${conta.dataEmissao ?? dataPagamento}::date, ${dataPagamento}::date, false,
          ${dt.getMonth() + 1}, ${dt.getFullYear()},
          ${`Pagamento da conta a pagar #${conta.contaPagarId}`}, ${conta.contaPagarId},
          ${userId}, ${userId}, NOW(), NOW(), true, 0)

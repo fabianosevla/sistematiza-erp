@@ -12,6 +12,7 @@ import { Label }        from '@/components/ui/label'
 import { useToast }     from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { SidePanel }    from '@/components/ui/SidePanel'
+import { InfoTip }      from '@/components/ui/InfoTip'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import HistoricoCaixaTab from '@/components/modules/caixa/HistoricoCaixaTab'
@@ -73,6 +74,8 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   const [despForm, setDespForm] = useState({
     nome: '', valor: '', categoria: CATEGORIAS_DESPESA[0],
     dataDespesa: new Date().toISOString().slice(0, 10),
+    // Vazia = a vista. E ela que decide em que mes a despesa pesa no DRE.
+    dataPagamento: '',
     recorrente: false,
   })
   const setDF = (k: string, v: any) => setDespForm(p => ({ ...p, [k]: v }))
@@ -194,8 +197,12 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           categoria:  despForm.categoria,
           valor:      Math.round(parseFloat(despForm.valor.replace(',', '.') || '0') * 100),
           dataDespesa: despForm.dataDespesa,
+          // Vazio vira null: a vista, e a competencia cai na data da compra.
+          dataPagamento: despForm.dataPagamento || null,
           recorrente: despForm.recorrente,
-          mes, ano,
+          // NAO mandar mes/ano daqui. Eram o mes do FILTRO DE PERIODO, e o
+          // servidor lhes dava prioridade sobre a data digitada — lancar uma
+          // despesa de setembro olhando agosto gravava agosto. Cartao QA #84.
         }),
       })
       const d = await res.json()
@@ -402,7 +409,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               <Button variant="outline" size="sm" onClick={() => exportCSV(despesas, 'despesas')}>
                 <Download size={13} className="mr-1" /> CSV
               </Button>
-              <Button size="sm" onClick={() => { setEditDespesa(null); setDespForm({ nome: '', valor: '', categoria: CATEGORIAS_DESPESA[0], dataDespesa: new Date().toISOString().slice(0, 10), recorrente: false }); setShowDespesa(true) }}>
+              <Button size="sm" onClick={() => { setEditDespesa(null); setDespForm({ nome: '', valor: '', categoria: CATEGORIAS_DESPESA[0], dataDespesa: new Date().toISOString().slice(0, 10), dataPagamento: '', recorrente: false }); setShowDespesa(true) }}>
                 <Plus size={13} className="mr-1" /> Nova despesa
               </Button>
             </div>
@@ -412,16 +419,16 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100">
-                  {['Nome', 'Categoria', 'Data', 'Recorrente', 'Valor', ''].map((h, i) => (
-                    <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 4 ? 'text-right' : ''}`}>{h}</th>
+                  {['Nome', 'Categoria', 'Compra', 'Pagamento', 'Recorrente', 'Valor', ''].map((h, i) => (
+                    <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 5 ? 'text-right' : ''}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loadDespesas ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
                 ) : despesas.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-8 text-sm text-gray-400">Nenhuma despesa neste período.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-400">Nenhuma despesa neste período.</td></tr>
                 ) : despesas.map((d: any) => (
                   <tr key={d.despesaId ?? d.despesa_id} className="group border-b border-gray-50 hover:bg-gray-50/80">
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.nome ?? d.descricao}</td>
@@ -435,6 +442,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                           fmtData lê dia/mês/ano do ISO sem passar por fuso. */}
                       {fmtData(d.data_despesa ?? d.dataDespesa)}
                     </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {/* Sem data de pagamento a despesa e a vista: mostrar o
+                          traco e mais honesto que repetir a data da compra. */}
+                      {(d.data_pagamento ?? d.dataPagamento)
+                        ? fmtData(d.data_pagamento ?? d.dataPagamento)
+                        : <span className="text-gray-300">à vista</span>}
+                    </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{d.recorrente ? '✓' : '—'}</td>
                     <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(d.valor)}</td>
                     <td className="px-4 py-3">
@@ -446,6 +460,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                             valor: (d.valor / 100).toFixed(2),
                             categoria: d.categoria ?? '',
                             dataDespesa: (d.data_despesa || d.dataDespesa)?.slice(0, 10) ?? '',
+                            dataPagamento: (d.data_pagamento || d.dataPagamento)?.slice(0, 10) ?? '',
                             recorrente: d.recorrente ?? false,
                           })
                           setShowDespesa(true)
@@ -463,7 +478,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               {despesas.length > 0 && (
                 <tfoot>
                   <tr className="border-t border-gray-100 bg-gray-50">
-                    <td colSpan={4} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
+                    <td colSpan={5} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
                     <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">
                       {fmt(despesas.reduce((a: number, d: any) => a + (d.valor ?? 0), 0))}
                     </td>
@@ -850,9 +865,18 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   <Input type="number" min="0" step="0.01" inputMode="decimal" value={despForm.valor} onChange={e => setDF('valor', e.target.value)} className="sem-spinner mt-1" placeholder="0,00" />
                 </div>
                 <div>
-                  <Label>Data</Label>
+                  <Label>Data da compra</Label>
                   <Input type="date" value={despForm.dataDespesa} onChange={e => setDF('dataDespesa', e.target.value)} className="mt-1" />
                 </div>
+              </div>
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Data do pagamento
+                  <InfoTip titulo="Quando o dinheiro sai">
+                    É esta data que decide em que mês a despesa entra no DRE. Deixe vazia para compra à vista.
+                  </InfoTip>
+                </Label>
+                <Input type="date" value={despForm.dataPagamento} onChange={e => setDF('dataPagamento', e.target.value)} className="mt-1" />
               </div>
               <div>
                 <Label>Categoria</Label>
