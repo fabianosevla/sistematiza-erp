@@ -154,18 +154,33 @@ function FiltroColuna({
       setAberto(false)
     }
     function esc(e: KeyboardEvent) { if (e.key === 'Escape') setAberto(false) }
-    // Rolar ou redimensionar move o botão; a caixa fecharia "solta" no lugar
-    // errado, então fecha junto.
     function fecha() { setAberto(false) }
+
+    // ROLAR A PÁGINA FECHA. ROLAR A LISTA, NÃO.
+    //
+    // A caixa é `fixed` e posicionada a partir do botão: se a página rolar,
+    // o botão sai do lugar e ela ficaria flutuando solta. Daí o ouvinte.
+    //
+    // Mas ele estava em modo de captura, e capturava também a rolagem DE
+    // DENTRO da própria lista — descer a barra para achar o produto fechava
+    // o filtro na cara de quem estava escolhendo. Era o bug reaberto pela QA.
+    //
+    // Agora a origem do evento decide: veio de dentro do painel, é navegação
+    // na lista e não se mexe.
+    function aoRolar(e: Event) {
+      if (painelRef.current?.contains(e.target as Node)) return
+      setAberto(false)
+    }
+
     document.addEventListener('mousedown', fora)
     window.addEventListener('keydown', esc)
     window.addEventListener('resize', fecha)
-    window.addEventListener('scroll', fecha, true)
+    window.addEventListener('scroll', aoRolar, true)
     return () => {
       document.removeEventListener('mousedown', fora)
       window.removeEventListener('keydown', esc)
       window.removeEventListener('resize', fecha)
-      window.removeEventListener('scroll', fecha, true)
+      window.removeEventListener('scroll', aoRolar, true)
     }
   }, [aberto])
 
