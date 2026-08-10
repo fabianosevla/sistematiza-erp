@@ -64,6 +64,11 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
   // A defesa é tirar o foco do campo assim que a roda gira sobre ele: o valor
   // fica como está e a página rola normalmente. Um ouvinte só, no shell, vale
   // para o sistema inteiro — não depende de lembrar disso em cada tela nova.
+  //
+  // Precisa ser na fase de captura. Na fase de bolha (o padrão), o evento já
+  // passou pelo campo antes de chegar aqui — o navegador incrementa o valor
+  // durante essa passagem, e o blur() chega tarde demais para a rolada em
+  // curso. Na captura o ouvinte roda a caminho do alvo, antes desse ajuste.
   useEffect(() => {
     const naRoda = (e: WheelEvent) => {
       const el = document.activeElement
@@ -75,8 +80,8 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
         el.blur()
       }
     }
-    document.addEventListener('wheel', naRoda, { passive: true })
-    return () => document.removeEventListener('wheel', naRoda)
+    document.addEventListener('wheel', naRoda, { passive: true, capture: true })
+    return () => document.removeEventListener('wheel', naRoda, { capture: true })
   }, [])
 
   return (
