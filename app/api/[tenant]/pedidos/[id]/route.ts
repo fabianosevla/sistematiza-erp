@@ -117,7 +117,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
                p.nota_id,
                cl.nome_completo AS cliente_razao,
                cl.nome_fantasia AS cliente_fantasia,
-               cl.cnpj_cpf     AS cliente_documento,
+               -- `documento`, não `cnpj_cpf`: essa é a coluna do FORNECEDOR.
+               -- Como este SELECT roda antes de qualquer verificação, o nome
+               -- errado derrubava toda mudança de etapa, não só a entrega.
+               cl.documento    AS cliente_documento,
                cl.uf           AS cliente_uf
         FROM t_pedido p
         LEFT JOIN t_cliente cl ON cl.cliente_id = p.cliente_id

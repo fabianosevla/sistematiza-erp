@@ -115,7 +115,14 @@ export const dbVenda = pgTable('t_venda', {
   // Ver scripts/migrate-caixa-e-fiscal.js
   turnoId:           integer('turno_id'),
   numeroCaixa:       integer('numero_caixa'),
-  regimeTurno:       varchar('regime_turno', { length: 10 }),
+  // NÃO declarar `regime_turno` aqui. O regime é da EMPRESA, e vive em
+  // t_configuracoes_tenant — a venda só guarda de qual turno e de qual caixa
+  // ela saiu.
+  //
+  // Declarar coluna que não existe na tabela não é engano inofensivo: o
+  // Drizzle monta o INSERT com TODAS as colunas declaradas, usando DEFAULT
+  // para as que não foram passadas. Uma coluna fantasma quebra toda inserção
+  // na tabela — foi o que derrubou o PDV inteiro com erro 42703.
   vendidaEm:         timestamp('vendida_em', { withTimezone: true }).notNull(),
 })
 

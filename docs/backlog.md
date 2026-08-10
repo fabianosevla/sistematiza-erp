@@ -243,6 +243,21 @@ validação, SELECT da API, formulário.
   `migrate-fiscal-parametrizacao.js` e faltavam nas quatro camadas. Toda NF-e
   sairia com o comprador como não contribuinte.
 
+**Coluna fantasma — o caso mais grave da varredura (09/08/2026):**
+
+`dbVenda` declarava `regime_turno`, que não existe em `t_venda` — o regime é da
+empresa e vive em `t_configuracoes_tenant`. Entrou junto com `turno_id` e
+`numero_caixa` no trabalho de controle de caixa.
+
+**O Drizzle monta o INSERT com TODAS as colunas declaradas**, usando `DEFAULT`
+para as que não foram passadas. Uma coluna que não existe no banco quebra
+portanto **toda inserção na tabela**, não só quem tentasse usá-la. O PDV
+inteiro devolvia 500 (`42703`), e o erro só aparecia no log do servidor porque
+`serverError` esconde a mensagem na resposta.
+
+É o inverso do outro padrão: ali a coluna existia e não chegava na tela; aqui
+ela não existia e derrubava a escrita.
+
 **Pendente:**
 
 - **`ConfiguracoesService` enxerga menos que a tabela.** O schema do Drizzle
