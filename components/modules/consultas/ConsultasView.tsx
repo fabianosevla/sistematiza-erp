@@ -238,7 +238,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
   const { toast } = useToast()
 
   const [aba, setAba]                     = useState<Aba>('vendas')
-  const [periodicidade, setPeriodicidade] = useState<Periodicidade>('semanal')  // padrão
+  const [periodicidade, setPeriodicidade] = useState<Periodicidade>('mensal')  // padrão
   const [ancora, setAncora]               = useState<Date>(() => new Date())
   // Segunda ponta, usada só no modo "Período customizável".
   const [fimCustom, setFimCustom]         = useState<Date | null>(null)

@@ -118,11 +118,11 @@ export default function PerdasTab({ tenantSlug }: Props) {
           <table className="w-full">
             <thead>
               <tr>
-                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left  text-xs font-medium text-gray-400 px-4 py-2.5">Item</th>
-                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-right text-xs font-medium text-gray-400 px-4 py-2.5">Qtd</th>
-                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left  text-xs font-medium text-gray-400 px-4 py-2.5">Motivo</th>
-                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left  text-xs font-medium text-gray-400 px-4 py-2.5">Data</th>
-                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-right text-xs font-medium text-gray-400 px-4 py-2.5">Valor</th>
+                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left  text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Item</th>
+                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Qtd</th>
+                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left  text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Motivo</th>
+                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left  text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Data</th>
+                <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Valor</th>
                 <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] w-10"></th>
               </tr>
             </thead>

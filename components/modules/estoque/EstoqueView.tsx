@@ -247,7 +247,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
             <thead>
               <tr className="border-b border-gray-100">
                 {['', 'Produto', 'Est. Atual', 'Est. Mínimo', 'Unidade', ''].map((h, i) => (
-                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'w-10' : ''} ${i === 5 ? 'w-24' : ''}`}>{h}</th>
+                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 ${i === 0 ? 'w-10' : ''} ${i === 5 ? 'w-24' : ''}`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -287,7 +287,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
             <thead>
               <tr className="border-b border-gray-100">
                 {['', 'Insumo', 'Est. Atual', 'Est. Mínimo', 'Unidade', 'Preço Custo', ''].map((h, i) => (
-                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                  <th key={i} className={`text-${i <= 1 ? 'left' : 'center'} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3`}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -335,7 +335,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
               <thead>
                 <tr className="border-b border-gray-100">
                   {['Produto', 'Estoque Atual', 'Novo Estoque', ''].map((h, i) => (
-                    <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                    <th key={i} className={`text-${i === 0 ? 'left' : 'center'} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -360,7 +360,7 @@ export default function EstoqueView({ tenantSlug }: Props) {
                             if (e.key === 'Enter') ajustarMut.mutate({ produtoId: p.produtoId, novoEstoque: editandoAjuste?.valor ?? '0' })
                             if (e.key === 'Escape') setEditandoAjuste(null)
                           }}
-                          className="w-20 h-7 text-center text-sm border border-green-400 rounded focus:outline-none" autoFocus />
+                          className="sem-spinner w-20 h-8 text-center text-sm rounded-lg border border-green-400 focus:outline-none focus:ring-1 focus:ring-green-100" autoFocus />
                       ) : (
                         <span className="text-sm text-gray-400">—</span>
                       )}

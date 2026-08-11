@@ -420,7 +420,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               <thead>
                 <tr className="border-b border-gray-100">
                   {['Nome', 'Categoria', 'Compra', 'Pagamento', 'Recorrente', 'Valor', ''].map((h, i) => (
-                    <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 5 ? 'text-right' : ''}`}>{h}</th>
+                    <th key={i} className={`text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 ${i === 5 ? 'text-right' : ''}`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -672,11 +672,11 @@ export default function FinanceiroView({ tenantSlug }: Props) {
               <table className="w-full min-w-[900px]">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 w-40">Categoria</th>
+                    <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 w-40">Categoria</th>
                     {MESES.map(m => (
-                      <th key={m} className="text-center text-xs font-medium text-gray-400 px-2 py-3 w-20">{m}</th>
+                      <th key={m} className="text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-2 py-3 w-20">{m}</th>
                     ))}
-                    <th className="text-center text-xs font-medium text-gray-400 px-2 py-3 w-24">Anual</th>
+                    <th className="text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-2 py-3 w-24">Anual</th>
                     <th className="w-20" />
                   </tr>
                 </thead>
@@ -705,7 +705,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                                   const novoVal = Math.round(parseFloat(e.target.value || '0') * 100)
                                   if (novoVal !== val) salvarCelula(cat.categoriaId, m, novoVal)
                                 }}
-                                className="w-full h-7 text-center text-xs border border-gray-200 rounded focus:outline-none focus:border-green-400"
+                                className="sem-spinner w-full h-8 text-center text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-100"
                               />
                             </td>
                           )
@@ -777,7 +777,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   <thead>
                     <tr className="border-b border-gray-100 bg-gray-50">
                       {['Mês', 'Receita', 'Taxas', 'Despesas', 'Fixos', 'Resultado', 'Acumulado', 'Margem'].map((h, i) => (
-                        <th key={i} className={`text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
+                        <th key={i} className={`text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>

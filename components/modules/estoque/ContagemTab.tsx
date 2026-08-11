@@ -189,10 +189,10 @@ export default function ContagemTab({ tenantSlug }: Props) {
         <table className="w-full">
           <thead className="sticky top-0 bg-white">
             <tr className="border-b border-gray-100">
-              <th className="text-left text-xs font-medium text-gray-400 px-4 py-2.5">Item</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Sistema</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Contado</th>
-              <th className="text-right text-xs font-medium text-gray-400 px-4 py-2.5">Diferença</th>
+              <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Item</th>
+              <th className="text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Sistema</th>
+              <th className="text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Contado</th>
+              <th className="text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Diferença</th>
             </tr>
           </thead>
           <tbody>
@@ -207,7 +207,7 @@ export default function ContagemTab({ tenantSlug }: Props) {
                     <Input type="number" min="0" step="0.001" value={contado}
                       onChange={e => handleQtdChange(item.itemId, e.target.value)}
                       onBlur={() => handleQtdBlur(item.itemId)}
-                      className="w-24 h-7 text-sm text-right ml-auto" />
+                      className="sem-spinner w-24 h-8 text-sm text-right ml-auto" />
                   </td>
                   <td className={`px-4 py-2 text-right text-sm font-medium ${
                     diferenca === null ? 'text-gray-300' : diferenca === 0 ? 'text-gray-400' : diferenca > 0 ? 'text-gray-500' : 'text-red-500'

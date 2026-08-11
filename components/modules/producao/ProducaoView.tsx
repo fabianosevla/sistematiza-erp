@@ -470,10 +470,10 @@ export default function ProducaoView({ tenantSlug }: Props) {
                   transparente deixaria as linhas passarem por baixo.
                   O canto (Produto) é fixo nos dois eixos, por isso z maior. */}
               <tr className="bg-gray-50">
-                <th className="sticky top-0 left-0 z-30 text-left text-xs font-medium text-gray-500 px-3 py-2 w-56 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Produto</th>
-                <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-16 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Estoque</th>
+                <th className="sticky top-0 left-0 z-30 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2 w-56 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Produto</th>
+                <th className="sticky top-0 z-20 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-2 py-2 w-16 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Estoque</th>
                 {DIAS.map((d, i) => (
-                  <th key={d} className="sticky top-0 z-20 text-center text-xs font-medium text-gray-400 px-0 py-1 bg-gray-50 border-b border-gray-200" colSpan={3}>
+                  <th key={d} className="sticky top-0 z-20 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-0 py-1 bg-gray-50 border-b border-gray-200" colSpan={3}>
                     <div className="font-semibold text-gray-600">{d}</div>
                     <div className="text-[10px] text-gray-400">{fmtDate(dias[i])}</div>
                     {/* "Ped" e "PP" viraram nome por extenso: abreviação que
@@ -486,8 +486,8 @@ export default function ProducaoView({ tenantSlug }: Props) {
                     </div>
                   </th>
                 ))}
-                <th className="sticky top-0 z-20 text-center text-xs font-medium text-blue-600 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Total Pedido</th>
-                <th className="sticky top-0 z-20 text-center text-xs font-medium text-gray-500 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">
+                <th className="sticky top-0 z-20 text-center text-[11px] font-semibold uppercase tracking-wide text-blue-600 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">Total Pedido</th>
+                <th className="sticky top-0 z-20 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-2 py-2 w-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb]">
                   <span className="inline-flex items-center gap-1">
                     Prev. Est.
                     <InfoTip titulo="Previsão de estoque">
@@ -495,7 +495,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                     </InfoTip>
                   </span>
                 </th>
-                <th className="sticky top-0 z-20 text-center text-xs font-bold text-orange-600 px-2 py-2 w-24 bg-orange-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prod. Semanal Necessária</th>
+                <th className="sticky top-0 z-20 text-center text-[11px] font-semibold uppercase tracking-wide text-orange-600 px-2 py-2 w-24 bg-orange-50 shadow-[inset_0_-1px_0_#e5e7eb]">Prod. Semanal Necessária</th>
               </tr>
             </thead>
             <tbody>
@@ -509,7 +509,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                 let totalPed = 0, totalPrevAberto = 0
 
                 return (
-                  <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/30 last:border-0">
+                  <tr key={p.produtoId} className="border-b border-gray-50 hover:bg-gray-50/50 last:border-0">
                     {/* Nome quebra em até duas linhas em vez de ser cortado com
                         reticências. A linha cresce junto, o que também deixa a
                         grade mais legível. O title mostra o nome inteiro. */}
@@ -641,7 +641,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
               <thead>
                 <tr className="border-b border-gray-100">
                   {['Insumo', 'Necessário', 'Estoque Atual', 'Situação'].map((h, i) => (
-                    <th key={h} className={`${i === 0 ? 'text-left' : 'text-center'} text-xs font-medium text-gray-400 px-4 py-3`}>{h}</th>
+                    <th key={h} className={`${i === 0 ? 'text-left' : 'text-center'} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3`}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -744,9 +744,9 @@ export default function ProducaoView({ tenantSlug }: Props) {
                   <table className="w-full border border-gray-100 rounded-lg overflow-hidden">
                     <thead>
                       <tr className="bg-gray-50">
-                        <th className="text-left   text-xs font-medium text-gray-400 px-3 py-2">Produto</th>
-                        <th className="text-center text-xs font-medium text-gray-400 px-3 py-2">Data</th>
-                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Quantidade</th>
+                        <th className="text-left   text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Produto</th>
+                        <th className="text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Data</th>
+                        <th className="text-right  text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Quantidade</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -770,10 +770,10 @@ export default function ProducaoView({ tenantSlug }: Props) {
                   <table className="w-full border border-gray-100 rounded-lg overflow-hidden">
                     <thead>
                       <tr className="bg-gray-50">
-                        <th className="text-left   text-xs font-medium text-gray-400 px-3 py-2">Insumo</th>
-                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Consumo</th>
-                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Estoque</th>
-                        <th className="text-right  text-xs font-medium text-gray-400 px-3 py-2">Ficará</th>
+                        <th className="text-left   text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Insumo</th>
+                        <th className="text-right  text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Consumo</th>
+                        <th className="text-right  text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Estoque</th>
+                        <th className="text-right  text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-3 py-2">Ficará</th>
                       </tr>
                     </thead>
                     <tbody>
