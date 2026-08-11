@@ -94,11 +94,19 @@ export async function GET(req: NextRequest, { params }: Params) {
     `>>"%PS%" echo $perfil = Join-Path $env:LOCALAPPDATA 'SistematizaPDV'`,
     `>>"%PS%" echo $args = '--kiosk-printing --no-first-run --no-default-browser-check --user-data-dir="' + $perfil + '" --app="${url}"'`,
     `>>"%PS%" echo $mesa = [Environment]::GetFolderPath('Desktop')`,
+    // O ícone padrão do atalho vira o do navegador (Chrome/Edge), porque
+    // $s.IconLocation = $alvo aponta pro .exe do navegador. Baixamos o
+    // favicon do sistema pro mesmo perfil isolado e apontamos o atalho pra
+    // ele — se o download falhar por qualquer motivo, cai de volta pro
+    // ícone do navegador em vez de travar a criação do atalho inteiro.
+    `>>"%PS%" echo if (-not (Test-Path $perfil)) { [void](New-Item -ItemType Directory -Path $perfil) }`,
+    `>>"%PS%" echo $icone = Join-Path $perfil 'icone.ico'`,
+    `>>"%PS%" echo try { Invoke-WebRequest -Uri '${base}/favicon.ico' -OutFile $icone -UseBasicParsing } catch { $icone = $alvo }`,
     `>>"%PS%" echo $w = New-Object -ComObject WScript.Shell`,
     `>>"%PS%" echo $s = $w.CreateShortcut((Join-Path $mesa '${nome}.lnk'))`,
     `>>"%PS%" echo $s.TargetPath = $alvo`,
     `>>"%PS%" echo $s.Arguments = $args`,
-    `>>"%PS%" echo $s.IconLocation = $alvo`,
+    `>>"%PS%" echo $s.IconLocation = $icone`,
     `>>"%PS%" echo $s.Description = 'PDV - Sistematiza.ai'`,
     `>>"%PS%" echo $s.Save()`,
     ``,
@@ -109,7 +117,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     `if not "%ERRO%"=="0" (`,
     `  echo.`,
     `  echo   Nao consegui criar o atalho.`,
-    `  echo   Tente abrir este arquivo com o botao direito ^> Executar como administrador.`,
+    `  echo   Clique com o botao direito neste arquivo e escolha`,
+    `  echo   "Executar como administrador", depois tente de novo.`,
     `  echo.`,
     `  pause`,
     `  exit /b 1`,
