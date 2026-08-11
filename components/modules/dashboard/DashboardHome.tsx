@@ -175,7 +175,7 @@ const STATUS_PEDIDO = [
  * ali a pergunta é outra: quem ainda precisa de atenção agora).
  */
 function PedidosPorStatusCard({ tenantSlug }: { tenantSlug: string }) {
-  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('semana')
+  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('mes')
 
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard-pedidos-status', tenantSlug, periodo],
