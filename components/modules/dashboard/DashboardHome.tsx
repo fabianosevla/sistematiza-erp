@@ -11,8 +11,6 @@ import {
   ClipboardList, Factory, AlertTriangle, TrendingUp, TrendingDown,
   Play, Square,
 } from 'lucide-react'
-import { InfoTip } from '@/components/ui/InfoTip'
-
 // Cartao do tooltip: mesma borda e mesmo raio dos cartoes da tela, em vez da
 // caixa branca dura que o recharts desenha por padrao.
 const ESTILO_TOOLTIP = {
@@ -190,9 +188,19 @@ function PedidosPorStatusCard({ porStatus }: { porStatus: Record<string, number>
   )
 }
 
-function CaixaCard({ caixas }: { caixas: any[] }) {
-  const aberto = caixas.length > 0
-  const totalVendido = caixas.reduce((a, c) => a + Number(c.vendido ?? 0), 0)
+/**
+ * CAIXA — agregado do dia inteiro, não de uma pessoa.
+ *
+ * "Fechado" não é mais tela vazia: o comércio teve um dia mesmo sem ninguém
+ * no caixa neste instante, e o card mostra isso — vendido hoje, quantos
+ * turnos passaram, diferença acumulada. Sem citar operador: é o negócio, não
+ * quem trabalhou nele.
+ */
+function CaixaCard({ caixaDia }: { caixaDia: any }) {
+  const aberto = Number(caixaDia?.caixasAbertos ?? 0) > 0
+  const vendidoHoje    = Number(caixaDia?.vendidoHoje ?? 0)
+  const turnosFechados = Number(caixaDia?.turnosFechados ?? 0)
+  const diferencaHoje  = Number(caixaDia?.diferencaHoje ?? 0)
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 h-full flex flex-col min-h-0">
@@ -206,60 +214,81 @@ function CaixaCard({ caixas }: { caixas: any[] }) {
         </span>
       </div>
 
-      {!aberto ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-gray-400">Nenhum caixa aberto agora</p>
+      <div className="flex-1 flex flex-col justify-center">
+        <div className="flex justify-between text-sm py-1.5 border-b border-gray-50">
+          <span className="text-gray-500">Vendido hoje</span>
+          <span className="text-gray-900 font-medium">{fmt(vendidoHoje)}</span>
         </div>
-      ) : caixas.length === 1 ? (
-        <div className="flex-1 flex flex-col justify-center">
-          <div className="flex justify-between text-sm py-1.5 border-b border-gray-50">
-            <span className="text-gray-500">Operador</span>
-            <span className="text-gray-900">{caixas[0].operador}</span>
-          </div>
-          <div className="flex justify-between text-sm py-1.5 border-b border-gray-50">
-            <span className="text-gray-500">Vendido</span>
-            <span className="text-gray-900">{fmt(caixas[0].vendido)}</span>
-          </div>
-          <div className="flex justify-between text-sm py-1.5">
-            <span className="text-gray-500">Abertura</span>
-            <span className="text-gray-900">{fmt(caixas[0].valorAbertura)}</span>
-          </div>
+        <div className="flex justify-between text-sm py-1.5 border-b border-gray-50">
+          <span className="text-gray-500">Caixas abertos agora</span>
+          <span className="text-gray-900">{caixaDia?.caixasAbertos ?? 0}</span>
         </div>
-      ) : (
-        <div className="flex-1 flex flex-col justify-center gap-1.5">
-          <div className="flex justify-between text-sm py-1 border-b border-gray-50">
-            <span className="text-gray-500">{caixas.length} caixas abertos</span>
-            <span className="text-gray-900 font-medium">{fmt(totalVendido)}</span>
-          </div>
-          {caixas.map(c => (
-            <div key={c.turnoId} className="flex justify-between text-xs py-0.5">
-              <span className="text-gray-500">Caixa {c.numeroCaixa} · {c.operador}</span>
-              <span className="text-gray-700">{fmt(c.vendido)}</span>
-            </div>
-          ))}
+        <div className="flex justify-between text-sm py-1.5">
+          <span className="text-gray-500">Diferença do dia</span>
+          {turnosFechados === 0 ? (
+            <span className="text-gray-400">sem fechamento ainda</span>
+          ) : (
+            <span className={diferencaHoje === 0 ? 'text-gray-900' : diferencaHoje > 0 ? 'text-amber-600' : 'text-red-600'}>
+              {diferencaHoje === 0 ? 'confere' : `${diferencaHoje > 0 ? '+' : ''}${fmt(diferencaHoje)}`}
+            </span>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
 
-function ContasAVencerCard({ receber, pagar }: { receber: { qtd: number; valor: number }; pagar: { qtd: number; valor: number } }) {
+/**
+ * PRODUTOS MAIS VENDIDOS — recorte do dia.
+ *
+ * Versão compacta do ranking que existia no dashboard antigo: mesma rota
+ * (top-produtos), só que fixa em "dia" e sem o seletor — aqui o lugar já é
+ * de resumo do dia, o seletor completo fica pro card de Vendas.
+ */
+function TopProdutosHojeCard({ tenantSlug }: { tenantSlug: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['dashboard-top-produtos', tenantSlug, 'dia'],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/dashboard/top-produtos?periodo=dia&limite=5`)).json(),
+    staleTime: 30000,
+  })
+
+  const itens: any[] = Array.isArray(data?.data?.itens) ? data.data.itens : []
+  const maior         = Number(data?.data?.maiorQtd ?? 0) || 1
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 h-full flex flex-col min-h-0">
-      <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1 flex-shrink-0 inline-flex items-center gap-1">
-        A vencer — 7 dias
-        <InfoTip titulo="A vencer">Contas ainda abertas com vencimento entre hoje e os próximos 7 dias.</InfoTip>
-      </h3>
-      <div className="flex-1 flex flex-col justify-center gap-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">{receber.qtd} conta{receber.qtd !== 1 ? 's' : ''} a receber</span>
-          <span className="text-sm font-medium text-green-700">{fmt(receber.valor)}</span>
+      <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4 flex-shrink-0">Mais vendidos hoje</h3>
+
+      {isLoading ? (
+        <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+      ) : itens.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-sm text-gray-400">Sem vendas hoje ainda</p>
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600">{pagar.qtd} conta{pagar.qtd !== 1 ? 's' : ''} a pagar</span>
-          <span className="text-sm font-medium text-red-600">{fmt(pagar.valor)}</span>
+      ) : (
+        <div className="flex-1 flex flex-col justify-center gap-2.5">
+          {itens.map((p: any, i: number) => (
+            <div key={p.nome} className="flex items-center gap-3">
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                i < 3 ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm text-gray-900 truncate">{p.nome}</span>
+                  <span className="text-xs text-gray-400 flex-shrink-0">{p.qtd} un</span>
+                </div>
+                <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-1.5 rounded-full"
+                    style={{ width: `${Math.max(4, (p.qtd / maior) * 100)}%`, backgroundColor: '#2ecc71', opacity: i < 3 ? 0.85 : 0.5 }} />
+                </div>
+              </div>
+              <span className="text-xs font-medium text-gray-600 w-16 text-right flex-shrink-0">{fmt(p.valor / 100)}</span>
+            </div>
+          ))}
         </div>
-      </div>
+      )}
     </div>
   )
 }
@@ -377,13 +406,10 @@ export default function DashboardHome({ tenantSlug }: Props) {
         <PedidosPorStatusCard porStatus={raw.pedidosPorStatus ?? {}} />
       </div>
 
-      {/* Linha 2 — caixa + contas a vencer */}
+      {/* Linha 2 — caixa + mais vendidos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
-        <CaixaCard caixas={raw.caixaAberto ?? []} />
-        <ContasAVencerCard
-          receber={raw.contasAVencer?.receber ?? { qtd: 0, valor: 0 }}
-          pagar={raw.contasAVencer?.pagar ?? { qtd: 0, valor: 0 }}
-        />
+        <CaixaCard caixaDia={raw.caixaDia ?? {}} />
+        <TopProdutosHojeCard tenantSlug={tenantSlug} />
       </div>
     </div>
   )
