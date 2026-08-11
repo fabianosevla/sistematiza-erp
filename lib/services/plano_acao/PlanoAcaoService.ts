@@ -43,8 +43,11 @@ export class PlanoAcaoService {
   }
 
   async concluir(id: number, userId: number) {
+    // 'concluida', não 'concluido' — a tela inteira (aba, badge, filtro de
+    // status) compara com a forma feminina. Gravar a masculina fazia a ação
+    // sumir da lista de pendentes sem nunca aparecer como concluída.
     await this.db.update(dbPlanoAcao).set({
-      status: 'concluido', concluidoEm: new Date(), updatedDt: new Date(), updatedBy: userId,
+      status: 'concluida', concluidoEm: new Date(), updatedDt: new Date(), updatedBy: userId,
     }).where(eq(dbPlanoAcao.acaoId, id))
     return { ok: true }
   }

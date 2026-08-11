@@ -240,13 +240,13 @@ function NotasList({ notas, isLoading, onEmitir, onCancelar }: {
     <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
       <table className="w-full">
         <thead>
-          <tr className="border-b border-gray-100">
-            <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Tipo</th>
-            <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Número</th>
-            <th className="text-left text-xs font-medium text-gray-400 px-4 py-3 hidden md:table-cell">Destinatário</th>
-            <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Status</th>
-            <th className="text-right text-xs font-medium text-gray-400 px-4 py-3">Total</th>
-            <th className="px-4 py-3 w-32" />
+          <tr className="border-b border-gray-100 bg-gray-50">
+            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Tipo</th>
+            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Número</th>
+            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 hidden md:table-cell">Destinatário</th>
+            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Status</th>
+            <th className="text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Total</th>
+            <th className="px-4 py-3 w-32 bg-gray-50" />
           </tr>
         </thead>
         <tbody>
@@ -316,9 +316,9 @@ function RelatoriosFiscal({ tenantSlug }: { tenantSlug: string }) {
         ) : (
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-100">
+              <tr className="border-b border-gray-100 bg-gray-50">
                 {['Mês', 'Tipo', 'Autorizadas', 'Canceladas', 'Pendentes', 'Valor'].map((h, i) => (
-                  <th key={h} className={`text-${i >= 2 ? 'right' : 'left'} text-xs font-medium text-gray-400 px-4 py-2.5`}>{h}</th>
+                  <th key={h} className={`text-${i >= 2 ? 'right' : 'left'} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5`}>{h}</th>
                 ))}
               </tr>
             </thead>

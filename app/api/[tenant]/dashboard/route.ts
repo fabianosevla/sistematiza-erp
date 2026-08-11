@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
       const [
-        kpisHoje, pedidosStatus, producaoHoje, estCritico, caixaDia, vendasPorHora,
+        kpisHoje, pedidosStatus, producaoHoje, estCritico, caixaDia, vendasPorHora, acoesHoje,
       ] = await Promise.all([
         client.query(`
           SELECT
@@ -98,6 +98,13 @@ export async function GET(req: NextRequest, { params }: Params) {
             AND EXTRACT(HOUR FROM (v.vendida_em AT TIME ZONE 'America/Sao_Paulo'))::int = h.hora
           GROUP BY h.hora ORDER BY h.hora
         `).catch(() => ({ rows: [] })),
+        // Ações do Plano de Ação combinadas para hoje (fuso de São Paulo),
+        // ainda pendentes — é o "o que falta fazer hoje" do quinto KPI.
+        client.query(`
+          SELECT COUNT(*)::int as qtd FROM t_plano_acao
+          WHERE active_flg = true AND status = 'pendente'
+            AND data_acao = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+        `).catch(() => ({ rows: [{ qtd: 0 }] })),
       ])
 
       const kpi  = kpisHoje.rows[0] ?? {}
@@ -124,6 +131,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           diferencaHoje:  Number(cx.diferenca_hoje) / 100,
         },
         vendasPorHora: vendasPorHora.rows.map(r => ({ hora: Number(r.hora), valor: Number(r.valor) / 100 })),
+        acoesHojeQtd: Number(acoesHoje.rows[0]?.qtd ?? 0),
       })
     } finally {
       client.release()

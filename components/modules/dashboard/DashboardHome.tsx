@@ -323,31 +323,44 @@ function CaixaCard({ caixaDia, vendasPorHora }: { caixaDia: any; vendasPorHora: 
 }
 
 /**
- * PRODUTOS MAIS VENDIDOS — recorte do dia.
- *
- * Versão compacta do ranking que existia no dashboard antigo: mesma rota
- * (top-produtos), só que fixa em "dia" e sem o seletor — aqui o lugar já é
- * de resumo do dia, o seletor completo fica pro card de Vendas.
+ * PRODUTOS MAIS VENDIDOS — com seletor de período, no mesmo padrão do card
+ * de Vendas e do de Pedidos por status. Diário é o padrão pela mesma razão
+ * de sempre: é a primeira pergunta de quem abre o sistema de manhã.
  */
 function TopProdutosHojeCard({ tenantSlug }: { tenantSlug: string }) {
+  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('dia')
+
   const { data, isLoading } = useQuery({
-    queryKey: ['dashboard-top-produtos', tenantSlug, 'dia'],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/dashboard/top-produtos?periodo=dia&limite=5`)).json(),
+    queryKey: ['dashboard-top-produtos', tenantSlug, periodo],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/dashboard/top-produtos?periodo=${periodo}&limite=5`)).json(),
     staleTime: 30000,
   })
 
   const itens: any[] = Array.isArray(data?.data?.itens) ? data.data.itens : []
   const maior         = Number(data?.data?.maiorQtd ?? 0) || 1
 
+  const TITULO: Record<typeof periodo, string> = { dia: 'hoje', semana: 'na semana', mes: 'no mês' }
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 h-full flex flex-col min-h-0">
-      <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4 flex-shrink-0">Mais vendidos hoje</h3>
+      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+        <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mais vendidos</h3>
+        <select
+          value={periodo}
+          onChange={e => setPeriodo(e.target.value as any)}
+          className="h-7 rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+        >
+          <option value="dia">Diário</option>
+          <option value="semana">Semanal</option>
+          <option value="mes">Mensal</option>
+        </select>
+      </div>
 
       {isLoading ? (
         <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
       ) : itens.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-gray-400">Sem vendas hoje ainda</p>
+          <p className="text-sm text-gray-400">Sem vendas {TITULO[periodo]} ainda</p>
         </div>
       ) : (
         <div className="flex-1 flex flex-col justify-center gap-2.5">
@@ -443,6 +456,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
       : 'sem produção hoje'
 
   const estoqueCriticoQtd = Number(raw.estoqueCriticoQtd ?? 0)
+  const acoesHojeQtd      = Number(raw.acoesHojeQtd ?? 0)
 
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
@@ -452,7 +466,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 flex-shrink-0">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 flex-shrink-0">
         <div className="bg-white rounded-xl border border-gray-100 px-4 py-3.5">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Hoje</p>
           <p className="text-xl font-semibold mt-1.5 truncate text-gray-900">{fmt(receitaHoje)}</p>
@@ -488,6 +502,33 @@ export default function DashboardHome({ tenantSlug }: Props) {
             {estoqueCriticoQtd}
           </p>
           <p className="text-[11px] text-gray-400 mt-0.5">produtos ou insumos abaixo do mínimo</p>
+        </div>
+
+        {/* Ações do dia — Plano de Ação. Ícone em vez de InfoTip/rótulo com
+            palavra: um quarto do cartão é o post-it com o alfinete, o resto
+            é o número — o mesmo padrão de "rótulo pequeno + valor grande"
+            dos outros quatro, só que o rótulo virou desenho. */}
+        <div className="bg-white rounded-xl border border-gray-100 px-4 py-3.5 flex items-center gap-3">
+          <div className="w-1/4 flex-shrink-0 flex items-center justify-center">
+            <svg viewBox="0 0 64 64" className="w-9 h-9" aria-hidden="true">
+              <defs>
+                <filter id="postit-relevo" x="-30%" y="-30%" width="160%" height="160%">
+                  <feDropShadow dx="1" dy="2.2" stdDeviation="1.6" floodColor="#000000" floodOpacity="0.22" />
+                </filter>
+              </defs>
+              <g transform="rotate(-6 32 34)">
+                <rect x="12" y="16" width="38" height="38" rx="2.5" fill="#FEF3C7" filter="url(#postit-relevo)" />
+                <rect x="12" y="16" width="38" height="9" fill="#000000" opacity="0.04" />
+              </g>
+              <line x1="35" y1="11" x2="30" y2="21" stroke="#9CA3AF" strokeWidth="1.6" strokeLinecap="round" />
+              <circle cx="36" cy="10" r="6.5" fill="#EF4444" />
+              <circle cx="33.5" cy="7.5" r="2.1" fill="#FCA5A5" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Ações hoje</p>
+            <p className="text-xl font-semibold mt-1.5 text-gray-900">{acoesHojeQtd}</p>
+          </div>
         </div>
       </div>
 
