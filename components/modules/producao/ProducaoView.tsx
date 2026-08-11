@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Factory, CopyCheck, AlertTriangle, CheckCircle, X, Lock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Factory, CopyCheck, AlertTriangle, CheckCircle, X, Lock, Edit3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { CampoNumero } from '@/components/ui/CampoNumero'
@@ -74,15 +74,23 @@ function CelulaPedido({ valor }: { valor: number }) {
   )
 }
 
-/** Célula de Previsto. Depois de registrada fica cinza e perde o clique. */
+/**
+ * Célula de Previsto. Depois de registrada fica cinza e perde o clique.
+ *
+ * Fora do modo de edição (`editavel = false`) é só um número — nem o
+ * cursor de clique aparece. É o que impede alterar a semana sem querer
+ * enquanto se navega ou confere a grade; só depois de "Editar previsto"
+ * as células voltam a aceitar clique.
+ */
 function CelulaEditavel({
-  registrado, isEdit, valor, valorCelula,
+  registrado, isEdit, valor, valorCelula, editavel,
   onChangeValor, onSalvar, onCancelar, onIniciar,
 }: {
   registrado: { produzida: number } | null
   isEdit: boolean
   valor: number
   valorCelula: string
+  editavel: boolean
   onChangeValor: (v: string) => void
   onSalvar: () => void
   onCancelar: () => void
@@ -90,7 +98,7 @@ function CelulaEditavel({
 }) {
   if (registrado) return <CelulaTravada produzida={registrado.produzida} />
 
-if (isEdit) {
+  if (isEdit) {
     // Texto, não number: a tecla decimal do teclado numérico brasileiro é a
     // vírgula, e <input type="number"> devolve string vazia para "1," —
     // o número digitado sumia no meio.
@@ -103,7 +111,15 @@ if (isEdit) {
           if (e.key === 'Escape') onCancelar()
         }}
         className="w-10 h-6 text-center text-xs border border-green-400 rounded focus:outline-none" autoFocus />
-    ) // <--- ADICIONE ESTE PARÊNTESES AQUI
+    )
+  }
+
+  if (!editavel) {
+    return (
+      <span className={`inline-flex items-center justify-center w-10 h-6 rounded text-xs font-medium ${valor > 0 ? 'bg-green-50 text-green-700' : 'text-gray-200'}`}>
+        {valor > 0 ? valor : '—'}
+      </span>
+    )
   }
 
   return (
@@ -152,6 +168,17 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const [weekOffset, setWeekOffset] = useState(0)
   const [editandoCelula, setEditandoCelula] = useState<CelulaKey | null>(null)
   const [valorCelula, setValorCelula] = useState('')
+
+  // ── EDITAR / SALVAR PREVISTO ──────────────────────────────────────────────
+  //
+  // A coluna Previsto salvava célula por célula, direto no servidor, a cada
+  // clique fora do campo — não dava pra digitar a semana inteira e revisar
+  // antes de gravar. Agora fica travada (só número, sem clique) até
+  // "Editar previsto"; o que for digitado fica só no navegador
+  // (`previstoPendente`) e só vai para o servidor no "Salvar previsto".
+  const [editandoPrevisto, setEditandoPrevisto] = useState(false)
+  const [previstoPendente, setPrevistoPendente] = useState<Record<number, Record<string, number>>>({})
+  const [salvandoPrevisto, setSalvandoPrevisto] = useState(false)
   const [showPrevisao, setShowPrevisao] = useState(false)
   const [showRegistro, setShowRegistro] = useState(false)
   // Dias marcados no modal. Vazio = nada será registrado.
@@ -209,20 +236,20 @@ export default function ProducaoView({ tenantSlug }: Props) {
     staleTime: 300000,
   })
 
-  const salvarCelulaMut = useMutation({
-    mutationFn: ({ produtoId, data, quantidade, tipo }: any) => fetch(`/api/${tenantSlug}/producao/grade`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ produtoId, dataProducao: data, quantidade: Number(quantidade), tipo }),
-    }).then(r => r.json()),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
-      qc.invalidateQueries({ queryKey: ['producao-previsao', tenantSlug] })
-    },
-  })
-
   const grade = gradeData?.data ?? gradeData ?? {}
   const produtos = Array.isArray(grade.produtos) ? grade.produtos : []
   const celulas = grade.grade ?? {}     // grade[produtoId][data] = qtd produção
+
+  // O que a grade mostra e soma: o valor salvo no servidor, sobreposto pelo
+  // que estiver pendente de salvar. Sem isso, digitar um previsto novo só
+  // apareceria na tela depois do "Salvar previsto" — e os totais da semana
+  // ficariam defasados enquanto a edição está em andamento.
+  const celulasEfetivas: Record<number, Record<string, number>> = {}
+  for (const produtoId of new Set([...Object.keys(celulas), ...Object.keys(previstoPendente)])) {
+    const id = Number(produtoId)
+    celulasEfetivas[id] = { ...(celulas[id] ?? {}), ...(previstoPendente[id] ?? {}) }
+  }
+
   const celulasPed = grade.pedidos ?? {}   // pedidos[produtoId][data] = qtd pedido
   // comprometido[produtoId] = tudo que foi vendido e não saiu, de qualquer
   // data. A coluna Ped mostra só a semana; a Prev. Est. usa este total, porque
@@ -352,9 +379,50 @@ export default function ProducaoView({ tenantSlug }: Props) {
     setValorCelula(String(valorAtual || ''))
   }
 
+  // Não grava mais no servidor a cada célula — só guarda localmente. O
+  // "Salvar previsto" (abaixo) é quem manda tudo de uma vez.
   function salvarCelula(produtoId: number, data: string, tipo: 'producao' | 'pedido') {
-    salvarCelulaMut.mutate({ produtoId, data, quantidade: valorCelula || '0', tipo })
+    const valor = Number((valorCelula || '0').replace(',', '.')) || 0
+    setPrevistoPendente(prev => ({
+      ...prev,
+      [produtoId]: { ...(prev[produtoId] ?? {}), [data]: valor },
+    }))
     setEditandoCelula(null)
+  }
+
+  async function salvarPrevistoTudo() {
+    const pendentes: { produtoId: number; data: string; quantidade: number }[] = []
+    for (const [produtoId, porDia] of Object.entries(previstoPendente)) {
+      for (const [data, quantidade] of Object.entries(porDia)) {
+        pendentes.push({ produtoId: Number(produtoId), data, quantidade })
+      }
+    }
+    if (pendentes.length === 0) { setEditandoPrevisto(false); return }
+
+    setSalvandoPrevisto(true)
+    try {
+      const respostas = await Promise.all(pendentes.map(p => fetch(`/api/${tenantSlug}/producao/grade`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ produtoId: p.produtoId, dataProducao: p.data, quantidade: p.quantidade, tipo: 'producao' }),
+      })))
+      if (respostas.some(r => !r.ok)) throw new Error('Falha ao salvar uma ou mais células')
+
+      qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['producao-previsao', tenantSlug] })
+      setPrevistoPendente({})
+      setEditandoPrevisto(false)
+      toast(`${pendentes.length} célula${pendentes.length > 1 ? 's' : ''} de previsto salva${pendentes.length > 1 ? 's' : ''}!`)
+    } catch {
+      toast('Erro ao salvar o previsto. Nada foi perdido — tente salvar de novo.', 'error')
+    } finally {
+      setSalvandoPrevisto(false)
+    }
+  }
+
+  function cancelarEdicaoPrevisto() {
+    setPrevistoPendente({})
+    setEditandoCelula(null)
+    setEditandoPrevisto(false)
   }
 
   // ── Replicar previsto no produzido ───────────────────────────────────────
@@ -369,8 +437,8 @@ export default function ProducaoView({ tenantSlug }: Props) {
   const replicaveis = produtos.flatMap((p: any) =>
     dias.map(d => isoDate(d))
       .filter((d: string) => d <= HOJE && !jaRegistrada(p.produtoId, d))
-      .filter((d: string) => (celulas?.[p.produtoId]?.[d] ?? 0) > 0 && getProduzida(p.produtoId, d) === 0)
-      .map((d: string) => ({ produtoId: p.produtoId, data: d, qtd: celulas[p.produtoId][d] }))
+      .filter((d: string) => (celulasEfetivas?.[p.produtoId]?.[d] ?? 0) > 0 && getProduzida(p.produtoId, d) === 0)
+      .map((d: string) => ({ produtoId: p.produtoId, data: d, qtd: celulasEfetivas[p.produtoId][d] }))
   )
 
   function replicarPrevisto() {
@@ -393,7 +461,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
     totaisPedDia[d] = produtos.reduce((a: number, p: any) => a + (celulasPed?.[p.produtoId]?.[d] ?? 0), 0)
     totaisPrevDia[d] = produtos.reduce((a: number, p: any) => {
       const reg = registrados?.[p.produtoId]?.[d]
-      return a + (reg ? Number(reg.produzida) : (celulas?.[p.produtoId]?.[d] ?? 0))
+      return a + (reg ? Number(reg.produzida) : (celulasEfetivas?.[p.produtoId]?.[d] ?? 0))
     }, 0)
   }
 
@@ -446,14 +514,36 @@ export default function ProducaoView({ tenantSlug }: Props) {
         </div>
       </div>
 
-      {/* Navegação semana */}
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><ChevronLeft size={16} /></button>
-        <span className="text-sm font-medium text-gray-700 min-w-48 text-center">
-          {dias[0].toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })} – {dias[5].toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-        </span>
-        <button onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><ChevronRight size={16} /></button>
-        {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-xs text-blue-600 hover:underline">Esta semana</button>}
+      {/* Navegação semana + trava do Previsto */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setWeekOffset(w => w - 1)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><ChevronLeft size={16} /></button>
+          <span className="text-sm font-medium text-gray-700 min-w-48 text-center">
+            {dias[0].toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })} – {dias[5].toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+          </span>
+          <button onClick={() => setWeekOffset(w => w + 1)} className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50"><ChevronRight size={16} /></button>
+          {weekOffset !== 0 && <button onClick={() => setWeekOffset(0)} className="text-xs text-blue-600 hover:underline">Esta semana</button>}
+        </div>
+
+        {/* A coluna Previsto fica travada (só leitura) até "Editar previsto".
+            Evita alterar o plano da semana sem querer enquanto se navega ou
+            confere a grade. */}
+        <div className="flex items-center gap-2">
+          {!editandoPrevisto ? (
+            <Button variant="outline" size="sm" onClick={() => setEditandoPrevisto(true)}>
+              <Edit3 size={13} className="mr-1.5" /> Editar previsto
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={cancelarEdicaoPrevisto} disabled={salvandoPrevisto}>
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={salvarPrevistoTudo} disabled={salvandoPrevisto}>
+                {salvandoPrevisto ? 'Salvando...' : 'Salvar previsto'}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Grade */}
@@ -526,7 +616,7 @@ export default function ProducaoView({ tenantSlug }: Props) {
                       const ped = celulasPed?.[p.produtoId]?.[d] ?? 0
                       const reg = registrados?.[p.produtoId]?.[d]
                       totalPed += ped
-                      if (!reg) totalPrevAberto += (celulas?.[p.produtoId]?.[d] ?? 0)
+                      if (!reg) totalPrevAberto += (celulasEfetivas?.[p.produtoId]?.[d] ?? 0)
                       return (
                         <td key={`dia-${d}`} className="px-0 py-2 align-middle" colSpan={3}>
                           <div className="grid grid-cols-3">
@@ -539,12 +629,13 @@ export default function ProducaoView({ tenantSlug }: Props) {
                                   editandoCelula?.data === d &&
                                   editandoCelula?.tipo === 'producao'
                                 }
-                                valor={celulas?.[p.produtoId]?.[d] ?? 0}
+                                valor={celulasEfetivas?.[p.produtoId]?.[d] ?? 0}
                                 valorCelula={valorCelula}
+                                editavel={editandoPrevisto}
                                 onChangeValor={setValorCelula}
                                 onSalvar={() => salvarCelula(p.produtoId, d, 'producao')}
                                 onCancelar={() => setEditandoCelula(null)}
-                                onIniciar={() => iniciarEdicao(p.produtoId, d, 'producao', celulas?.[p.produtoId]?.[d] ?? 0)}
+                                onIniciar={() => iniciarEdicao(p.produtoId, d, 'producao', celulasEfetivas?.[p.produtoId]?.[d] ?? 0)}
                               />
                             </span>
                             <span className="text-center">

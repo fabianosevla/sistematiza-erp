@@ -187,8 +187,8 @@ export default function ContagemTab({ tenantSlug }: Props) {
 
       <div className="bg-white rounded-xl border border-gray-100 overflow-hidden max-h-[500px] overflow-y-auto">
         <table className="w-full">
-          <thead className="sticky top-0 bg-white">
-            <tr className="border-b border-gray-100">
+          <thead className="sticky top-0 bg-gray-50">
+            <tr className="border-b border-gray-100 bg-gray-50">
               <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Item</th>
               <th className="text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Sistema</th>
               <th className="text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5">Contado</th>

@@ -45,6 +45,15 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   const [ano, setAno] = useState(now.getFullYear())
   const [aba, setAba] = useState<Aba>('despesas')
 
+  // ── Editar / salvar — Gastos Fixos ────────────────────────────────────────
+  // A grade salvava célula por célula, direto no servidor, a cada clique fora
+  // do campo — bem "planilha", sem chance de revisar antes de gravar. Agora
+  // fica travada até "Editar"; o que for digitado fica só no navegador e só
+  // vai para o servidor no "Salvar".
+  const [editandoGastos, setEditandoGastos]   = useState(false)
+  const [gastosPendentes, setGastosPendentes] = useState<Record<string, number>>({})
+  const [salvandoGastos, setSalvandoGastos]   = useState(false)
+
   // ── Período para DRE e Demonstrativo ────────────────────────────────────
   type Periodo = 'mensal' | 'trimestral' | 'semestral' | 'anual' | 'tudo'
   const [periodo, setPeriodo] = useState<Periodo>('mensal')
@@ -623,27 +632,72 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         const categorias  = Array.isArray(gastosData?.categorias) ? gastosData.categorias : []
         const grade       = gastosData?.grade ?? {}
 
-        function salvarCelula(categoriaId: number, mes: number, valor: number) {
-          fetch(`/api/${tenantSlug}/financeiro/gastos-fixos`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ categoriaId, ano, mes, valor }),
-          }).then(() => qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] }))
+        function chave(categoriaId: number, m: number) { return `${categoriaId}-${m}` }
+
+        // Valor efetivo de uma célula: o que está pendente de salvar, ou o
+        // que já está gravado no servidor. É o que a grade mostra e soma —
+        // sem isso, digitar um valor novo só apareceria depois do "Salvar".
+        function valorEfetivo(categoriaId: number, m: number): number {
+          const k = chave(categoriaId, m)
+          return k in gastosPendentes ? gastosPendentes[k] : (grade[categoriaId]?.[m] ?? 0)
         }
 
         function propagarLinha(categoriaId: number, valor: number) {
-          fetch(`/api/${tenantSlug}/financeiro/gastos-fixos`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ acao: 'propagarAnual', categoriaId, ano, valor }),
-          }).then(() => {
-            qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] })
-            toast('Valor propagado para todos os meses!')
+          setGastosPendentes(prev => {
+            const proximo = { ...prev }
+            for (let m = 1; m <= 12; m++) proximo[chave(categoriaId, m)] = valor
+            return proximo
           })
         }
 
+        function copiarMesAnterior() {
+          const mesAnterior = mes === 1 ? 12 : mes - 1
+          const anoAnterior = mes === 1 ? ano - 1 : ano
+          // Só copia o que já está de pé no servidor do mês anterior — não
+          // dá pra copiar um mês que também está pendente de salvar ainda.
+          setGastosPendentes(prev => {
+            const proximo = { ...prev }
+            for (const cat of categorias) {
+              const valorAnterior = gastosData?.grade?.[cat.categoriaId]?.[mesAnterior] ?? 0
+              if (anoAnterior === ano && valorAnterior > 0) proximo[chave(cat.categoriaId, mes)] = valorAnterior
+            }
+            return proximo
+          })
+        }
+
+        async function salvarGastosTudo() {
+          const entradas = Object.entries(gastosPendentes)
+          if (entradas.length === 0) { setEditandoGastos(false); return }
+
+          setSalvandoGastos(true)
+          try {
+            const respostas = await Promise.all(entradas.map(([k, valor]) => {
+              const [categoriaId, m] = k.split('-').map(Number)
+              return fetch(`/api/${tenantSlug}/financeiro/gastos-fixos`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ categoriaId, ano, mes: m, valor }),
+              })
+            }))
+            if (respostas.some(r => !r.ok)) throw new Error('Falha ao salvar uma ou mais células')
+
+            qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] })
+            setGastosPendentes({})
+            setEditandoGastos(false)
+            toast(`${entradas.length} célula${entradas.length > 1 ? 's' : ''} de gastos fixos salva${entradas.length > 1 ? 's' : ''}!`)
+          } catch {
+            toast('Erro ao salvar os gastos fixos. Nada foi perdido — tente salvar de novo.', 'error')
+          } finally {
+            setSalvandoGastos(false)
+          }
+        }
+
+        function cancelarEdicaoGastos() {
+          setGastosPendentes({})
+          setEditandoGastos(false)
+        }
+
         const totalPorMes = Array.from({ length: 12 }, (_, i) => {
-          return categorias.reduce((sum: number, cat: any) => {
-            return sum + (grade[cat.categoriaId]?.[i + 1] ?? 0)
-          }, 0)
+          return categorias.reduce((sum: number, cat: any) => sum + valorEfetivo(cat.categoriaId, i + 1), 0)
         })
 
         return (
@@ -651,17 +705,23 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">Grade anual de gastos fixos — {ano}</p>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => {
-                  fetch(`/api/${tenantSlug}/financeiro/gastos-fixos`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ acao: 'copiarMesAnterior', mes, ano }),
-                  }).then(() => {
-                    qc.invalidateQueries({ queryKey: ['fin-gastos', tenantSlug] })
-                    toast('Valores copiados do mês anterior!')
-                  })
-                }}>
-                  Copiar mês anterior
-                </Button>
+                {!editandoGastos ? (
+                  <Button variant="outline" size="sm" onClick={() => setEditandoGastos(true)}>
+                    <Pencil size={13} className="mr-1.5" /> Editar
+                  </Button>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" onClick={copiarMesAnterior}>
+                      Copiar mês anterior
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={cancelarEdicaoGastos} disabled={salvandoGastos}>
+                      Cancelar
+                    </Button>
+                    <Button size="sm" onClick={salvarGastosTudo} disabled={salvandoGastos}>
+                      {salvandoGastos ? 'Salvando...' : 'Salvar'}
+                    </Button>
+                  </>
+                )}
                 <Button size="sm" onClick={() => { setGastoForm({ categoria: '', valor: '', mes: String(mes), ano: String(ano) }); setShowGasto(true) }}>
                   <Plus size={13} className="mr-1" /> Nova categoria
                 </Button>
@@ -684,35 +744,32 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   {categorias.length === 0 ? (
                     <tr><td colSpan={15} className="text-center py-8 text-sm text-gray-400">Nenhuma categoria cadastrada.</td></tr>
                   ) : categorias.map((cat: any) => {
-                    const totalAnual = Array.from({ length: 12 }, (_, i) => grade[cat.categoriaId]?.[i + 1] ?? 0).reduce((a, b) => a + b, 0)
-                    const valorJan   = grade[cat.categoriaId]?.[1] ?? 0
+                    const totalAnual = Array.from({ length: 12 }, (_, i) => valorEfetivo(cat.categoriaId, i + 1)).reduce((a, b) => a + b, 0)
+                    const valorJan   = valorEfetivo(cat.categoriaId, 1)
                     return (
                       <tr key={cat.categoriaId} className="border-b border-gray-50 hover:bg-gray-50/50">
                         <td className="px-4 py-2 text-sm font-medium text-gray-900">{cat.nome}</td>
                         {Array.from({ length: 12 }, (_, i) => {
                           const m   = i + 1
-                          const val = grade[cat.categoriaId]?.[m] ?? 0
+                          const val = valorEfetivo(cat.categoriaId, m)
                           return (
                             <td key={m} className="px-1 py-1">
                               <input
                                 type="number" min="0" step="0.01"
-                                // key força o input a reler o valor quando a
-                                // grade muda por outro caminho (criação com
-                                // valor, propagar, copiar mês anterior).
-                                key={`${cat.categoriaId}-${m}-${val}`}
-                                defaultValue={(val / 100).toFixed(2)}
-                                onBlur={e => {
+                                disabled={!editandoGastos}
+                                value={(val / 100).toFixed(2)}
+                                onChange={e => {
                                   const novoVal = Math.round(parseFloat(e.target.value || '0') * 100)
-                                  if (novoVal !== val) salvarCelula(cat.categoriaId, m, novoVal)
+                                  setGastosPendentes(prev => ({ ...prev, [chave(cat.categoriaId, m)]: novoVal }))
                                 }}
-                                className="sem-spinner w-full h-8 text-center text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-100"
+                                className="sem-spinner w-full h-8 text-center text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-100 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                               />
                             </td>
                           )
                         })}
                         <td className="px-2 py-2 text-center text-sm font-semibold text-red-600">{fmt(totalAnual)}</td>
                         <td className="px-2 py-2 text-center">
-                          {valorJan > 0 && (
+                          {editandoGastos && valorJan > 0 && (
                             <button onClick={() => propagarLinha(cat.categoriaId, valorJan)}
                               className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap">
                               ↔ propagar
