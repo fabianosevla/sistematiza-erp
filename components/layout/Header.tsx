@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store, Download } from 'lucide-react'
+import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store, Download, ChevronRight } from 'lucide-react'
 import { useClerk, useUser } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,46 @@ interface Props {
   onToggleDarkMode: () => void
   onToggleSidebar:  () => void
   logoBase64:      string | null
+}
+
+// Item do menu vertical do painel de Configurações: seta que expande/recolhe
+// o conteúdo, com o Salvar da própria seção no rodapé — em vez de aba
+// horizontal dividindo um Salvar só entre vários blocos sem relação.
+//
+// Fica fora do Header (não dentro do corpo da função) de propósito: um
+// componente definido dentro de outro componente ganha identidade nova a
+// cada render, e o React desmonta e remonta o acordeão inteiro toda vez que
+// o Header re-renderiza — perde o estado de foco do campo sendo digitado.
+function Secao({ titulo, aberta, onToggle, pendente, acao, children }: {
+  titulo:    string
+  aberta:    boolean
+  onToggle:  () => void
+  pendente?: boolean
+  acao?:     React.ReactNode
+  children:  React.ReactNode
+}) {
+  return (
+    <div className="border-b border-gray-100">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-6 py-4 text-left hover:bg-gray-50 transition-colors"
+      >
+        <ChevronRight size={15} className={`text-gray-400 transition-transform flex-shrink-0 ${aberta ? 'rotate-90' : ''}`} />
+        <span className="text-sm font-medium text-gray-900 flex-1">{titulo}</span>
+        {pendente && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />}
+      </button>
+      {aberta && (
+        <div className="px-6 pb-6">
+          {children}
+          {acao && (
+            <div className="flex items-center justify-end gap-2 mt-5 pt-4 border-t border-gray-50">
+              {acao}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Módulos toggleáveis no painel de configurações.
@@ -77,8 +117,6 @@ const CAMPOS_FISCAIS = [
   'cnae', 'mensagemFiscal', 'focusNfeToken', 'focusNfeAmbiente',
 ] as const
 
-type Aba = 'conta' | 'fiscal' | 'modulos'
-
 export default function Header({
   tenantSlug, tenantName, config, darkMode,
   onToggleDarkMode, onToggleSidebar, logoBase64,
@@ -90,14 +128,17 @@ export default function Header({
 
   const [showSettings, setShowSettings] = useState(false)
   const [showNotifs, setShowNotifs]     = useState(false)
-  const [aba, setAba]                   = useState<Aba>('conta')
 
-  // Desligar o módulo fiscal com a aba dele aberta deixaria o painel mostrando
-  // uma aba que não existe mais no cabeçalho, e o rodapé salvando campos que
-  // ninguém enxerga. Volta para a primeira aba.
-  useEffect(() => {
-    if (aba === 'fiscal' && !config.fiscalAtivo) setAba('conta')
-  }, [aba, config.fiscalAtivo])
+  // Cada seção do painel abre/fecha por conta própria — não é mais aba
+  // exclusiva, é acordeão: pode ter mais de uma aberta ao mesmo tempo.
+  const [secoesAbertas, setSecoesAbertas] = useState<Set<string>>(new Set())
+  function toggleSecao(id: string) {
+    setSecoesAbertas(prev => {
+      const proximo = new Set(prev)
+      if (proximo.has(id)) proximo.delete(id); else proximo.add(id)
+      return proximo
+    })
+  }
 
   // ── Foto do usuário ──────────────────────────────────────────────────────
   // Vai direto para o Clerk via setProfileImage. Fica fora do fluxo de
@@ -156,7 +197,11 @@ export default function Header({
   // este estado local; a gravação acontece no botão Salvar de cada aba.
   const [modulosLocal, setModulosLocal] = useState<Record<string, boolean>>({})
   const [empresa, setEmpresa]           = useState<Record<string, string>>({})
-  const [empresaTocada, setEmpresaTocada] = useState(false)
+  // Quais campos foram digitados, não só "algo mudou" — é o que permite cada
+  // seção (Caixa, Dados da empresa, Fiscal) saber se TEM pendência própria,
+  // já que as três dividem o mesmo objeto `empresa`.
+  const [camposTocados, setCamposTocados] = useState<Set<string>>(new Set())
+  const empresaTocada = camposTocados.size > 0
 
   // logoPendente: undefined = sem alteração · null = remover · string = nova
   const [logoPendente, setLogoPendente] = useState<string | null | undefined>(undefined)
@@ -186,8 +231,16 @@ export default function Header({
   }, [configApi])
 
   const setEmp = (k: string, v: string) => {
-    setEmpresaTocada(true)
+    setCamposTocados(prev => new Set(prev).add(k))
     setEmpresa(p => ({ ...p, [k]: v }))
+  }
+  const tocou = (campos: readonly string[]) => campos.some(c => camposTocados.has(c))
+  function limparTocados(campos: readonly string[]) {
+    setCamposTocados(prev => {
+      const proximo = new Set(prev)
+      for (const c of campos) proximo.delete(c)
+      return proximo
+    })
   }
 
   const { data: notifsRaw } = useQuery({
@@ -224,27 +277,68 @@ export default function Header({
     return d
   }
 
-  // ── Salvar: aba Configurações de conta ───────────────────────────────────
-  // Dados cadastrais + logo. Não mexe no menu lateral, então não recarrega.
-  const salvarContaMut = useMutation({
+  // Monta o corpo do PUT só com os campos da seção — a rota já ignora
+  // qualquer chave que não vier no corpo, então mandar um subconjunto é
+  // seguro e é o que permite cada seção salvar sozinha.
+  function corpoDe(campos: readonly string[]) {
+    const body: Record<string, any> = {}
+    for (const c of campos) body[c] = empresa[c]
+    return body
+  }
+
+  // ── Salvar: seção Caixa ───────────────────────────────────────────────────
+  const salvarCaixaMut = useMutation({
     mutationFn: async () => {
-      const body: Record<string, any> = { ...empresa }
+      const body = corpoDe(CAMPOS_CAIXA)
       body.qtdCaixas = Math.max(1, Number(empresa.qtdCaixas ?? 1) || 1)
-      body.credenciadoNfce = empresa.credenciadoNfce === '1'
-      body.credenciadoNfe  = empresa.credenciadoNfe  === '1'
+      return gravar(body)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
+      limparTocados(CAMPOS_CAIXA)
+      toast('Caixa salvo!')
+    },
+    onError: () => toast('Erro ao salvar o caixa.', 'error'),
+  })
+
+  // ── Salvar: seção Dados da empresa (+ logo) ───────────────────────────────
+  const salvarEmpresaMut = useMutation({
+    mutationFn: async () => {
+      const body = corpoDe(CAMPOS_EMPRESA)
       if (logoPendente !== undefined) body.logoBase64 = logoPendente
       return gravar(body)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
-      setEmpresaTocada(false)
+      limparTocados(CAMPOS_EMPRESA)
       setLogoPendente(undefined)
-      toast('Configurações de conta salvas!')
+      toast('Dados da empresa salvos!')
     },
-    onError: () => toast('Erro ao salvar os dados da conta.', 'error'),
+    onError: () => toast('Erro ao salvar os dados da empresa.', 'error'),
   })
 
-  // ── Salvar: aba Habilitações de módulos ──────────────────────────────────
+  // ── Salvar: seção Fiscal ───────────────────────────────────────────────────
+  const salvarFiscalMut = useMutation({
+    mutationFn: async () => {
+      const body = corpoDe(CAMPOS_FISCAIS)
+      body.credenciadoNfce = empresa.credenciadoNfce === '1'
+      body.credenciadoNfe  = empresa.credenciadoNfe  === '1'
+      return gravar(body)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['configuracoes', tenantSlug] })
+      limparTocados(CAMPOS_FISCAIS)
+      setCamposTocados(prev => {
+        const proximo = new Set(prev)
+        proximo.delete('credenciadoNfce'); proximo.delete('credenciadoNfe')
+        return proximo
+      })
+      toast('Configurações fiscais salvas!')
+    },
+    onError: () => toast('Erro ao salvar as configurações fiscais.', 'error'),
+  })
+
+  // ── Salvar: seção Habilitações de módulos ─────────────────────────────────
   // Envia só o que mudou. Como o menu lateral é montado no servidor pelo
   // tenant-layout, aqui o reload é necessário para o menu refletir as chaves.
   const salvarModulosMut = useMutation({
@@ -298,7 +392,9 @@ export default function Header({
   }
 
   const modulosPendentes = Object.keys(modulosLocal).length
-  const contaPendente    = empresaTocada || logoPendente !== undefined
+  const caixaPendente    = tocou(CAMPOS_CAIXA)
+  const empresaPendente  = tocou(CAMPOS_EMPRESA) || logoPendente !== undefined
+  const fiscalPendente   = tocou(CAMPOS_FISCAIS) || camposTocados.has('credenciadoNfce') || camposTocados.has('credenciadoNfe')
 
   // Fechar descarta o que não foi salvo — senão a tela mostraria na próxima
   // abertura um estado que nunca foi para o banco.
@@ -307,17 +403,10 @@ export default function Header({
     setModulosLocal({})
     setLogoPendente(undefined)
     setLogoPreview(configApi?.logoBase64 ?? logoBase64)
-    setEmpresaTocada(false)
+    setCamposTocados(new Set())
   }
 
   const grupos = [...new Set(MODULOS.map(m => m.group))]
-
-  const abaCls = (a: Aba) =>
-    `px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-      aba === a
-        ? 'border-green-500 text-gray-900'
-        : 'border-transparent text-gray-400 hover:text-gray-600'
-    }`
 
   return (
     <>
@@ -428,450 +517,428 @@ export default function Header({
         </div>
       )}
 
-      {/* Painel de configurações.
-          O rodapé é fixo e muda com a aba: cada uma tem o próprio Salvar, e
-          nada aqui grava sozinho. */}
+      {/* Painel de configurações: menu vertical em acordeão, cada seção com
+          o próprio Salvar. Nada aqui grava sozinho. */}
       {showSettings && (
         <SidePanel
           titulo="Configurações"
           subtitulo={String(empresa.nomeFantasia ?? "").trim() || tenantName}
           onClose={fecharModal}
           largura="w-[34vw] min-w-[560px]"
-          rodape={(aba === 'conta' || aba === 'fiscal') ? (
-            <>
-              <Button variant="outline" size="sm" onClick={fecharModal}>Fechar</Button>
-              <Button size="sm"
-                onClick={() => salvarContaMut.mutate()}
-                disabled={!contaPendente || salvarContaMut.isPending}>
-                {salvarContaMut.isPending ? 'Salvando...' : 'Salvar'}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" size="sm"
-                onClick={() => setModulosLocal({})}
-                disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
-                Desfazer
-              </Button>
-              <Button size="sm"
-                onClick={() => salvarModulosMut.mutate()}
-                disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
-                {salvarModulosMut.isPending ? 'Salvando...' : 'Salvar'}
-              </Button>
-            </>
-          )}
         >
-            {/* Abas */}
-            <div className="flex items-center gap-1 px-6 border-b border-gray-100 flex-shrink-0 sticky top-0 bg-white z-10">
-              <button className={abaCls('conta')} onClick={() => setAba('conta')}>
-                Configurações de conta
-                {contaPendente && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
-              </button>
-              {/* A aba some junto com o módulo: sem emissão de nota, não há o
-                  que configurar aqui. */}
-              {config.fiscalAtivo && (
-                <button className={abaCls('fiscal')} onClick={() => setAba('fiscal')}>
-                  Fiscal
-                </button>
-              )}
-              <button className={abaCls('modulos')} onClick={() => setAba('modulos')}>
-                Habilitações de módulos
-                {modulosPendentes > 0 && <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
-              </button>
-              {/* Fora do <button> da aba: botão dentro de botão é HTML inválido. */}
-              {aba === 'modulos' && (
-                <InfoTip className="mb-1.5">
-                  Define o que aparece no menu lateral. As mudanças só valem depois de salvar.
-                </InfoTip>
-              )}
-            </div>
+            {/* Menu vertical em acordeão — cada item é uma seção com a própria
+                seta e o próprio Salvar, em vez de abas horizontais dividindo
+                um Salvar só. Seção sem formulário (Meu perfil, Arquivos) não
+                tem botão: Meu perfil já grava no Clerk assim que a foto é
+                escolhida, e Arquivos é só um link de download. */}
 
-            {/* ══ ABA 1 — CONFIGURAÇÕES DE CONTA ══════════════════════════ */}
-            {aba === 'conta' && (
-                <div className="p-6 space-y-6">
-
-                  {/* ── CAIXA ────────────────────────────────────────────
-                      Só aparece com o controle de caixa contratado. Com um PC
-                      só, o sistema assume o caixa 1 e nunca pergunta qual é —
-                      perguntar num balcão único é cerimônia sem função. */}
-                  {config.turnoCaixaAtivo && (
-                    <>
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Caixa</p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <Label className="inline-flex items-center gap-1">
-                              Computadores vendendo
-                              <InfoTip titulo="Quantos caixas">Com mais de um, cada máquina informa seu número uma vez.</InfoTip>
-                            </Label>
-                            <Input type="number" min="1" value={empresa.qtdCaixas ?? '1'}
-                              onChange={e => setEmp('qtdCaixas', e.target.value)}
-                              className="sem-spinner mt-1 h-9 text-sm" />
-                          </div>
-                          <div>
-                            <Label className="inline-flex items-center gap-1">
-                              Um turno por
-                              <InfoTip titulo="Regime do turno">Por dia, a loja fecha um caixa só; por operador, cada um fecha o seu.</InfoTip>
-                            </Label>
-                            <select value={empresa.regimeTurno ?? 'dia'}
-                              onChange={e => setEmp('regimeTurno', e.target.value)}
-                              className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
-                              <option value="dia">Dia — um turno para a loja</option>
-                              <option value="operador">Operador — um turno por caixa</option>
-                            </select>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-gray-100" />
-                    </>
-                  )}
-
-                  {/* ── ATALHO DO PDV ─────────────────────────────────────
-                      Navegador nenhum imprime sem abrir a janela de impressão.
-                      A única exceção é o parâmetro --kiosk-printing, que só
-                      existe como argumento de atalho do sistema — e atalho é
-                      coisa que página web não cria, mas arquivo baixado cria.
-
-                      O .bat é gerado pelo servidor com o slug e o domínio do
-                      ambiente. Arquivo fixo serviria a um cliente só e voltaria
-                      a quebrar na próxima troca de domínio. */}
+            {/* ── CAIXA ──────────────────────────────────────────────────
+                Só aparece com o controle de caixa contratado. Com um PC só,
+                o sistema assume o caixa 1 e nunca pergunta qual é —
+                perguntar num balcão único é cerimônia sem função. */}
+            {config.turnoCaixaAtivo && (
+              <Secao titulo="Caixa" aberta={secoesAbertas.has('caixa')} onToggle={() => toggleSecao('caixa')}
+                pendente={caixaPendente}
+                acao={
+                  <Button size="sm" onClick={() => salvarCaixaMut.mutate()} disabled={!caixaPendente || salvarCaixaMut.isPending}>
+                    {salvarCaixaMut.isPending ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                }>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1">
-                      Atalho do PDV
-                      <InfoTip titulo="Atalho do PDV">Cria um ícone que abre o PDV em tela limpa e imprime o cupom sem perguntar.</InfoTip>
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <a
-                        href={`/api/${tenantSlug}/atalho-pdv`}
-                        download
-                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
-                        <Download size={13} />
-                        Instalar no computador
-                      </a>
-                      <p className="text-xs text-gray-400">
-                        Baixe e abra o arquivo no computador do balcão.
-                      </p>
-                    </div>
+                    <Label className="inline-flex items-center gap-1">
+                      Computadores vendendo
+                      <InfoTip titulo="Quantos caixas">Com mais de um, cada máquina informa seu número uma vez.</InfoTip>
+                    </Label>
+                    <Input type="number" min="1" value={empresa.qtdCaixas ?? '1'}
+                      onChange={e => setEmp('qtdCaixas', e.target.value)}
+                      className="sem-spinner mt-1 h-9 text-sm" />
                   </div>
-
-                  <div className="border-t border-gray-100" />
-
-                  {/* ── MEU PERFIL ────────────────────────────────────────
-                      A foto é gravada no Clerk, não no nosso banco: ele já
-                      guarda avatar por usuário e serve a imagem por CDN. Assim
-                      não precisou de coluna nova, rota nova nem migration — e
-                      a foto aparece no rodapé do menu na hora. */}
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Meu perfil</p>
-                    <div className="flex items-center gap-4">
-                      {fotoAtual ? (
-                        <img src={fotoAtual} alt="" className="w-16 h-16 rounded-full object-cover border border-gray-200" />
-                      ) : (
-                        <div className="w-16 h-16 rounded-full bg-green-50 border border-green-200 flex items-center justify-center text-base font-bold text-green-700">
-                          {iniciaisUsuario}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{nomeUsuarioLogado}</p>
-                        <p className="text-xs text-gray-400 truncate">{user?.primaryEmailAddress?.emailAddress}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <label className="cursor-pointer">
-                            <input
-                              type="file"
-                              accept="image/png,image/jpeg,image/webp"
-                              className="hidden"
-                              onChange={e => {
-                                const f = e.target.files?.[0]
-                                if (f) enviarFoto(f)
-                                e.target.value = ''
-                              }}
-                            />
-                            <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
-                              <Upload size={13} />
-                              {enviandoFoto ? 'Enviando...' : fotoAtual ? 'Trocar foto' : 'Escolher foto'}
-                            </span>
-                          </label>
-                          {fotoAtual && (
-                            <Button variant="outline" size="sm" onClick={removerFoto} disabled={enviandoFoto}>
-                              Remover
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <Label className="inline-flex items-center gap-1">
+                      Um turno por
+                      <InfoTip titulo="Regime do turno">Por dia, a loja fecha um caixa só; por operador, cada um fecha o seu.</InfoTip>
+                    </Label>
+                    <select value={empresa.regimeTurno ?? 'dia'}
+                      onChange={e => setEmp('regimeTurno', e.target.value)}
+                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                      <option value="dia">Dia — um turno para a loja</option>
+                      <option value="operador">Operador — um turno por caixa</option>
+                    </select>
                   </div>
+                </div>
+              </Secao>
+            )}
 
-                  {/* Dados da empresa — cabeçalho de cupom e documentos */}
-                  <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Dados da empresa</p>
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="text-xs">Razão social</Label>
-                          <Input value={empresa.nomeEmpresa ?? ''} onChange={e => setEmp('nomeEmpresa', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="Nome registrado" />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Nome fantasia</Label>
-                          <Input value={empresa.nomeFantasia ?? ''} onChange={e => setEmp('nomeFantasia', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="Nome conhecido" />
-                        </div>
-                      </div>
+            {/* ── ARQUIVOS ───────────────────────────────────────────────
+                Navegador nenhum imprime sem abrir a janela de impressão. A
+                única exceção é o parâmetro --kiosk-printing, que só existe
+                como argumento de atalho do sistema — e atalho é coisa que
+                página web não cria, mas arquivo baixado cria.
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label className="text-xs">CNPJ</Label>
-                          <Input value={empresa.cnpj ?? ''} onChange={e => setEmp('cnpj', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="00.000.000/0000-00" />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Inscrição estadual</Label>
-                          <Input value={empresa.inscricaoEstadual ?? ''} onChange={e => setEmp('inscricaoEstadual', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="Isento, se não tiver" />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Inscrição municipal</Label>
-                          <Input value={empresa.inscricaoMunicipal ?? ''} onChange={e => setEmp('inscricaoMunicipal', e.target.value)}
-                            className="mt-1 h-9 text-sm" />
-                        </div>
-                      </div>
+                O .bat é gerado pelo servidor com o slug e o domínio do
+                ambiente. Arquivo fixo serviria a um cliente só e voltaria a
+                quebrar na próxima troca de domínio. */}
+            <Secao titulo="Arquivos" aberta={secoesAbertas.has('arquivos')} onToggle={() => toggleSecao('arquivos')}>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1">
+                Atalho do PDV
+                <InfoTip titulo="Atalho do PDV">Cria um ícone que abre o PDV em tela limpa e imprime o cupom sem perguntar.</InfoTip>
+              </p>
+              <div className="flex items-center gap-3">
+                <a
+                  href={`/api/${tenantSlug}/atalho-pdv`}
+                  download
+                  className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+                  <Download size={13} />
+                  Instalar no computador
+                </a>
+                <p className="text-xs text-gray-400">
+                  Baixe, clique com o botão direito e escolha "Executar como administrador".
+                </p>
+              </div>
+            </Secao>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="text-xs">Telefone</Label>
-                          <Input value={empresa.telefone ?? ''} onChange={e => setEmp('telefone', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="(00) 0000-0000" />
-                        </div>
-                        <div>
-                          <Label className="text-xs">E-mail</Label>
-                          <Input type="email" value={empresa.email ?? ''} onChange={e => setEmp('email', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="contato@empresa.com" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-3">
-                        <div>
-                          <Label className="text-xs">CEP</Label>
-                          <Input value={empresa.cep ?? ''} onChange={e => setEmp('cep', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="00000-000" />
-                        </div>
-                        <div className="col-span-3">
-                          <Label className="text-xs">Endereço</Label>
-                          <Input value={empresa.endereco ?? ''} onChange={e => setEmp('endereco', e.target.value)}
-                            className="mt-1 h-9 text-sm" placeholder="Rua, avenida…" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label className="text-xs">Número</Label>
-                          <Input value={empresa.numero ?? ''} onChange={e => setEmp('numero', e.target.value)}
-                            className="mt-1 h-9 text-sm" />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Complemento</Label>
-                          <Input value={empresa.complemento ?? ''} onChange={e => setEmp('complemento', e.target.value)}
-                            className="mt-1 h-9 text-sm" />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Bairro</Label>
-                          <Input value={empresa.bairro ?? ''} onChange={e => setEmp('bairro', e.target.value)}
-                            className="mt-1 h-9 text-sm" />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-4 gap-3">
-                        <div className="col-span-3">
-                          <Label className="text-xs">Cidade</Label>
-                          <Input value={empresa.cidade ?? ''} onChange={e => setEmp('cidade', e.target.value)}
-                            className="mt-1 h-9 text-sm" />
-                        </div>
-                        <div>
-                          <Label className="text-xs">UF</Label>
-                          <Input maxLength={2} value={empresa.uf ?? ''} onChange={e => setEmp('uf', e.target.value.toUpperCase())}
-                            className="mt-1 h-9 text-sm" />
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label className="text-xs">Mensagem do cupom</Label>
-                        <Input value={empresa.mensagemCupom ?? ''} onChange={e => setEmp('mensagemCupom', e.target.value)}
-                          className="mt-1 h-9 text-sm" placeholder="Obrigado pela preferência!" />
-                      </div>
-                    </div>
+            {/* ── MEU PERFIL ─────────────────────────────────────────────
+                A foto é gravada no Clerk, não no nosso banco: ele já guarda
+                avatar por usuário e serve a imagem por CDN. Assim não
+                precisou de coluna nova, rota nova nem migration — e a foto
+                aparece no rodapé do menu na hora, sem precisar de Salvar. */}
+            <Secao titulo="Meu perfil" aberta={secoesAbertas.has('perfil')} onToggle={() => toggleSecao('perfil')}>
+              <div className="flex items-center gap-4">
+                {fotoAtual ? (
+                  <img src={fotoAtual} alt="" className="w-16 h-16 rounded-full object-cover border border-gray-200" />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-green-50 border border-green-200 flex items-center justify-center text-base font-bold text-green-700">
+                    {iniciaisUsuario}
                   </div>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{nomeUsuarioLogado}</p>
+                  <p className="text-xs text-gray-400 truncate">{user?.primaryEmailAddress?.emailAddress}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <label className="cursor-pointer">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={e => {
+                          const f = e.target.files?.[0]
+                          if (f) enviarFoto(f)
+                          e.target.value = ''
+                        }}
+                      />
+                      <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+                        <Upload size={13} />
+                        {enviandoFoto ? 'Enviando...' : fotoAtual ? 'Trocar foto' : 'Escolher foto'}
+                      </span>
+                    </label>
+                    {fotoAtual && (
+                      <Button variant="outline" size="sm" onClick={removerFoto} disabled={enviandoFoto}>
+                        Remover
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Secao>
 
-                  {/* Logo — a troca também só vale depois do Salvar */}
+            {/* ── DADOS DA EMPRESA (+ LOGO) ──────────────────────────────
+                Cabeçalho de cupom e documentos. Logo entra na mesma seção
+                porque salva junto, na mesma mutation. */}
+            <Secao titulo="Dados da empresa" aberta={secoesAbertas.has('empresa')} onToggle={() => toggleSecao('empresa')}
+              pendente={empresaPendente}
+              acao={
+                <Button size="sm" onClick={() => salvarEmpresaMut.mutate()} disabled={!empresaPendente || salvarEmpresaMut.isPending}>
+                  {salvarEmpresaMut.isPending ? 'Salvando...' : 'Salvar'}
+                </Button>
+              }>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Logo</p>
-                    <div className="flex items-center gap-4">
-                      {logoPreview ? (
-                        <img src={logoPreview} alt="Logo" className="h-12 w-auto object-contain rounded-lg border border-gray-100 p-1" />
-                      ) : (
-                        <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
-                          <Upload size={16} className="text-gray-400" />
-                        </div>
-                      )}
-                      <label className="cursor-pointer">
-                        <span className="text-sm text-gray-600 hover:text-gray-800 font-medium">
-                          {logoPreview ? 'Trocar logo' : 'Enviar logo'}
-                        </span>
-                        <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
-                      </label>
-                      {logoPreview && (
-                        <button
-                          onClick={() => { setLogoPreview(null); setLogoPendente(null) }}
-                          className="text-xs text-red-400 hover:text-red-600"
-                        >
-                          Remover
-                        </button>
-                      )}
-                    </div>
+                    <Label className="text-xs">Razão social</Label>
+                    <Input value={empresa.nomeEmpresa ?? ''} onChange={e => setEmp('nomeEmpresa', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="Nome registrado" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Nome fantasia</Label>
+                    <Input value={empresa.nomeFantasia ?? ''} onChange={e => setEmp('nomeFantasia', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="Nome conhecido" />
                   </div>
                 </div>
 
-            )}
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">CNPJ</Label>
+                    <Input value={empresa.cnpj ?? ''} onChange={e => setEmp('cnpj', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="00.000.000/0000-00" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Inscrição estadual</Label>
+                    <Input value={empresa.inscricaoEstadual ?? ''} onChange={e => setEmp('inscricaoEstadual', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="Isento, se não tiver" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Inscrição municipal</Label>
+                    <Input value={empresa.inscricaoMunicipal ?? ''} onChange={e => setEmp('inscricaoMunicipal', e.target.value)}
+                      className="mt-1 h-9 text-sm" />
+                  </div>
+                </div>
 
-            {/* ══ ABA 2 — HABILITAÇÕES DE MÓDULOS ═════════════════════════ */}
-            {/* ══ ABA — FISCAL ═══════════════════════════════════════════
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Telefone</Label>
+                    <Input value={empresa.telefone ?? ''} onChange={e => setEmp('telefone', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="(00) 0000-0000" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">E-mail</Label>
+                    <Input type="email" value={empresa.email ?? ''} onChange={e => setEmp('email', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="contato@empresa.com" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs">CEP</Label>
+                    <Input value={empresa.cep ?? ''} onChange={e => setEmp('cep', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="00000-000" />
+                  </div>
+                  <div className="col-span-3">
+                    <Label className="text-xs">Endereço</Label>
+                    <Input value={empresa.endereco ?? ''} onChange={e => setEmp('endereco', e.target.value)}
+                      className="mt-1 h-9 text-sm" placeholder="Rua, avenida…" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Número</Label>
+                    <Input value={empresa.numero ?? ''} onChange={e => setEmp('numero', e.target.value)}
+                      className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Complemento</Label>
+                    <Input value={empresa.complemento ?? ''} onChange={e => setEmp('complemento', e.target.value)}
+                      className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Bairro</Label>
+                    <Input value={empresa.bairro ?? ''} onChange={e => setEmp('bairro', e.target.value)}
+                      className="mt-1 h-9 text-sm" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="col-span-3">
+                    <Label className="text-xs">Cidade</Label>
+                    <Input value={empresa.cidade ?? ''} onChange={e => setEmp('cidade', e.target.value)}
+                      className="mt-1 h-9 text-sm" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">UF</Label>
+                    <Input maxLength={2} value={empresa.uf ?? ''} onChange={e => setEmp('uf', e.target.value.toUpperCase())}
+                      className="mt-1 h-9 text-sm" />
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs">Mensagem do cupom</Label>
+                  <Input value={empresa.mensagemCupom ?? ''} onChange={e => setEmp('mensagemCupom', e.target.value)}
+                    className="mt-1 h-9 text-sm" placeholder="Obrigado pela preferência!" />
+                </div>
+
+                <div className="pt-2 border-t border-gray-50">
+                  <Label className="text-xs">Logo</Label>
+                  <div className="flex items-center gap-4 mt-1">
+                    {logoPreview ? (
+                      <img src={logoPreview} alt="Logo" className="h-12 w-auto object-contain rounded-lg border border-gray-100 p-1" />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center">
+                        <Upload size={16} className="text-gray-400" />
+                      </div>
+                    )}
+                    <label className="cursor-pointer">
+                      <span className="text-sm text-gray-600 hover:text-gray-800 font-medium">
+                        {logoPreview ? 'Trocar logo' : 'Enviar logo'}
+                      </span>
+                      <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                    </label>
+                    {logoPreview && (
+                      <button
+                        onClick={() => { setLogoPreview(null); setLogoPendente(null) }}
+                        className="text-xs text-red-400 hover:text-red-600"
+                      >
+                        Remover
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Secao>
+
+            {/* ── FISCAL ─────────────────────────────────────────────────
                 Corresponde a Tabela A do kit entregue ao contador. O que ele
                 devolve, alguem digita aqui — e o painel de prontidao em
                 Fiscal > Parametrizacao mostra o que ainda falta. */}
-            {aba === 'fiscal' && (
-              <div className="p-6 space-y-6">
-
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Regime</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="inline-flex items-center gap-1">
-                        CRT
-                        <InfoTip titulo="CRT">Codigo do regime: 1 Simples, 2 Simples com excesso, 3 Regime Normal.</InfoTip>
-                      </Label>
-                      <select value={empresa.crt ?? ''} onChange={e => setEmp('crt', e.target.value)}
-                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
-                        <option value="">— não informado —</option>
-                        <option value="1">1 — Simples Nacional</option>
-                        <option value="2">2 — Simples Nacional, excesso de sublimite</option>
-                        <option value="3">3 — Regime Normal</option>
-                      </select>
-                    </div>
-                    <div>
-                      <Label>CNAE principal</Label>
-                      <Input value={empresa.cnae ?? ''} onChange={e => setEmp('cnae', e.target.value)}
-                        className="mt-1 h-9 text-sm" />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Credenciamento na SEFAZ</p>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={empresa.credenciadoNfce === '1'}
-                        onChange={e => setEmp('credenciadoNfce', e.target.checked ? '1' : '')}
-                        className="w-4 h-4 rounded" />
-                      <span className="text-sm text-gray-700 inline-flex items-center gap-1">
-                        Credenciada para NFC-e
-                        <InfoTip titulo="Credenciamento">Autorizacao do estado para emitir. Sem ela a SEFAZ recusa.</InfoTip>
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={empresa.credenciadoNfe === '1'}
-                        onChange={e => setEmp('credenciadoNfe', e.target.checked ? '1' : '')}
-                        className="w-4 h-4 rounded" />
-                      <span className="text-sm text-gray-700">Credenciada para NF-e</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Séries</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label>Série NFC-e</Label>
-                      <Input value={empresa.serieNfce ?? ''} onChange={e => setEmp('serieNfce', e.target.value)}
-                        className="mt-1 h-9 text-sm" placeholder="1" />
-                    </div>
-                    <div>
-                      <Label>Série NF-e</Label>
-                      <Input value={empresa.serieNfe ?? ''} onChange={e => setEmp('serieNfe', e.target.value)}
-                        className="mt-1 h-9 text-sm" placeholder="1" />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Emissor</p>
-                  <div className="space-y-3">
-                    <div>
-                      <Label className="inline-flex items-center gap-1">
-                        Token do emissor
-                        <InfoTip titulo="Token">Um por empresa, gerado no painel do emissor apos cadastrar o CNPJ.</InfoTip>
-                      </Label>
-                      <Input type="password" value={empresa.focusNfeToken ?? ''}
-                        onChange={e => setEmp('focusNfeToken', e.target.value)}
-                        className="mt-1 h-9 text-sm" placeholder="••••••••" />
-                    </div>
-                    <div>
-                      <Label className="inline-flex items-center gap-1">
-                        Ambiente
-                        <InfoTip titulo="Ambiente">Homologacao emite nota de teste, sem valor fiscal.</InfoTip>
-                      </Label>
-                      <select value={empresa.focusNfeAmbiente ?? 'homologacao'}
-                        onChange={e => setEmp('focusNfeAmbiente', e.target.value)}
-                        className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
-                        <option value="homologacao">Homologação — testes</option>
-                        <option value="producao">Produção — nota válida</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="inline-flex items-center gap-1">
-                    Mensagem fiscal do rodapé
-                    <InfoTip titulo="Mensagem fiscal">No Simples Nacional o texto e exigido por lei na nota.</InfoTip>
-                  </Label>
-                  <Input value={empresa.mensagemFiscal ?? ''} onChange={e => setEmp('mensagemFiscal', e.target.value)}
-                    className="mt-1 h-9 text-sm"
-                    placeholder="Documento emitido por ME optante pelo Simples Nacional" />
-                </div>
-              </div>
-            )}
-
-            {aba === 'modulos' && (
-                <div className="p-6 space-y-6">
-                  {grupos.map(grupo => (
-                    <div key={grupo}>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{grupo}</p>
-                      <div className="space-y-2">
-                        {MODULOS.filter(m => m.group === grupo).map(modulo => {
-                          const ativo    = getToggleValue(modulo.key)
-                          const alterado = modulo.key in modulosLocal
-                          return (
-                            <div key={modulo.key} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                              <span className="text-sm text-gray-700">
-                                {modulo.label}
-                                {/* Marca o que ainda não foi salvo sem escrever nada. */}
-                                {alterado && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
-                              </span>
-                              <button
-                                onClick={() => handleToggle(modulo.key)}
-                                className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${ativo ? 'bg-green-500' : 'bg-gray-200'}`}
-                              >
-                                <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${ativo ? 'translate-x-4' : 'translate-x-0'}`} />
-                              </button>
-                            </div>
-                          )
-                        })}
+            {config.fiscalAtivo && (
+              <Secao titulo="Fiscal" aberta={secoesAbertas.has('fiscal')} onToggle={() => toggleSecao('fiscal')}
+                pendente={fiscalPendente}
+                acao={
+                  <Button size="sm" onClick={() => salvarFiscalMut.mutate()} disabled={!fiscalPendente || salvarFiscalMut.isPending}>
+                    {salvarFiscalMut.isPending ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                }>
+                <div className="space-y-6">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Regime</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="inline-flex items-center gap-1">
+                          CRT
+                          <InfoTip titulo="CRT">Codigo do regime: 1 Simples, 2 Simples com excesso, 3 Regime Normal.</InfoTip>
+                        </Label>
+                        <select value={empresa.crt ?? ''} onChange={e => setEmp('crt', e.target.value)}
+                          className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                          <option value="">— não informado —</option>
+                          <option value="1">1 — Simples Nacional</option>
+                          <option value="2">2 — Simples Nacional, excesso de sublimite</option>
+                          <option value="3">3 — Regime Normal</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label>CNAE principal</Label>
+                        <Input value={empresa.cnae ?? ''} onChange={e => setEmp('cnae', e.target.value)}
+                          className="mt-1 h-9 text-sm" />
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
 
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Credenciamento na SEFAZ</p>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={empresa.credenciadoNfce === '1'}
+                          onChange={e => setEmp('credenciadoNfce', e.target.checked ? '1' : '')}
+                          className="w-4 h-4 rounded" />
+                        <span className="text-sm text-gray-700 inline-flex items-center gap-1">
+                          Credenciada para NFC-e
+                          <InfoTip titulo="Credenciamento">Autorizacao do estado para emitir. Sem ela a SEFAZ recusa.</InfoTip>
+                        </span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={empresa.credenciadoNfe === '1'}
+                          onChange={e => setEmp('credenciadoNfe', e.target.checked ? '1' : '')}
+                          className="w-4 h-4 rounded" />
+                        <span className="text-sm text-gray-700">Credenciada para NF-e</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Séries</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>Série NFC-e</Label>
+                        <Input value={empresa.serieNfce ?? ''} onChange={e => setEmp('serieNfce', e.target.value)}
+                          className="mt-1 h-9 text-sm" placeholder="1" />
+                      </div>
+                      <div>
+                        <Label>Série NF-e</Label>
+                        <Input value={empresa.serieNfe ?? ''} onChange={e => setEmp('serieNfe', e.target.value)}
+                          className="mt-1 h-9 text-sm" placeholder="1" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Emissor</p>
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="inline-flex items-center gap-1">
+                          Token do emissor
+                          <InfoTip titulo="Token">Um por empresa, gerado no painel do emissor apos cadastrar o CNPJ.</InfoTip>
+                        </Label>
+                        <Input type="password" value={empresa.focusNfeToken ?? ''}
+                          onChange={e => setEmp('focusNfeToken', e.target.value)}
+                          className="mt-1 h-9 text-sm" placeholder="••••••••" />
+                      </div>
+                      <div>
+                        <Label className="inline-flex items-center gap-1">
+                          Ambiente
+                          <InfoTip titulo="Ambiente">Homologacao emite nota de teste, sem valor fiscal.</InfoTip>
+                        </Label>
+                        <select value={empresa.focusNfeAmbiente ?? 'homologacao'}
+                          onChange={e => setEmp('focusNfeAmbiente', e.target.value)}
+                          className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                          <option value="homologacao">Homologação — testes</option>
+                          <option value="producao">Produção — nota válida</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="inline-flex items-center gap-1">
+                      Mensagem fiscal do rodapé
+                      <InfoTip titulo="Mensagem fiscal">No Simples Nacional o texto e exigido por lei na nota.</InfoTip>
+                    </Label>
+                    <Input value={empresa.mensagemFiscal ?? ''} onChange={e => setEmp('mensagemFiscal', e.target.value)}
+                      className="mt-1 h-9 text-sm"
+                      placeholder="Documento emitido por ME optante pelo Simples Nacional" />
+                  </div>
+                </div>
+              </Secao>
             )}
+
+            {/* ── HABILITAÇÕES DE MÓDULOS ────────────────────────────────── */}
+            <Secao titulo="Habilitações de módulos" aberta={secoesAbertas.has('modulos')} onToggle={() => toggleSecao('modulos')}
+              pendente={modulosPendentes > 0}
+              acao={
+                <>
+                  <Button variant="outline" size="sm"
+                    onClick={() => setModulosLocal({})}
+                    disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
+                    Desfazer
+                  </Button>
+                  <Button size="sm"
+                    onClick={() => salvarModulosMut.mutate()}
+                    disabled={modulosPendentes === 0 || salvarModulosMut.isPending}>
+                    {salvarModulosMut.isPending ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                </>
+              }>
+              <InfoTip className="mb-3 block">
+                Define o que aparece no menu lateral. As mudanças só valem depois de salvar.
+              </InfoTip>
+              <div className="space-y-6">
+                {grupos.map(grupo => (
+                  <div key={grupo}>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{grupo}</p>
+                    <div className="space-y-2">
+                      {MODULOS.filter(m => m.group === grupo).map(modulo => {
+                        const ativo    = getToggleValue(modulo.key)
+                        const alterado = modulo.key in modulosLocal
+                        return (
+                          <div key={modulo.key} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                            <span className="text-sm text-gray-700">
+                              {modulo.label}
+                              {/* Marca o que ainda não foi salvo sem escrever nada. */}
+                              {alterado && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle" />}
+                            </span>
+                            <button
+                              onClick={() => handleToggle(modulo.key)}
+                              className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${ativo ? 'bg-green-500' : 'bg-gray-200'}`}
+                            >
+                              <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${ativo ? 'translate-x-4' : 'translate-x-0'}`} />
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Secao>
         </SidePanel>
       )}
     </>
