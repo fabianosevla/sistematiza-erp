@@ -23,7 +23,8 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt } from '@/lib/format'
-import { imprimirFechamentoCaixa } from '@/lib/print/fechamentoCaixa'
+import { imprimirFechamentoCaixa, type DadosFechamentoCaixa } from '@/lib/print/fechamentoCaixa'
+import { DialogFormatoImpressao } from '@/components/ui/DialogFormatoImpressao'
 
 interface Props { tenantSlug: string }
 
@@ -36,6 +37,7 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
   const [ancora, setAncora]   = useState(new Date())
   const [fimCustom, setFim]   = useState<Date | null>(null)
   const [detalhe, setDetalhe] = useState<any | null>(null)
+  const [dialogFormato, setDialogFormato] = useState<DadosFechamentoCaixa | null>(null)
 
   const periodo = intervaloDe(periodicidade, ancora, fimCustom)
 
@@ -176,7 +178,7 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
           rodape={
             <Button variant="outline" disabled={!resumo} onClick={() => {
               if (!resumo) return
-              imprimirFechamentoCaixa({
+              setDialogFormato({
                 numeroCaixa: detalhe.numero_caixa,
                 operador:    detalhe.operador,
                 abertoEm:    detalhe.aberto_em,
@@ -185,7 +187,7 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
                 contado:    detalhe.valor_fechamento ?? null,
                 diferenca:  detalhe.status === 'fechado' ? Number(detalhe.diferenca ?? 0) : null,
                 observacao: detalhe.observacao ?? null,
-              }, () => toast('Habilite pop-ups para imprimir.', 'error'))
+              })
             }}>
               <Printer size={14} className="mr-1.5" /> Imprimir descritivo de fechamento de caixa
             </Button>
@@ -246,6 +248,19 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
             )}
           </div>
         </SidePanel>
+      )}
+
+      {dialogFormato && (
+        <DialogFormatoImpressao
+          titulo="Imprimir descritivo de fechamento"
+          subtitulo="Escolha o formato de impressão."
+          rotuloFechar="Cancelar"
+          onEscolher={formato => {
+            imprimirFechamentoCaixa(dialogFormato, () => toast('Habilite pop-ups para imprimir.', 'error'), formato)
+            setDialogFormato(null)
+          }}
+          onFechar={() => setDialogFormato(null)}
+        />
       )}
     </div>
   )

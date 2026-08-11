@@ -10,6 +10,24 @@ promessa de fazer agora; é garantia de não esquecer.
 
 ---
 
+## Próximos passos combinados (11/08/2026)
+
+Ordem decidida pelo Fabiano — a bola está com ele agora, não é para eu agir
+sem ele voltar a pedir:
+
+1. **Focus NFe** — ele mesmo vai configurar a conta pra poder testar
+   homologação. É o que está travando o módulo fiscal hoje (ver seção
+   "Fiscal — a desenvolver junto com a Zaghi e o contador", acima).
+2. **Depois disso**: revisitar **Metas & Simulador** e **Fidelidade** — os
+   dois módulos já existem no sistema, mas estão **desabilitados** (flag de
+   módulo desligada) e, segundo o Fabiano, "super atrasados" — precisam de
+   revisão antes de religar, não é só apertar o interruptor.
+3. **Lá na frente**: lembrar de atualizar a documentação (`Documentação
+   Técnica` no Drive — ver [[reference_drive_documentacao]] na memória) pra
+   refletir o que mudar no fiscal, Metas e Fidelidade.
+
+---
+
 ## 0. TESTES PENDENTES — nada disso foi validado em uso real
 
 Três frentes construídas e não testadas. Enquanto ninguém usou, é teoria.

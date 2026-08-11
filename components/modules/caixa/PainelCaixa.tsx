@@ -24,7 +24,8 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
 import { fmtMoeda as fmt } from '@/lib/format'
-import { imprimirFechamentoCaixa } from '@/lib/print/fechamentoCaixa'
+import { imprimirFechamentoCaixa, type DadosFechamentoCaixa, type FormatoImpressaoCaixa } from '@/lib/print/fechamentoCaixa'
+import { DialogFormatoImpressao } from '@/components/ui/DialogFormatoImpressao'
 
 interface Props {
   tenantSlug: string
@@ -123,6 +124,12 @@ export default function PainelCaixa({ tenantSlug, operador = '', qtdCaixas = 1, 
     onError: (e: any) => toast(e?.message ?? 'Erro ao registrar', 'error'),
   })
 
+  // Pergunta "deseja imprimir?" só aparece depois que o fechamento foi
+  // confirmado — por isso os dados vão congelados aqui, antes do invalidate
+  // apagar o turno da tela.
+  const [perguntarImpressao, setPerguntarImpressao] = useState<DadosFechamentoCaixa | null>(null)
+  const [dialogFormato, setDialogFormato] = useState<DadosFechamentoCaixa | null>(null)
+
   const fecharMut = useMutation({
     mutationFn: () => chamar('fechar', {
       turnoId: turno?.turnoId,
@@ -130,6 +137,9 @@ export default function PainelCaixa({ tenantSlug, operador = '', qtdCaixas = 1, 
       observacao: form.obs,
     })(),
     onSuccess: (d: any) => {
+      if (turno && resumo) {
+        setPerguntarImpressao(construirDadosFechamento(d?.data?.diferenca))
+      }
       inv(); setPainel(null)
       const dif = d?.data?.diferenca ?? 0
       toast(dif === 0 ? 'Caixa fechado. Sem diferença.'
@@ -139,17 +149,21 @@ export default function PainelCaixa({ tenantSlug, operador = '', qtdCaixas = 1, 
     onError: (e: any) => toast(e?.message ?? 'Erro ao fechar o caixa', 'error'),
   })
 
-  function imprimirDescritivoFechamento() {
-    if (!turno || !resumo) return
-    imprimirFechamentoCaixa({
+  function construirDadosFechamento(diferenca?: number): DadosFechamentoCaixa {
+    return {
       numeroCaixa: turno.numeroCaixa ?? numeroCaixa ?? 1,
       operador:    turno.operador,
       abertoEm:    turno.abertoEm,
+      fechadoEm:   new Date(),
       resumo,
       contado:    form.conferido !== '' ? cent(form.conferido) : null,
-      diferenca:  form.conferido !== '' ? cent(form.conferido) - resumo.esperadoGaveta : null,
+      diferenca:  diferenca ?? (form.conferido !== '' ? cent(form.conferido) - resumo.esperadoGaveta : null),
       observacao: form.obs || null,
-    }, () => toast('Habilite pop-ups para imprimir.', 'error'))
+    }
+  }
+
+  function imprimir(dados: DadosFechamentoCaixa, formato: FormatoImpressaoCaixa) {
+    imprimirFechamentoCaixa(dados, () => toast('Habilite pop-ups para imprimir.', 'error'), formato)
   }
 
   // Máquina ainda sem número: primeira coisa a resolver.
@@ -274,7 +288,7 @@ export default function PainelCaixa({ tenantSlug, operador = '', qtdCaixas = 1, 
           onClose={() => setPainel(null)}
           rodape={
             <>
-              <Button variant="outline" onClick={() => imprimirDescritivoFechamento()}>
+              <Button variant="outline" onClick={() => setDialogFormato(construirDadosFechamento())}>
                 <Printer size={14} className="mr-1.5" /> Imprimir descritivo de fechamento de caixa
               </Button>
               <Button variant="outline" onClick={() => setPainel(null)}>Fechar</Button>
@@ -344,6 +358,25 @@ export default function PainelCaixa({ tenantSlug, operador = '', qtdCaixas = 1, 
             </div>
           </div>
         </SidePanel>
+      )}
+
+      {perguntarImpressao && (
+        <DialogFormatoImpressao
+          titulo="Caixa fechado!"
+          subtitulo="Deseja imprimir o relatório descritivo do caixa de hoje?"
+          onEscolher={formato => { imprimir(perguntarImpressao, formato); setPerguntarImpressao(null) }}
+          onFechar={() => setPerguntarImpressao(null)}
+        />
+      )}
+
+      {dialogFormato && (
+        <DialogFormatoImpressao
+          titulo="Imprimir descritivo de fechamento"
+          subtitulo="Escolha o formato de impressão."
+          rotuloFechar="Cancelar"
+          onEscolher={formato => { imprimir(dialogFormato, formato); setDialogFormato(null) }}
+          onFechar={() => setDialogFormato(null)}
+        />
       )}
     </>
   )
