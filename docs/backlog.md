@@ -32,11 +32,31 @@ Caixa, e o fluxo de dinheiro que mudou de lugar.
 
 ### Tenantização — clientes novos
 
-- Provisionar um `tenant_teste` e rodar `comparar-schemas.js`
-- Navegar o sistema inteiro por ele: PDV, pedidos, produção, estoque,
-  compras, financeiro, consultas
-- Cadastrar o mesmo e-mail em duas empresas e conferir a tela de escolha
-- Convidar alguém e confirmar que o vínculo se faz sozinho no primeiro acesso
+**Atualizado em 11/08/2026.** Já existe plano (`docs/provisionamento.md`),
+script (`scripts/provisionar-tenant.js`) e `tenant_modelo` no banco. Rodado
+hoje: o modelo tinha ficado 13 colunas fiscais atrás da Zaghi
+(`t_nota_fiscal`, `t_pedido` — o módulo fiscal evoluiu depois que o modelo
+foi criado). Resincronizado com `criar-schema-modelo.js --recriar` +
+`semear-schema-modelo.js`, e `tenant_teste_provisionamento` foi recriado a
+partir do modelo corrigido. `comparar-schemas.js` dá **OK limpo** contra a
+Zaghi agora: mesma estrutura, zero coluna faltando, zero sequence cruzada.
+
+Recorte da vez: nicho alimentício (bar, restaurante, fábrica de comida) — o
+modelo já É esse perfil (clone da Zaghi), e comandas/mesas do PDV já servem
+bar/restaurante. Não é construção nova, é validar o que existe.
+
+Pendente:
+- Navegar o sistema inteiro pelo `tenant_teste_provisionamento`: PDV,
+  pedidos, produção, comandas/mesas, estoque, compras, financeiro, consultas.
+  Precisa de um convite real pelo Clerk — o usuário dono foi criado com
+  e-mail placeholder (`teste@sistematiza.local`), então pra logar de verdade
+  é preciso convidar um e-mail real e ele entrar em
+  `/teste-provisionamento`.
+- Cadastrar o mesmo e-mail em duas empresas e conferir a tela de escolha.
+- Confirmar que o vínculo Clerk↔schema se faz sozinho no primeiro acesso.
+- **Lembrete:** depois de validado, rodar `criar-schema-modelo.js --recriar`
+  de novo toda vez que o schema da Zaghi ganhar coluna/tabela nova — senão o
+  modelo volta a ficar pra trás, como aconteceu agora.
 
 O passo mais provável de revelar buraco é o cadastro da empresa em
 Configurações: a linha de `t_configuracoes_tenant` é montada por inspeção de
@@ -395,6 +415,48 @@ Pendente de execução:
 - Decidir se "Nova Venda" no módulo Vendas sai, já que o PDV cobre o caso.
 - Legenda "Configure sua empresa para começar" na tela de onboarding — sobrou
   do padrão antigo de legendas na tela.
+
+---
+
+## 9. Generalização para outros ramos — indústria, comércio, revenda
+
+Levantado em 10/08/2026 a partir de uma pergunta direta: o sistema hoje foi
+moldado em cima da Zaghi (massas). Serviria pra um restaurante, um bar, uma
+fábrica de roupas, uma loja de parafusos? Objetivo declarado: para toda
+indústria/comércio o sistema deveria funcionar, como qualquer ERP escalável.
+
+**Mais pronto do que parece, em três pontos:**
+
+- Módulos já ligam/desligam por tenant (`producaoAtivo`, `estoqueAtivo`,
+  `fiscalAtivo`, `comandasAtivo`, `comprasAtivo`, `multiplosLocaisAtivo` em
+  `t_configuracoes_tenant`) — já dá pra montar comércio puro ou indústria só
+  configurando flags.
+- Comandas e mesas (`PdvMesas.tsx`) já existem, prontas pra restaurante/bar.
+- Categorias (`tipo_insumo` etc.) já vêm de domínio configurável
+  (`t_dominio`), não são fixas no código.
+
+**Três buracos concretos, cada um virou cartão próprio no Trello (BACKLOG
+MELHORIAS #89, #90, #91):**
+
+1. **Variação de produto (grade cor × tamanho).** `t_produto` é uma linha =
+   um SKU. Sem isso, têxtil/vestuário cadastra manualmente cada combinação.
+2. **Conversão de unidade compra↔uso/venda.** Compra em caixa/fardo, usa ou
+   vende fracionado. Generaliza o card #27 "Dúvidas sobre o brócolis" — é o
+   mesmo problema de qualquer ramo (parafuso por caixa, tecido por metro).
+3. **Lote e validade.** Não existe hoje em `t_produto` nem `t_insumo`. Risco
+   de compliance para qualquer cliente de alimentos, não só a Zaghi.
+
+**Ainda não existe, e é construção nova:** um seletor de "perfil de negócio"
+(indústria/comércio/indústria e comércio/revenda × ramo × abrangência
+fiscal-ou-gerencial) que configure o tenant com poucos cliques. Não é caro de
+montar — a escolha indústria/comércio é só orquestrar as flags que já
+existem; a escolha por ramo (alimentos/têxtil/siderurgia) é principalmente
+curadoria de dados (kit fiscal NCM/CFOP/CST por ramo, com um contador),
+parecido com o que já foi feito pra Zaghi, só que generalizado.
+
+**Pré-requisito de tudo isso:** nada disso importa sem o item 1
+(provisionamento de tenant) funcionando — hoje não dá pra criar uma empresa
+nova funcional, de nenhum ramo.
 
 ---
 

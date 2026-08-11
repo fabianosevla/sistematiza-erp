@@ -82,7 +82,17 @@ export async function GET(req: NextRequest, { params }: Params) {
     `set "PS=%TEMP%\\sistematiza-atalho.ps1"`,
     `> "%PS%" echo $ErrorActionPreference = 'Stop'`,
     `>>"%PS%" echo $alvo = '!NAV!'`,
-    `>>"%PS%" echo $args = '--kiosk-printing --app="${url}"'`,
+    // --kiosk-printing só é respeitado quando o navegador ABRE um processo
+    // novo. Se já existir uma janela do Chrome/Edge aberta no computador
+    // (o balcão usa o navegador para outra coisa, por exemplo), o clique no
+    // atalho só manda a URL para essa janela já existente, e os parâmetros
+    // de linha de comando — inclusive --kiosk-printing — são ignorados: a
+    // caixa de impressão volta a aparecer, exatamente o problema que o
+    // atalho existe para evitar. --user-data-dir aponta para um perfil
+    // isolado, então este atalho SEMPRE sobe um processo próprio, nunca
+    // reaproveita uma janela existente.
+    `>>"%PS%" echo $perfil = Join-Path $env:LOCALAPPDATA 'SistematizaPDV'`,
+    `>>"%PS%" echo $args = '--kiosk-printing --no-first-run --no-default-browser-check --user-data-dir="' + $perfil + '" --app="${url}"'`,
     `>>"%PS%" echo $mesa = [Environment]::GetFolderPath('Desktop')`,
     `>>"%PS%" echo $w = New-Object -ComObject WScript.Shell`,
     `>>"%PS%" echo $s = $w.CreateShortcut((Join-Path $mesa '${nome}.lnk'))`,
