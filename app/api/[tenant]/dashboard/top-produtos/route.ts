@@ -10,31 +10,19 @@
 // pesadas para atualizar uma lista.
 //
 //   GET ?periodo=dia | semana | mes   (padrão: semana)
+//
+// O início do período é calculado DENTRO do Postgres, a partir de
+// NOW() AT TIME ZONE 'America/Sao_Paulo' — não em JS. Calcular em JS usava o
+// fuso do processo Node, que na Vercel roda em UTC: perto da virada da meia-
+// noite em São Paulo (que fica 3h atrás de UTC), "hoje" no servidor já podia
+// ser outro dia, e o ranking do dia aparecia zerado com venda de verdade no
+// banco. Ver histórico do dashboard principal, mesmo bug.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
-
-// Início do recorte, sempre a partir de agora para trás.
-//   dia    → hoje, desde a meia-noite
-//   semana → segunda-feira desta semana
-//   mes    → dia 1º deste mês
-function inicioDe(periodo: string) {
-  const agora = new Date()
-  const hoje  = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate())
-
-  if (periodo === 'dia') return hoje
-  if (periodo === 'mes') return new Date(agora.getFullYear(), agora.getMonth(), 1)
-
-  // semana: getDay() devolve 0 para domingo, que precisa recuar 6 dias
-  const diaSemana = hoje.getDay()
-  const recuo     = diaSemana === 0 ? 6 : diaSemana - 1
-  const segunda   = new Date(hoje)
-  segunda.setDate(hoje.getDate() - recuo)
-  return segunda
-}
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
@@ -46,7 +34,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       const { searchParams } = new URL(req.url)
       const periodo = searchParams.get('periodo') ?? 'semana'
       const limite  = Math.min(20, Math.max(3, Number(searchParams.get('limite') ?? 8)))
-      const inicio  = inicioDe(periodo)
+
+      // DATE_TRUNC('week', ...) do Postgres começa na segunda-feira, mesma
+      // regra que o código antigo calculava à mão em JS.
+      const truncPor = periodo === 'dia' ? 'day' : periodo === 'mes' ? 'month' : 'week'
 
       const r = await client.query(`
         SELECT vi.nome_produto                      AS nome,
@@ -54,11 +45,12 @@ export async function GET(req: NextRequest, { params }: Params) {
                SUM(vi.subtotal)::bigint             AS valor
         FROM t_venda_item vi
         JOIN t_venda v ON v.venda_id = vi.venda_id AND v.active_flg = true
-        WHERE v.vendida_em >= $1
+        WHERE (v.vendida_em AT TIME ZONE 'America/Sao_Paulo')
+              >= DATE_TRUNC('${truncPor}', NOW() AT TIME ZONE 'America/Sao_Paulo')
         GROUP BY vi.nome_produto
         ORDER BY qtd DESC, valor DESC
-        LIMIT $2
-      `, [inicio.toISOString(), limite])
+        LIMIT $1
+      `, [limite])
 
       const itens = r.rows.map(row => ({
         nome:  row.nome,
@@ -68,7 +60,6 @@ export async function GET(req: NextRequest, { params }: Params) {
 
       return ok({
         periodo,
-        desde: inicio.toISOString(),
         itens,
         // O maior serve de referência para a barra de proporção na tela; sem
         // ele o componente teria que percorrer a lista de novo a cada render.

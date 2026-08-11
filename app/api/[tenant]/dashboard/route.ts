@@ -36,12 +36,18 @@ export async function GET(req: NextRequest, { params }: Params) {
         `),
         // Previsto (t_producao_semanal, a grade) x realizado (t_producao_registro,
         // o que de fato foi lançado) para hoje.
+        //
+        // "Hoje" tem que ser o dia em São Paulo, não CURRENT_DATE cru — esse
+        // depende do timezone da sessão do Postgres (geralmente UTC no
+        // servidor), que vira ontem ou amanhã perto da virada da meia-noite
+        // daqui. Mesma conversão que já era usada em receita_hoje acima.
         client.query(`
           SELECT
             COALESCE((SELECT SUM(quantidade) FROM t_producao_semanal
-                       WHERE active_flg=true AND data_producao = CURRENT_DATE), 0)::int as previsto,
+                       WHERE active_flg=true
+                         AND data_producao = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date), 0)::int as previsto,
             COALESCE((SELECT SUM(qtd_produzida) FROM t_producao_registro
-                       WHERE data_producao = CURRENT_DATE), 0)::int as realizado
+                       WHERE data_producao = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date), 0)::int as realizado
         `).catch(() => ({ rows: [{ previsto: 0, realizado: 0 }] })),
         client.query(`
           SELECT COUNT(*)::int as qtd FROM (
@@ -52,30 +58,37 @@ export async function GET(req: NextRequest, { params }: Params) {
              WHERE active_flg=true AND estoque_minimo > 0 AND estoque_atual <= estoque_minimo
           ) x
         `),
-        // Caixa do dia inteiro, agregado — não por operador. Cobre tanto o
-        // turno que está aberto agora quanto os que já abriram ou fecharam
-        // hoje, pra "fechado" não virar tela em branco: o comércio continua
-        // tendo um dia, mesmo sem ninguém no caixa neste instante.
+        // Turnos fechados HOJE (em São Paulo) e os que ainda estão abertos.
+        // "Vendido hoje" não sai daqui — venda de pedido (baixa de conta a
+        // receber) não passa por turno, e contar só o que tem turno_id
+        // deixava esse dinheiro de fora. Vendido hoje = receita_hoje acima,
+        // que já soma TODA venda ativa do dia, com ou sem turno.
         client.query(`
           SELECT
-            COUNT(*) FILTER (WHERE x.status = 'aberto')::int  AS caixas_abertos,
-            COUNT(*) FILTER (WHERE x.status = 'fechado')::int AS turnos_fechados,
-            COALESCE(SUM(x.vendido), 0)::bigint                AS vendido_hoje,
-            COALESCE(SUM(x.diferenca) FILTER (WHERE x.status = 'fechado'), 0)::bigint AS diferenca_hoje
-          FROM (
-            SELECT t.turno_id, t.status, t.diferenca,
-                   COALESCE((SELECT SUM(v.total) FROM t_venda v
-                              WHERE v.turno_id = t.turno_id AND v.active_flg = true), 0) AS vendido
-            FROM t_turno_caixa t
-            WHERE t.active_flg = true
-              AND (t.status = 'aberto' OR t.aberto_em::date = CURRENT_DATE OR t.fechado_em::date = CURRENT_DATE)
-          ) x
-        `).catch(() => ({ rows: [{ caixas_abertos: 0, turnos_fechados: 0, vendido_hoje: 0, diferenca_hoje: 0 }] })),
+            COUNT(*) FILTER (WHERE status = 'aberto')::int AS caixas_abertos,
+            COUNT(*) FILTER (
+              WHERE status = 'fechado'
+                AND (fechado_em AT TIME ZONE 'America/Sao_Paulo')::date
+                    = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+            )::int AS turnos_fechados,
+            COALESCE(SUM(diferenca) FILTER (
+              WHERE status = 'fechado'
+                AND (fechado_em AT TIME ZONE 'America/Sao_Paulo')::date
+                    = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+            ), 0)::bigint AS diferenca_hoje
+          FROM t_turno_caixa
+          WHERE active_flg = true
+            AND (
+              status = 'aberto'
+              OR (fechado_em AT TIME ZONE 'America/Sao_Paulo')::date
+                 = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+            )
+        `).catch(() => ({ rows: [{ caixas_abertos: 0, turnos_fechados: 0, diferenca_hoje: 0 }] })),
       ])
 
       const kpi  = kpisHoje.rows[0] ?? {}
       const prod = producaoHoje.rows[0] ?? { previsto: 0, realizado: 0 }
-      const cx   = caixaDia.rows[0] ?? { caixas_abertos: 0, turnos_fechados: 0, vendido_hoje: 0, diferenca_hoje: 0 }
+      const cx   = caixaDia.rows[0] ?? { caixas_abertos: 0, turnos_fechados: 0, diferenca_hoje: 0 }
 
       const porStatus: Record<string, number> = { pendente: 0, producao: 0, pronto: 0 }
       for (const r of pedidosStatus.rows) porStatus[r.status] = Number(r.qtd)
@@ -93,7 +106,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         caixaDia: {
           caixasAbertos:  Number(cx.caixas_abertos),
           turnosFechados: Number(cx.turnos_fechados),
-          vendidoHoje:    Number(cx.vendido_hoje) / 100,
+          vendidoHoje:    Number(kpi.receita_hoje ?? 0) / 100,
           diferencaHoje:  Number(cx.diferenca_hoje) / 100,
         },
       })
