@@ -128,10 +128,12 @@ export function SidePanel({
           </div>
         </div>
 
-        {/* Conteúdo. Expandido, limita a largura da leitura — formulário
-            esticado em 1920px vira uma linha de campos ilegível. */}
+        {/* Conteúdo. Expandido, só uma margem lateral — não um teto de
+            largura centralizado. Um max-w-4xl numa tela de 1920px deixava
+            o formulário espremido numa coluna estreita no meio, com um
+            vazio enorme dos dois lados; a queixa era exatamente essa. */}
         <div className="flex-1 overflow-y-auto">
-          <div className={expandido ? 'max-w-4xl mx-auto w-full' : ''}>
+          <div className={expandido ? 'px-6 xl:px-16' : ''}>
             {children}
           </div>
         </div>
@@ -139,7 +141,7 @@ export function SidePanel({
         {/* Rodapé fixo. Fica visível mesmo com o formulário rolado. */}
         {rodape && (
           <div className="px-6 py-4 border-t border-gray-100 flex-shrink-0 bg-white">
-            <div className={`flex items-center justify-end gap-3 ${expandido ? 'max-w-4xl mx-auto w-full' : ''}`}>
+            <div className={`flex items-center justify-end gap-3 ${expandido ? 'px-6 xl:px-16' : ''}`}>
               {rodape}
             </div>
           </div>
