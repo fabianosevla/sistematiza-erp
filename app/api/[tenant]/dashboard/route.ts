@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
       const [
-        kpisHoje, pedidosStatus, producaoHoje, estCritico, caixaDia,
+        kpisHoje, pedidosStatus, producaoHoje, estCritico, caixaDia, vendasPorHora,
       ] = await Promise.all([
         client.query(`
           SELECT
@@ -84,6 +84,20 @@ export async function GET(req: NextRequest, { params }: Params) {
                  = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
             )
         `).catch(() => ({ rows: [{ caixas_abertos: 0, turnos_fechados: 0, diferenca_hoje: 0 }] })),
+        // Vendido por hora hoje — alimenta o gráfico do card de Caixa. As 24
+        // horas sempre aparecem (generate_series + LEFT JOIN), até as que
+        // ainda não chegaram: ficam zeradas, não somem do eixo.
+        client.query(`
+          WITH horas AS (SELECT generate_series(0, 23) AS hora)
+          SELECT h.hora,
+                 COALESCE(SUM(v.total), 0)::bigint AS valor
+          FROM horas h
+          LEFT JOIN t_venda v ON v.active_flg = true
+            AND (v.vendida_em AT TIME ZONE 'America/Sao_Paulo')::date
+                = (NOW() AT TIME ZONE 'America/Sao_Paulo')::date
+            AND EXTRACT(HOUR FROM (v.vendida_em AT TIME ZONE 'America/Sao_Paulo'))::int = h.hora
+          GROUP BY h.hora ORDER BY h.hora
+        `).catch(() => ({ rows: [] })),
       ])
 
       const kpi  = kpisHoje.rows[0] ?? {}
@@ -109,6 +123,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           vendidoHoje:    Number(kpi.receita_hoje ?? 0) / 100,
           diferencaHoje:  Number(cx.diferenca_hoje) / 100,
         },
+        vendasPorHora: vendasPorHora.rows.map(r => ({ hora: Number(r.hora), valor: Number(r.valor) / 100 })),
       })
     } finally {
       client.release()

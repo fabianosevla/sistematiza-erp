@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 // barra ocupa o espaco e comunica volume mesmo com um unico periodo.
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, PieChart, Pie, Cell,
 } from 'recharts'
 import {
   ClipboardList, Factory, AlertTriangle, TrendingUp, TrendingDown,
@@ -161,46 +162,100 @@ const STATUS_PEDIDO = [
   { chave: 'pendente', rotulo: 'Pendente',     cor: '#f39c12' },
   { chave: 'producao', rotulo: 'Em produção',  cor: '#3498db' },
   { chave: 'pronto',   rotulo: 'Pronto',       cor: '#2ecc71' },
+  { chave: 'entregue', rotulo: 'Entregue',     cor: '#9ca3af' },
 ] as const
 
-function PedidosPorStatusCard({ porStatus }: { porStatus: Record<string, number> }) {
-  const maior = Math.max(1, ...STATUS_PEDIDO.map(s => porStatus[s.chave] ?? 0))
+/**
+ * PEDIDOS POR STATUS — pizza com seletor de período, no mesmo padrão do card
+ * de Vendas.
+ *
+ * O recorte é por quando o pedido foi FEITO (data_pedido), não pelo status —
+ * "pedidos da semana" significa "dos criados essa semana, como estão",  e é
+ * por isso que Entregue entra aqui (no KPI do topo ele fica de fora, porque
+ * ali a pergunta é outra: quem ainda precisa de atenção agora).
+ */
+function PedidosPorStatusCard({ tenantSlug }: { tenantSlug: string }) {
+  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes'>('semana')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['dashboard-pedidos-status', tenantSlug, periodo],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/dashboard/pedidos-status?periodo=${periodo}`)).json(),
+    staleTime: 30000,
+  })
+
+  const porStatus: Record<string, number> = data?.data?.porStatus ?? {}
+  const fatias = STATUS_PEDIDO
+    .map(s => ({ nome: s.rotulo, valor: porStatus[s.chave] ?? 0, cor: s.cor }))
+    .filter(f => f.valor > 0)
+  const total = fatias.reduce((a, f) => a + f.valor, 0)
+
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 h-full flex flex-col min-h-0">
-      <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-4 flex-shrink-0">Pedidos por status</h3>
-      <div className="flex-1 flex flex-col justify-center gap-4">
-        {STATUS_PEDIDO.map(s => {
-          const qtd = porStatus[s.chave] ?? 0
-          return (
-            <div key={s.chave}>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">{s.rotulo}</span>
-                <span className="text-gray-900 font-medium">{qtd}</span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-2 rounded-full" style={{ width: `${Math.max(3, (qtd / maior) * 100)}%`, backgroundColor: s.cor }} />
-              </div>
+      <div className="flex items-center justify-between mb-3 flex-shrink-0">
+        <h3 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Pedidos por status</h3>
+        <select
+          value={periodo}
+          onChange={e => setPeriodo(e.target.value as any)}
+          className="h-7 rounded-lg border border-gray-200 px-2 text-xs bg-white text-gray-700"
+        >
+          <option value="dia">Hoje</option>
+          <option value="semana">Semana</option>
+          <option value="mes">Mês</option>
+        </select>
+      </div>
+
+      <div className="flex-1 min-h-0">
+        {isLoading ? (
+          <p className="text-sm text-gray-400 text-center py-12">Carregando...</p>
+        ) : total === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-12">Sem pedidos no período</p>
+        ) : (
+          <div className="h-full flex items-center gap-4">
+            <ResponsiveContainer width="55%" height="100%">
+              <PieChart>
+                <Pie data={fatias} dataKey="valor" nameKey="nome" cx="50%" cy="50%"
+                  innerRadius="55%" outerRadius="85%" paddingAngle={2} strokeWidth={0}>
+                  {fatias.map((f, i) => <Cell key={i} fill={f.cor} />)}
+                </Pie>
+                <Tooltip formatter={(v: any) => `${v} pedido${Number(v) !== 1 ? 's' : ''}`} {...ESTILO_TOOLTIP} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex-1 space-y-2">
+              {fatias.map(f => (
+                <div key={f.nome} className="flex items-center justify-between text-sm">
+                  <span className="inline-flex items-center gap-1.5 text-gray-600">
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: f.cor }} />
+                    {f.nome}
+                  </span>
+                  <span className="text-gray-900 font-medium">{f.valor}</span>
+                </div>
+              ))}
             </div>
-          )
-        })}
+          </div>
+        )}
       </div>
     </div>
   )
 }
+
+const fmtHora = (h: number) => `${String(h).padStart(2, '0')}h`
 
 /**
  * CAIXA — agregado do dia inteiro, não de uma pessoa.
  *
  * "Fechado" não é mais tela vazia: o comércio teve um dia mesmo sem ninguém
  * no caixa neste instante, e o card mostra isso — vendido hoje, quantos
- * turnos passaram, diferença acumulada. Sem citar operador: é o negócio, não
- * quem trabalhou nele.
+ * turnos passaram, diferença acumulada, e a onda de venda por hora. Sem citar
+ * operador: é o negócio, não quem trabalhou nele.
  */
-function CaixaCard({ caixaDia }: { caixaDia: any }) {
+function CaixaCard({ caixaDia, vendasPorHora }: { caixaDia: any; vendasPorHora: any[] }) {
   const aberto = Number(caixaDia?.caixasAbertos ?? 0) > 0
   const vendidoHoje    = Number(caixaDia?.vendidoHoje ?? 0)
   const turnosFechados = Number(caixaDia?.turnosFechados ?? 0)
   const diferencaHoje  = Number(caixaDia?.diferencaHoje ?? 0)
+
+  const horas = (vendasPorHora ?? []).map(h => ({ ...h, label: fmtHora(h.hora) }))
+  const esc   = escala(horas.map(h => Number(h.valor)))
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5 h-full flex flex-col min-h-0">
@@ -214,25 +269,54 @@ function CaixaCard({ caixaDia }: { caixaDia: any }) {
         </span>
       </div>
 
-      <div className="flex-1 flex flex-col justify-center">
-        <div className="flex justify-between text-sm py-1.5 border-b border-gray-50">
-          <span className="text-gray-500">Vendido hoje</span>
-          <span className="text-gray-900 font-medium">{fmt(vendidoHoje)}</span>
+      <div className="grid grid-cols-3 gap-2 flex-shrink-0 mb-3">
+        <div>
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Vendido hoje</p>
+          <p className="text-sm font-semibold text-gray-900 mt-0.5">{fmt(vendidoHoje)}</p>
         </div>
-        <div className="flex justify-between text-sm py-1.5 border-b border-gray-50">
-          <span className="text-gray-500">Caixas abertos agora</span>
-          <span className="text-gray-900">{caixaDia?.caixasAbertos ?? 0}</span>
+        <div>
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Caixas abertos</p>
+          <p className="text-sm font-semibold text-gray-900 mt-0.5">{caixaDia?.caixasAbertos ?? 0}</p>
         </div>
-        <div className="flex justify-between text-sm py-1.5">
-          <span className="text-gray-500">Diferença do dia</span>
+        <div>
+          <p className="text-[10px] text-gray-400 uppercase tracking-wide">Diferença</p>
           {turnosFechados === 0 ? (
-            <span className="text-gray-400">sem fechamento ainda</span>
+            <p className="text-sm text-gray-400 mt-0.5">—</p>
           ) : (
-            <span className={diferencaHoje === 0 ? 'text-gray-900' : diferencaHoje > 0 ? 'text-amber-600' : 'text-red-600'}>
+            <p className={`text-sm font-semibold mt-0.5 ${diferencaHoje === 0 ? 'text-gray-900' : diferencaHoje > 0 ? 'text-amber-600' : 'text-red-600'}`}>
               {diferencaHoje === 0 ? 'confere' : `${diferencaHoje > 0 ? '+' : ''}${fmt(diferencaHoje)}`}
-            </span>
+            </p>
           )}
         </div>
+      </div>
+
+      <div className="flex-1 min-h-0">
+        {horas.every(h => h.valor === 0) ? (
+          <div className="h-full flex items-center justify-center">
+            <p className="text-sm text-gray-400">Sem venda hoje ainda</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={horas} margin={{ left: 4, right: 8, top: 8 }}>
+              <defs>
+                <linearGradient id="ondaCaixa" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor="#2ecc71" stopOpacity={0.55} />
+                  <stop offset="100%" stopColor="#2ecc71" stopOpacity={0.03} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="2 6" stroke="#eef0f2" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+                interval={3} dy={4} />
+              <YAxis
+                tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+                width={54} domain={esc.dominio} ticks={esc.marcas} tickFormatter={esc.formatar}
+              />
+              <Tooltip formatter={tooltipFmt} labelFormatter={(l: any) => l} {...ESTILO_TOOLTIP} />
+              <Area type="monotone" dataKey="valor" name="Vendido" stroke="#2ecc71" strokeWidth={2}
+                fill="url(#ondaCaixa)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   )
@@ -347,7 +431,16 @@ export default function DashboardHome({ tenantSlug }: Props) {
 
   const previsto  = Number(raw.producaoHoje?.previsto ?? 0)
   const realizado = Number(raw.producaoHoje?.realizado ?? 0)
-  const pctProducao = previsto > 0 ? Math.round((realizado / previsto) * 100) : null
+  // Sem plano na grade não é a mesma coisa que sem produção — tem tenant que
+  // não usa a grade e só registra avulso. Cair pra "—" nesse caso escondia
+  // produção real que aconteceu.
+  const pctProducao   = previsto > 0 ? Math.round((realizado / previsto) * 100) : null
+  const producaoValor = pctProducao !== null ? `${pctProducao}%` : realizado > 0 ? String(realizado) : '—'
+  const producaoSub   = previsto > 0
+    ? `${realizado} de ${previsto} un previstas`
+    : realizado > 0
+      ? `${realizado} un produzidas, sem previsão`
+      : 'sem produção hoje'
 
   const estoqueCriticoQtd = Number(raw.estoqueCriticoQtd ?? 0)
 
@@ -383,10 +476,8 @@ export default function DashboardHome({ tenantSlug }: Props) {
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide inline-flex items-center gap-1">
             <Factory size={11} className="text-gray-400" /> Produção hoje
           </p>
-          <p className="text-xl font-semibold mt-1.5 truncate text-gray-900">{pctProducao === null ? '—' : `${pctProducao}%`}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5">
-            {previsto > 0 ? `${realizado} de ${previsto} un previstas` : 'sem previsão para hoje'}
-          </p>
+          <p className="text-xl font-semibold mt-1.5 truncate text-gray-900">{producaoValor}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">{producaoSub}</p>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-100 px-4 py-3.5">
@@ -403,12 +494,12 @@ export default function DashboardHome({ tenantSlug }: Props) {
       {/* Linha 1 — vendas + pedidos por status */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
         <VendasCard tenantSlug={tenantSlug} />
-        <PedidosPorStatusCard porStatus={raw.pedidosPorStatus ?? {}} />
+        <PedidosPorStatusCard tenantSlug={tenantSlug} />
       </div>
 
       {/* Linha 2 — caixa + mais vendidos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1 min-h-0">
-        <CaixaCard caixaDia={raw.caixaDia ?? {}} />
+        <CaixaCard caixaDia={raw.caixaDia ?? {}} vendasPorHora={raw.vendasPorHora ?? []} />
         <TopProdutosHojeCard tenantSlug={tenantSlug} />
       </div>
     </div>
