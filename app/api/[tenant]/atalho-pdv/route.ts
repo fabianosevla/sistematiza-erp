@@ -92,7 +92,14 @@ export async function GET(req: NextRequest, { params }: Params) {
     // isolado, então este atalho SEMPRE sobe um processo próprio, nunca
     // reaproveita uma janela existente.
     `>>"%PS%" echo $perfil = Join-Path $env:LOCALAPPDATA 'SistematizaPDV'`,
-    `>>"%PS%" echo $args = '--kiosk-printing --no-first-run --no-default-browser-check --user-data-dir="' + $perfil + '" --app="${url}"'`,
+    // O perfil isolado, por ser novo, não herda o tamanho de janela nem o
+    // zoom que o Chrome do dia a dia foi ajustando com o tempo — sem esses
+    // dois parâmetros a janela do PDV abre num tamanho arbitrário e às
+    // vezes quase quadrado, e a página parece "grande demais" por estar
+    // renderizada numa largura menor do que o normal. --start-maximized
+    // ocupa a tela do jeito que o Chrome comum ocupa; --force-device-scale-
+    // factor=1 trava em 100% independente do zoom salvo (ou não) do perfil.
+    `>>"%PS%" echo $args = '--kiosk-printing --no-first-run --no-default-browser-check --start-maximized --force-device-scale-factor=1 --user-data-dir="' + $perfil + '" --app="${url}"'`,
     `>>"%PS%" echo $mesa = [Environment]::GetFolderPath('Desktop')`,
     // O ícone padrão do atalho vira o do navegador (Chrome/Edge), porque
     // $s.IconLocation = $alvo aponta pro .exe do navegador. Baixamos o
