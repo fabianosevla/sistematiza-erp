@@ -526,7 +526,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Ações hoje</p>
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Ações agendadas pra hoje</p>
             <p className="text-xl font-semibold mt-1.5 text-gray-900">{acoesHojeQtd}</p>
           </div>
         </div>

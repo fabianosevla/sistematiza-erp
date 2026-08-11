@@ -642,29 +642,6 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           return k in gastosPendentes ? gastosPendentes[k] : (grade[categoriaId]?.[m] ?? 0)
         }
 
-        function propagarLinha(categoriaId: number, valor: number) {
-          setGastosPendentes(prev => {
-            const proximo = { ...prev }
-            for (let m = 1; m <= 12; m++) proximo[chave(categoriaId, m)] = valor
-            return proximo
-          })
-        }
-
-        function copiarMesAnterior() {
-          const mesAnterior = mes === 1 ? 12 : mes - 1
-          const anoAnterior = mes === 1 ? ano - 1 : ano
-          // Só copia o que já está de pé no servidor do mês anterior — não
-          // dá pra copiar um mês que também está pendente de salvar ainda.
-          setGastosPendentes(prev => {
-            const proximo = { ...prev }
-            for (const cat of categorias) {
-              const valorAnterior = gastosData?.grade?.[cat.categoriaId]?.[mesAnterior] ?? 0
-              if (anoAnterior === ano && valorAnterior > 0) proximo[chave(cat.categoriaId, mes)] = valorAnterior
-            }
-            return proximo
-          })
-        }
-
         async function salvarGastosTudo() {
           const entradas = Object.entries(gastosPendentes)
           if (entradas.length === 0) { setEditandoGastos(false); return }
@@ -703,7 +680,12 @@ export default function FinanceiroView({ tenantSlug }: Props) {
         return (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-sm text-gray-500">Grade anual de gastos fixos — {ano}</p>
+              <p className="text-sm text-gray-500 inline-flex items-center gap-1">
+                Grade anual de gastos fixos — {ano}
+                <InfoTip titulo="Gasto fixo repete sozinho">
+                  Um valor lançado num mês já vale para os meses seguintes, até alguém lançar um valor diferente. Meses anteriores nunca mudam.
+                </InfoTip>
+              </p>
               <div className="flex gap-2">
                 {!editandoGastos ? (
                   <Button variant="outline" size="sm" onClick={() => setEditandoGastos(true)}>
@@ -711,9 +693,6 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                   </Button>
                 ) : (
                   <>
-                    <Button variant="outline" size="sm" onClick={copiarMesAnterior}>
-                      Copiar mês anterior
-                    </Button>
                     <Button variant="outline" size="sm" onClick={cancelarEdicaoGastos} disabled={salvandoGastos}>
                       Cancelar
                     </Button>
@@ -737,15 +716,13 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                       <th key={m} className="text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-2 py-3 w-20">{m}</th>
                     ))}
                     <th className="text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-2 py-3 w-24">Anual</th>
-                    <th className="w-20" />
                   </tr>
                 </thead>
                 <tbody>
                   {categorias.length === 0 ? (
-                    <tr><td colSpan={15} className="text-center py-8 text-sm text-gray-400">Nenhuma categoria cadastrada.</td></tr>
+                    <tr><td colSpan={14} className="text-center py-8 text-sm text-gray-400">Nenhuma categoria cadastrada.</td></tr>
                   ) : categorias.map((cat: any) => {
                     const totalAnual = Array.from({ length: 12 }, (_, i) => valorEfetivo(cat.categoriaId, i + 1)).reduce((a, b) => a + b, 0)
-                    const valorJan   = valorEfetivo(cat.categoriaId, 1)
                     return (
                       <tr key={cat.categoriaId} className="border-b border-gray-50 hover:bg-gray-50/50">
                         <td className="px-4 py-2 text-sm font-medium text-gray-900">{cat.nome}</td>
@@ -768,14 +745,6 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                           )
                         })}
                         <td className="px-2 py-2 text-center text-sm font-semibold text-red-600">{fmt(totalAnual)}</td>
-                        <td className="px-2 py-2 text-center">
-                          {editandoGastos && valorJan > 0 && (
-                            <button onClick={() => propagarLinha(cat.categoriaId, valorJan)}
-                              className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap">
-                              ↔ propagar
-                            </button>
-                          )}
-                        </td>
                       </tr>
                     )
                   })}
@@ -791,7 +760,6 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                     <td className="px-2 py-2 text-center text-xs font-bold text-red-600">
                       {fmt(totalPorMes.reduce((a, b) => a + b, 0))}
                     </td>
-                    <td />
                   </tr>
                 </tfoot>
               </table>
