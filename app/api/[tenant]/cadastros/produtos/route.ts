@@ -52,6 +52,8 @@ export async function GET(req: NextRequest, { params }: Params) {
                  -- mas este SELECT não os trazia: o formulário abria vazio e
                  -- salvar por cima apagava o que o script tinha preenchido.
                  ncm, cest, origem, unidade_tributavel, perfil_trib_id,
+                 -- Cardápio online — foto e se aparece no link público.
+                 foto_url, disponivel_cardapio,
                  created_dt, created_by, updated_dt, updated_by
           FROM t_produto ${where}
           ORDER BY nome ASC
@@ -87,6 +89,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         origem:            r.origem ?? '0',
         unidadeTributavel: r.unidade_tributavel ?? '',
         perfilTribId:      r.perfil_trib_id ?? null,
+        fotoUrl:            r.foto_url ?? null,
+        disponivelCardapio: r.disponivel_cardapio === true,
         // Flag própria de revenda (independente do tipo). Mantém o fallback
         // pelo tipo='Revenda' para dados anteriores à migration.
         revenda: r.revenda === true,
@@ -135,10 +139,12 @@ export async function POST(req: NextRequest, { params }: Params) {
           insumo_flg, revenda,
           -- Fiscais: descrevem a mercadoria. A tributação vem do perfil.
           ncm, cest, origem, unidade_tributavel, perfil_trib_id,
+          foto_url, disponivel_cardapio,
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
                   $18,$19,$20,$21,$22,
-                  true,0,$23,$23,NOW(),NOW())
+                  $23,$24,
+                  true,0,$25,$25,NOW(),NOW())
         RETURNING produto_id as "produtoId"
       `, [
         body.nome.trim(),
@@ -163,6 +169,8 @@ export async function POST(req: NextRequest, { params }: Params) {
         body.origem?.trim() || '0',
         body.unidadeTributavel?.trim() || null,
         body.perfilTribId ? Number(body.perfilTribId) : null,
+        body.fotoUrl?.trim() || null,
+        body.disponivelCardapio === true,
         uid,
       ])
       return created(res.rows[0])

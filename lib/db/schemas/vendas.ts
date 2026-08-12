@@ -35,6 +35,9 @@ export const dbConfiguracoesTenant = pgTable('t_configuracoes_tenant', {
   pedidosAtivo:      boolean('pedidos_ativo').notNull().default(true),
   planoAcaoAtivo:    boolean('plano_acao_ativo').notNull().default(true),
   metasAtivo:        boolean('metas_ativo').notNull().default(true),
+  // Cardápio digital público (link/QR Code, sem login). Piloto: só a Zaghi
+  // liga. Desligado por padrão para não expor rota pública sem decisão.
+  cardapioAtivo:     boolean('cardapio_ativo').notNull().default(false),
   // Dados da empresa
   nomeEmpresa:       varchar('nome_empresa', { length: 200 }),
   cnpj:              varchar('cnpj', { length: 20 }),

@@ -71,6 +71,11 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [unidadeTrib, setUnidadeTrib] = useState('')
   const [perfilTrib, setPerfilTrib]   = useState('')
 
+  // ── Cardápio online ──────────────────────────────────────────────────────
+  const [disponivelCardapio, setDisponivelCardapio] = useState(false)
+  const [fotoUrl, setFotoUrl]                        = useState('')
+  const [enviandoFoto, setEnviandoFoto]               = useState(false)
+
   useEffect(() => { setPage(1) }, [busca])
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
@@ -143,6 +148,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
         origem:            origem || '0',
         unidadeTributavel: unidadeTrib.trim() || null,
         perfilTribId:      perfilTrib ? Number(perfilTrib) : null,
+        disponivelCardapio,
         // inclui modificationNum para suportar o optimistic locking da rota PUT
         ...(editando?.modificationNum !== undefined
           ? { modificationNum: editando.modificationNum }
@@ -236,6 +242,8 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setOrigem(item.origem ?? '0')
       setUnidadeTrib(item.unidadeTributavel ?? '')
       setPerfilTrib(item.perfilTribId ? String(item.perfilTribId) : '')
+      setDisponivelCardapio(item.disponivelCardapio === true)
+      setFotoUrl(item.fotoUrl ?? '')
     } else {
       setEditando(null)
       setNome('')
@@ -253,8 +261,30 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setRevenda(false)
       setInsumoAtivo(false)
       setNcm(''); setCest(''); setOrigem('0'); setUnidadeTrib(''); setPerfilTrib('')
+      setDisponivelCardapio(false)
+      setFotoUrl('')
     }
     setShowPainel(true)
+  }
+
+  async function enviarFoto(file: File) {
+    if (!editando?.produtoId) return
+    if (file.size > 5 * 1024 * 1024) { toast('Imagem acima de 5 MB. Escolha uma menor.', 'error'); return }
+    setEnviandoFoto(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res  = await fetch(`${api}/${editando.produtoId}/foto`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar foto')
+      setFotoUrl(data.data.fotoUrl)
+      invalidate()
+      toast('Foto atualizada!')
+    } catch (e: any) {
+      toast(e?.message ?? 'Não foi possível enviar a foto.', 'error')
+    } finally {
+      setEnviandoFoto(false)
+    }
   }
 
   function fecharPainel() { setShowPainel(false); setEditando(null) }
@@ -662,6 +692,48 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </InfoTip>
               </span>
             </label>
+
+            {/* ── CARDÁPIO ONLINE ──────────────────────────────────────────
+                Foto só pode subir depois que o produto existe (precisa do
+                produtoId) — mesma regra da ficha técnica. */}
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 inline-flex items-center gap-1">
+                Cardápio online
+                <InfoTip titulo="Cardápio online">Produtos marcados aqui aparecem no link público de pedidos.</InfoTip>
+              </p>
+              <label className="flex items-center gap-2 cursor-pointer mb-3">
+                <input type="checkbox" checked={disponivelCardapio}
+                  onChange={e => setDisponivelCardapio(e.target.checked)} className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-700">Disponível no cardápio online</span>
+              </label>
+              {editando?.produtoId ? (
+                <div className="flex items-center gap-3">
+                  {fotoUrl ? (
+                    <img src={fotoUrl} alt="" className="w-14 h-14 rounded-lg object-cover border border-gray-200" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg bg-gray-100" />
+                  )}
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        if (f) enviarFoto(f)
+                        e.target.value = ''
+                      }}
+                    />
+                    <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors">
+                      <Upload size={13} />
+                      {enviandoFoto ? 'Enviando...' : fotoUrl ? 'Trocar foto' : 'Escolher foto'}
+                    </span>
+                  </label>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">Salve o produto uma vez para poder enviar a foto.</p>
+              )}
+            </div>
 
             {editando && (
               <AuditoriaInfo

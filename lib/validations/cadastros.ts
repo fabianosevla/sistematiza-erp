@@ -144,6 +144,10 @@ export const produtoInsertSchema = z.object({
   origem:            z.string().max(1).optional().nullable(),
   unidadeTributavel: z.string().max(6).optional().nullable(),
   perfilTribId:      z.number().int().optional().nullable(),
+
+  // ── CARDÁPIO ONLINE ──────────────────────────────────────────────────────
+  fotoUrl:            z.string().max(500).optional().nullable(),
+  disponivelCardapio: z.boolean().default(false),
 })
 export const produtoUpdateSchema = produtoInsertSchema.partial().extend({ modificationNum: z.number().int().optional() })
 export type ProdutoInsertInput = z.infer<typeof produtoInsertSchema>

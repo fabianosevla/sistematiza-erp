@@ -87,6 +87,10 @@ export const dbPedido = pgTable('t_pedido', {
   documentoFiscal:   varchar('documento_fiscal', { length: 10 }).notNull().default('nenhum'),
   imprimirNota:      boolean('imprimir_nota').notNull().default(false),
   notaId:            integer('nota_id'),
+  // Forma de pagamento declarada pelo cliente no cardápio online — vem do
+  // mesmo cadastro que o PDV usa (t_forma_pagamento). Pedido interno pode
+  // ficar sem, por isso é nullable.
+  formaPagamentoId:  integer('forma_pagamento_id'),
 })
 export type TpDbPedidoRow    = InferSelectModel<typeof dbPedido>
 export type TpDbPedidoInsert = InferInsertModel<typeof dbPedido>

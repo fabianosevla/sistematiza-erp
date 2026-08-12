@@ -130,7 +130,7 @@ export class PedidoService {
     return { ...pedido, itens, clienteNome, clienteRazao }
   }
 
-  async criar({ clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, itens, userId }: {
+  async criar({ clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, formaPagamentoId, itens, userId }: {
     clienteId?:         number
     nomeClienteAvulso?: string
     tipoVenda:         string
@@ -142,6 +142,8 @@ export class PedidoService {
     observacao?:       string
     documentoFiscal?:  string
     imprimirNota?:     boolean
+    // Só o cardápio online preenche — pedido interno não tem essa pergunta.
+    formaPagamentoId?: number
     itens:             { produtoId: number; quantidade: number; precoUnitario: number }[]
     userId:            number
   }) {
@@ -162,6 +164,7 @@ export class PedidoService {
       observacao:       observacao ?? null,
       documentoFiscal:  documentoFiscal ?? 'nenhum',
       imprimirNota:     !!imprimirNota,
+      formaPagamentoId: formaPagamentoId ?? null,
       createdBy:        userId,
       updatedBy:        userId,
       createdDt:        now,

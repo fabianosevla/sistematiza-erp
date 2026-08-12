@@ -478,6 +478,65 @@ nova funcional, de nenhum ramo.
 
 ---
 
+## 10. Lacunas frente ao mercado (revenda)
+
+Levantado em 11/08/2026, comparando o sistema com concorrentes de ERP/PDV
+para pequena indústria alimentícia, a pedido do Fabiano ("o que o mercado tem
+que meu sistema ainda não tem"). Nenhum destes tem prazo — é mapa, não fila.
+
+- **Variação de produto (grade cor × tamanho).** Já apontado no item 9
+  (#89/#90/#91 no Trello) — repetido aqui porque apareceu de novo na
+  comparação de mercado.
+- **Conversão de unidade compra↔uso/venda.** Compra em caixa/fardo, usa ou
+  vende fracionado. Mesmo ponto do item 9 (card #27 "Dúvidas sobre o
+  brócolis").
+- **Lote e validade.** Não existe em `t_produto` nem `t_insumo`. Para
+  alimentício é risco de compliance, não luxo — junta-se ao item 9.
+- **Multicanal** (marketplace, e-commerce, catálogo por WhatsApp). Não
+  existe. É onde Bling e Tiny vivem — não é o carro-chefe deste sistema, mas
+  é o que mais aparece como ausência ao comparar com ERPs genéricos.
+- **NF-e de compra automatizada / leitura de XML de entrada.** Existe
+  "entrada NFe" no sistema; grau de automação real não foi conferido — falta
+  olhar o código antes de decidir se é lacuna de verdade ou só falta de
+  documentação.
+- **App mobile / PDV offline.** Nada disso existe hoje. PDV que cai sem
+  internet é o tipo de coisa que barra venda para varejo físico — bar e
+  restaurante em especial sentem isso na hora do rush.
+
+---
+
+## 11. Cardápio online — piloto Zaghi (implementado em 12/08/2026)
+
+Preenche o item "Multicanal" acima, ao menos a parte de link/QR Code de
+pedidos. Página pública (`app/cardapio/[tenant]`), sem login, no estilo
+Saipos/Goomer. Pedido feito ali vira `t_pedido` de verdade, com cliente
+criado/casado em `t_cliente` — não é WhatsApp nem catálogo solto.
+
+**O que tem:** liga/desliga por tenant (`cardapio_ativo` em
+`t_configuracoes_tenant`, só a Zaghi ligada), produto com foto (Vercel Blob)
+e checkbox "disponível no cardápio" em Cadastros → Produtos, link + QR Code
+em Configurações → Cardápio online, preço sempre recalculado no servidor
+(nunca confia no que o navegador manda), forma de pagamento vinda do cadastro
+real (`t_forma_pagamento`).
+
+**Testado em produção (dev local, DB real da Zaghi) em 12/08:** página
+pública abre, lista produto marcado, carrinho e formulário funcionam. Não
+testado: o POST de fechamento do pedido de fato (criação de cliente + pedido)
+— parei antes de gravar um pedido fake nos dados reais da Zaghi. Falta esse
+teste ponta a ponta antes de divulgar o link pra clientes de verdade.
+
+**Pendente:**
+- Marcar produtos de verdade como disponíveis e subir fotos — hoje nenhum
+  produto aparece no link (fica desligado até o Fabiano escolher o quê).
+- Testar o fechamento de pedido de ponta a ponta (com dado de teste combinado
+  antes, não um cliente inventado direto na base real).
+- Rate limiting / anti-spam no POST público — inexistente hoje.
+- Pagamento online — cliente só declara a forma, não paga pelo link.
+- Provisionamento de tenant novo (item 1) ainda não liga `cardapio_ativo` nem
+  pergunta se o cliente quer o módulo — hoje é ajuste manual por tenant.
+
+---
+
 ## Padrões de desenvolvimento (implícitos, não são tarefas)
 
 Valem para toda tela nova, sem precisar ser pedidos:

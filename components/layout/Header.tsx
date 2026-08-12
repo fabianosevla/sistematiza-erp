@@ -1,7 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store, Download, ChevronRight } from 'lucide-react'
+import { Menu, Bell, Settings, Moon, Sun, X, LogOut, Upload, Store, Download, ChevronRight, Copy } from 'lucide-react'
+import QRCode from 'qrcode'
 import { useClerk, useUser } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -355,6 +356,24 @@ export default function Header({
 
   const notifs = Array.isArray(notifsRaw?.data) ? notifsRaw.data : []
   const unread = notifs.filter((n: any) => !n.lida).length
+
+  // ── Cardápio online: link + QR Code ───────────────────────────────────────
+  // window.location.origin em vez de uma URL fixa — evitar o mesmo risco já
+  // conhecido do fallback hardcoded em outras rotas (aponta pro domínio errado
+  // em silêncio se a variável de ambiente sumir).
+  const [urlCardapio, setUrlCardapio] = useState('')
+  const [qrCardapio, setQrCardapio]   = useState('')
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = `${window.location.origin}/cardapio/${tenantSlug}`
+    setUrlCardapio(url)
+    QRCode.toDataURL(url, { width: 220, margin: 1 }).then(setQrCardapio).catch(() => {})
+  }, [tenantSlug])
+
+  function copiarLinkCardapio() {
+    navigator.clipboard?.writeText(urlCardapio)
+    toast('Link copiado!')
+  }
 
   function getToggleValue(key: string): boolean {
     if (key in modulosLocal) return modulosLocal[key]
@@ -938,6 +957,48 @@ export default function Header({
                   </div>
                 ))}
               </div>
+            </Secao>
+
+            {/* ── CARDÁPIO ONLINE ────────────────────────────────────────
+                Não é item de menu lateral — é um link público — por isso
+                fica fora da lista MODULOS, com Secao própria. O toggle usa
+                a mesma infraestrutura de modulosLocal/salvarModulosMut
+                (chave por nome de coluna, genérica). */}
+            <Secao titulo="Cardápio online" aberta={secoesAbertas.has('cardapio')} onToggle={() => toggleSecao('cardapio')}
+              pendente={'cardapioAtivo' in modulosLocal}
+              acao={
+                <Button size="sm"
+                  onClick={() => salvarModulosMut.mutate()}
+                  disabled={!('cardapioAtivo' in modulosLocal) || salvarModulosMut.isPending}>
+                  {salvarModulosMut.isPending ? 'Salvando...' : 'Salvar'}
+                </Button>
+              }>
+              <InfoTip className="mb-3 block">
+                Página pública de pedidos, sem login — o cliente acessa pelo link ou QR Code.
+              </InfoTip>
+              <div className="flex items-center justify-between py-2 border-b border-gray-50 mb-3">
+                <span className="text-sm text-gray-700">Cardápio ativo</span>
+                <button
+                  onClick={() => handleToggle('cardapioAtivo')}
+                  className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${getToggleValue('cardapioAtivo') ? 'bg-green-500' : 'bg-gray-200'}`}
+                >
+                  <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${getToggleValue('cardapioAtivo') ? 'translate-x-4' : 'translate-x-0'}`} />
+                </button>
+              </div>
+
+              {getToggleValue('cardapioAtivo') && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Input readOnly value={urlCardapio} className="text-xs h-9" />
+                    <Button variant="outline" size="sm" onClick={copiarLinkCardapio}>
+                      <Copy size={13} className="mr-1.5" /> Copiar
+                    </Button>
+                  </div>
+                  {qrCardapio && (
+                    <img src={qrCardapio} alt="QR Code do cardápio" className="w-32 h-32 mx-auto border border-gray-100 rounded-lg" />
+                  )}
+                </div>
+              )}
             </Secao>
         </SidePanel>
       )}

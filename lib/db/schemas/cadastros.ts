@@ -113,6 +113,13 @@ export const dbProduto = pgTable('t_produto', {
   origem:            varchar('origem', { length: 1 }).default('0'),
   unidadeTributavel: varchar('unidade_tributavel', { length: 6 }),
   perfilTribId:      integer('perfil_trib_id'),
+
+  // ── CARDÁPIO ONLINE ──────────────────────────────────────────────────────
+  // Foto sobe pro Vercel Blob (Vercel não tem disco persistente); a coluna
+  // só guarda a URL. disponivelCardapio decide se o produto aparece no link
+  // público — cadastrado não significa exposto.
+  fotoUrl:            varchar('foto_url', { length: 500 }),
+  disponivelCardapio: boolean('disponivel_cardapio').notNull().default(false),
 })
 export type TpDbProdutoRow    = InferSelectModel<typeof dbProduto>
 export type TpDbProdutoInsert = InferInsertModel<typeof dbProduto>

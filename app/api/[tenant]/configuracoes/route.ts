@@ -28,6 +28,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         pedidosAtivo:    r.pedidos_ativo    ?? true,
         planoAcaoAtivo:  r.plano_acao_ativo ?? false,
         metasAtivo:      r.metas_ativo      ?? false,
+        cardapioAtivo:   r.cardapio_ativo   ?? false,
         // Compras — compras_ativo é a coluna oficial; modulo_compras_ativo é
         // o nome antigo, mantido como fallback para bases ainda não migradas
         comprasAtivo:    r.compras_ativo    ?? r.modulo_compras_ativo ?? true,
@@ -119,6 +120,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['pedidos_ativo',            body.pedidosAtivo],
         ['plano_acao_ativo',         body.planoAcaoAtivo],
         ['metas_ativo',              body.metasAtivo],
+        ['cardapio_ativo',           body.cardapioAtivo],
         // Compras
         ['compras_ativo',            body.comprasAtivo],
         ['modulo_compras_ativo',     body.comprasAtivo],
