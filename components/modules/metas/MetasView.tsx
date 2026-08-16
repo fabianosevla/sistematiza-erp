@@ -1,7 +1,8 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, Target, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight, Lightbulb, Calculator, Plus, BarChart2 } from 'lucide-react'
+import { X, Target, TrendingUp, TrendingDown, DollarSign, ChevronLeft, ChevronRight, Lightbulb, Calculator, Plus, BarChart2, Activity } from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Button }   from '@/components/ui/button'
 import { Input }    from '@/components/ui/input'
 import { Label }    from '@/components/ui/label'
@@ -16,13 +17,19 @@ interface Props { tenantSlug: string }
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 interface SimItem { _key: string; produtoId: number; nome: string; quantidade: number }
 
+// Mesmo padrão visual do tooltip usado no Dashboard.
+const ESTILO_TOOLTIP = {
+  contentStyle: { borderRadius: 10, border: '1px solid #e5e7eb', boxShadow: '0 4px 16px rgba(0,0,0,0.06)', fontSize: 12, padding: '8px 10px' },
+  labelStyle: { fontSize: 11, color: '#9ca3af', marginBottom: 2 },
+}
+
 export default function MetasView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
   const api       = `/api/${tenantSlug}/metas`
   const now       = new Date()
 
-  const [aba, setAba]               = useState<'metas'|'simulador'|'previsao'>('metas')
+  const [aba, setAba]               = useState<'metas'|'simulador'|'previsao'|'evolucao'>('metas')
   const [mes, setMes]               = useState(now.getMonth() + 1)
   const [ano, setAno]               = useState(now.getFullYear())
   const [showEditMeta, setShowEditMeta] = useState(false)
@@ -33,6 +40,10 @@ export default function MetasView({ tenantSlug }: Props) {
   const [simulado, setSimulado]     = useState<any>(null)
   const [simLoading, setSimLoading] = useState(false)
   const [previsaoMeses, setPrevisaoMeses] = useState(3) // quantos meses de histórico usar
+  const [evolucaoMeses, setEvolucaoMeses]     = useState(6) // histórico do gráfico de evolução
+  const [evolucaoProjetar, setEvolucaoProjetar] = useState(3) // meses futuros a projetar
+  const [showEditMetaProduto, setShowEditMetaProduto] = useState(false)
+  const [metaProdutoItens, setMetaProdutoItens] = useState<SimItem[]>([])
 
   function navMes(d: number) {
     let m = mes + d; let a = ano
@@ -46,6 +57,12 @@ export default function MetasView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`${api}?mes=${mes}&ano=${ano}`)).json(),
   })
 
+  const { data: metaProdutosRaw } = useQuery({
+    queryKey: ['meta-produtos', tenantSlug, mes, ano],
+    queryFn:  async () => (await fetch(`${api}?tipo=metaProdutos&mes=${mes}&ano=${ano}`)).json(),
+    enabled:  aba === 'metas',
+  })
+
   const { data: produtosRaw } = useQuery({
     queryKey: ['produtos-metas', tenantSlug],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/cadastros/produtos?limit=500`)).json(),
@@ -56,6 +73,13 @@ export default function MetasView({ tenantSlug }: Props) {
     queryKey: ['previsao-producao', tenantSlug, mes, ano, previsaoMeses],
     queryFn:  async () => (await fetch(`${api}?tipo=previsao&mes=${mes}&ano=${ano}&mesesHistorico=${previsaoMeses}`)).json(),
     enabled:  aba === 'previsao',
+  })
+
+  // Evolução — receita/despesa/lucro dos últimos meses + projeção linear
+  const { data: evolucaoRaw, isLoading: loadingEvolucao } = useQuery({
+    queryKey: ['evolucao-metas', tenantSlug, mes, ano, evolucaoMeses, evolucaoProjetar],
+    queryFn:  async () => (await fetch(`${api}?tipo=evolucao&mes=${mes}&ano=${ano}&meses=${evolucaoMeses}&projetar=${evolucaoProjetar}`)).json(),
+    enabled:  aba === 'evolucao',
   })
 
   const salvarMetaMut = useMutation({
@@ -72,6 +96,18 @@ export default function MetasView({ tenantSlug }: Props) {
     onError:   () => toast('Erro ao salvar meta.', 'error'),
   })
 
+  const salvarMetaProdutoMut = useMutation({
+    mutationFn: () => fetch(api, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tipo: 'metaProdutos', mes, ano,
+        itens: metaProdutoItens.filter(i => i.produtoId > 0).map(i => ({ produtoId: i.produtoId, quantidadeMeta: i.quantidade })),
+      }),
+    }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['meta-produtos', tenantSlug] }); setShowEditMetaProduto(false); toast('Metas por produto salvas!') },
+    onError:   () => toast('Erro ao salvar metas por produto.', 'error'),
+  })
+
   async function calcularSimulacao() {
     const validos = simItens.filter(i => i.produtoId > 0 && i.quantidade > 0)
     if (validos.length === 0) { toast('Adicione pelo menos um produto.', 'warning'); return }
@@ -80,7 +116,10 @@ export default function MetasView({ tenantSlug }: Props) {
       const res  = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tipo: 'simular', mes, ano, itens: validos.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })) }) })
       const data = await res.json()
+      if (!res.ok) { toast(data?.message ?? 'Erro ao calcular a simulação.', 'error'); return }
       setSimulado(data?.data ?? data)
+    } catch {
+      toast('Erro ao calcular a simulação.', 'error')
     } finally { setSimLoading(false) }
   }
 
@@ -90,6 +129,30 @@ export default function MetasView({ tenantSlug }: Props) {
   const produtos = Array.isArray(produtosRaw?.data?.data) ? produtosRaw.data.data : Array.isArray(produtosRaw?.data) ? produtosRaw.data : []
   const eMesAtual = mes === now.getMonth() + 1 && ano === now.getFullYear()
   const previsao = previsaoRaw?.data
+  const evolucao = evolucaoRaw?.data
+  const metaProdutos: any[] = Array.isArray(metaProdutosRaw?.data) ? metaProdutosRaw.data : []
+
+  // Une histórico + projeção numa série só. O último ponto do histórico é
+  // repetido nas colunas "Proj" pra a linha tracejada nascer exatamente onde
+  // a linha cheia termina, em vez de dar um salto solto no gráfico.
+  const dadosEvolucao = (() => {
+    if (!evolucao) return []
+    const hist = evolucao.historico ?? []
+    const proj = evolucao.projecao ?? []
+    const linhaHist = hist.map((h: any, i: number) => ({
+      label: `${MESES[h.mes - 1].slice(0, 3)}/${String(h.ano).slice(2)}`,
+      receita: h.receita, despesa: h.despesa, lucro: h.lucro,
+      receitaProj: i === hist.length - 1 ? h.receita : null,
+      despesaProj: i === hist.length - 1 ? h.despesa : null,
+      lucroProj:   i === hist.length - 1 ? h.lucro   : null,
+    }))
+    const linhaProj = proj.map((p: any) => ({
+      label: `${MESES[p.mes - 1].slice(0, 3)}/${String(p.ano).slice(2)}`,
+      receita: null, despesa: null, lucro: null,
+      receitaProj: p.receitaProjetada, despesaProj: p.despesaProjetada, lucroProj: p.lucroProjetado,
+    }))
+    return [...linhaHist, ...linhaProj]
+  })()
 
   function ProgressBar({ value, max, invertColor = false }: { value: number; max: number; invertColor?: boolean }) {
     if (max <= 0) return null
@@ -124,6 +187,7 @@ export default function MetasView({ tenantSlug }: Props) {
           { value: 'metas',    label: 'Metas',    icon: Target },
           { value: 'simulador',label: 'Simulador',icon: Calculator },
           { value: 'previsao', label: 'Previsão de Produção', icon: BarChart2 },
+          { value: 'evolucao', label: 'Evolução',  icon: Activity },
         ] as const).map(a => (
           <button key={a.value} onClick={() => setAba(a.value)}
             className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
@@ -165,12 +229,41 @@ export default function MetasView({ tenantSlug }: Props) {
               })}
             </div>
           )}
+
+          {metaProdutos.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Metas por Produto</p>
+              <div className="space-y-3">
+                {metaProdutos.map((mp) => {
+                  const pct = mp.quantidadeMeta > 0 ? Math.min(100, (mp.realizado / mp.quantidadeMeta) * 100) : null
+                  return (
+                    <div key={mp.produtoId}>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="font-medium text-gray-700">{mp.nome}</span>
+                        <span className="text-gray-500">{mp.realizado} / {mp.quantidadeMeta} un{pct !== null && <span className={`ml-2 font-bold ${pct >= 100 ? 'text-green-600' : pct >= 70 ? 'text-amber-600' : 'text-red-500'}`}>({pct.toFixed(0)}%)</span>}</span>
+                      </div>
+                      <ProgressBar value={mp.realizado} max={mp.quantidadeMeta} />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end items-center gap-2">
             <InfoTip titulo="Para que servem as metas">
               Com metas definidas, os cartões acima mostram o quanto do mês já foi cumprido.
               O <strong>Simulador</strong> projeta receita e lucro antes de fechar o mês, e a
               <strong> Previsão de Produção</strong> calcula quanto produzir no próximo.
             </InfoTip>
+            <Button variant="outline" onClick={() => {
+              setMetaProdutoItens(
+                metaProdutos.length > 0
+                  ? metaProdutos.map((mp) => ({ _key: String(mp.produtoId), produtoId: mp.produtoId, nome: mp.nome, quantidade: mp.quantidadeMeta }))
+                  : [{ _key: '1', produtoId: 0, nome: '', quantidade: 1 }]
+              )
+              setShowEditMetaProduto(true)
+            }}><Plus size={14} className="mr-1.5" /> Metas por Produto</Button>
             <Button onClick={() => {
               setFReceita(meta?.metaReceita ? (meta.metaReceita / 100).toFixed(2) : '')
               setFDespesa(meta?.metaDespesaMaxima ? (meta.metaDespesaMaxima / 100).toFixed(2) : '')
@@ -209,8 +302,10 @@ export default function MetasView({ tenantSlug }: Props) {
             </div>
             <div className="pt-2 border-t border-gray-100 flex items-center gap-2">
               <InfoTip titulo="Como a projeção é calculada">
-                O custo dos insumos vem das fichas técnicas dos produtos escolhidos, e as
-                despesas consideradas são as de {MESES[mes - 1]} {ano}.
+                A receita total soma o que já foi vendido em {MESES[mes - 1]} {ano} com a
+                venda hipotética que você está simulando. O custo de insumos vem da ficha
+                técnica só dos produtos escolhidos aqui — não inclui o custo do que já foi
+                vendido no mês.
               </InfoTip>
               <Button className="flex-1" onClick={calcularSimulacao} disabled={simLoading}>
                 {simLoading ? 'Calculando...' : <><Calculator size={14} className="mr-1.5" /> Calcular Projeção</>}
@@ -230,8 +325,10 @@ export default function MetasView({ tenantSlug }: Props) {
                   <p className="text-sm font-semibold text-gray-700 mb-4">Resultado da Simulação</p>
                   <div className="space-y-2.5">
                     {[
-                      { label: 'Receita Projetada',   value:  simulado.receitaProjetada, cor: 'text-green-600' },
-                      { label: 'Custo de Insumos',    value: -simulado.custoInsumos,     cor: 'text-gray-600' },
+                      { label: 'Já vendido no mês',   value:  simulado.receitaJaRealizada, cor: 'text-gray-500' },
+                      { label: 'Receita da simulação', value:  simulado.receitaSimulada,    cor: 'text-green-600' },
+                      { label: 'Receita Total Projetada', value: simulado.receitaTotalProjetada, cor: 'text-green-700', bold: true },
+                      { label: 'Custo de Insumos (só da simulação)', value: -simulado.custoInsumos, cor: 'text-gray-600' },
                       { label: 'Lucro Bruto',         value:  simulado.lucroBruto,       cor: simulado.lucroBruto >= 0 ? 'text-green-600' : 'text-red-600', bold: true },
                       { label: 'Despesas do Mês',     value: -simulado.totalDespesas,    cor: 'text-red-500' },
                       { label: 'Resultado Projetado', value:  simulado.lucroLiquido,     cor: simulado.lucroLiquido >= 0 ? 'text-green-700' : 'text-red-700', bold: true, large: true },
@@ -295,14 +392,14 @@ export default function MetasView({ tenantSlug }: Props) {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      {['Produto', 'Média/mês', 'Pedidos pendentes', 'Prev. produção', 'Receita estimada'].map((h, i) => (
+                      {['Produto', 'Média/mês', 'Pedidos pendentes', 'Prev. produção', 'Produzido no mês', 'Aderência', 'Receita estimada'].map((h, i) => (
                         <th key={i} className={`text-xs font-medium text-gray-400 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {(previsao.produtos ?? []).length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">Sem histórico de vendas para calcular.</td></tr>
+                      <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-400">Sem histórico de vendas para calcular.</td></tr>
                     ) : (previsao.produtos ?? []).map((p: any, i: number) => (
                       <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.nome}</td>
@@ -310,6 +407,14 @@ export default function MetasView({ tenantSlug }: Props) {
                         <td className="px-4 py-3 text-right text-sm text-gray-600">{p.pedidosPendentes} un</td>
                         <td className="px-4 py-3 text-right">
                           <span className="text-sm font-bold text-green-700">{p.previsaoProducao} un</span>
+                        </td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-600">{p.produzidoReal === null ? '—' : `${p.produzidoReal} un`}</td>
+                        <td className="px-4 py-3 text-right">
+                          {p.aderenciaPct === null ? (
+                            <span className="text-xs text-gray-300">—</span>
+                          ) : (
+                            <span className={`text-sm font-bold ${p.aderenciaPct >= 90 ? 'text-green-600' : p.aderenciaPct >= 60 ? 'text-amber-600' : 'text-red-600'}`}>{p.aderenciaPct.toFixed(0)}%</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right text-sm font-medium text-green-600">{fmt(p.receitaEstimada)}</td>
                       </tr>
@@ -328,6 +433,10 @@ export default function MetasView({ tenantSlug }: Props) {
                         <td className="px-4 py-2.5 text-right text-xs font-bold text-green-700">
                           {(previsao.produtos ?? []).reduce((a: number, p: any) => a + p.previsaoProducao, 0)} un
                         </td>
+                        <td className="px-4 py-2.5 text-right text-xs font-bold text-gray-600">
+                          {(previsao.produtos ?? []).reduce((a: number, p: any) => a + (p.produzidoReal ?? 0), 0)} un
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs font-bold text-gray-400">—</td>
                         <td className="px-4 py-2.5 text-right text-xs font-bold text-green-600">
                           {fmt((previsao.produtos ?? []).reduce((a: number, p: any) => a + p.receitaEstimada, 0))}
                         </td>
@@ -412,6 +521,70 @@ export default function MetasView({ tenantSlug }: Props) {
         </div>
       )}
 
+      {/* ABA: EVOLUÇÃO */}
+      {aba === 'evolucao' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-gray-600 whitespace-nowrap">Histórico</Label>
+              <div className="flex gap-1">
+                {[3, 6, 12].map(n => (
+                  <button key={n} onClick={() => setEvolucaoMeses(n)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${evolucaoMeses === n ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    {n} meses
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-gray-600 whitespace-nowrap inline-flex items-center gap-1">
+                Projetar
+                <InfoTip titulo="Como a projeção é calculada">
+                  Regressão linear simples sobre a receita e a despesa dos meses de
+                  histórico escolhidos — mostra a tendência, não é garantia. Com pouco
+                  histórico, a reta oscila bastante; use com cautela.
+                </InfoTip>
+              </Label>
+              <div className="flex gap-1">
+                {[0, 1, 3, 6].map(n => (
+                  <button key={n} onClick={() => setEvolucaoProjetar(n)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${evolucaoProjetar === n ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                    {n === 0 ? 'Nenhum' : `${n} ${n === 1 ? 'mês' : 'meses'}`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {loadingEvolucao ? (
+            <div className="text-center py-12 text-sm text-gray-400">Calculando evolução...</div>
+          ) : !evolucao || dadosEvolucao.length === 0 ? (
+            <div className="text-center py-12 text-sm text-gray-400">Sem dados suficientes.</div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div style={{ width: '100%', height: 340 }}>
+                <ResponsiveContainer>
+                  <LineChart data={dadosEvolucao} margin={{ left: 4, right: 8, top: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+                      tickFormatter={(v) => `${(Number(v) / 100000).toFixed(0)}k`} />
+                    <Tooltip formatter={(v: any) => fmt(Number(v ?? 0))} {...ESTILO_TOOLTIP} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Line type="monotone" dataKey="receita" name="Receita" stroke="#2ecc71" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                    <Line type="monotone" dataKey="despesa" name="Despesa" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                    <Line type="monotone" dataKey="lucro"   name="Lucro"   stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                    <Line type="monotone" dataKey="receitaProj" name="Receita (projetada)" stroke="#2ecc71" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} connectNulls />
+                    <Line type="monotone" dataKey="despesaProj" name="Despesa (projetada)" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} connectNulls />
+                    <Line type="monotone" dataKey="lucroProj"   name="Lucro (projetado)"   stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Modal Metas */}
       {showEditMeta && (
         <FormModal
@@ -432,6 +605,47 @@ export default function MetasView({ tenantSlug }: Props) {
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={() => setShowEditMeta(false)}>Cancelar</Button>
               <Button onClick={() => salvarMetaMut.mutate()} disabled={salvarMetaMut.isPending}>{salvarMetaMut.isPending ? 'Salvando...' : 'Salvar Metas'}</Button>
+            </div>
+          </div>
+        </FormModal>
+      )}
+
+      {/* Modal Metas por Produto */}
+      {showEditMetaProduto && (
+        <FormModal
+          titulo={`Metas por Produto — ${MESES[mes - 1]} ${ano}`}
+          onClose={() => setShowEditMetaProduto(false)}
+          largura="max-w-md"
+          cabecalho={
+            <InfoTip titulo="Como funciona">
+              Defina quantas unidades de cada produto você quer vender no mês. Deixar em
+              0 remove o produto do acompanhamento.
+            </InfoTip>
+          }
+        >
+          <div className="p-6 space-y-4">
+            <div className="space-y-2.5">
+              {metaProdutoItens.map(item => (
+                <div key={item._key} className="flex items-center gap-2">
+                  <select value={item.produtoId}
+                    onChange={e => { const p = produtos.find((p: any) => p.produtoId === Number(e.target.value)); setMetaProdutoItens(prev => prev.map(it => it._key === item._key ? { ...it, produtoId: Number(e.target.value), nome: p?.nome ?? '' } : it)) }}
+                    className="flex-1 h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value={0}>Selecionar produto...</option>
+                    {produtos.map((p: any) => <option key={p.produtoId} value={p.produtoId}>{p.nome}</option>)}
+                  </select>
+                  <Input type="number" min="0" value={item.quantidade}
+                    onChange={e => setMetaProdutoItens(prev => prev.map(it => it._key === item._key ? { ...it, quantidade: Number(e.target.value) || 0 } : it))}
+                    className="h-9 text-sm text-center w-20" placeholder="Qtd" />
+                  <button onClick={() => setMetaProdutoItens(prev => prev.filter(it => it._key !== item._key))} className="text-gray-300 hover:text-red-500"><X size={16} /></button>
+                </div>
+              ))}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setMetaProdutoItens(prev => [...prev, { _key: Date.now().toString(), produtoId: 0, nome: '', quantidade: 1 }])}>
+              <Plus size={13} className="mr-1" /> Produto
+            </Button>
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+              <Button variant="outline" onClick={() => setShowEditMetaProduto(false)}>Cancelar</Button>
+              <Button onClick={() => salvarMetaProdutoMut.mutate()} disabled={salvarMetaProdutoMut.isPending}>{salvarMetaProdutoMut.isPending ? 'Salvando...' : 'Salvar'}</Button>
             </div>
           </div>
         </FormModal>

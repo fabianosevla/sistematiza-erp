@@ -133,6 +133,65 @@ async function calcular(db: any): Promise<Notif[]> {
     // módulo plano de ação pode não estar ativo/tabela pode não existir ainda — ignora
   }
 
+  // Meta em risco — só dispara se o RITMO estiver abaixo do proporcional ao
+  // tempo já passado do mês (ex.: no dia 18 de um mês de 30 dias, 60% do mês
+  // já passou — só alerta se menos de 60% da meta tiver sido atingido). Isso
+  // evita alarme falso no dia 1, quando qualquer meta parece "não batida".
+  // Os primeiros dias do mês (< 3) ficam de fora: com pouco dado acumulado,
+  // a proporção oscila demais para significar alguma coisa.
+  try {
+    const hoje        = new Date()
+    const mesAtual     = hoje.getMonth() + 1
+    const anoAtual     = hoje.getFullYear()
+    const diasNoMes    = new Date(anoAtual, mesAtual, 0).getDate()
+    const diasPassados = hoje.getDate()
+
+    if (diasPassados >= 3) {
+      const proporcaoTempo = diasPassados / diasNoMes
+      const metaRes = await db.execute(sql`
+        SELECT meta_receita, meta_lucro FROM t_meta
+        WHERE mes = ${mesAtual} AND ano = ${anoAtual} AND active_flg = true LIMIT 1
+      `)
+      const metaRow = (metaRes.rows as any[])[0]
+      if (metaRow) {
+        const metaReceita = Number(metaRow.meta_receita ?? 0)
+        const metaLucro   = Number(metaRow.meta_lucro ?? 0)
+        if (metaReceita > 0 || metaLucro > 0) {
+          const receitaRes = await db.execute(sql`SELECT COALESCE(SUM(total),0)::bigint as receita FROM t_venda WHERE active_flg=true AND EXTRACT(MONTH FROM vendida_em)=${mesAtual} AND EXTRACT(YEAR FROM vendida_em)=${anoAtual}`)
+          const despesaRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as despesa FROM t_despesa WHERE active_flg=true AND mes_competencia=${mesAtual} AND ano_competencia=${anoAtual}`)
+          const receita = Number(receitaRes.rows[0]?.receita ?? 0)
+          const despesa = Number(despesaRes.rows[0]?.despesa ?? 0)
+          const lucro   = receita - despesa
+
+          if (metaReceita > 0) {
+            const proporcaoReceita = receita / metaReceita
+            if (proporcaoReceita < proporcaoTempo) {
+              notifs.push({
+                id: 'meta-receita-risco', tipo: 'metas',
+                titulo: 'Meta de receita em risco',
+                mensagem: `No dia ${diasPassados} de ${diasNoMes} (${Math.round(proporcaoTempo * 100)}% do mês), só ${Math.round(proporcaoReceita * 100)}% da meta de receita foi atingido.`,
+                lida: false,
+              })
+            }
+          }
+          if (metaLucro > 0) {
+            const proporcaoLucro = lucro / metaLucro
+            if (proporcaoLucro < proporcaoTempo) {
+              notifs.push({
+                id: 'meta-lucro-risco', tipo: 'metas',
+                titulo: 'Meta de lucro em risco',
+                mensagem: `No dia ${diasPassados} de ${diasNoMes} (${Math.round(proporcaoTempo * 100)}% do mês), só ${Math.round(proporcaoLucro * 100)}% da meta de lucro foi atingido.`,
+                lida: false,
+              })
+            }
+          }
+        }
+      }
+    }
+  } catch (_) {
+    // módulo Metas pode não estar ativo/tabela pode não existir ainda — ignora
+  }
+
   return notifs
 }
 

@@ -18,3 +18,20 @@ export const dbMeta = pgTable('t_meta', {
 
 export type TpDbMetaRow    = InferSelectModel<typeof dbMeta>
 export type TpDbMetaInsert = InferInsertModel<typeof dbMeta>
+
+export const dbMetaProduto = pgTable('t_meta_produto', {
+  metaProdutoId:   serial('meta_produto_id').primaryKey(),
+  modificationNum: integer('modification_num').notNull().default(0),
+  createdDt:       timestamp('created_dt', { withTimezone: true }).notNull().defaultNow(),
+  createdBy:       integer('created_by').notNull().default(1),
+  updatedDt:       timestamp('updated_dt', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy:       integer('updated_by').notNull().default(1),
+  activeFlag:      boolean('active_flg').notNull().default(true),
+  mes:             integer('mes').notNull(),
+  ano:             integer('ano').notNull(),
+  produtoId:       integer('produto_id').notNull(),
+  quantidadeMeta:  integer('quantidade_meta').notNull().default(0),
+})
+
+export type TpDbMetaProdutoRow    = InferSelectModel<typeof dbMetaProduto>
+export type TpDbMetaProdutoInsert = InferInsertModel<typeof dbMetaProduto>
