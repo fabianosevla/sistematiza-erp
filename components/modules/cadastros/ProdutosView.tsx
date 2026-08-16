@@ -278,6 +278,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar foto')
       setFotoUrl(data.data.fotoUrl)
+      // O upload já salva no banco e avança o modification_num — sem
+      // atualizar aqui, o próximo "Salvar" do formulário manda o número
+      // antigo e leva "Registro alterado por outro usuário" à toa.
+      setEditando((prev: any) => prev ? { ...prev, modificationNum: Number(prev.modificationNum ?? 0) + 1 } : prev)
       invalidate()
       toast('Foto atualizada!')
     } catch (e: any) {
