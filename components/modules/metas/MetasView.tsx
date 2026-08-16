@@ -139,12 +139,17 @@ export default function MetasView({ tenantSlug }: Props) {
     if (!evolucao) return []
     const hist = evolucao.historico ?? []
     const proj = evolucao.projecao ?? []
+    // A linha tracejada nasce no último mês FECHADO, não no último mês do
+    // gráfico — o mês em andamento não entra na regressão (dado incompleto),
+    // então ligar a projeção nele criaria uma tendência inventada.
+    let bridgeIdx = hist.length - 1
+    while (bridgeIdx >= 0 && hist[bridgeIdx].completo === false) bridgeIdx--
     const linhaHist = hist.map((h: any, i: number) => ({
-      label: `${MESES[h.mes - 1].slice(0, 3)}/${String(h.ano).slice(2)}`,
+      label: `${MESES[h.mes - 1].slice(0, 3)}/${String(h.ano).slice(2)}${h.completo === false ? ' (em andamento)' : ''}`,
       receita: h.receita, despesa: h.despesa, lucro: h.lucro,
-      receitaProj: i === hist.length - 1 ? h.receita : null,
-      despesaProj: i === hist.length - 1 ? h.despesa : null,
-      lucroProj:   i === hist.length - 1 ? h.lucro   : null,
+      receitaProj: i === bridgeIdx ? h.receita : null,
+      despesaProj: i === bridgeIdx ? h.despesa : null,
+      lucroProj:   i === bridgeIdx ? h.lucro   : null,
     }))
     const linhaProj = proj.map((p: any) => ({
       label: `${MESES[p.mes - 1].slice(0, 3)}/${String(p.ano).slice(2)}`,
@@ -562,6 +567,13 @@ export default function MetasView({ tenantSlug }: Props) {
             <div className="text-center py-12 text-sm text-gray-400">Sem dados suficientes.</div>
           ) : (
             <div className="bg-white rounded-xl border border-gray-100 p-5">
+              {evolucaoProjetar > 0 && evolucao.dadosInsuficientes && (
+                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
+                  Só há {evolucao.mesesUsadosRegressao} mês(es) fechado(s) com movimento registrado —
+                  poucos pra apontar tendência com responsabilidade. A projeção não é mostrada até
+                  existirem pelo menos 3 meses fechados de histórico.
+                </div>
+              )}
               <div style={{ width: '100%', height: 340 }}>
                 <ResponsiveContainer>
                   <LineChart data={dadosEvolucao} margin={{ left: 4, right: 8, top: 8 }}>

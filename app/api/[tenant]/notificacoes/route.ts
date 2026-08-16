@@ -17,6 +17,7 @@ import { idLogado } from '@/lib/auth/identidade'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { getDbForTenant } from '@/lib/db/connection'
 import { sql } from 'drizzle-orm'
+import { despesaDoMes } from '@/app/api/[tenant]/metas/route'
 import { ok, serverError } from '@/lib/api/responses'
 
 type P = { params: { tenant: string } }
@@ -158,9 +159,8 @@ async function calcular(db: any): Promise<Notif[]> {
         const metaLucro   = Number(metaRow.meta_lucro ?? 0)
         if (metaReceita > 0 || metaLucro > 0) {
           const receitaRes = await db.execute(sql`SELECT COALESCE(SUM(total),0)::bigint as receita FROM t_venda WHERE active_flg=true AND EXTRACT(MONTH FROM vendida_em)=${mesAtual} AND EXTRACT(YEAR FROM vendida_em)=${anoAtual}`)
-          const despesaRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as despesa FROM t_despesa WHERE active_flg=true AND mes_competencia=${mesAtual} AND ano_competencia=${anoAtual}`)
           const receita = Number(receitaRes.rows[0]?.receita ?? 0)
-          const despesa = Number(despesaRes.rows[0]?.despesa ?? 0)
+          const despesa = await despesaDoMes(db, mesAtual, anoAtual)
           const lucro   = receita - despesa
 
           if (metaReceita > 0) {

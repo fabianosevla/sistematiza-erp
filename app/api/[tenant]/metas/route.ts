@@ -11,6 +11,22 @@ import { ok, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
 
+/**
+ * Despesa real do mês = avulsas (t_despesa) + gastos fixos (t_gasto_fixo_valor).
+ * Mesma conta que o Financeiro usa no KPI e no DRE — sem os gastos fixos
+ * (aluguel, luz, salário), o número aqui ficava muito abaixo do real.
+ */
+export async function despesaDoMes(db: any, mes: number, ano: number): Promise<number> {
+  const avulsaRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as total FROM t_despesa WHERE active_flg=true AND mes_competencia=${mes} AND ano_competencia=${ano}`)
+  const fixoRes = await db.execute(sql`
+    SELECT COALESCE(SUM(gv.valor),0)::bigint as total
+      FROM t_gasto_fixo_valor gv
+      JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
+     WHERE gv.active_flg = true AND gv.mes = ${mes} AND gv.ano = ${ano}
+  `).catch(() => ({ rows: [{ total: 0 }] }))
+  return Number(avulsaRes.rows[0]?.total ?? 0) + Number(fixoRes.rows[0]?.total ?? 0)
+}
+
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
@@ -134,18 +150,32 @@ export async function GET(req: NextRequest, { params }: Params) {
           mesesRange.push({ mes: m, ano: a })
         }
 
+        const hoje = new Date()
+        const mesRealAtual = hoje.getMonth() + 1
+        const anoRealAtual = hoje.getFullYear()
+
         const historico = []
         for (const r of mesesRange) {
           const receitaRes = await db.execute(sql`SELECT COALESCE(SUM(total),0)::bigint as receita FROM t_venda WHERE active_flg=true AND EXTRACT(MONTH FROM vendida_em)=${r.mes} AND EXTRACT(YEAR FROM vendida_em)=${r.ano}`)
-          const despesaRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as despesa FROM t_despesa WHERE active_flg=true AND mes_competencia=${r.mes} AND ano_competencia=${r.ano}`)
           const receita = Number(receitaRes.rows[0]?.receita ?? 0)
-          const despesa = Number(despesaRes.rows[0]?.despesa ?? 0)
-          historico.push({ mes: r.mes, ano: r.ano, receita, despesa, lucro: receita - despesa })
+          const despesa = await despesaDoMes(db, r.mes, r.ano)
+          // Mês em andamento: os dados de hoje ainda não fecharam o mês, então
+          // ele entra no gráfico (histórico visível), mas não na regressão —
+          // um mês pela metade não é comparável a um mês fechado.
+          const completo = !(r.mes === mesRealAtual && r.ano === anoRealAtual)
+          historico.push({ mes: r.mes, ano: r.ano, receita, despesa, lucro: receita - despesa, completo })
         }
 
-        // Regressão linear simples (mínimos quadrados) sobre o índice do mês.
-        // Serve pra apontar tendência, não é previsão estatística robusta —
-        // com poucos meses de histórico, a reta oscila bastante.
+        // Regressão linear simples (mínimos quadrados), só sobre meses FECHADOS
+        // com movimento de verdade. Meses sem nenhuma venda nem despesa antes
+        // do início real de operação não são "mês zero" — são "sem dado", e
+        // contar como zero distorce a reta inteira. Por isso corta os meses
+        // vazios do começo da janela antes de ajustar a reta.
+        const primeiroComAtividade = historico.findIndex(h => h.completo && (h.receita > 0 || h.despesa > 0))
+        const pontosRegressao = primeiroComAtividade === -1
+          ? []
+          : historico.filter((h, i) => i >= primeiroComAtividade && h.completo)
+
         function regressao(pontos: number[]): { a: number; b: number } {
           const n = pontos.length
           if (n < 2) return { a: pontos[0] ?? 0, b: 0 }
@@ -158,20 +188,25 @@ export async function GET(req: NextRequest, { params }: Params) {
           return { a: mediaY - b * mediaX, b }
         }
 
-        const regReceita = regressao(historico.map(h => h.receita))
-        const regDespesa = regressao(historico.map(h => h.despesa))
+        // Menos de 3 meses fechados com movimento: não dá pra apontar
+        // tendência com responsabilidade. Devolve sem projeção e avisa.
+        const mesesUsadosRegressao = pontosRegressao.length
+        let projecao = []
+        if (mesesUsadosRegressao >= 3) {
+          const regReceita = regressao(pontosRegressao.map(h => h.receita))
+          const regDespesa = regressao(pontosRegressao.map(h => h.despesa))
 
-        const projecao = []
-        for (let i = 0; i < mesesProjecao; i++) {
-          const idx = mesesHistorico + i
-          let m = mes + i + 1, a = ano
-          while (m > 12) { m -= 12; a++ }
-          const receitaProjetada = Math.max(0, Math.round(regReceita.a + regReceita.b * idx))
-          const despesaProjetada = Math.max(0, Math.round(regDespesa.a + regDespesa.b * idx))
-          projecao.push({ mes: m, ano: a, receitaProjetada, despesaProjetada, lucroProjetado: receitaProjetada - despesaProjetada })
+          for (let i = 0; i < mesesProjecao; i++) {
+            const idx = mesesUsadosRegressao + i
+            let m = mes + i + 1, a = ano
+            while (m > 12) { m -= 12; a++ }
+            const receitaProjetada = Math.max(0, Math.round(regReceita.a + regReceita.b * idx))
+            const despesaProjetada = Math.max(0, Math.round(regDespesa.a + regDespesa.b * idx))
+            projecao.push({ mes: m, ano: a, receitaProjetada, despesaProjetada, lucroProjetado: receitaProjetada - despesaProjetada })
+          }
         }
 
-        return ok({ historico, projecao, mesesHistorico, mesesProjecao })
+        return ok({ historico, projecao, mesesHistorico, mesesProjecao, mesesUsadosRegressao, dadosInsuficientes: mesesUsadosRegressao < 3 })
       } finally { release() }
     }
 
@@ -210,9 +245,8 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       const [meta] = await db.select().from(dbMeta).where(and(eq(dbMeta.mes, mes), eq(dbMeta.ano, ano), eq(dbMeta.activeFlag, true)))
       const receitaRes = await db.execute(sql`SELECT COALESCE(SUM(total),0)::bigint as receita FROM t_venda WHERE active_flg=true AND EXTRACT(MONTH FROM vendida_em)=${mes} AND EXTRACT(YEAR FROM vendida_em)=${ano}`)
-      const despesaRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as despesa FROM t_despesa WHERE active_flg=true AND mes_competencia=${mes} AND ano_competencia=${ano}`)
       const receita = Number(receitaRes.rows[0]?.receita ?? 0)
-      const despesa = Number(despesaRes.rows[0]?.despesa ?? 0)
+      const despesa = await despesaDoMes(db, mes, ano)
       const lucro = receita - despesa
       return ok({ meta: meta ?? { metaReceita: 0, metaDespesaMaxima: 0, metaLucro: 0, mes, ano }, real: { receita, despesa, lucro }, progresso: { receita: meta?.metaReceita > 0 ? Math.min(100, (receita/meta.metaReceita)*100) : null, despesa: meta?.metaDespesaMaxima > 0 ? Math.min(100, (despesa/meta.metaDespesaMaxima)*100) : null, lucro: meta?.metaLucro > 0 ? Math.min(100, (lucro/meta.metaLucro)*100) : null } })
     } finally { release() }
@@ -275,9 +309,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         const receitaRealRes = await db.execute(sql`SELECT COALESCE(SUM(total),0)::bigint as receita FROM t_venda WHERE active_flg=true AND EXTRACT(MONTH FROM vendida_em)=${mesSim} AND EXTRACT(YEAR FROM vendida_em)=${anoSim}`)
         const receitaJaRealizada = Number(receitaRealRes.rows[0]?.receita ?? 0)
         const receitaTotalProjetada = receitaJaRealizada + receitaSimulada
-        const despesasRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as total FROM t_despesa WHERE active_flg=true AND mes_competencia=${mesSim} AND ano_competencia=${anoSim}`)
-        const gastosRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as total FROM t_gasto_fixo_valor WHERE active_flg=true AND mes=${mesSim} AND ano=${anoSim}`).catch(() => ({ rows: [{ total: 0 }] }))
-        const totalDespesas = Number(despesasRes.rows[0]?.total ?? 0) + Number(gastosRes.rows[0]?.total ?? 0)
+        const totalDespesas = await despesaDoMes(db, mesSim, anoSim)
         const custoArredondado = Math.round(custoInsumos)
         // Custo de insumos aqui é só dos itens simulados — o custo do que já
         // foi vendido no mês não é somado (não é rastreado por venda), então
