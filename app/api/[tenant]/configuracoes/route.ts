@@ -3,18 +3,31 @@
 import type { NextRequest } from 'next/server'
 import { pool } from '@/lib/db/connection'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { souAdmin, exigirAdmin } from '@/lib/auth/permissoes'
+import { decryptSecretOuTextoPuro, encryptSecret } from '@/lib/crypto/secretBox'
 import { ok, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
 
+// Campos fora deste conjunto só podem ser alterados por admin. darkMode é
+// trocado por qualquer usuário logado (toggle de tema, ver hooks/useDarkMode.ts).
+const CAMPOS_LIVRES = new Set(['darkMode'])
+
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    const admin  = await souAdmin(tenant.schemaName)
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
       const result = await client.query(`SELECT * FROM t_configuracoes_tenant LIMIT 1`)
       const r = result.rows[0] ?? {}
+      // Token do emissor fiscal: só admin recebe o valor. Para os demais,
+      // o campo some da resposta — quem só usa esta rota para ler flags de
+      // módulo (financeiro, estoque, dark mode etc.) nunca precisou dele.
+      const focusNfeToken = admin
+        ? decryptSecretOuTextoPuro(r.focus_nfe_token)
+        : null
       return ok({
         // Módulos existentes
         comandasAtivo:   r.comandas_ativo   ?? false,
@@ -50,7 +63,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         credenciadoNfe:   r.credenciado_nfe  ?? false,
         cnae:             r.cnae             ?? null,
         mensagemFiscal:   r.mensagem_fiscal  ?? null,
-        focusNfeToken:    r.focus_nfe_token  ?? null,
+        focusNfeToken,
         focusNfeAmbiente: r.focus_nfe_ambiente ?? 'homologacao',
         // Aparência
         logoBase64: r.logo_base64 ?? null,
@@ -81,6 +94,14 @@ export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     const body   = await req.json()
+
+    // Qualquer campo fora do conjunto livre (hoje só darkMode) é dado de
+    // empresa/fiscal/módulo — exige admin. Sem isto, qualquer usuário
+    // autenticado do tenant conseguia reconfigurar módulos, dados fiscais
+    // e o token do emissor.
+    const pedeCampoRestrito = Object.keys(body).some(k => !CAMPOS_LIVRES.has(k))
+    if (pedeCampoRestrito) await exigirAdmin(tenant.schemaName)
+
     const client = await pool.connect()
 
     try {
@@ -114,7 +135,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['credenciado_nfe',          body.credenciadoNfe],
         ['cnae',                     body.cnae],
         ['mensagem_fiscal',          body.mensagemFiscal],
-        ['focus_nfe_token',          body.focusNfeToken],
+        ['focus_nfe_token',          body.focusNfeToken != null ? encryptSecret(body.focusNfeToken) : body.focusNfeToken],
         ['focus_nfe_ambiente',       body.focusNfeAmbiente],
         ['consultas_ativo',          body.consultasAtivo],
         ['pedidos_ativo',            body.pedidosAtivo],

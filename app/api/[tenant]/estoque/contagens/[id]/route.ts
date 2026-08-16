@@ -1,6 +1,7 @@
 // app/api/[tenant]/estoque/contagens/[id]/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ContagemInventarioService } from '@/lib/services/estoque/ContagemInventarioService'
 import { ok, serverError, notFound } from '@/lib/api/responses'
@@ -10,6 +11,7 @@ type P = { params: { tenant: string; id: string } }
 export async function GET(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'estoque')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const result = await new ContagemInventarioService(db, tenant.schemaName).findById(Number(params.id))
@@ -23,6 +25,7 @@ export async function GET(req: NextRequest, { params }: P) {
 export async function PUT(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'estoque')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body = await req.json()

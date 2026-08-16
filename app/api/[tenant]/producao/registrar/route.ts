@@ -18,6 +18,7 @@
 //   confirmar = true  → grava
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ProducaoRegistroService } from '@/lib/services/producao/ProducaoRegistroService'
 import { ok, serverError, badRequest } from '@/lib/api/responses'
@@ -27,6 +28,7 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'producao')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { searchParams } = new URL(req.url)
@@ -42,6 +44,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'producao')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body      = await req.json()

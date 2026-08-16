@@ -6,6 +6,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ComposicaoService } from '@/lib/services/cadastros/ComposicaoService'
 import { ok } from '@/lib/api/responses'
@@ -15,6 +16,7 @@ type Params = { params: { tenant: string; id: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { searchParams } = new URL(req.url)
     const multiplicador = Math.max(0.000001, Number(searchParams.get('multiplicador') ?? 1) || 1)
 

@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirAdmin } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { PerfisService } from '@/lib/services/perfis/PerfisService'
@@ -12,6 +13,9 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    // Gerenciar perfis é ação de admin: um perfil define o que outros
+    // usuários enxergam e podem fazer no sistema inteiro.
+    await exigirAdmin(tenant.schemaName)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       return ok(await new PerfisService(db).list())
@@ -53,6 +57,7 @@ const schema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirAdmin(tenant.schemaName)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const payload = schema.parse(await req.json())

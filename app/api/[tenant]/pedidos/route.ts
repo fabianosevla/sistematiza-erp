@@ -3,6 +3,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { PedidoService } from '@/lib/services/producao/PedidoService'
 import { ok, created, serverError } from '@/lib/api/responses'
@@ -12,6 +13,7 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'pedidos')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { searchParams } = new URL(req.url)
@@ -57,6 +59,7 @@ const criarPedidoSchema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'pedidos')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()

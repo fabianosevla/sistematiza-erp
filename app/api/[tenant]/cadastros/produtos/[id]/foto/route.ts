@@ -8,6 +8,7 @@
 import type { NextRequest } from 'next/server'
 import { put } from '@vercel/blob'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { ProdutoService } from '@/lib/services/cadastros/ProdutoService'
@@ -21,6 +22,7 @@ const TAMANHO_MAXIMO = 5 * 1024 * 1024
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const form   = await req.formData()
     const file   = form.get('file') as File | null
 

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { PlanoAcaoService } from '@/lib/services/plano_acao/PlanoAcaoService'
@@ -11,6 +12,7 @@ type Params = { params: { tenant: string; id: string } }
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'planoAcao')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()
@@ -26,6 +28,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'planoAcao')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const userId = await usuarioAtualIdDb(db)

@@ -1,6 +1,7 @@
 ﻿// @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { UsuarioService } from '@/lib/services/cadastros/UsuarioService'
 import { convidar, idProvisorio } from '@/lib/auth/identidade'
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'usuarios')
     const body   = await req.json()
     const { nome, email, perfil, perfilId } = body
     if (!nome?.trim())  return badRequest('Nome é obrigatório')

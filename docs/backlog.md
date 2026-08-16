@@ -22,9 +22,12 @@ sem ele voltar a pedir:
    dois módulos já existem no sistema, mas estão **desabilitados** (flag de
    módulo desligada) e, segundo o Fabiano, "super atrasados" — precisam de
    revisão antes de religar, não é só apertar o interruptor.
-3. **Lá na frente**: lembrar de atualizar a documentação (`Documentação
+3. **Depois de Fidelidade**: novo menu **"Painel do Contador"** (decidido em
+   13/08/2026) — ver seção "12. Painel do Contador — plano de contas
+   (versão enxuta)", abaixo.
+4. **Lá na frente**: lembrar de atualizar a documentação (`Documentação
    Técnica` no Drive — ver [[reference_drive_documentacao]] na memória) pra
-   refletir o que mudar no fiscal, Metas e Fidelidade.
+   refletir o que mudar no fiscal, Metas, Fidelidade e Painel do Contador.
 
 ---
 
@@ -96,6 +99,41 @@ descobre quanto tempo a autorização demora e o que a SEFAZ devolve quando cai.
 
 **Série diferente do Everest.** Everest na 1, Sistematiza na 2. Mesma série
 nos dois sistemas gera duplicidade de numeração.
+
+**Arquitetura de conta Focus NFe, decidida em conversa em 13/08/2026 — para
+quando o sistema escalar pra outros clientes.** A API da Focus suporta várias
+empresas (CNPJs) cadastradas sob uma única conta administradora (endpoint de
+"empresas": criar, listar, alterar, remover) — é isso que permite o Fabiano
+logar uma vez só e administrar o certificado/token/emissão de todo cliente,
+sem cada um precisar da própria conta na Focus.
+
+- A conta cadastrada hoje com o CNPJ da Zaghi (pra testar homologação) **não
+  deve virar a conta-mestre**. É conta de um cliente só, temporária.
+- A conta-mestre de revenda de verdade deve ser aberta sob o **CNPJ da
+  Sistematiza** (ainda não existe — ver decisão de abertura de empresa,
+  abaixo). Quando esse CNPJ sair, migrar a Zaghi pra dentro dela como a
+  primeira empresa-filha.
+- Ainda não confirmado com a Focus: se existe um plano formal de
+  "revenda/parceiro" separado do plano normal, ou se qualquer conta paga já
+  suporta múltiplas empresas por padrão. Perguntar direto pelo canal de
+  contato deles antes de decidir o plano.
+
+**CNPJ da Sistematiza (empresa de software, separada da Zaghi) — decisão de
+13/08/2026:** hoje o Fabiano fatura tudo pelo CNPJ da Zaghi
+(`11.327.412/0001-57`, "EDUARDO ZAGHI"), o que mistura a receita da fábrica
+com a de revenda de software. Avaliado MEI x SLU:
+
+- **MEI descartado** — nenhuma ocupação encontrada no portal do MEI descreve
+  "desenvolver e licenciar software" (a mais próxima achada foi "instalador
+  de redes de computadores", que não bate com a atividade real).
+- **Caminho decidido**: abrir **SLU** (Sociedade Limitada Unipessoal) com
+  contador, CNAE `62.02-3-00` (desenvolvimento e licenciamento de programas
+  de computador), quando o faturamento da revenda justificar o custo do
+  contador.
+- **Solução transitória, até lá**: cadastro de **autônomo na prefeitura**
+  (CPF, Inscrição Municipal) + **NFS-e Avulsa**, pra já poder emitir nota de
+  serviço de software sem precisar abrir CNPJ agora. Isso não gera CNPJ —
+  fica em CPF até a SLU sair de fato.
 
 ---
 
@@ -534,6 +572,44 @@ teste ponta a ponta antes de divulgar o link pra clientes de verdade.
 - Pagamento online — cliente só declara a forma, não paga pelo link.
 - Provisionamento de tenant novo (item 1) ainda não liga `cardapio_ativo` nem
   pergunta se o cliente quer o módulo — hoje é ajuste manual por tenant.
+
+---
+
+## 12. Painel do Contador — plano de contas (versão enxuta)
+
+Combinado com o Fabiano em 13/08/2026, na fila logo depois de Fidelidade (ver
+"Próximos passos combinados", acima). Menu novo, separado de Financeiro —
+visão técnica pra quem entende partida dobrada, não pro dono do negócio mexer
+no dia a dia.
+
+**Decisão de escopo (definida em conversa, não é ainda um requisito técnico
+detalhado):** versão enxuta, não um motor de contabilidade completo.
+
+- **Não é isto:** livro-razão com partida dobrada de verdade, fechamento
+  contábil formal, GL (General Ledger) que substitui o trabalho do contador.
+  Isso seria um projeto de outra ordem de grandeza — não é o que foi pedido.
+- **É isto:** cadastro de **plano de contas** (estrutura hierárquica tipo
+  Ativo/Passivo/Receita/Despesa, editável pelo tenant ou pré-carregado num
+  padrão genérico) + uma regra de "de-para" que classifica automaticamente
+  cada lançamento que o Financeiro já grava (venda, compra, baixa de conta a
+  pagar/receber, despesa) numa conta desse plano. O contador exporta e
+  confere — o sistema não declara nada sozinho.
+
+**Ainda não definido (perguntar ao Fabiano antes de implementar):**
+- Estrutura do plano de contas padrão — usa um genérico (tipo o exemplo que
+  foi discutido: Ativo Circulante, Passivo Circulante, Receita de Vendas,
+  Despesas Administrativas etc.) ou o Fabiano/contador da Zaghi já tem um
+  plano de contas específico pra importar?
+- A regra de-para é fixa no código (cada tipo de lançamento do Financeiro
+  sempre cai na mesma conta) ou configurável por tenant?
+- Formato de exportação esperado pelo contador (xlsx, CSV, algum padrão que
+  o contador já usa no software dele)?
+- Entra como módulo habilitável (como Metas/Fidelidade) ou fixo pra todo
+  tenant?
+
+**Depende de:** Financeiro já grava os eventos-fonte (venda, despesa, conta a
+pagar/receber) — não precisa de dado novo pra começar, só do mapeamento pra
+conta contábil.
 
 ---
 

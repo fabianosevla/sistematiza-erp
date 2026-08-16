@@ -13,6 +13,7 @@
 // gráfico mostraria só os pontos com movimento, com buracos no eixo.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
 
@@ -23,6 +24,7 @@ const MES_BR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'dashboard')
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)

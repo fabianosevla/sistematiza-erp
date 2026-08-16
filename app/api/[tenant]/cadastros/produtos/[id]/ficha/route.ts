@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { FichaTecnicaService } from '@/lib/services/cadastros/FichaTecnicaService'
 import { ok, created, serverError } from '@/lib/api/responses'
@@ -11,6 +12,7 @@ type Params = { params: { tenant: string; id: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const service = new FichaTecnicaService(db)
@@ -35,6 +37,7 @@ const addItemSchema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()

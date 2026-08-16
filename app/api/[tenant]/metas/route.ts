@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { eq, and, sql } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { dbMeta } from '@/lib/db/schemas/metas'
@@ -112,6 +113,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'metas')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body = await req.json()

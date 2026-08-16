@@ -4,6 +4,7 @@
 // KPIs da aba "Visão Geral" do módulo Fidelidade.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
 
@@ -19,6 +20,7 @@ const SINAL_SQL = `
 export async function GET(_req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'fidelidade')
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)

@@ -1,6 +1,7 @@
 // app/api/[tenant]/contas-receber/[id]/baixar/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { ContasReceberService } from '@/lib/services/financeiro/ContasReceberService'
@@ -14,6 +15,7 @@ type P = { params: { tenant: string; id: string } }
 export async function POST(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body   = await req.json()

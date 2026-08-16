@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirAdmin } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { dbUsuario } from '@/lib/db/schemas/cadastros'
 import { convidar, gerarLinkDeAcesso, ehProvisorio } from '@/lib/auth/identidade'
@@ -11,6 +12,10 @@ type Params = { params: { tenant: string; id: string } }
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    // Gera um link de login direto para OUTRA conta — precisa ser admin,
+    // senão qualquer usuário conseguia assumir a conta de qualquer outro
+    // (inclusive de um admin) do mesmo tenant.
+    await exigirAdmin(tenant.schemaName)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const id = Number(params.id)

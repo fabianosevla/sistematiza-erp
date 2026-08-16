@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirAdmin } from '@/lib/auth/permissoes'
 import { getDbForTenant, pool } from '@/lib/db/connection'
 import { PerfisService } from '@/lib/services/perfis/PerfisService'
 import { dbUsuario } from '@/lib/db/schemas/cadastros'
@@ -38,6 +39,7 @@ const schema = z.object({
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirAdmin(tenant.schemaName)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const perfil = await new PerfisService(db).findById(Number(params.id))
@@ -50,6 +52,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirAdmin(tenant.schemaName)
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const id      = Number(params.id)
@@ -70,6 +73,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirAdmin(tenant.schemaName)
     const { pool: dbPool } = await import('@/lib/db/connection')
     const client = await dbPool.connect()
     try {

@@ -11,6 +11,7 @@
 // em basis points (bp): 500 = 5,00%. A tela converte pra exibição.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError, badRequest } from '@/lib/api/responses'
 import { encryptSecret, isEncKeyConfigured } from '@/lib/crypto/secretBox'
@@ -30,6 +31,7 @@ async function garantirLinha(client: any) {
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'fidelidade')
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
@@ -72,6 +74,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'fidelidade')
     const b = await req.json()
 
     // Validações básicas

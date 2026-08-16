@@ -1,6 +1,7 @@
 // ESTE ARQUIVO VAI EM: app/api/[tenant]/cadastros/usuarios/[id]/perfil/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirAdmin } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { usuarioAtualId } from '@/lib/auth/usuarioAtual'
 import { ok, serverError } from '@/lib/api/responses'
@@ -10,6 +11,9 @@ type P = { params: { tenant: string; id: string } }
 export async function PUT(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    // Trocar o perfil de outra pessoa muda o que ela pode ver/fazer no
+    // sistema inteiro — inclusive torná-la admin. Só admin pode fazer isso.
+    await exigirAdmin(tenant.schemaName)
     const { perfilId } = await req.json()
     const client = await pool.connect()
     try {

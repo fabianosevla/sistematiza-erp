@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FinanceiroService } from '@/lib/services/financeiro/FinanceiroService'
@@ -26,6 +27,7 @@ const despesaSchema = z.object({
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { searchParams } = new URL(req.url)
@@ -48,6 +50,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const payload = despesaSchema.parse(await req.json())

@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { sql } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { fornecedorInsertSchema } from '@/lib/validations/cadastros'
@@ -33,6 +34,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()

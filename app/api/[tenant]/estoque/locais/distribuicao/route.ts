@@ -1,5 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { LocalEstoqueService } from '@/lib/services/estoque/LocalEstoqueService'
 import { ok, serverError } from '@/lib/api/responses'
@@ -10,6 +11,7 @@ export async function GET(req: NextRequest, { params }: P) {
   try {
     const url    = new URL(req.url)
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'estoque')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const entidade   = url.searchParams.get('entidade') as 'produto' | 'insumo'

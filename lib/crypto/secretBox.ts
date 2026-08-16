@@ -42,3 +42,18 @@ export function decryptSecret(payload: string): string {
   decipher.setAuthTag(tag)
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8')
 }
+
+/**
+ * Decifra um segredo que pode ainda estar em texto puro (gravado antes da
+ * criptografia existir, ou tenant que não rodou a migração de re-cifragem).
+ * Se a decifragem falhar (auth tag inválida, payload curto demais), devolve
+ * o valor original em vez de derrubar a requisição.
+ */
+export function decryptSecretOuTextoPuro(payload: string | null | undefined): string {
+  if (!payload) return ''
+  try {
+    return decryptSecret(payload)
+  } catch {
+    return payload
+  }
+}

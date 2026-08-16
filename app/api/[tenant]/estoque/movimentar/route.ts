@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { EstoqueService } from '@/lib/services/estoque/EstoqueService'
 import { ok, serverError, badRequest } from '@/lib/api/responses'
@@ -21,6 +22,7 @@ const movimentarSchema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'estoque')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body = await req.json()

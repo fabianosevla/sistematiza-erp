@@ -8,6 +8,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FinanceiroService } from '@/lib/services/financeiro/FinanceiroService'
@@ -31,6 +32,7 @@ const despesaUpdateSchema = z.object({
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const payload = despesaUpdateSchema.parse(await req.json())
@@ -48,6 +50,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       // Antes era o literal 1: o updated_by da exclusão apontava sempre para o

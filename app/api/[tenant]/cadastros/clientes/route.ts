@@ -6,6 +6,7 @@
 // quebrando a combobox de cliente no PDV e nas Vendas.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { usuarioAtualId } from '@/lib/auth/usuarioAtual'
 import { ok, created, serverError, badRequest } from '@/lib/api/responses'
@@ -179,6 +180,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { searchParams } = new URL(req.url)
     const id = Number(searchParams.get('id'))
     if (!id) return badRequest('ID do cliente é obrigatório')

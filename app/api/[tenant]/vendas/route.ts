@@ -3,6 +3,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { VendaService } from '@/lib/services/vendas/VendaService'
@@ -13,6 +14,10 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    // GET é a listagem/kpis da tela de Vendas — o PDV não usa este verbo (só
+    // POST para criar venda), então dá para exigir o módulo aqui sem quebrar
+    // o PDV.
+    await exigirModulo(tenant.schemaName, 'vendas')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { searchParams } = new URL(req.url)

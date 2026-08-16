@@ -25,6 +25,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { PedidoService } from '@/lib/services/producao/PedidoService'
@@ -37,6 +38,7 @@ type Params = { params: { tenant: string; id: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'pedidos')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const result = await new PedidoService(db).findById(Number(params.id))
@@ -76,6 +78,7 @@ const atualizarPedidoSchema = z.object({
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'pedidos')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()
@@ -97,6 +100,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'pedidos')
     const { status } = await req.json()
     if (!status) return badRequest('Status é obrigatório')
 
@@ -358,6 +362,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'pedidos')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       await new PedidoService(db).excluir(Number(params.id), 1)

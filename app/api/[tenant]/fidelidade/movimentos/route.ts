@@ -4,12 +4,14 @@
 // Extrato de movimentações de cashback — aba "Movimentações".
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
 
 export async function GET(req: NextRequest, { params }: { params: { tenant: string } }) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'fidelidade')
     const { searchParams } = new URL(req.url)
     const page      = Math.max(1, Number(searchParams.get('page') ?? 1))
     const limit     = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? 30)))

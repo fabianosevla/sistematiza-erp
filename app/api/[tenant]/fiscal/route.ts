@@ -6,6 +6,7 @@ import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
+import { decryptSecretOuTextoPuro } from '@/lib/crypto/secretBox'
 import { ok, created, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
@@ -98,14 +99,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (action === 'emitir') {
         const cfg = await config.get()
         return ok(await fiscal.emitirViaFocusNfe(body.notaId, {
-          token:    cfg?.focusNfeToken    ?? '',
+          token:    decryptSecretOuTextoPuro(cfg?.focusNfeToken),
           ambiente: cfg?.focusNfeAmbiente ?? 'homologacao',
         }))
       }
       if (action === 'cancelar') {
         const cfg = await config.get()
         return ok(await fiscal.cancelarNota(body.notaId, body.motivo, {
-          token:    cfg?.focusNfeToken    ?? '',
+          token:    decryptSecretOuTextoPuro(cfg?.focusNfeToken),
           ambiente: cfg?.focusNfeAmbiente ?? 'homologacao',
         }))
       }

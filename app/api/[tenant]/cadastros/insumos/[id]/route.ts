@@ -1,6 +1,7 @@
 // ESTE ARQUIVO VAI EM: app/api/[tenant]/cadastros/insumos/[id]/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { insumoUpdateSchema } from '@/lib/validations/cadastros'
@@ -12,6 +13,7 @@ type Params = { params: { tenant: string; id: string } }
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()
@@ -35,6 +37,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const uid     = await usuarioAtualIdDb(db)

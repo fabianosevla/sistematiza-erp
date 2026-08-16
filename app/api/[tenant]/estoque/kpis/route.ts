@@ -5,6 +5,7 @@
 // Retorna totais e "críticos" (estoque_atual <= estoque_minimo) de produtos e insumos.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
 
@@ -13,6 +14,7 @@ type Params = { params: { tenant: string } }
 export async function GET(_req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'estoque')
     const client = await pool.connect()
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)

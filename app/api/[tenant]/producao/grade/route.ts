@@ -2,6 +2,7 @@
 // ESTE ARQUIVO VAI EM: app/api/[tenant]/producao/grade/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
 
@@ -10,6 +11,7 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'producao')
     const { searchParams } = new URL(req.url)
     // Aceita tanto inicio/fim quanto dataInicio/dataFim para compatibilidade
     const inicio = searchParams.get('inicio') ?? searchParams.get('dataInicio') ?? new Date().toISOString().slice(0, 10)
@@ -130,6 +132,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'producao')
     const body   = await req.json()
     const { produtoId, dataProducao, quantidade } = body
 

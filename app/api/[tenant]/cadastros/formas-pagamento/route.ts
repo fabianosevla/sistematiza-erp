@@ -3,6 +3,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FormaPagamentoService } from '@/lib/services/cadastros/FormaPagamentoService'
@@ -34,6 +35,7 @@ const schema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()

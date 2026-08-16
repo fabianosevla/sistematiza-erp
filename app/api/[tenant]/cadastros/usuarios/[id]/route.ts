@@ -3,6 +3,7 @@
 import type { NextRequest } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
@@ -15,6 +16,7 @@ type Params = { params: { tenant: string; id: string } }
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'usuarios')
     const body   = await req.json()
     const { nome, email, perfilId } = body
     if (!nome?.trim() && !email?.trim() && perfilId === undefined) return badRequest('Nenhum campo para atualizar')
@@ -48,6 +50,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'usuarios')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const id = Number(params.id)

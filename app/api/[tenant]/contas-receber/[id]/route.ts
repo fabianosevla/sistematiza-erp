@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { dbContaReceber } from '@/lib/db/schemas/financeiro-completo'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
@@ -22,6 +23,7 @@ type P = { params: { tenant: string; id: string } }
 export async function PUT(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body   = await req.json()
@@ -68,6 +70,7 @@ export async function PUT(req: NextRequest, { params }: P) {
 export async function DELETE(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       return ok(await new ContasReceberService(db).excluir(Number(params.id), 1))

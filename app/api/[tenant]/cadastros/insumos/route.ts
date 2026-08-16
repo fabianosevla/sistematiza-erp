@@ -14,6 +14,7 @@
 // cadastro) travava o custo, mesmo com a ficha calculando 26,27.
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { usuarioAtualId } from '@/lib/auth/usuarioAtual'
 import { ok, created, serverError, badRequest } from '@/lib/api/responses'
@@ -122,6 +123,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const body   = await req.json()
     if (!body.nome?.trim()) return badRequest('Nome é obrigatório')
 

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { dbGastoFixoCategoria } from '@/lib/db/schemas/financeiro'
 import { ok, created, serverError } from '@/lib/api/responses'
@@ -11,6 +12,7 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const categorias = await db.select().from(dbGastoFixoCategoria).orderBy(dbGastoFixoCategoria.ordem)
@@ -22,6 +24,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body = await req.json()

@@ -8,6 +8,7 @@
 import type { NextRequest } from 'next/server'
 import { sql } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ok, serverError } from '@/lib/api/responses'
 
@@ -16,6 +17,7 @@ type Params = { params: { tenant: string } }
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'producao')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { produtoId, quantidade, confirmar = false } = await req.json()

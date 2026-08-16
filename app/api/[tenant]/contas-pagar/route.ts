@@ -3,6 +3,7 @@
 // ════════════════════════════════════════════════════════
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ContasPagarService } from '@/lib/services/financeiro/ContasPagarService'
 import { ok, created, serverError } from '@/lib/api/responses'
@@ -13,6 +14,7 @@ export async function GET(req: NextRequest, { params }: P) {
   try {
     const url    = new URL(req.url)
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const tipo = url.searchParams.get('tipo')
@@ -33,6 +35,7 @@ export async function GET(req: NextRequest, { params }: P) {
 export async function POST(req: NextRequest, { params }: P) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'financeiro')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body = await req.json()
