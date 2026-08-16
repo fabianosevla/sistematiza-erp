@@ -38,6 +38,14 @@ export const dbConfiguracoesTenant = pgTable('t_configuracoes_tenant', {
   // Cardápio digital público (link/QR Code, sem login). Piloto: só a Zaghi
   // liga. Desligado por padrão para não expor rota pública sem decisão.
   cardapioAtivo:     boolean('cardapio_ativo').notNull().default(false),
+  // Layout e comportamento do cardápio — ver scripts/migrate-cardapio-layout.js
+  cardapioMensagemBoasVindas: varchar('cardapio_mensagem_boas_vindas', { length: 300 }),
+  cardapioCorDestaque:        varchar('cardapio_cor_destaque', { length: 9 }),
+  // WhatsApp da loja pra onde o pedido monta a mensagem — não é o telefone
+  // fixo da empresa necessariamente, por isso é campo próprio.
+  cardapioWhatsapp:           varchar('cardapio_whatsapp', { length: 20 }),
+  cardapioPermiteEntrega:     boolean('cardapio_permite_entrega').notNull().default(true),
+  cardapioPermiteBalcao:      boolean('cardapio_permite_balcao').notNull().default(true),
   // Dados da empresa
   nomeEmpresa:       varchar('nome_empresa', { length: 200 }),
   cnpj:              varchar('cnpj', { length: 20 }),

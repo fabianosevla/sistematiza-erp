@@ -16,6 +16,7 @@ export interface Config {
   pedidosAtivo:    boolean
   planoAcaoAtivo:  boolean
   metasAtivo:      boolean
+  cardapioAtivo:   boolean
   contasPagarAtivo:         boolean
   contasReceberAtivo:       boolean
   comprasAtivo:             boolean

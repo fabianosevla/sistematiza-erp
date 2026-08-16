@@ -51,6 +51,7 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     pedidosAtivo:    cfg?.pedidos_ativo    ?? true,
     planoAcaoAtivo:  cfg?.plano_acao_ativo ?? false,
     metasAtivo:      cfg?.metas_ativo      ?? false,
+    cardapioAtivo:   cfg?.cardapio_ativo   ?? false,
     contasPagarAtivo:         cfg?.contas_pagar_ativo         ?? false,
     contasReceberAtivo:       cfg?.contas_receber_ativo       ?? false,
 

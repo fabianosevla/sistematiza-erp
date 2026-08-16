@@ -5,7 +5,7 @@ import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronDown, ClipboardList, Factory, CreditCard,
   Search, ClipboardCheck, X, Target, Gift, ShoppingBag, BookOpen,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, QrCode,
 } from 'lucide-react'
 import { useUser } from '@clerk/nextjs'
 import { useQuery } from '@tanstack/react-query'
@@ -92,6 +92,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     // custo e margem. Escondida num submenu, ninguém achava.
     { label: 'Fichas Técnicas', href: '/cadastros/ficha-tecnica', icon: BookOpen },
     ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
+    ...(config.cardapioAtivo  ? [{ label: 'Cardápio Digital',  href: '/cardapio-digital', icon: QrCode }]  : []),
     ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
     ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
     ...(config.planoAcaoAtivo ? [{ label: 'Plano de Ação',     href: '/plano-acao', icon: ClipboardCheck }] : []),

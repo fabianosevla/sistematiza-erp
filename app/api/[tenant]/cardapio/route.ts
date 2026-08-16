@@ -21,7 +21,9 @@ export async function GET(req: NextRequest, { params }: Params) {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
 
       const cfg = await client.query(`
-        SELECT nome_fantasia, nome_empresa, logo_url, telefone, endereco
+        SELECT nome_fantasia, nome_empresa, logo_base64, telefone, endereco,
+               cardapio_mensagem_boas_vindas, cardapio_cor_destaque,
+               cardapio_permite_entrega, cardapio_permite_balcao
         FROM t_configuracoes_tenant LIMIT 1
       `)
       const c = cfg.rows[0] ?? {}
@@ -41,10 +43,19 @@ export async function GET(req: NextRequest, { params }: Params) {
       return ok({
         empresa: {
           nome:      c.nome_fantasia || c.nome_empresa || tenant.name,
-          logoUrl:   c.logo_url || null,
+          // logo_base64 é a coluna que o Header/Configurações realmente
+          // grava — logo_url nunca foi escrita em lugar nenhum, então o
+          // cardápio nunca mostrava logo nenhum antes desta correção.
+          logoUrl:   c.logo_base64 || null,
           telefone:  c.telefone || null,
           endereco:  c.endereco || null,
         },
+        layout: {
+          mensagemBoasVindas: c.cardapio_mensagem_boas_vindas || null,
+          corDestaque:        c.cardapio_cor_destaque || '#2ecc71',
+        },
+        permiteEntrega: c.cardapio_permite_entrega ?? true,
+        permiteBalcao:  c.cardapio_permite_balcao ?? true,
         produtos: produtos.rows.map(r => ({
           produtoId:   r.produto_id,
           nome:        r.nome,

@@ -9,12 +9,17 @@ import { NextResponse } from 'next/server'
 // sem login — o cliente lendo o cardápio pelo QR Code no celular. A rota
 // valida por conta própria que o tenant existe e contratou o módulo (ver
 // lib/auth/tenantPublico.ts); aqui só decide que não passa por auth().protect().
+//
+// Listadas uma a uma, sem (.*) — /api/:tenant/cardapio/config é autenticada
+// (tela de configuração do menu Cardápio Digital, exige admin) e não pode
+// cair aqui só por compartilhar o prefixo com as rotas públicas.
 const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/webhooks(.*)',
   '/cardapio(.*)',
-  '/api/:tenant/cardapio(.*)',
+  '/api/:tenant/cardapio',
+  '/api/:tenant/cardapio/mensagem',
 ])
 
 export default clerkMiddleware((auth, req) => {
