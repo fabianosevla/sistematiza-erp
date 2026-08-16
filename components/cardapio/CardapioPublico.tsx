@@ -112,14 +112,44 @@ export default function CardapioPublico({ tenantSlug }: Props) {
     )
   }
 
+  const tipoLayout: string = layout.tipo || 'classico'
+
+  function Quantidade({ p }: { p: any }) {
+    const noCarrinho = carrinho.find(i => i.produtoId === p.produtoId)
+    if (noCarrinho) {
+      return (
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={() => remover(p.produtoId)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"><Minus size={14} /></button>
+          <span className="text-sm font-semibold w-5 text-center">{noCarrinho.quantidade}</span>
+          <button onClick={() => adicionar(p)} className="w-7 h-7 rounded-full text-white flex items-center justify-center" style={{ backgroundColor: cor }}><Plus size={14} /></button>
+        </div>
+      )
+    }
+    return <Button size="sm" onClick={() => adicionar(p)} className="flex-shrink-0" style={{ backgroundColor: cor }}>Adicionar</Button>
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <header className="bg-white border-b border-gray-100 px-4 py-5 text-center">
-        {empresa.logoUrl && <img src={empresa.logoUrl} alt="" className="h-12 mx-auto mb-2 object-contain" />}
-        <h1 className="text-lg font-bold text-gray-900">{empresa.nome}</h1>
-        {layout.mensagemBoasVindas && <p className="text-sm text-gray-500 mt-1">{layout.mensagemBoasVindas}</p>}
-        {empresa.telefone && <p className="text-xs text-gray-400 mt-1">{empresa.telefone}</p>}
-      </header>
+      {/* CABEÇALHO — o layout "Capa" usa a foto de fundo como hero; os outros
+          três ficam no cabeçalho branco simples de sempre. */}
+      {tipoLayout === 'capa' && layout.bannerUrl ? (
+        <header className="relative text-center px-4 py-10" style={{ backgroundColor: '#111' }}>
+          <img src={layout.bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60" />
+          <div className="relative">
+            {empresa.logoUrl && <img src={empresa.logoUrl} alt="" className="h-14 mx-auto mb-2 object-contain bg-white rounded-lg p-1" />}
+            <h1 className="text-xl font-bold text-white drop-shadow">{empresa.nome}</h1>
+            {layout.mensagemBoasVindas && <p className="text-sm text-white/90 mt-1 drop-shadow">{layout.mensagemBoasVindas}</p>}
+            {empresa.telefone && <p className="text-xs text-white/70 mt-1">{empresa.telefone}</p>}
+          </div>
+        </header>
+      ) : (
+        <header className="bg-white border-b border-gray-100 px-4 py-5 text-center">
+          {empresa.logoUrl && <img src={empresa.logoUrl} alt="" className="h-12 mx-auto mb-2 object-contain" />}
+          <h1 className="text-lg font-bold text-gray-900">{empresa.nome}</h1>
+          {layout.mensagemBoasVindas && <p className="text-sm text-gray-500 mt-1">{layout.mensagemBoasVindas}</p>}
+          {empresa.telefone && <p className="text-xs text-gray-400 mt-1">{empresa.telefone}</p>}
+        </header>
+      )}
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-6">
         {produtos.length === 0 && (
@@ -128,10 +158,44 @@ export default function CardapioPublico({ tenantSlug }: Props) {
         {categorias.map(cat => (
           <div key={cat}>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{cat}</p>
-            <div className="space-y-2">
-              {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => {
-                const noCarrinho = carrinho.find(i => i.produtoId === p.produtoId)
-                return (
+
+            {/* GRADE — cards em 2 colunas, foto grande em cima */}
+            {tipoLayout === 'grade' ? (
+              <div className="grid grid-cols-2 gap-3">
+                {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
+                  <div key={p.produtoId} className="bg-white rounded-xl border border-gray-100 overflow-hidden flex flex-col">
+                    {p.fotoUrl ? (
+                      <img src={p.fotoUrl} alt="" className="w-full h-24 object-cover" />
+                    ) : (
+                      <div className="w-full h-24 bg-gray-100" />
+                    )}
+                    <div className="p-2.5 flex-1 flex flex-col">
+                      <p className="text-sm font-medium text-gray-900 line-clamp-2">{p.nome}</p>
+                      <p className="text-sm font-semibold mt-1" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
+                      <div className="mt-2"><Quantidade p={p} /></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+            /* COMPACTO — lista densa, sem foto */
+            ) : tipoLayout === 'compacto' ? (
+              <div className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-50">
+                {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
+                  <div key={p.produtoId} className="px-3 py-2 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 truncate">{p.nome}</p>
+                      <p className="text-xs font-semibold" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
+                    </div>
+                    <Quantidade p={p} />
+                  </div>
+                ))}
+              </div>
+
+            /* CLÁSSICO e CAPA — lista com foto pequena ao lado */
+            ) : (
+              <div className="space-y-2">
+                {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
                   <div key={p.produtoId} className="bg-white rounded-xl border border-gray-100 p-3 flex gap-3 items-center">
                     {p.fotoUrl ? (
                       <img src={p.fotoUrl} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
@@ -143,19 +207,11 @@ export default function CardapioPublico({ tenantSlug }: Props) {
                       {p.descricao && <p className="text-xs text-gray-400 line-clamp-2">{p.descricao}</p>}
                       <p className="text-sm font-semibold mt-1" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
                     </div>
-                    {noCarrinho ? (
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button onClick={() => remover(p.produtoId)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"><Minus size={14} /></button>
-                        <span className="text-sm font-semibold w-5 text-center">{noCarrinho.quantidade}</span>
-                        <button onClick={() => adicionar(p)} className="w-7 h-7 rounded-full text-white flex items-center justify-center" style={{ backgroundColor: cor }}><Plus size={14} /></button>
-                      </div>
-                    ) : (
-                      <Button size="sm" onClick={() => adicionar(p)} className="flex-shrink-0" style={{ backgroundColor: cor }}>Adicionar</Button>
-                    )}
+                    <Quantidade p={p} />
                   </div>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>

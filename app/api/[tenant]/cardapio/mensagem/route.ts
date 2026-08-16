@@ -94,23 +94,26 @@ export async function POST(req: NextRequest, { params }: Params) {
       .map(i => `${i.quantidade}x ${i.nome} — ${fmtMoeda(i.quantidade * i.precoUnitario)}`)
       .join('\n')
 
+    // Sem emoji de propósito: os "fora do plano básico" (comida, dinheiro,
+    // localização etc.) chegaram corrompidos no WhatsApp em teste real —
+    // viraram "�". O tom simpático fica por conta da escrita, não do ícone.
     const linhasEntrega = payload.tipoVenda === 'entrega'
-      ? `📍 Entrega: ${payload.enderecoEntrega}`
-      : `🏠 Retirada no balcão`
+      ? `Entrega: ${payload.enderecoEntrega}`
+      : `Retirada no balcão`
 
     const linhas = [
-      `Olá! 😊 Me chamo *${payload.nome}* e gostaria de fazer um pedido na ${nomeEmpresa}:`,
+      `Olá! Me chamo *${payload.nome}* e gostaria de fazer um pedido na ${nomeEmpresa}:`,
       ``,
-      `🧺 *Pedido:*`,
+      `*Pedido:*`,
       linhasItens,
       ``,
-      `💰 *Total: ${fmtMoeda(total)}*`,
+      `*Total: ${fmtMoeda(total)}*`,
       ``,
       linhasEntrega,
     ]
-    if (payload.formaPagamentoNome) linhas.push(`💳 Forma de pagamento: ${payload.formaPagamentoNome}`)
-    if (payload.observacao?.trim()) linhas.push(`📝 Obs: ${payload.observacao.trim()}`)
-    linhas.push(``, `Aguardando a confirmação da loja. Obrigado(a)! 🙏`)
+    if (payload.formaPagamentoNome) linhas.push(`Forma de pagamento: ${payload.formaPagamentoNome}`)
+    if (payload.observacao?.trim()) linhas.push(`Obs: ${payload.observacao.trim()}`)
+    linhas.push(``, `Aguardando a confirmação da loja. Obrigado(a)!`)
 
     const mensagem = linhas.join('\n')
     const numero   = normalizarWhatsapp(whatsappLoja)

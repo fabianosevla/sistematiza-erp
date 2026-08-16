@@ -46,6 +46,9 @@ export const dbConfiguracoesTenant = pgTable('t_configuracoes_tenant', {
   cardapioWhatsapp:           varchar('cardapio_whatsapp', { length: 20 }),
   cardapioPermiteEntrega:     boolean('cardapio_permite_entrega').notNull().default(true),
   cardapioPermiteBalcao:      boolean('cardapio_permite_balcao').notNull().default(true),
+  // 'classico' | 'grade' | 'capa' | 'compacto' — ver CardapioPublico.tsx
+  cardapioLayout:             varchar('cardapio_layout', { length: 20 }).notNull().default('classico'),
+  cardapioBannerUrl:          varchar('cardapio_banner_url', { length: 500 }),
   // Dados da empresa
   nomeEmpresa:       varchar('nome_empresa', { length: 200 }),
   cnpj:              varchar('cnpj', { length: 20 }),

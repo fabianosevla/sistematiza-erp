@@ -28,6 +28,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         whatsapp:                 r.cardapio_whatsapp         ?? '',
         permiteEntrega:           r.cardapio_permite_entrega  ?? true,
         permiteBalcao:            r.cardapio_permite_balcao   ?? true,
+        layout:                   r.cardapio_layout           ?? 'classico',
+        bannerUrl:                r.cardapio_banner_url       ?? null,
       })
     } finally { client.release() }
   } catch (err) { return serverError(err) }
@@ -49,6 +51,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['cardapio_whatsapp',              body.whatsapp],
         ['cardapio_permite_entrega',       body.permiteEntrega],
         ['cardapio_permite_balcao',        body.permiteBalcao],
+        ['cardapio_layout',                body.layout],
       ]
 
       for (const [col, val] of updates) {

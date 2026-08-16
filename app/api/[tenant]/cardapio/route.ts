@@ -23,7 +23,8 @@ export async function GET(req: NextRequest, { params }: Params) {
       const cfg = await client.query(`
         SELECT nome_fantasia, nome_empresa, logo_base64, telefone, endereco,
                cardapio_mensagem_boas_vindas, cardapio_cor_destaque,
-               cardapio_permite_entrega, cardapio_permite_balcao
+               cardapio_permite_entrega, cardapio_permite_balcao,
+               cardapio_layout, cardapio_banner_url
         FROM t_configuracoes_tenant LIMIT 1
       `)
       const c = cfg.rows[0] ?? {}
@@ -53,6 +54,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         layout: {
           mensagemBoasVindas: c.cardapio_mensagem_boas_vindas || null,
           corDestaque:        c.cardapio_cor_destaque || '#2ecc71',
+          tipo:               c.cardapio_layout || 'classico',
+          bannerUrl:          c.cardapio_banner_url || null,
         },
         permiteEntrega: c.cardapio_permite_entrega ?? true,
         permiteBalcao:  c.cardapio_permite_balcao ?? true,

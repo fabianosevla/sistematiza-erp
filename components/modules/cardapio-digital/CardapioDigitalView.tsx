@@ -6,10 +6,10 @@
 // mesmo já cadastrado em Configurações, não duplica upload aqui), Configurações
 // (ativo, WhatsApp que recebe o pedido, tipos de venda permitidos) e QR Code
 // (tela pronta pra imprimir: logo + QR embaixo).
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { Palette, Settings, QrCode as QrCodeIcon, Copy, Printer } from 'lucide-react'
+import { Palette, Settings, QrCode as QrCodeIcon, Copy, Printer, Upload, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -18,6 +18,61 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { PageHeader } from '@/components/ui/PageHeader'
 
 interface Props { tenantSlug: string }
+
+const LAYOUTS = [
+  { id: 'classico',  nome: 'Clássico',  descricao: 'Lista com foto pequena ao lado de cada produto.' },
+  { id: 'grade',      nome: 'Grade',     descricao: 'Cards em grade, foto grande em cima do nome/preço.' },
+  { id: 'capa',       nome: 'Capa',      descricao: 'Foto de fundo grande no topo, com o cardápio abaixo.' },
+  { id: 'compacto',   nome: 'Compacto',  descricao: 'Lista densa, sem foto — ótimo pra cardápio com muitos itens.' },
+] as const
+
+/** Miniatura ilustrativa de cada layout — não é screenshot, é só um esquema. */
+function MockupLayout({ tipo }: { tipo: string }) {
+  const base = 'w-full rounded bg-gray-100'
+  if (tipo === 'grade') {
+    return (
+      <div className="space-y-1.5">
+        <div className={`${base} h-3`} />
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="bg-gray-200 rounded h-8" />
+          <div className="bg-gray-200 rounded h-8" />
+          <div className="bg-gray-200 rounded h-8" />
+          <div className="bg-gray-200 rounded h-8" />
+        </div>
+      </div>
+    )
+  }
+  if (tipo === 'capa') {
+    return (
+      <div className="space-y-1.5">
+        <div className="bg-gray-300 rounded h-10" />
+        <div className={`${base} h-2.5`} />
+        <div className={`${base} h-2.5`} />
+        <div className={`${base} h-2.5`} />
+      </div>
+    )
+  }
+  if (tipo === 'compacto') {
+    return (
+      <div className="space-y-1">
+        <div className={`${base} h-2.5`} />
+        {[...Array(6)].map((_, i) => <div key={i} className="bg-gray-100 rounded h-1.5" />)}
+      </div>
+    )
+  }
+  // classico
+  return (
+    <div className="space-y-1.5">
+      <div className={`${base} h-3`} />
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <div className="bg-gray-200 rounded w-4 h-4 flex-shrink-0" />
+          <div className="bg-gray-100 rounded h-2 flex-1" />
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function CardapioDigitalView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
@@ -69,6 +124,28 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
     toast('Link copiado!')
   }
 
+  const bannerInputRef = useRef<HTMLInputElement>(null)
+  const [enviandoBanner, setEnviandoBanner] = useState(false)
+
+  async function enviarBanner(file: File) {
+    if (file.size > 5 * 1024 * 1024) { toast('Imagem acima de 5 MB. Escolha uma menor.', 'error'); return }
+    setEnviandoBanner(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res  = await fetch(`/api/${tenantSlug}/cardapio/banner`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar imagem')
+      set('bannerUrl', data.data.bannerUrl)
+      qc.invalidateQueries({ queryKey: ['cardapio-config', tenantSlug] })
+      toast('Foto de fundo atualizada!')
+    } catch (e: any) {
+      toast(e?.message ?? 'Não foi possível enviar a imagem.', 'error')
+    } finally {
+      setEnviandoBanner(false)
+    }
+  }
+
   if (!local) {
     return <div className="text-center py-12 text-sm text-gray-400">Carregando...</div>
   }
@@ -97,7 +174,48 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
 
         {/* ABA: LAYOUT */}
         {aba === 'layout' && (
-          <div className="bg-white rounded-xl border border-gray-100 p-5 max-w-lg space-y-4">
+          <div className="space-y-4 max-w-2xl">
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Disposição da tela</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {LAYOUTS.map(l => {
+                  const selecionado = (local.layout ?? 'classico') === l.id
+                  return (
+                    <button key={l.id} onClick={() => set('layout', l.id)}
+                      className={`text-left rounded-xl border-2 p-3 transition-colors ${selecionado ? 'border-green-500 bg-green-50/40' : 'border-gray-100 hover:border-gray-200'}`}>
+                      <div className="mb-2"><MockupLayout tipo={l.id} /></div>
+                      <p className="text-xs font-semibold text-gray-800 inline-flex items-center gap-1">
+                        {l.nome} {selecionado && <Check size={12} className="text-green-600" />}
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{l.descricao}</p>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Foto de fundo / capa
+                  <InfoTip titulo="Onde aparece">Usada como fundo no topo do cardápio — mais evidente no layout Capa.</InfoTip>
+                </Label>
+                <div className="flex items-center gap-3 mt-2">
+                  {local.bannerUrl ? (
+                    <img src={local.bannerUrl} alt="" className="w-24 h-14 rounded-lg object-cover border border-gray-100" />
+                  ) : (
+                    <div className="w-24 h-14 rounded-lg bg-gray-100" />
+                  )}
+                  <input ref={bannerInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) enviarBanner(f) }} />
+                  <Button variant="outline" size="sm" onClick={() => bannerInputRef.current?.click()} disabled={enviandoBanner}>
+                    <Upload size={13} className="mr-1.5" /> {enviandoBanner ? 'Enviando...' : 'Trocar imagem'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
             <InfoTip titulo="Logo">
               O logo mostrado no cardápio é o mesmo já cadastrado em Configurações — não precisa subir de novo aqui.
             </InfoTip>
@@ -122,6 +240,7 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
             </div>
             <div className="flex justify-end pt-2 border-t border-gray-100">
               <Button onClick={() => salvarMut.mutate()} disabled={salvarMut.isPending}>{salvarMut.isPending ? 'Salvando...' : 'Salvar'}</Button>
+            </div>
             </div>
           </div>
         )}
