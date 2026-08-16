@@ -2,6 +2,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
@@ -11,9 +12,12 @@ import { ok, created, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
 
+// Turno/notas fiscais aqui são só a tela de Fiscal (FiscalView/NovaNotaModal).
+// O caixa "simples" do PDV é outra rota (app/api/[tenant]/caixa), não esta.
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'fiscal')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { searchParams } = new URL(req.url)
@@ -76,6 +80,7 @@ const notaSchema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'fiscal')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const body    = await req.json()

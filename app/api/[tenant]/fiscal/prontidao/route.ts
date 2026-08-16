@@ -6,6 +6,7 @@
 // cliente diz que "a nota não sai".
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { ProntidaoFiscalService } from '@/lib/services/fiscal/ProntidaoFiscalService'
 import { fiscalLigado } from '@/app/api/[tenant]/fiscal/perfis/route'
@@ -16,6 +17,7 @@ type Params = { params: { tenant: string } }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'fiscal')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       if (!(await fiscalLigado(db))) return forbidden()

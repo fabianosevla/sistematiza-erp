@@ -1,6 +1,7 @@
 // @ts-nocheck
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
 import { ok, serverError, badRequest } from '@/lib/api/responses'
 
@@ -23,6 +24,7 @@ function parseNum(val: string): number {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant   = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const body     = await req.json()
     const entidade = body.entidade as string
     const rows     = body.rows as Record<string, string>[]

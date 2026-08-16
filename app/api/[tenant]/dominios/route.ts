@@ -3,6 +3,7 @@
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { DominiosService } from '@/lib/services/dominios/DominiosService'
@@ -28,6 +29,9 @@ const schema = z.object({
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    // GET fica aberto: useDominio alimenta seletores em telas de vários
+    // módulos. Criar um domínio novo é ação da tela Domínios (Cadastros).
+    await exigirModulo(tenant.schemaName, 'cadastros')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const { codigo, nome, descricao } = schema.parse(await req.json())

@@ -2,6 +2,7 @@
 // ESTE ARQUIVO VAI EM: app/api/[tenant]/fiscal/perfis/route.ts
 import type { NextRequest } from 'next/server'
 import { resolveTenant } from '@/lib/auth/tenant'
+import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { PerfilTributarioService } from '@/lib/services/fiscal/PerfilTributarioService'
@@ -39,6 +40,10 @@ export async function GET(req: NextRequest, { params }: Params) {
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
+    // GET fica aberto: ProdutosView (módulo Cadastros) usa a lista de
+    // perfis tributários pra popular o seletor do produto, mesmo pra quem
+    // não tem o módulo Fiscal. Criar/editar perfil é que é ação fiscal.
+    await exigirModulo(tenant.schemaName, 'fiscal')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       if (!(await fiscalLigado(db))) return forbidden()
