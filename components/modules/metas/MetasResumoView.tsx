@@ -115,6 +115,28 @@ export default function MetasResumoView({ tenantSlug }: Props) {
       <PageHeader titulo="Metas" subtitulo={<MesNav mes={mes} ano={ano} onNav={navMes} />} />
 
       <div className="space-y-4">
+        <div className="flex justify-end items-center gap-2">
+          <InfoTip titulo="Para que servem as metas">
+            Com metas definidas, os cartões abaixo mostram o quanto do mês já foi cumprido.
+            O <strong>Simulador</strong> projeta receita e lucro antes de fechar o mês, e a
+            <strong> Previsão de Produção</strong> calcula quanto produzir no próximo.
+          </InfoTip>
+          <Button variant="outline" onClick={() => {
+            setMetaProdutoItens(
+              metaProdutos.length > 0
+                ? metaProdutos.map((mp) => ({ _key: String(mp.produtoId), produtoId: mp.produtoId, nome: mp.nome, quantidade: mp.quantidadeMeta }))
+                : [{ _key: '1', produtoId: 0, nome: '', quantidade: 1 }]
+            )
+            setShowEditMetaProduto(true)
+          }}><Plus size={14} className="mr-1.5" /> Metas por Produto</Button>
+          <Button onClick={() => {
+            setFReceita(meta?.metaReceita ? (meta.metaReceita / 100).toFixed(2) : '')
+            setFDespesa(meta?.metaDespesaMaxima ? (meta.metaDespesaMaxima / 100).toFixed(2) : '')
+            setFLucro(meta?.metaLucro ? (meta.metaLucro / 100).toFixed(2) : '')
+            setShowEditMeta(true)
+          }}><Target size={14} className="mr-1.5" /> Definir Metas</Button>
+        </div>
+
         {real && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
@@ -173,28 +195,6 @@ export default function MetasResumoView({ tenantSlug }: Props) {
               })}
             </div>
           )}
-        </div>
-
-        <div className="flex justify-end items-center gap-2">
-          <InfoTip titulo="Para que servem as metas">
-            Com metas definidas, os cartões acima mostram o quanto do mês já foi cumprido.
-            O <strong>Simulador</strong> projeta receita e lucro antes de fechar o mês, e a
-            <strong> Previsão de Produção</strong> calcula quanto produzir no próximo.
-          </InfoTip>
-          <Button variant="outline" onClick={() => {
-            setMetaProdutoItens(
-              metaProdutos.length > 0
-                ? metaProdutos.map((mp) => ({ _key: String(mp.produtoId), produtoId: mp.produtoId, nome: mp.nome, quantidade: mp.quantidadeMeta }))
-                : [{ _key: '1', produtoId: 0, nome: '', quantidade: 1 }]
-            )
-            setShowEditMetaProduto(true)
-          }}><Plus size={14} className="mr-1.5" /> Metas por Produto</Button>
-          <Button onClick={() => {
-            setFReceita(meta?.metaReceita ? (meta.metaReceita / 100).toFixed(2) : '')
-            setFDespesa(meta?.metaDespesaMaxima ? (meta.metaDespesaMaxima / 100).toFixed(2) : '')
-            setFLucro(meta?.metaLucro ? (meta.metaLucro / 100).toFixed(2) : '')
-            setShowEditMeta(true)
-          }}><Target size={14} className="mr-1.5" /> Definir Metas</Button>
         </div>
       </div>
 
