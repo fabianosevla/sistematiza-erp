@@ -232,7 +232,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         `)
         const realizadoPorProduto: Record<number, number> = {}
         for (const r of realizadoRes.rows as any[]) realizadoPorProduto[r.produto_id] = Number(r.qtd)
-        const produtosRes = await db.execute(sql`SELECT produto_id, nome FROM t_produto WHERE produto_id = ANY(${ids}::int[])`)
+        const produtosRes = await db.execute(sql`SELECT produto_id, nome FROM t_produto WHERE produto_id IN (${ids})`)
         const nomePorProduto: Record<number, string> = {}
         for (const r of produtosRes.rows as any[]) nomePorProduto[r.produto_id] = r.nome
         const lista = metasRows.map(r => ({
