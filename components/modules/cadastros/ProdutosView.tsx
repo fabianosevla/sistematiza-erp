@@ -1,7 +1,7 @@
 ﻿'use client'
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Download, Upload, BookOpen, Package, EyeOff, Pencil, Lock, RotateCcw } from 'lucide-react'
+import { Plus, Trash2, Download, Upload, BookOpen, Package, EyeOff, Pencil, Lock, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -286,6 +286,24 @@ export default function ProdutosView({ tenantSlug }: Props) {
       toast('Foto atualizada!')
     } catch (e: any) {
       toast(e?.message ?? 'Não foi possível enviar a foto.', 'error')
+    } finally {
+      setEnviandoFoto(false)
+    }
+  }
+
+  async function removerFoto() {
+    if (!editando?.produtoId) return
+    setEnviandoFoto(true)
+    try {
+      const res  = await fetch(`${api}/${editando.produtoId}/foto`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao remover foto')
+      setFotoUrl('')
+      setEditando((prev: any) => prev ? { ...prev, modificationNum: Number(prev.modificationNum ?? 0) + 1 } : prev)
+      invalidate()
+      toast('Foto removida!')
+    } catch (e: any) {
+      toast(e?.message ?? 'Não foi possível remover a foto.', 'error')
     } finally {
       setEnviandoFoto(false)
     }
@@ -713,7 +731,13 @@ export default function ProdutosView({ tenantSlug }: Props) {
               {editando?.produtoId ? (
                 <div className="flex items-center gap-3">
                   {fotoUrl ? (
-                    <img src={fotoUrl} alt="" className="w-14 h-14 rounded-lg object-cover border border-gray-200" />
+                    <div className="relative">
+                      <img src={fotoUrl} alt="" className="w-14 h-14 rounded-lg object-cover border border-gray-200" />
+                      <button type="button" onClick={removerFoto} disabled={enviandoFoto}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white border border-gray-200 shadow flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200">
+                        <X size={11} />
+                      </button>
+                    </div>
                   ) : (
                     <div className="w-14 h-14 rounded-lg bg-gray-100" />
                   )}

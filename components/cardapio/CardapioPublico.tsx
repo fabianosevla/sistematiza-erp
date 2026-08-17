@@ -217,14 +217,18 @@ export default function CardapioPublico({ tenantSlug }: Props) {
         ))}
       </div>
 
-      {totalItens > 0 && !showCarrinho && (
+      {/* Sempre existe, mesmo com carrinho vazio — desabilitado nesse caso.
+          Sem isso, a base da tela ficava vazia até o primeiro item ser
+          escolhido, o que parecia tela quebrada. */}
+      {!showCarrinho && (
         <button
-          onClick={() => setShowCarrinho(true)}
-          className="fixed bottom-4 left-4 right-4 max-w-2xl mx-auto h-12 rounded-xl text-white font-medium flex items-center justify-between px-5 shadow-lg"
-          style={{ backgroundColor: cor }}
+          onClick={() => totalItens > 0 && setShowCarrinho(true)}
+          disabled={totalItens === 0}
+          className="fixed bottom-4 left-4 right-4 max-w-2xl mx-auto h-12 rounded-xl text-white font-medium flex items-center justify-between px-5 shadow-lg disabled:cursor-not-allowed"
+          style={{ backgroundColor: totalItens > 0 ? cor : '#9ca3af' }}
         >
-          <span className="inline-flex items-center gap-2"><ShoppingCart size={16} /> {totalItens} item(ns)</span>
-          <span>{fmt(totalCarrinho)}</span>
+          <span className="inline-flex items-center gap-2"><ShoppingCart size={16} /> {totalItens > 0 ? `${totalItens} item(ns)` : 'Seu carrinho está vazio'}</span>
+          {totalItens > 0 && <span>{fmt(totalCarrinho)}</span>}
         </button>
       )}
 

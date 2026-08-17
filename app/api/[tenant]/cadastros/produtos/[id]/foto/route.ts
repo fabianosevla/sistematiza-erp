@@ -6,7 +6,7 @@
 // Vai para o Vercel Blob porque a Vercel não tem disco persistente: salvar
 // em app/public sumiria no próximo deploy.
 import type { NextRequest } from 'next/server'
-import { put } from '@vercel/blob'
+import { put, del } from '@vercel/blob'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
@@ -42,6 +42,35 @@ export async function POST(req: NextRequest, { params }: Params) {
       const result  = await service.update(Number(params.id), { fotoUrl: blob.url }, uid)
       if ('error' in result) return notFound('Produto não encontrado')
       return ok({ fotoUrl: blob.url })
+    } finally {
+      release()
+    }
+  } catch (err) {
+    return serverError(err)
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    await exigirModulo(tenant.schemaName, 'cadastros')
+    const { db, release } = await getDbForTenant(tenant.schemaName)
+    try {
+      const uid     = await usuarioAtualIdDb(db)
+      const service = new ProdutoService(db)
+      const atual   = await service.findById(Number(params.id))
+      if (!atual) return notFound('Produto não encontrado')
+
+      // Apaga do Blob antes de limpar a coluna — se o del() falhar (ex.:
+      // arquivo já não existe), segue e limpa a coluna do mesmo jeito, pra
+      // não deixar o produto preso numa foto que não existe mais.
+      if (atual.fotoUrl) {
+        await del(atual.fotoUrl).catch(() => {})
+      }
+
+      const result = await service.update(Number(params.id), { fotoUrl: null }, uid)
+      if ('error' in result) return notFound('Produto não encontrado')
+      return ok({ fotoUrl: null })
     } finally {
       release()
     }

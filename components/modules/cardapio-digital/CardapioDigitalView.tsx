@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
-import { Palette, Settings, QrCode as QrCodeIcon, Copy, Printer, Upload, Check } from 'lucide-react'
+import { Palette, Settings, QrCode as QrCodeIcon, Copy, Printer, Upload, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -146,6 +146,22 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
     }
   }
 
+  async function removerBanner() {
+    setEnviandoBanner(true)
+    try {
+      const res  = await fetch(`/api/${tenantSlug}/cardapio/banner`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao remover imagem')
+      set('bannerUrl', null)
+      qc.invalidateQueries({ queryKey: ['cardapio-config', tenantSlug] })
+      toast('Foto de fundo removida!')
+    } catch (e: any) {
+      toast(e?.message ?? 'Não foi possível remover a imagem.', 'error')
+    } finally {
+      setEnviandoBanner(false)
+    }
+  }
+
   if (!local) {
     return <div className="text-center py-12 text-sm text-gray-400">Carregando...</div>
   }
@@ -202,7 +218,13 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
                 </Label>
                 <div className="flex items-center gap-3 mt-2">
                   {local.bannerUrl ? (
-                    <img src={local.bannerUrl} alt="" className="w-24 h-14 rounded-lg object-cover border border-gray-100" />
+                    <div className="relative">
+                      <img src={local.bannerUrl} alt="" className="w-24 h-14 rounded-lg object-cover border border-gray-100" />
+                      <button type="button" onClick={removerBanner} disabled={enviandoBanner}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white border border-gray-200 shadow flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200">
+                        <X size={11} />
+                      </button>
+                    </div>
                   ) : (
                     <div className="w-24 h-14 rounded-lg bg-gray-100" />
                   )}

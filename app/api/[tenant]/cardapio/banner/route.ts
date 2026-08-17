@@ -5,7 +5,7 @@
 // AUTENTICADA, exige admin (é ajuste de layout, mesma régua do resto da
 // tela de Cardápio Digital).
 import type { NextRequest } from 'next/server'
-import { put } from '@vercel/blob'
+import { put, del } from '@vercel/blob'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { exigirAdmin } from '@/lib/auth/permissoes'
 import { pool } from '@/lib/db/connection'
@@ -37,6 +37,30 @@ export async function POST(req: NextRequest, { params }: Params) {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
       await client.query(`UPDATE t_configuracoes_tenant SET cardapio_banner_url = $1`, [blob.url])
       return ok({ bannerUrl: blob.url })
+    } finally {
+      client.release()
+    }
+  } catch (err) {
+    return serverError(err)
+  }
+}
+
+export async function DELETE(req: NextRequest, { params }: Params) {
+  try {
+    const tenant = await resolveTenant(params.tenant)
+    await exigirAdmin(tenant.schemaName)
+    const client = await pool.connect()
+    try {
+      await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+      const atual = await client.query(`SELECT cardapio_banner_url FROM t_configuracoes_tenant LIMIT 1`)
+      const urlAtual = atual.rows[0]?.cardapio_banner_url as string | null
+
+      if (urlAtual) {
+        await del(urlAtual).catch(() => {})
+      }
+
+      await client.query(`UPDATE t_configuracoes_tenant SET cardapio_banner_url = NULL`)
+      return ok({ bannerUrl: null })
     } finally {
       client.release()
     }
