@@ -226,13 +226,13 @@ export async function GET(req: NextRequest, { params }: Params) {
           SELECT vi.produto_id, SUM(vi.quantidade) as qtd
           FROM t_venda_item vi
           JOIN t_venda v ON vi.venda_id = v.venda_id AND v.active_flg = true
-          WHERE vi.produto_id = ANY(${ids})
+          WHERE vi.produto_id = ANY(${ids}::int[])
             AND EXTRACT(MONTH FROM v.vendida_em) = ${mes} AND EXTRACT(YEAR FROM v.vendida_em) = ${ano}
           GROUP BY vi.produto_id
         `)
         const realizadoPorProduto: Record<number, number> = {}
         for (const r of realizadoRes.rows as any[]) realizadoPorProduto[r.produto_id] = Number(r.qtd)
-        const produtosRes = await db.execute(sql`SELECT produto_id, nome FROM t_produto WHERE produto_id = ANY(${ids})`)
+        const produtosRes = await db.execute(sql`SELECT produto_id, nome FROM t_produto WHERE produto_id = ANY(${ids}::int[])`)
         const nomePorProduto: Record<number, string> = {}
         for (const r of produtosRes.rows as any[]) nomePorProduto[r.produto_id] = r.nome
         const lista = metasRows.map(r => ({
