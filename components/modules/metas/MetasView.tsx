@@ -283,11 +283,22 @@ export default function MetasView({ tenantSlug }: Props) {
       {aba === 'simulador' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-sm font-semibold text-gray-700">Produtos e Quantidades</p>
-              <Button size="sm" variant="outline" onClick={() => setSimItens(prev => [...prev, { _key: Date.now().toString(), produtoId: 0, nome: '', quantidade: 1 }])}>
-                <Plus size={13} className="mr-1" /> Produto
-              </Button>
+              <div className="flex items-center gap-1.5">
+                {[5, 10, 15, 20, 25].map(n => (
+                  <Button key={n} size="sm" variant="outline"
+                    onClick={() => setSimItens(prev => [
+                      ...prev,
+                      ...Array.from({ length: n }, (_, i) => ({ _key: `${Date.now()}-${i}`, produtoId: 0, nome: '', quantidade: 1 })),
+                    ])}>
+                    +{n}
+                  </Button>
+                ))}
+                <Button size="sm" variant="outline" onClick={() => setSimItens(prev => [...prev, { _key: Date.now().toString(), produtoId: 0, nome: '', quantidade: 1 }])}>
+                  <Plus size={13} className="mr-1" /> Produto
+                </Button>
+              </div>
             </div>
             <div className="space-y-2.5">
               {simItens.map(item => (
