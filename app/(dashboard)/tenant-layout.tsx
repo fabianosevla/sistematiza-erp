@@ -1,8 +1,6 @@
-import { idLogado } from '@/lib/auth/identidade'
 import { redirect } from 'next/navigation'
-import { eq } from 'drizzle-orm'
-import { pool, getPublicDb } from '@/lib/db/connection'
-import { dbTenant } from '@/lib/db/schemas/public'
+import { pool } from '@/lib/db/connection'
+import { resolveTenant } from '@/lib/auth/tenant'
 import ClientShell from '@/components/layout/ClientShell'
 
 interface Props {
@@ -11,19 +9,20 @@ interface Props {
 }
 
 export default async function TenantLayout({ children, tenantSlug }: Props) {
-  const userId = await idLogado()
-  if (!userId) redirect('/sign-in')
-
-  const { db: publicDb, release: releasePublic } = await getPublicDb()
-  let schemaName = ''
+  // Antes daqui só se conferia "está logado?" + "o slug existe?" — qualquer
+  // usuário autenticado de QUALQUER tenant abria a casca de QUALQUER outro
+  // (nome da empresa, logo, módulos ativos), porque nada checava se ESTE
+  // usuário pertence a ESTE schema. resolveTenant é quem faz essa checagem
+  // de verdade, contra t_usuario do schema pedido — é o mesmo portão que
+  // toda rota de API já usa.
+  let schemaName: string
   try {
-    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, tenantSlug))
-    schemaName = tenant?.schemaName ?? ''
-  } finally {
-    releasePublic()
+    const tenant = await resolveTenant(tenantSlug)
+    schemaName = tenant.schemaName
+  } catch (err: any) {
+    if (err?.message === 'UNAUTHORIZED') redirect('/sign-in')
+    redirect('/onboarding')
   }
-
-  if (!schemaName) redirect('/onboarding')
 
   const client = await pool.connect()
   let cfg: any = null

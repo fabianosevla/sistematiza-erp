@@ -83,6 +83,10 @@ function diasAtras(n, hora = 12, minuto = 0) {
   return d
 }
 const soData = (d) => d.toISOString().slice(0, 10)
+function mesAno(deltaMeses) {
+  const d = new Date(HOJE.getFullYear(), HOJE.getMonth() - deltaMeses, 1)
+  return { mes: d.getMonth() + 1, ano: d.getFullYear() }
+}
 
 // ─── Camada de insercao com inspecao de colunas ─────────────────────────────
 
@@ -341,7 +345,13 @@ async function main() {
     console.log(`  ~1.000 vendas de balcao nos ultimos 60 dias (~R$ 170 mil), com itens e pagamentos`)
     console.log(`  ~30 pedidos de atacado, com contas a receber abertas e quitadas`)
     console.log(`  contas a pagar, despesas e 15 turnos de caixa fechados`)
-    console.log(`  producao planejada e concluida das ultimas 8 semanas\n`)
+    console.log(`  producao planejada e concluida das ultimas 8 semanas`)
+    console.log(`  metas dos ultimos 3 meses (receita/despesa/lucro) e metas por produto do mes atual`)
+    console.log(`  plano de acao com itens pendentes, em andamento e concluidos`)
+    console.log(`  compras de insumo dos ultimos 45 dias, pagas e em aberto`)
+    console.log(`  cardapio digital com mensagem, cor e whatsapp ja preenchidos (falta so a foto)`)
+    console.log(`  fidelidade: programa de cashback configurado e extrato de alguns clientes`)
+    console.log(`  6 comandas (2 abertas, 4 fechadas), 5 perdas de estoque, 1 contagem de inventario concluida\n`)
     console.log(`  Tempo estimado: 1 a 3 minutos.\n`)
 
     if (!APLICAR) {
@@ -361,6 +371,9 @@ async function main() {
           't_nota_fiscal_item','t_nota_fiscal','t_conta_receber','t_conta_pagar','t_despesa',
           't_movimentacao_estoque','t_compra_item','t_compra','t_compra_insumo',
           't_producao_registro','t_producao_grade','t_producao_semanal',
+          't_meta_produto','t_meta','t_plano_acao',
+          't_fidelidade_movimento','t_fidelidade_aviso','t_fidelidade_config',
+          't_contagem_inventario_item','t_contagem_inventario','t_perda_estoque',
           't_produto_insumo','t_cliente_produto','t_insumo_fornecedor',
           't_produto','t_insumo','t_cliente','t_fornecedor','t_perfil_tributario',
         ]
@@ -392,6 +405,14 @@ async function main() {
         contagem_inventario_ativo: true, perda_produto_ativo: true,
         entrada_nfe_ativo: true, multiplos_locais_ativo: false,
         metas_ativo: true, fidelidade_ativo: true, plano_acao_ativo: true,
+        // Cardapio Digital — sem isso a tela fica com os campos em branco
+        // nas capturas de tela (o valor so aparece depois que alguem preenche
+        // manualmente pela tela de Configuracoes do cardapio).
+        cardapio_mensagem_boas_vindas: 'Bem-vindo(a) a Bela Vista! Faca seu pedido e retire no balcao ou receba em casa.',
+        cardapio_cor_destaque: '#2ecc71',
+        cardapio_whatsapp: '(35) 99876-5432',
+        cardapio_layout: 'grade',
+        cardapio_permite_entrega: true, cardapio_permite_balcao: true,
       }
       const setPares = []
       const setVals  = []
@@ -782,6 +803,205 @@ async function main() {
           }); nMov++
         }
         console.log(`  ${nMov} movimentacoes de estoque`)
+      }
+
+      // ── Metas (receita/despesa/lucro por mes) ───────────────────────────
+      // Sem isso a tela de Metas — o carro-chefe do sistema — aparece vazia:
+      // metas_ativo liga o menu, mas ninguem digitou um alvo ainda.
+      let nMeta = 0
+      if (await existeTabela(c, SCHEMA, 't_meta')) {
+        for (let k = 2; k >= 0; k--) {
+          const { mes, ano } = mesAno(k)
+          const metaReceita = inteiro(72000, 88000) * 100
+          const metaDespesaMaxima = inteiro(46000, 56000) * 100
+          const metaLucro = metaReceita - metaDespesaMaxima - inteiro(3000, 9000) * 100
+          await ins('t_meta', { mes, ano, meta_receita: metaReceita, meta_despesa_maxima: metaDespesaMaxima, meta_lucro: metaLucro })
+          nMeta++
+        }
+        console.log(`  ${nMeta} metas mensais (receita/despesa/lucro)`)
+      }
+
+      // ── Metas por produto (mes atual) ────────────────────────────────────
+      let nMetaProduto = 0
+      if (await existeTabela(c, SCHEMA, 't_meta_produto')) {
+        const { mes, ano } = mesAno(0)
+        for (let k = 0; k < Math.min(6, FABRICADOS.length); k++) {
+          await ins('t_meta_produto', {
+            mes, ano, produto_id: produtoIds[k],
+            quantidade_meta: Math.round(FABRICADOS[k].est * 1.6),
+          })
+          nMetaProduto++
+        }
+        console.log(`  ${nMetaProduto} metas por produto`)
+      }
+
+      // ── Plano de acao ─────────────────────────────────────────────────
+      let nAcao = 0
+      if (await existeTabela(c, SCHEMA, 't_plano_acao')) {
+        const ACOES = [
+          { id: 'Estoque baixo de chocolate em po',   acao: 'Fazer pedido emergencial ao fornecedor Comercial Tres Irmaos antes que falte na producao do brownie.', resp: 'Producao', dias: 1, status: 'pendente' },
+          { id: 'Turno de caixa com diferenca',        acao: 'Conferir sangrias do turno com diferenca negativa e treinar operador na contagem de fechamento.',       resp: dono.rows[0].nome, dias: 4, status: 'em_andamento' },
+          { id: 'Cliente atacado em atraso',            acao: 'Ligar para Rede Super Economico sobre a parcela vencida e negociar novo prazo.',                       resp: 'Financeiro', dias: 6, status: 'em_andamento' },
+          { id: 'Cardapio digital sem foto de capa',    acao: 'Fotografar os produtos e subir o banner do cardapio digital.',                                        resp: 'Marketing', dias: 10, status: 'concluida' },
+          { id: 'Meta de producao da rosca de goiabada',acao: 'Aumentar a grade semanal em 20% para acompanhar a demanda de fim de semana.',                          resp: 'Producao', dias: 12, status: 'concluida' },
+          { id: 'Revisar precos de atacado',            acao: 'Recalcular a tabela atacado B considerando o novo custo da manteiga.',                                resp: 'Financeiro', dias: 20, status: 'pendente' },
+        ]
+        for (const a of ACOES) {
+          const data = diasAtras(a.dias, 9, 0)
+          const concluida = a.status === 'concluida'
+          await ins('t_plano_acao', {
+            data_acao: soData(data), identificacao: a.id, acao: a.acao,
+            responsavel: a.resp, status: a.status,
+            concluido_em: concluida ? diasAtras(Math.max(0, a.dias - 2), 16, 0) : null,
+            __data: data,
+          })
+          nAcao++
+        }
+        console.log(`  ${nAcao} itens de plano de acao`)
+      }
+
+      // ── Compras (entrada de insumo por fornecedor) ───────────────────────
+      let nCompra = 0
+      if (await existeTabela(c, SCHEMA, 't_compra_insumo')) {
+        for (let d = 45; d >= 0; d -= inteiro(3, 6)) {
+          const idx = inteiro(0, INSUMOS.length - 1)
+          const insumo = INSUMOS[idx]
+          const fornIdx = insumo.forn
+          const data = diasAtras(d, 10, 0)
+          const qtd = inteiro(20, 150)
+          const paga = d > 5
+          await ins('t_compra_insumo', {
+            fornecedor_id: fornIds[fornIdx], insumo_id: insumoIds[idx],
+            nome_fornecedor: FORNECEDORES[fornIdx].fant, nome_insumo: insumo.nome,
+            data_entrada: soData(data), data_pagamento: paga ? soData(diasAtras(Math.max(0, d - 3), 10, 0)) : null,
+            valor_unitario: insumo.custo, quantidade: String(qtd), caixas: 0, qtd_total: String(qtd),
+            quem_pagou: paga ? dono.rows[0].nome : null,
+            status: paga ? 'pago' : 'pendente',
+            __data: data,
+          })
+          nCompra++
+        }
+        console.log(`  ${nCompra} compras de insumo`)
+      }
+
+      // ── Fidelidade (programa de cashback) ────────────────────────────────
+      if (await existeTabela(c, SCHEMA, 't_fidelidade_config')) {
+        const jaTemConfig = await c.query(`SELECT 1 FROM "${SCHEMA}".t_fidelidade_config LIMIT 1`)
+        if (jaTemConfig.rows.length === 0) {
+          await ins('t_fidelidade_config', {
+            programa_ativo: true, cashback_pct_bp: 500, compra_minima_centavos: 2000,
+            validade_dias: 90, limite_uso_pct_bp: 5000, saldo_minimo_uso_centavos: 500,
+            arredondamento: 'centavo', base_calculo: 'liquido',
+            reativacao_ativa: true, dias_inatividade: 30, repetir_aviso: false,
+            intervalo_repeticao_dias: 30, max_avisos: 3, saldo_minimo_aviso_centavos: 500,
+            horario_inicio: 9, horario_fim: 20,
+            mensagem_padrao: 'Voce tem cashback disponivel na Bela Vista! Volte e aproveite.',
+            exige_optin: true,
+          })
+          console.log('  1 configuracao de fidelidade (cashback 5%)')
+        }
+
+        // Extrato: credito em compras antigas de alguns clientes PF, com uso parcial em parte deles
+        let nMovFid = 0
+        if (await existeTabela(c, SCHEMA, 't_fidelidade_movimento')) {
+          const clientesPF = clienteIds.slice(CLIENTES_PJ.length)
+          for (let k = 0; k < Math.min(6, clientesPF.length); k++) {
+            const dataCredito = diasAtras(inteiro(10, 55), 15, 0)
+            const valorCredito = inteiro(300, 1200)
+            await ins('t_fidelidade_movimento', {
+              cliente_id: clientesPF[k], tipo: 'credito', valor_centavos: valorCredito,
+              expira_em: diasAtras(-inteiro(20, 60)), observacao: 'Cashback de compra no balcao',
+              __data: dataCredito,
+            }); nMovFid++
+            if (rnd() > 0.5) {
+              const dataUso = diasAtras(inteiro(1, 9), 15, 0)
+              await ins('t_fidelidade_movimento', {
+                cliente_id: clientesPF[k], tipo: 'uso', valor_centavos: -Math.round(valorCredito * 0.6),
+                observacao: 'Usado em nova compra', __data: dataUso,
+              }); nMovFid++
+            }
+          }
+          console.log(`  ${nMovFid} movimentos de cashback`)
+        }
+      }
+
+      // ── Comandas (atendimento no balcao) ─────────────────────────────────
+      let nComanda = 0
+      if (await existeTabela(c, SCHEMA, 't_comanda')) {
+        for (let k = 0; k < 6; k++) {
+          const aberta = k >= 4
+          const dataAbertura = aberta ? diasAtras(0, 11, 0) : diasAtras(inteiro(1, 5), 12, 0)
+          const nItens = inteiro(1, 4)
+          const itens = []
+          let total = 0
+          for (let i = 0; i < nItens; i++) {
+            const p = escolher(produtoInfo)
+            const qtd = inteiro(1, 3)
+            const sub = p.varejo * qtd
+            itens.push({ p, qtd, sub })
+            total += sub
+          }
+          const comandaId = await ins('t_comanda', {
+            identificacao: `Mesa ${k + 1}`, status: aberta ? 'aberta' : 'fechada',
+            total, aberta_em: dataAbertura, fechada_em: aberta ? null : diasAtras(inteiro(1, 5), 13, 30),
+            __data: dataAbertura,
+          })
+          for (const it of itens) {
+            await ins('t_comanda_item', {
+              comanda_id: comandaId, produto_id: it.p.id, nome_produto: it.p.nome,
+              quantidade: it.qtd, preco_unitario: it.p.varejo, subtotal: it.sub,
+              __data: dataAbertura,
+            })
+          }
+          nComanda++
+        }
+        console.log(`  ${nComanda} comandas (2 abertas, 4 fechadas)`)
+      }
+
+      // ── Perda de estoque ──────────────────────────────────────────────────
+      let nPerda = 0
+      if (await existeTabela(c, SCHEMA, 't_perda_estoque')) {
+        const MOTIVOS = ['vencimento', 'quebra', 'erro_producao', 'contaminacao']
+        for (let k = 0; k < 5; k++) {
+          const usaProduto = rnd() > 0.5
+          const idx = inteiro(0, (usaProduto ? produtoIds.length : insumoIds.length) - 1)
+          const qtd = inteiro(1, 8)
+          const data = diasAtras(inteiro(2, 40), 8, 30)
+          const valorUnit = usaProduto ? produtoInfo[idx].custo : INSUMOS[idx].custo
+          await ins('t_perda_estoque', {
+            entidade: usaProduto ? 'produto' : 'insumo',
+            entidade_id: usaProduto ? produtoIds[idx] : insumoIds[idx],
+            nome_entidade: usaProduto ? produtoInfo[idx].nome : INSUMOS[idx].nome,
+            quantidade: String(qtd), motivo: escolher(MOTIVOS),
+            data_perda: soData(data), valor_estimado: valorUnit * qtd,
+            __data: data,
+          })
+          nPerda++
+        }
+        console.log(`  ${nPerda} registros de perda de estoque`)
+      }
+
+      // ── Contagem de inventario ─────────────────────────────────────────────
+      if (await existeTabela(c, SCHEMA, 't_contagem_inventario')) {
+        const dataContagem = diasAtras(6, 8, 0)
+        const contagemId = await ins('t_contagem_inventario', {
+          descricao: 'Contagem mensal de estoque', data_contagem: soData(dataContagem),
+          status: 'concluida', __data: dataContagem,
+        })
+        let nItensContagem = 0
+        if (await existeTabela(c, SCHEMA, 't_contagem_inventario_item')) {
+          for (let k = 0; k < Math.min(8, INSUMOS.length); k++) {
+            const sistema = INSUMOS[k].est
+            const contada = Math.max(0, sistema + inteiro(-4, 4))
+            await ins('t_contagem_inventario_item', {
+              contagem_id: contagemId, entidade: 'insumo', entidade_id: insumoIds[k],
+              nome_entidade: INSUMOS[k].nome, quantidade_sistema: String(sistema),
+              quantidade_contada: String(contada), diferenca: String(contada - sistema),
+              __data: dataContagem,
+            }); nItensContagem++
+          }
+        }
+        console.log(`  1 contagem de inventario concluida, ${nItensContagem} itens`)
       }
 
       await c.query('COMMIT')

@@ -3,9 +3,9 @@
 // ════════════════════════════════════════════════════════════════════════
 import { idLogado } from '@/lib/auth/identidade'
 import { redirect } from 'next/navigation'
-import { getDbForTenant, getPublicDb } from '@/lib/db/connection'
-import { dbTenant } from '@/lib/db/schemas/public'
-import { eq, sql } from 'drizzle-orm'
+import { getDbForTenant } from '@/lib/db/connection'
+import { resolveTenant } from '@/lib/auth/tenant'
+import { sql } from 'drizzle-orm'
 import { PerfisService } from '@/lib/services/perfis/PerfisService'
 import PdvShell from './PdvShell'
 
@@ -15,14 +15,15 @@ export default async function PdvPage({ params }: Props) {
   const userId = await idLogado()
   if (!userId) redirect('/sign-in')
 
-  const { db: publicDb, release: releasePublic } = await getPublicDb()
-  let schemaName = ''
+  // resolveTenant, não só "o slug existe" — confere se ESTE usuário está
+  // cadastrado em t_usuario deste schema, mesma checagem do tenant-layout.
+  let schemaName: string
   try {
-    const [tenant] = await publicDb.select().from(dbTenant).where(eq(dbTenant.slug, params.tenant))
-    schemaName = tenant?.schemaName ?? ''
-  } finally { releasePublic() }
-
-  if (!schemaName) redirect('/onboarding')
+    const tenant = await resolveTenant(params.tenant)
+    schemaName = tenant.schemaName
+  } catch {
+    redirect('/onboarding')
+  }
 
   const { db, release } = await getDbForTenant(schemaName)
   try {
