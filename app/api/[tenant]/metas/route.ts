@@ -9,6 +9,10 @@ import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { dbMeta, dbMetaProduto } from '@/lib/db/schemas/metas'
 import { ok, serverError } from '@/lib/api/responses'
 
+// GET desta rota muda de resultado a cada salvar (meta, meta por produto,
+// evolução) — nunca pode ser servida de cache.
+export const dynamic = 'force-dynamic'
+
 type Params = { params: { tenant: string } }
 
 /**
