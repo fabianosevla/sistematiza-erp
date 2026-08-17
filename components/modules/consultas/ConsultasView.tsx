@@ -608,6 +608,20 @@ export default function ConsultasView({ tenantSlug }: Props) {
     'despesas':         'Nenhuma despesa neste período.',
   }
 
+  // Com filtro de coluna ativo, os cartões de cima passam a somar só o que
+  // está filtrado — antes eles sempre mostravam o total do período inteiro,
+  // mesmo com a tabela já filtrada por um produto só, o que confundia (a
+  // tabela mostrava "Conchiglioni" mas o cartão continuava com o total dos
+  // 31 produtos do mês).
+  const kpisVendasProduto = (temFiltro && aba === 'vendas-produto')
+    ? {
+        quantidade:  itens.length,
+        produtos:    new Set(itens.map((i: any) => i.produtoId)).size,
+        unidades:    itens.reduce((a: number, i: any) => a + Number(i.quantidade || 0), 0),
+        totalVendido: itens.reduce((a: number, i: any) => a + Number(i.total || 0), 0),
+      }
+    : kpis
+
   const cartoes = aba === 'dre'
     ? [
         { rotulo: 'Receita bruta',   valor: fmt(dre?.receita ?? 0) },
@@ -624,10 +638,10 @@ export default function ConsultasView({ tenantSlug }: Props) {
       ]
     : aba === 'vendas-produto'
     ? [
-        { rotulo: 'Linhas',        valor: String(kpis.quantidade ?? 0) },
-        { rotulo: 'Produtos',      valor: String(kpis.produtos ?? 0) },
-        { rotulo: 'Unidades',      valor: fmtQtd(kpis.unidades ?? 0) },
-        { rotulo: 'Total vendido', valor: fmt(kpis.totalVendido ?? 0) },
+        { rotulo: temFiltro ? 'Linhas (filtro)' : 'Linhas', valor: String(kpisVendasProduto.quantidade ?? 0) },
+        { rotulo: 'Produtos',      valor: String(kpisVendasProduto.produtos ?? 0) },
+        { rotulo: temFiltro ? 'Unidades (filtro)' : 'Unidades', valor: fmtQtd(kpisVendasProduto.unidades ?? 0) },
+        { rotulo: temFiltro ? 'Total vendido (filtro)' : 'Total vendido', valor: fmt(kpisVendasProduto.totalVendido ?? 0) },
       ]
     : aba !== 'despesas'
     ? [

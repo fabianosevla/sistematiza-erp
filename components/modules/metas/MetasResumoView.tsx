@@ -53,7 +53,7 @@ export default function MetasResumoView({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`${api}?mes=${mes}&ano=${ano}`)).json(),
   })
 
-  const { data: metaProdutosRaw, isLoading: carregandoMetaProdutos, isError: erroMetaProdutos } = useQuery({
+  const { data: metaProdutosRaw, isLoading: carregandoMetaProdutos, isError: erroMetaProdutos, error: erroMetaProdutosObj } = useQuery({
     queryKey: ['meta-produtos', tenantSlug, mes, ano],
     queryFn:  async () => {
       const res = await fetch(`${api}?tipo=metaProdutos&mes=${mes}&ano=${ano}`)
@@ -152,7 +152,9 @@ export default function MetasResumoView({ tenantSlug }: Props) {
           {carregandoMetaProdutos ? (
             <p className="text-sm text-gray-400">Carregando...</p>
           ) : erroMetaProdutos ? (
-            <p className="text-sm text-red-500">Não foi possível carregar as metas por produto.</p>
+            <p className="text-sm text-red-500">
+              Não foi possível carregar as metas por produto: {(erroMetaProdutosObj as any)?.message ?? 'erro desconhecido'}
+            </p>
           ) : metaProdutos.length === 0 ? (
             <p className="text-sm text-gray-400">Nenhuma meta por produto definida para {mes}/{ano}.</p>
           ) : (
