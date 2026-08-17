@@ -6,7 +6,7 @@ import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
-import { dbMeta, dbMetaProduto } from '@/lib/db/schemas/metas'
+import { dbMeta } from '@/lib/db/schemas/metas'
 import { ok, serverError } from '@/lib/api/responses'
 
 // GET desta rota muda de resultado a cada salvar (meta, meta por produto,
@@ -215,34 +215,46 @@ export async function GET(req: NextRequest, { params }: Params) {
     }
 
     if (tipo === 'metaProdutos') {
-      const { db, release } = await getDbForTenant(tenant.schemaName)
+      // Raw pool + $1/$2, igual ao resto do arquivo (previsao, configuracoes)
+      // — de propósito, não o sql`` do Drizzle. Testado manualmente contra o
+      // banco: ANY($1) com array JS funciona liso por aqui; via sql`` o
+      // Drizzle expande array em lista de parâmetros (vira ROW, não array),
+      // e quebrou duas vezes em produção com esse exato bloco.
+      const client = await pool.connect()
       try {
-        const metasRows = await db.select().from(dbMetaProduto).where(
-          and(eq(dbMetaProduto.mes, mes), eq(dbMetaProduto.ano, ano), eq(dbMetaProduto.activeFlag, true))
+        await client.query(`SET search_path TO "${tenant.schemaName}", public`)
+        const metasRes = await client.query(
+          `SELECT meta_produto_id, produto_id, quantidade_meta FROM t_meta_produto
+            WHERE mes = $1 AND ano = $2 AND active_flg = true`,
+          [mes, ano]
         )
-        if (metasRows.length === 0) return ok([])
-        const ids = metasRows.map(r => r.produtoId)
-        const realizadoRes = await db.execute(sql`
-          SELECT vi.produto_id, SUM(vi.quantidade) as qtd
-          FROM t_venda_item vi
-          JOIN t_venda v ON vi.venda_id = v.venda_id AND v.active_flg = true
-          WHERE vi.produto_id IN (${ids})
-            AND EXTRACT(MONTH FROM v.vendida_em) = ${mes} AND EXTRACT(YEAR FROM v.vendida_em) = ${ano}
-          GROUP BY vi.produto_id
-        `)
+        if (metasRes.rows.length === 0) return ok([])
+        const ids = metasRes.rows.map((r: any) => r.produto_id)
+        const realizadoRes = await client.query(
+          `SELECT vi.produto_id, SUM(vi.quantidade) as qtd
+             FROM t_venda_item vi
+             JOIN t_venda v ON vi.venda_id = v.venda_id AND v.active_flg = true
+            WHERE vi.produto_id = ANY($1)
+              AND EXTRACT(MONTH FROM v.vendida_em) = $2 AND EXTRACT(YEAR FROM v.vendida_em) = $3
+            GROUP BY vi.produto_id`,
+          [ids, mes, ano]
+        )
         const realizadoPorProduto: Record<number, number> = {}
-        for (const r of realizadoRes.rows as any[]) realizadoPorProduto[r.produto_id] = Number(r.qtd)
-        const produtosRes = await db.execute(sql`SELECT produto_id, nome FROM t_produto WHERE produto_id IN (${ids})`)
+        for (const r of realizadoRes.rows) realizadoPorProduto[r.produto_id] = Number(r.qtd)
+        const produtosRes = await client.query(
+          `SELECT produto_id, nome FROM t_produto WHERE produto_id = ANY($1)`,
+          [ids]
+        )
         const nomePorProduto: Record<number, string> = {}
-        for (const r of produtosRes.rows as any[]) nomePorProduto[r.produto_id] = r.nome
-        const lista = metasRows.map(r => ({
-          produtoId:      r.produtoId,
-          nome:           nomePorProduto[r.produtoId] ?? '(produto removido)',
-          quantidadeMeta: r.quantidadeMeta,
-          realizado:      realizadoPorProduto[r.produtoId] ?? 0,
+        for (const r of produtosRes.rows) nomePorProduto[r.produto_id] = r.nome
+        const lista = metasRes.rows.map((r: any) => ({
+          produtoId:      r.produto_id,
+          nome:           nomePorProduto[r.produto_id] ?? '(produto removido)',
+          quantidadeMeta: r.quantidade_meta,
+          realizado:      realizadoPorProduto[r.produto_id] ?? 0,
         }))
         return ok(lista)
-      } finally { release() }
+      } finally { client.release() }
     }
 
     const { db, release } = await getDbForTenant(tenant.schemaName)
