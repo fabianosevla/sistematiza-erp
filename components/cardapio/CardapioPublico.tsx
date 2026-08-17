@@ -130,14 +130,15 @@ export default function CardapioPublico({ tenantSlug }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* CABEÇALHO — o layout "Capa" usa a foto de fundo como hero; os outros
-          três ficam no cabeçalho branco simples de sempre. */}
-      {tipoLayout === 'capa' && layout.bannerUrl ? (
-        <header className="relative text-center px-4 py-10" style={{ backgroundColor: '#111' }}>
+      {/* CABEÇALHO — a foto de fundo (quando tem) aparece nos 4 layouts; só o
+          tamanho muda: bem grande na "Capa", mais discreta nos outros três.
+          Sem foto de fundo, cai no cabeçalho branco simples de sempre. */}
+      {layout.bannerUrl ? (
+        <header className={`relative text-center px-4 ${tipoLayout === 'capa' ? 'py-10' : 'py-6'}`} style={{ backgroundColor: '#111' }}>
           <img src={layout.bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-60" />
           <div className="relative">
-            {empresa.logoUrl && <img src={empresa.logoUrl} alt="" className="h-14 mx-auto mb-2 object-contain bg-white rounded-lg p-1" />}
-            <h1 className="text-xl font-bold text-white drop-shadow">{empresa.nome}</h1>
+            {empresa.logoUrl && <img src={empresa.logoUrl} alt="" className={`mx-auto mb-2 object-contain bg-white rounded-lg p-1 ${tipoLayout === 'capa' ? 'h-14' : 'h-11'}`} />}
+            <h1 className={`font-bold text-white drop-shadow ${tipoLayout === 'capa' ? 'text-xl' : 'text-lg'}`}>{empresa.nome}</h1>
             {layout.mensagemBoasVindas && <p className="text-sm text-white/90 mt-1 drop-shadow">{layout.mensagemBoasVindas}</p>}
             {empresa.telefone && <p className="text-xs text-white/70 mt-1">{empresa.telefone}</p>}
           </div>
