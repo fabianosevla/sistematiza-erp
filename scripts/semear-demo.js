@@ -149,14 +149,23 @@ async function inserir(c, schema, tabela, dados, usuarioId = 1) {
   for (const [col, val] of Object.entries(auditoria)) {
     if (cols.has(col) && !(col in dados)) push(col, val)
   }
+
+  // Descobre a chave primaria antes do preenchimento neutro — ela nunca pode
+  // ser tratada como "obrigatoria sem default". Coluna IDENTITY (o padrao do
+  // tenant_modelo, ver criar-schema-modelo.js) nao aparece com valor em
+  // information_schema.columns.column_default como o serial antigo aparece;
+  // sem esta exclusao, toda tabela com IDENTITY tinha a chave primaria
+  // preenchida com 0 em vez de gerada — a segunda linha inserida em qualquer
+  // tabela colidia com a primeira (chave duplicada).
+  const pk = await pkDe(c, schema, tabela)
+
   // Colunas obrigatorias que ninguem preencheu recebem valor neutro
   for (const [col, meta] of cols) {
+    if (col === pk) continue
     if (nomes.includes(`"${col}"`)) continue
     if (meta.is_nullable === 'NO' && !meta.column_default) push(col, neutro(meta.data_type))
   }
 
-  // Descobre a chave primaria para devolver o id
-  const pk = await pkDe(c, schema, tabela)
   const ph = vals.map((_, i) => `$${i + 1}`).join(', ')
   const sql = `INSERT INTO "${schema}"."${tabela}" (${nomes.join(', ')}) VALUES (${ph})`
              + (pk ? ` RETURNING "${pk}"` : '')
