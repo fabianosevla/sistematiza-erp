@@ -226,7 +226,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           SELECT vi.produto_id, SUM(vi.quantidade) as qtd
           FROM t_venda_item vi
           JOIN t_venda v ON vi.venda_id = v.venda_id AND v.active_flg = true
-          WHERE vi.produto_id = ANY(${ids}::int[])
+          WHERE vi.produto_id IN (${ids})
             AND EXTRACT(MONTH FROM v.vendida_em) = ${mes} AND EXTRACT(YEAR FROM v.vendida_em) = ${ano}
           GROUP BY vi.produto_id
         `)

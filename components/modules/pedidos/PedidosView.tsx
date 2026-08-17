@@ -67,8 +67,11 @@ const FLUXO: Record<string, { next: string; label: string; btnLabel: string; col
   cancelado: { next: '',         label: 'Cancelado',   btnLabel: '', color: 'bg-red-100 text-red-600' },
 }
 
-// Status em que o pedido ainda pode ser EDITADO (estoque ainda não movimentado)
-const STATUS_EDITAVEIS = ['pendente', 'producao']
+// Status em que o pedido ainda pode ser EDITADO — bate com o back-end
+// (app/api/[tenant]/pedidos/[id]/route.ts), que só bloqueia "entregue" e
+// "cancelado": é a entrega que move estoque e gera a conta a receber, então
+// até "pronto" ainda dá pra corrigir data, itens etc. sem sujar nada.
+const STATUS_EDITAVEIS = ['pendente', 'producao', 'pronto']
 
 const PERIODOS = [
   { value: 'mes',      label: 'Este mês' },
