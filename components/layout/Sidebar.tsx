@@ -91,7 +91,15 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     // registro, é a receita que liga produto a insumo e alimenta produção,
     // custo e margem. Escondida num submenu, ninguém achava.
     { label: 'Fichas Técnicas', href: '/cadastros/ficha-tecnica', icon: BookOpen },
-    ...(config.metasAtivo     ? [{ label: 'Metas & Simulador', href: '/metas',      icon: Target }]        : []),
+    ...(config.metasAtivo ? [{
+      label: 'Metas & Simulador', icon: Target,
+      children: [
+        { label: 'Metas',                href: '/metas' },
+        { label: 'Simulador',            href: '/metas/simulador' },
+        { label: 'Previsão de Produção', href: '/metas/previsao' },
+        { label: 'Evolução',             href: '/metas/evolucao' },
+      ],
+    }] : []),
     ...(config.cardapioAtivo  ? [{ label: 'Cardápio Digital',  href: '/cardapio-digital', icon: QrCode }]  : []),
     ...(config.consultasAtivo ? [{ label: 'Consultas',         href: '/consultas',  icon: Search }]         : []),
     ...(config.pedidosAtivo   ? [{ label: 'Pedidos',           href: '/pedidos',    icon: ClipboardList }]  : []),
