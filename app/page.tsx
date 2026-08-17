@@ -13,7 +13,9 @@ export default async function Home() {
   // que atende dois clientes também.
   const empresas = email ? await tenantsDoUsuarioPorEmail(email) : []
 
-  // Nenhuma: é cliente novo, vai criar a própria empresa.
+  // Nenhuma: conta sem tenant vinculado. Não cria empresa sozinha — quem
+  // provisiona é o Fabiano (ver docs/provisionamento.md). /onboarding aqui é
+  // só uma tela informativa, não um formulário de criação.
   if (empresas.length === 0) redirect('/onboarding')
 
   // Uma só: entra direto. É o caso de praticamente todo usuário, e mostrar uma
