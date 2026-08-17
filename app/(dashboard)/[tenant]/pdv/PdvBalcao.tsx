@@ -429,6 +429,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       setValorRecebido('')
       setClienteId('')
       setClienteNomeDisplay('')
+      setNomeAvulso('')
       setTabelaPreco('varejo')
       setBuscaCliente('')
       setVendedor('')
