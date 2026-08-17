@@ -834,6 +834,14 @@ export default function PedidosView({ tenantSlug }: Props) {
                     <p className="text-sm font-semibold">{fmt(item.subtotal)}</p>
                   </div>
                 ))}
+                <div className="flex justify-between pt-2 mt-1 border-t border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700">
+                    Total — {(detalhe.itens ?? []).reduce((a: number, i: any) => a + Number(i.quantidade ?? 0), 0)} un
+                  </p>
+                  <p className="text-sm font-bold text-gray-900">
+                    {fmt((detalhe.itens ?? []).reduce((a: number, i: any) => a + Number(i.subtotal ?? 0), 0))}
+                  </p>
+                </div>
               </div>
 
               {detalhe.observacao && (
