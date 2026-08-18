@@ -101,8 +101,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     await exigirModulo(tenant.schemaName, 'pedidos')
-    const { status } = await req.json()
+    const { status, totalParcelas: totalParcelasRaw } = await req.json()
     if (!status) return badRequest('Status é obrigatório')
+    // Venda a prazo parcelada (PDV "A Prazo" ou pedido normal com acordo de
+    // parcelamento): divide a conta a receber gerada na entrega em N parcelas
+    // mensais, em vez de uma só. Sem parcelas informadas, comportamento igual
+    // a antes.
+    const totalParcelas = Math.max(1, Number(totalParcelasRaw) || 1)
 
     const VALIDOS = ['pendente', 'producao', 'pronto', 'entregue', 'cancelado']
     if (!VALIDOS.includes(status)) return badRequest(`Status inválido: ${status}`)
@@ -251,32 +256,51 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         //    onde a taxa de cartão aparece — e é lá que a venda vai nascer.
         //    data_entrega registra quando a mercadoria saiu, que é diferente do
         //    vencimento e do recebimento.
-        await client.query(`
-          INSERT INTO t_conta_receber (
-            descricao, cliente_id, nome_cliente, categoria, numero_documento,
-            valor_base, desconto, acrescimo,
-            valor_original, valor_recebido, data_emissao, data_vencimento, data_entrega,
-            status, observacao, origem, origem_id, parcela_atual, total_parcelas,
-            created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
-          ) VALUES (
-            $1, $2, $3, 'Venda', $4,
-            $5, 0, 0,
-            $5, 0, $6, $7, $8,
-            'aberta', $9, 'pedido', $10, 1, 1,
-            1, 1, NOW(), NOW(), true, 0
-          )
-        `, [
-          `Pedido #${pedidoId}${nomeCliente ? ' — ' + nomeCliente : ''}`,
-          pedido.cliente_id,
-          nomeCliente,
-          `PED-${pedidoId}`,
-          total,
-          hoje,
-          venc,
-          hoje,
-          `Gerada na entrega do pedido #${pedidoId}.`,
-          pedidoId,
-        ])
+        //
+        //    totalParcelas > 1 divide o valor em N contas, uma por mês a partir
+        //    do vencimento — mesmo cálculo do ContasReceberService.criar(), pra
+        //    não ter dois jeitos diferentes de parcelar dentro do sistema.
+        let primeiraContaId: number | null = null
+        for (let i = 0; i < totalParcelas; i++) {
+          const dtVenc = new Date(venc)
+          dtVenc.setMonth(dtVenc.getMonth() + i)
+          const vencParcela = dtVenc.toISOString().slice(0, 10)
+          const valorParcela = Math.round(total / totalParcelas)
+          const descParcela = totalParcelas > 1
+            ? `Pedido #${pedidoId}${nomeCliente ? ' — ' + nomeCliente : ''} (${i + 1}/${totalParcelas})`
+            : `Pedido #${pedidoId}${nomeCliente ? ' — ' + nomeCliente : ''}`
+
+          const contaRes = await client.query(`
+            INSERT INTO t_conta_receber (
+              descricao, cliente_id, nome_cliente, categoria, numero_documento,
+              valor_base, desconto, acrescimo,
+              valor_original, valor_recebido, data_emissao, data_vencimento, data_entrega,
+              status, observacao, origem, origem_id, parcela_atual, total_parcelas, conta_pai_id,
+              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
+            ) VALUES (
+              $1, $2, $3, 'Venda', $4,
+              $5, 0, 0,
+              $5, 0, $6, $7, $8,
+              'aberta', $9, 'pedido', $10, $11, $12, $13,
+              1, 1, NOW(), NOW(), true, 0
+            ) RETURNING conta_receber_id
+          `, [
+            descParcela,
+            pedido.cliente_id,
+            nomeCliente,
+            `PED-${pedidoId}`,
+            valorParcela,
+            hoje,
+            vencParcela,
+            hoje,
+            `Gerada na entrega do pedido #${pedidoId}.`,
+            pedidoId,
+            i + 1,
+            totalParcelas,
+            i > 0 ? primeiraContaId : null,
+          ])
+          if (i === 0) primeiraContaId = contaRes.rows[0].conta_receber_id
+        }
 
         await client.query('COMMIT')
 
@@ -339,15 +363,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ? (notaId ? ' Nota fiscal gerada — emita no módulo Fiscal.' : ' A nota não pôde ser gerada; verifique o módulo Fiscal.')
           : ''
 
+        const msgConta = totalParcelas > 1
+          ? `Conta a receber criada em ${totalParcelas}x, primeira parcela vencendo em ${venc.split('-').reverse().join('/')}.`
+          : `Conta a receber criada com vencimento em ${venc.split('-').reverse().join('/')}.`
+
         return ok({
           ok: true,
           status: 'entregue',
           pedidoId,
           total,
+          totalParcelas,
           notaId,
           vencimento: venc,
           insuficientes,
-          message: `Entrega confirmada. Conta a receber criada com vencimento em ${venc.split('-').reverse().join('/')}.${avisoNota}${aviso}`,
+          message: `Entrega confirmada. ${msgConta}${avisoNota}${aviso}`,
         })
       } catch (err) {
         await client.query('ROLLBACK')

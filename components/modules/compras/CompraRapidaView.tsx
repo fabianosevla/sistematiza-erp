@@ -215,6 +215,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['consultas', tenantSlug] })
       limparFormulario()
+      setPainel(false)
       const gerou = d?.data?.contaPagarId ? 'conta a pagar' : 'despesa'
       toast(`Compra registrada — estoque atualizado e ${gerou} lançada.`)
     },

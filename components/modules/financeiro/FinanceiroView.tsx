@@ -221,12 +221,11 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     onSuccess: (d: any) => {
       inv()
       const criando = !editDespesa
-      // O painel NAO fecha ao salvar — quem fecha e o operador, no X.
-      // Depois de lancar, passa a editar a despesa recem-criada: senao um
-      // segundo clique em Salvar lancaria a mesma despesa de novo.
+      // Cadastrar fecha o painel (pedido de QA #95). Editar continua aberto —
+      // ali o operador provavelmente vai ajustar mais de um campo.
       if (criando) {
-        const novoId = d?.data?.despesaId ?? d?.despesaId
-        if (novoId) setEditDespesa({ despesaId: novoId, nome: despForm.nome })
+        setShowDespesa(false)
+        setEditDespesa(null)
       }
       toast(criando ? 'Despesa lancada!' : 'Despesa atualizada!')
     },

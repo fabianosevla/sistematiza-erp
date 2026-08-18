@@ -113,6 +113,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [desconto, setDesconto]           = useState('0')
   const [acrescimo, setAcrescimo]         = useState('0')
   const [formaPgto, setFormaPgto]         = useState('')
+  const [parcelas, setParcelas]           = useState('2')
   const [valorRecebido, setValorRecebido] = useState('')
   const [confirmLimpar, setConfirmLimpar] = useState(false)
   const [vendaOk, setVendaOk]             = useState(false)
@@ -463,6 +464,80 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     onError: (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
   })
 
+  // VENDA A PRAZO PARCELADA.
+  //
+  // Não inventa um caminho de receita novo: cria um Pedido de balcão já
+  // entregue, na hora. Isso reaproveita 100% do fluxo que já existe e já
+  // roda em produção — baixa de estoque na entrega, e "a venda nasce na
+  // baixa da conta a receber", igual a qualquer pedido. A diferença é só a
+  // origem (PDV em vez da tela de Pedidos) e o número de parcelas.
+  //
+  // Por isso não usa desconto/acréscimo do cabeçalho: o pedido não tem esses
+  // campos, só valorEntrega. O desconto por item continua valendo, embutido
+  // no preço unitário efetivo de cada linha.
+  const venderAPrazoMut = useMutation({
+    mutationFn: async () => {
+      const hoje = new Date().toISOString().slice(0, 10)
+      const resPedido = await fetch(`/api/${tenantSlug}/pedidos`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clienteId:         clienteId ? Number(clienteId) : undefined,
+          nomeClienteAvulso: clienteId ? undefined : (nomeAvulso.trim() || undefined),
+          tipoVenda:  'balcao',
+          dataPedido: hoje,
+          observacao: observacao || undefined,
+          itens: carrinho.map(i => ({
+            produtoId:     i.produtoId,
+            quantidade:    i.quantidade,
+            // Preço unitário efetivo, já líquido do desconto do item — o
+            // pedido não tem uma coluna de desconto por linha separada.
+            precoUnitario: Math.round(i.subtotal / i.quantidade),
+          })),
+        }),
+      })
+      const dPedido = await resPedido.json()
+      if (!resPedido.ok) throw new Error(dPedido.message || 'Erro ao criar o pedido da venda a prazo.')
+      const pedidoId = dPedido?.data?.pedidoId ?? dPedido?.data?.id
+      if (!pedidoId) throw new Error('Pedido criado sem id — não deu para confirmar a entrega.')
+
+      const resEntrega = await fetch(`/api/${tenantSlug}/pedidos/${pedidoId}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'entregue', totalParcelas: Math.max(1, Number(parcelas) || 1) }),
+      })
+      const dEntrega = await resEntrega.json()
+      if (!resEntrega.ok) throw new Error(dEntrega.message || 'Pedido criado, mas a entrega/parcelamento falhou. Confira em Pedidos.')
+      return dEntrega
+    },
+    onSuccess: (d) => {
+      setCarrinho([])
+      setDesconto('0')
+      setAcrescimo('0')
+      setClienteId('')
+      setClienteNomeDisplay('')
+      setNomeAvulso('')
+      setTabelaPreco('varejo')
+      setBuscaCliente('')
+      setVendedor('')
+      setObservacao('')
+      setFormaPgto('')
+      setParcelas('2')
+      setShowExtras(false)
+      setShowCadastrarCliente(false)
+      setPainelAberto(false)
+      setEtapa('itens')
+      setVendaOk(true)
+      setTimeout(() => { setVendaOk(false); searchRef.current?.focus() }, 2000)
+
+      qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
+
+      toast(d?.data?.message || 'Venda a prazo registrada!')
+    },
+    onError: (e: any) => toast(e.message || 'Erro ao registrar venda a prazo.', 'error'),
+  })
+
   // Recalcula o subtotal da linha respeitando o desconto do item
   function recalc(i: ItemCarrinho): ItemCarrinho {
     const bruto = i.quantidade * i.precoUnitario
@@ -615,10 +690,16 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     ? Math.max(0, Math.round(parseFloat(valorRecebido) * 100) - totalAPagar) : 0
 
   const enderecoOk = !isDelivery || enderecoEntrega.trim().length > 0
+  // A prazo vira Pedido, e Pedido exige saber pra quem vende — cliente
+  // cadastrado ou, no mínimo, um nome avulso. Sem isso a conta a receber
+  // nasceria sem ninguém pra cobrar.
+  const isAPrazo = formaPgto === 'A Prazo'
+  const clienteObrigatorioOk = !isAPrazo || !!(clienteId || nomeAvulso.trim())
   // Caixa fechado bloqueia a venda — é o ponto do controle de turno. Sem esta
   // linha o turno seria enfeite: abriria, fecharia, e as vendas aconteceriam
   // do mesmo jeito, que era exatamente a situação de antes.
-  const podeVender = carrinho.length > 0 && !venderMut.isPending && enderecoOk && !caixaTravado
+  const podeVender = carrinho.length > 0 && !venderMut.isPending && !venderAPrazoMut.isPending
+    && enderecoOk && !caixaTravado && clienteObrigatorioOk
   const qtdItens = carrinho.reduce((a, i) => a + i.quantidade, 0)
 
   function abrirPainel(destino: EtapaPainel = 'itens') {
@@ -1178,7 +1259,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   disabled={!podeVender}
                   className="h-11 px-6"
                 >
-                  {venderMut.isPending
+                  {(venderMut.isPending || venderAPrazoMut.isPending)
                     ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
                     : <><CheckCircle size={16} className="mr-2" /> Finalizar — {fmt(totalAPagar)} <span className="ml-2 text-xs font-normal opacity-70">(F10)</span></>
                   }
@@ -1512,8 +1593,28 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).map((f: string) => (
                     <option key={f} value={f}>{f}</option>
                   ))}
+                  <option value="A Prazo">A Prazo (parcelado)</option>
                 </select>
               </div>
+
+              {isAPrazo && (
+                <div className="space-y-2">
+                  <div>
+                    <Label className="text-xs">Parcelas</Label>
+                    <select value={parcelas} onChange={e => setParcelas(e.target.value)}
+                      className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      {Array.from({ length: 11 }, (_, i) => i + 2).map(n => (
+                        <option key={n} value={n}>{n}x de {fmt(Math.round(totalAPagar / n))}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {!clienteObrigatorioOk && (
+                    <p className="text-[11px] font-medium text-red-600">
+                      Venda a prazo precisa de cliente — selecione um cadastrado ou informe o nome avulso.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {(formaPgto === 'Dinheiro' || formaPgto === 'dinheiro') && (
                 <div>
@@ -1697,7 +1798,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             )}
             <div className="flex justify-center gap-3 mt-5">
               <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
-              <Button className="w-24" onClick={() => { setConfirmVenda(false); venderMut.mutate() }}>Sim</Button>
+              <Button className="w-24" onClick={() => { setConfirmVenda(false); isAPrazo ? venderAPrazoMut.mutate() : venderMut.mutate() }}>Sim</Button>
             </div>
           </div>
         </div>
