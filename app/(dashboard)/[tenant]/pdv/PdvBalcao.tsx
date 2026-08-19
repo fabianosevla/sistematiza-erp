@@ -321,8 +321,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         // Mesma montagem de selecionarCliente: quem acabou de digitar o
         // endereço não deve digitar de novo no campo de entrega.
         const doCadastro = enderecoDoCadastro({
-          endereco: novoCli.endereco.trim(), numero: novoCli.numero.trim(),
-          cidade:   novoCli.cidade.trim(),   uf:     novoCli.uf.trim().toUpperCase(),
+          endereco:    novoCli.endereco.trim(),
+          numero:      novoCli.numero.trim(),
+          complemento: novoCli.complemento.trim(),
+          bairro:      novoCli.bairro.trim(),
+          cidade:      novoCli.cidade.trim(),
+          uf:          novoCli.uf.trim().toUpperCase(),
         })
         setEnderecoCadastro(doCadastro)
         if (doCadastro) setEnderecoEntrega(doCadastro)

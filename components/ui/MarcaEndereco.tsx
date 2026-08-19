@@ -21,12 +21,28 @@ interface Props {
   onRestaurar: (endereco: string) => void
 }
 
-/** Monta o endereço do cliente no formato usado em venda, pedido e PDV. */
+/**
+ * Monta o endereço do cliente no formato usado em venda, pedido e PDV.
+ *
+ * COMPLEMENTO E BAIRRO ENTRAM. Ficavam de fora, e o endereço saía como
+ * "Rua X, 27 — Passos/MG": sem o apartamento, o entregador chega ao prédio e
+ * para. O próprio campo da tela promete "Rua, número, bairro, cidade".
+ *
+ * Cada parte só aparece se existir — cliente sem complemento não ganha vírgula
+ * sobrando.
+ */
 export function enderecoDoCadastro(c: any): string {
   if (!c?.endereco) return ''
-  const numero = c.numero ? `, ${c.numero}` : ''
-  const cidade = c.cidade ? ` — ${c.cidade}${c.uf ? '/' + c.uf : ''}` : ''
-  return `${c.endereco}${numero}${cidade}`
+  const partes = [
+    String(c.endereco).trim(),
+    c.numero ? String(c.numero).trim() : '',
+    c.complemento ? String(c.complemento).trim() : '',
+    c.bairro ? String(c.bairro).trim() : '',
+  ].filter(Boolean)
+  const cidade = c.cidade
+    ? ` — ${String(c.cidade).trim()}${c.uf ? '/' + String(c.uf).trim() : ''}`
+    : ''
+  return `${partes.join(', ')}${cidade}`
 }
 
 export function MarcaEndereco({ cadastro, atual, onRestaurar }: Props) {
