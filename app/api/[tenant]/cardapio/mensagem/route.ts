@@ -17,6 +17,7 @@ import { getDbForTenant, pool } from '@/lib/db/connection'
 import { dbProduto } from '@/lib/db/schemas/cadastros'
 import { fmtMoeda } from '@/lib/format'
 import { ok, notFound, badRequest, serverError } from '@/lib/api/responses'
+import { estaAberto } from '@/lib/cardapio/horario'
 
 type Params = { params: { tenant: string } }
 
@@ -54,15 +55,24 @@ export async function POST(req: NextRequest, { params }: Params) {
     const client = await pool.connect()
     let nomeEmpresa = ''
     let whatsappLoja = ''
+    let taxaEntrega = 0
     try {
       await client.query(`SET search_path TO "${tenant.schemaName}", public`)
       const cfg = await client.query(`
-        SELECT nome_fantasia, nome_empresa, cardapio_whatsapp, telefone
+        SELECT nome_fantasia, nome_empresa, cardapio_whatsapp, telefone, cardapio_taxa_entrega, cardapio_horario
         FROM t_configuracoes_tenant LIMIT 1
       `)
       const c = cfg.rows[0] ?? {}
       nomeEmpresa  = c.nome_fantasia || c.nome_empresa || tenant.name
       whatsappLoja = c.cardapio_whatsapp || c.telefone || ''
+      taxaEntrega  = Number(c.cardapio_taxa_entrega ?? 0)
+
+      // Fora do horário de atendimento, ninguém finaliza pedido — nem
+      // contornando a tela, direto na API (QA #102).
+      const { aberto } = estaAberto(c.cardapio_horario)
+      if (!aberto) {
+        return badRequest('Estamos fora do horário de atendimento no momento. Tente novamente mais tarde.')
+      }
     } finally {
       client.release()
     }
@@ -88,7 +98,11 @@ export async function POST(req: NextRequest, { params }: Params) {
       release()
     }
 
-    const total = itensComPreco.reduce((soma, i) => soma + i.quantidade * i.precoUnitario, 0)
+    const subtotal = itensComPreco.reduce((soma, i) => soma + i.quantidade * i.precoUnitario, 0)
+    // Taxa de entrega é do servidor, nunca do que o navegador manda — mesmo
+    // critério do preço de produto (QA #101).
+    const taxaAplicada = payload.tipoVenda === 'entrega' ? taxaEntrega : 0
+    const total = subtotal + taxaAplicada
 
     const linhasItens = itensComPreco
       .map(i => `${i.quantidade}x ${i.nome} — ${fmtMoeda(i.quantidade * i.precoUnitario)}`)
@@ -107,6 +121,10 @@ export async function POST(req: NextRequest, { params }: Params) {
       `*Pedido:*`,
       linhasItens,
       ``,
+      ...(taxaAplicada > 0 ? [
+        `Subtotal: ${fmtMoeda(subtotal)}`,
+        `Taxa de entrega: ${fmtMoeda(taxaAplicada)}`,
+      ] : []),
       `*Total: ${fmtMoeda(total)}*`,
       ``,
       linhasEntrega,
@@ -119,7 +137,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     const numero   = normalizarWhatsapp(whatsappLoja)
     const linkWhatsapp = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`
 
-    return ok({ mensagem, linkWhatsapp, total })
+    return ok({ mensagem, linkWhatsapp, total, subtotal, taxaEntrega: taxaAplicada })
   } catch (err: any) {
     if (typeof err?.message === 'string' && err.message.startsWith('PRODUTO_INDISPONIVEL:')) {
       return badRequest('Um dos produtos do pedido não está mais disponível.')

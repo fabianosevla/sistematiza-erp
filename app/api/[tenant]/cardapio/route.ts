@@ -8,6 +8,7 @@ import type { NextRequest } from 'next/server'
 import { resolveTenantPublico } from '@/lib/auth/tenantPublico'
 import { pool } from '@/lib/db/connection'
 import { ok, notFound, serverError } from '@/lib/api/responses'
+import { estaAberto } from '@/lib/cardapio/horario'
 
 type Params = { params: { tenant: string } }
 
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         SELECT nome_fantasia, nome_empresa, logo_base64, telefone, endereco,
                cardapio_mensagem_boas_vindas, cardapio_cor_destaque,
                cardapio_permite_entrega, cardapio_permite_balcao,
-               cardapio_layout, cardapio_banner_url
+               cardapio_layout, cardapio_banner_url, cardapio_taxa_entrega, cardapio_horario
         FROM t_configuracoes_tenant LIMIT 1
       `)
       const c = cfg.rows[0] ?? {}
@@ -59,6 +60,9 @@ export async function GET(req: NextRequest, { params }: Params) {
         },
         permiteEntrega: c.cardapio_permite_entrega ?? true,
         permiteBalcao:  c.cardapio_permite_balcao ?? true,
+        taxaEntrega:    Number(c.cardapio_taxa_entrega ?? 0),
+        horario:        c.cardapio_horario ?? null,
+        ...estaAberto(c.cardapio_horario),
         produtos: produtos.rows.map(r => ({
           produtoId:   r.produto_id,
           nome:        r.nome,

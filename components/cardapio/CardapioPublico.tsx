@@ -20,6 +20,21 @@ interface Props { tenantSlug: string }
 
 interface ItemCarrinho { produtoId: number; nome: string; precoVarejo: number; quantidade: number }
 
+// A empresa escolhe a cor de destaque livremente (inclusive vermelho, branco,
+// qualquer coisa). Texto branco fixo — como estava antes — fica ilegível numa
+// cor clara (branco em cima de branco) e o botão "Adicionar" nem chegava a
+// usar essa cor: o componente Button aplicava verde no texto por padrão,
+// deixando fundo vermelho com escrito verde. Uma cor de texto só, calculada
+// pelo contraste da cor de fundo, resolve os dois — vale pra todo botão que
+// usa `cor` como fundo (QA #100).
+function corParaTexto(hex: string): string {
+  const h = hex.replace('#', '')
+  const bigint = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16)
+  const r = (bigint >> 16) & 255, g = (bigint >> 8) & 255, b = bigint & 255
+  const luminancia = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return luminancia > 0.6 ? '#111827' : '#ffffff'
+}
+
 export default function CardapioPublico({ tenantSlug }: Props) {
   const { toast } = useToast()
   const api = `/api/${tenantSlug}/cardapio`
@@ -46,6 +61,11 @@ export default function CardapioPublico({ tenantSlug }: Props) {
   const permiteEntrega: boolean = raw?.data?.permiteEntrega ?? true
   const permiteBalcao:  boolean = raw?.data?.permiteBalcao  ?? true
   const cor = layout.corDestaque || '#2ecc71'
+  const corTexto = corParaTexto(cor)
+  // Horário de atendimento (QA #102) — o servidor já calcula se está aberto
+  // agora, com o fuso de São Paulo; aqui só exibe e trava o pedido.
+  const abertoAgora: boolean = raw?.data?.aberto ?? true
+  const proximaAbertura: string | undefined = raw?.data?.proximaAbertura
 
   // Se só um dos dois tipos é permitido, usa ele direto — o toggle só
   // aparece quando o cliente realmente tem escolha.
@@ -57,6 +77,7 @@ export default function CardapioPublico({ tenantSlug }: Props) {
   const categorias = [...new Set(produtos.map(p => p.categoria || 'Cardápio'))]
 
   function adicionar(p: any) {
+    if (!abertoAgora) return
     setCarrinho(prev => {
       const existe = prev.find(i => i.produtoId === p.produtoId)
       if (existe) return prev.map(i => i.produtoId === p.produtoId ? { ...i, quantidade: i.quantidade + 1 } : i)
@@ -71,6 +92,11 @@ export default function CardapioPublico({ tenantSlug }: Props) {
 
   const totalItens = carrinho.reduce((a, i) => a + i.quantidade, 0)
   const totalCarrinho = carrinho.reduce((a, i) => a + i.quantidade * i.precoVarejo, 0)
+  // Taxa de entrega (QA #101): valor fixo cadastrado pela empresa, somado só
+  // quando o cliente escolhe entrega — não entra na retirada no balcão.
+  const taxaEntrega = Number(raw?.data?.taxaEntrega ?? 0)
+  const taxaAplicada = tipoVendaEfetivo === 'entrega' ? taxaEntrega : 0
+  const totalComTaxa = totalCarrinho + taxaAplicada
 
   const enviarMut = useMutation({
     mutationFn: async () => {
@@ -121,11 +147,15 @@ export default function CardapioPublico({ tenantSlug }: Props) {
         <div className="flex items-center gap-2 flex-shrink-0">
           <button onClick={() => remover(p.produtoId)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"><Minus size={14} /></button>
           <span className="text-sm font-semibold w-5 text-center">{noCarrinho.quantidade}</span>
-          <button onClick={() => adicionar(p)} className="w-7 h-7 rounded-full text-white flex items-center justify-center" style={{ backgroundColor: cor }}><Plus size={14} /></button>
+          <button onClick={() => adicionar(p)} disabled={!abertoAgora} className="w-7 h-7 rounded-full flex items-center justify-center disabled:opacity-40" style={{ backgroundColor: cor, color: corTexto }}><Plus size={14} /></button>
         </div>
       )
     }
-    return <Button size="sm" onClick={() => adicionar(p)} className="flex-shrink-0" style={{ backgroundColor: cor }}>Adicionar</Button>
+    return (
+      <Button size="sm" onClick={() => adicionar(p)} disabled={!abertoAgora} className="flex-shrink-0 disabled:opacity-40" style={{ backgroundColor: cor, color: corTexto }}>
+        {abertoAgora ? 'Adicionar' : 'Fechado'}
+      </Button>
+    )
   }
 
   return (
@@ -150,6 +180,14 @@ export default function CardapioPublico({ tenantSlug }: Props) {
           {layout.mensagemBoasVindas && <p className="text-sm text-gray-500 mt-1">{layout.mensagemBoasVindas}</p>}
           {empresa.telefone && <p className="text-xs text-gray-400 mt-1">{empresa.telefone}</p>}
         </header>
+      )}
+
+      {!abertoAgora && (
+        <div className="bg-red-50 border-b border-red-100 px-4 py-2.5 text-center">
+          <p className="text-sm font-medium text-red-700">
+            Fechado no momento{proximaAbertura ? ` — abre às ${proximaAbertura}` : ''}
+          </p>
+        </div>
       )}
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-6">
@@ -224,11 +262,11 @@ export default function CardapioPublico({ tenantSlug }: Props) {
         <button
           onClick={() => totalItens > 0 && setShowCarrinho(true)}
           disabled={totalItens === 0}
-          className="fixed bottom-4 left-4 right-4 max-w-2xl mx-auto h-12 rounded-xl text-white font-medium flex items-center justify-between px-5 shadow-lg disabled:cursor-not-allowed"
-          style={{ backgroundColor: totalItens > 0 ? cor : '#9ca3af' }}
+          className="fixed bottom-4 left-4 right-4 max-w-2xl mx-auto h-12 rounded-xl font-medium flex items-center justify-between px-5 shadow-lg disabled:cursor-not-allowed"
+          style={{ backgroundColor: totalItens > 0 ? cor : '#9ca3af', color: totalItens > 0 ? corTexto : '#ffffff' }}
         >
           <span className="inline-flex items-center gap-2"><ShoppingCart size={16} /> {totalItens > 0 ? `${totalItens} item(ns)` : 'Seu carrinho está vazio'}</span>
-          {totalItens > 0 && <span>{fmt(totalCarrinho)}</span>}
+          {totalItens > 0 && <span>{fmt(totalComTaxa)}</span>}
         </button>
       )}
 
@@ -248,9 +286,15 @@ export default function CardapioPublico({ tenantSlug }: Props) {
                     <span className="text-gray-900">{fmt(i.quantidade * i.precoVarejo)}</span>
                   </div>
                 ))}
+                {taxaAplicada > 0 && (
+                  <div className="flex justify-between text-sm pt-1">
+                    <span className="text-gray-600">Taxa de entrega</span>
+                    <span className="text-gray-900">{fmt(taxaAplicada)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm font-semibold pt-2 border-t border-gray-100">
                   <span>Total</span>
-                  <span>{fmt(totalCarrinho)}</span>
+                  <span>{fmt(totalComTaxa)}</span>
                 </div>
               </div>
 
@@ -298,13 +342,13 @@ export default function CardapioPublico({ tenantSlug }: Props) {
               </div>
 
               <Button
-                className="w-full h-11 text-white"
-                style={{ backgroundColor: cor }}
+                className="w-full h-11"
+                style={{ backgroundColor: cor, color: corTexto }}
                 disabled={!podeConfirmar || enviarMut.isPending}
                 onClick={() => enviarMut.mutate()}
               >
                 <MessageCircle size={16} className="mr-2" />
-                {enviarMut.isPending ? 'Preparando...' : `Enviar pedido pelo WhatsApp — ${fmt(totalCarrinho)}`}
+                {enviarMut.isPending ? 'Preparando...' : `Enviar pedido pelo WhatsApp — ${fmt(totalComTaxa)}`}
               </Button>
             </div>
           </div>

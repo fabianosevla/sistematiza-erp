@@ -30,6 +30,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         permiteBalcao:            r.cardapio_permite_balcao   ?? true,
         layout:                   r.cardapio_layout           ?? 'classico',
         bannerUrl:                r.cardapio_banner_url       ?? null,
+        taxaEntrega:              r.cardapio_taxa_entrega     ?? 0,
+        horario:                  r.cardapio_horario          ?? null,
       })
     } finally { client.release() }
   } catch (err) { return serverError(err) }
@@ -52,11 +54,21 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['cardapio_permite_entrega',       body.permiteEntrega],
         ['cardapio_permite_balcao',        body.permiteBalcao],
         ['cardapio_layout',                body.layout],
+        ['cardapio_taxa_entrega',          body.taxaEntrega],
       ]
 
       for (const [col, val] of updates) {
         if (val === undefined) continue
         await client.query(`UPDATE t_configuracoes_tenant SET ${col} = $1`, [val])
+      }
+
+      // jsonb: manda como texto, com cast explícito — passar objeto direto
+      // pro driver grava como string literal em vez de estruturado.
+      if (body.horario !== undefined) {
+        await client.query(
+          `UPDATE t_configuracoes_tenant SET cardapio_horario = $1::jsonb`,
+          [body.horario === null ? null : JSON.stringify(body.horario)]
+        )
       }
 
       return ok({ updated: true })

@@ -19,6 +19,12 @@ import { PageHeader } from '@/components/ui/PageHeader'
 
 interface Props { tenantSlug: string }
 
+const DIAS_SEMANA = [
+  ['dom', 'Domingo'], ['seg', 'Segunda'], ['ter', 'Terça'], ['qua', 'Quarta'],
+  ['qui', 'Quinta'], ['sex', 'Sexta'], ['sab', 'Sábado'],
+] as const
+const DIA_PADRAO = { aberto: true, abre: '08:00', fecha: '18:00' }
+
 const LAYOUTS = [
   { id: 'classico',  nome: 'Clássico',  descricao: 'Lista com foto pequena ao lado de cada produto.' },
   { id: 'grade',      nome: 'Grade',     descricao: 'Cards em grade, foto grande em cima do nome/preço.' },
@@ -98,6 +104,16 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
 
   function set(campo: string, valor: any) {
     setLocal((prev: any) => ({ ...(prev ?? {}), [campo]: valor }))
+  }
+
+  function setDia(dia: string, campo: 'aberto' | 'abre' | 'fecha', valor: any) {
+    setLocal((prev: any) => ({
+      ...(prev ?? {}),
+      horario: {
+        ...(prev?.horario ?? {}),
+        [dia]: { ...DIA_PADRAO, ...(prev?.horario?.[dia] ?? {}), [campo]: valor },
+      },
+    }))
   }
 
   const salvarMut = useMutation({
@@ -301,6 +317,48 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
                   <input type="checkbox" checked={local.permiteBalcao ?? true} onChange={e => set('permiteBalcao', e.target.checked)} className="w-4 h-4 rounded" />
                   Retirada no balcão
                 </label>
+              </div>
+            </div>
+
+            {local.permiteEntrega && (
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Taxa de entrega (R$)
+                  <InfoTip titulo="Taxa de entrega">Somada automaticamente ao pedido quando o cliente escolhe entrega. Deixe 0,00 para não cobrar taxa.</InfoTip>
+                </Label>
+                <Input type="number" min="0" step="0.01" inputMode="decimal"
+                  value={((local.taxaEntrega ?? 0) / 100).toFixed(2)}
+                  onChange={e => set('taxaEntrega', Math.round(parseFloat(e.target.value.replace(',', '.') || '0') * 100))}
+                  className="sem-spinner mt-1 max-w-[160px]" />
+              </div>
+            )}
+
+            <div>
+              <Label className="inline-flex items-center gap-1">
+                Horário de atendimento
+                <InfoTip titulo="Horário de atendimento">Fora do horário marcado, o cardápio avisa que está fechado e não deixa fazer pedido. Sem nenhum dia marcado, fica sempre aberto.</InfoTip>
+              </Label>
+              <div className="mt-2 space-y-2">
+                {DIAS_SEMANA.map(([chave, nome]) => {
+                  const diaCfg = local.horario?.[chave] ?? { ...DIA_PADRAO, aberto: false }
+                  return (
+                    <div key={chave} className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 w-28 text-sm text-gray-600 cursor-pointer flex-shrink-0">
+                        <input type="checkbox" checked={diaCfg.aberto} onChange={e => setDia(chave, 'aberto', e.target.checked)} className="w-4 h-4 rounded" />
+                        {nome}
+                      </label>
+                      {diaCfg.aberto ? (
+                        <div className="flex items-center gap-2">
+                          <Input type="time" value={diaCfg.abre} onChange={e => setDia(chave, 'abre', e.target.value)} className="h-8 w-28 text-sm" />
+                          <span className="text-gray-400 text-sm">até</span>
+                          <Input type="time" value={diaCfg.fecha} onChange={e => setDia(chave, 'fecha', e.target.value)} className="h-8 w-28 text-sm" />
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">Fechado</span>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
 

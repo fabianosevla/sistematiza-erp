@@ -454,6 +454,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['pdv-cashback', tenantSlug] })
+      // Sem isto o resumo do caixa (usado no fechamento e no descritivo
+      // impresso) fica com o total de quando o turno abriu — cada venda
+      // deixava a query stale, mas nada nunca mandava buscar de novo.
+      // Cartão QA #99: o impresso saía com menos vendas do que a Consulta.
+      qc.invalidateQueries({ queryKey: ['caixa-resumo', tenantSlug] })
+      qc.invalidateQueries({ queryKey: ['caixa', tenantSlug] })
 
       if (usado > 0 || ganho > 0) {
         toast(`Venda registrada! ${usado > 0 ? `Cashback usado: ${fmt(usado)}. ` : ''}${ganho > 0 ? `Ganhou ${fmt(ganho)} de cashback.` : ''}`)
@@ -532,6 +538,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
       qc.invalidateQueries({ queryKey: ['estoque-produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['estoque-insumos', tenantSlug] })
+      // Venda a prazo não passa pelo caixa (sem turno, sem forma de
+      // pagamento imediata) — nada a invalidar aqui em caixa-resumo.
 
       toast(d?.data?.message || 'Venda a prazo registrada!')
     },
