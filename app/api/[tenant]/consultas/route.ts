@@ -33,6 +33,17 @@ export async function GET(req: NextRequest, { params }: Params) {
       if (tipo === 'entradas-insumo')  return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim, entidade: 'insumo' }))
       if (tipo === 'entradas-estoque') return ok(await service.entradasEstoquePorPeriodo({ dataInicio, dataFim }))
       if (tipo === 'vendas-produto') return ok(await service.vendasPorProdutoPorPeriodo({ dataInicio, dataFim }))
+
+      // EXTRATO: todo movimento de estoque, entrada e saida, com saldo
+      // acumulado quando ha um item escolhido. Ver movimentacoesPorPeriodo.
+      if (tipo === 'extrato-produto' || tipo === 'extrato-insumo') {
+        const idRaw = searchParams.get('entidadeId')
+        return ok(await service.movimentacoesPorPeriodo({
+          dataInicio, dataFim,
+          entidade:   tipo === 'extrato-produto' ? 'produto' : 'insumo',
+          entidadeId: idRaw ? Number(idRaw) : undefined,
+        }))
+      }
       if (tipo === 'dre')      return ok(await service.drePorPeriodo({ dataInicio, dataFim }))
       if (tipo === 'despesas') {
         return ok(await service.despesasPorPeriodo({

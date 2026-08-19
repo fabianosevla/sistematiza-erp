@@ -2,6 +2,7 @@ import { and, eq, gte, lte, sql, desc } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbPerdaEstoque } from '@/lib/db/schemas/estoque-avancado'
 import { dbProduto, dbInsumo } from '@/lib/db/schemas/cadastros'
+import { registrarMovimentacao } from './registrarMovimentacao'
 
 export const MOTIVOS_PERDA = ['vencimento', 'quebra', 'contaminacao', 'erro_producao', 'outro'] as const
 
@@ -30,6 +31,11 @@ export class PerdaEstoqueService {
       await this.db.update(dbProduto).set({
         estoqueAtual: sql`${dbProduto.estoqueAtual} - ${quantidade}`, updatedDt: now, updatedBy: userId,
       }).where(eq(dbProduto.produtoId, entidadeId))
+      await registrarMovimentacao(this.db, {
+        tipo: 'saida', entidade: 'produto', entidadeId, quantidade,
+        observacao: `Perda: ${motivo}${observacao ? ' — ' + observacao : ''}`,
+        userId,
+      })
     } else {
       const [i] = await this.db.select().from(dbInsumo).where(eq(dbInsumo.insumoId, entidadeId))
       if (!i) throw new Error('Insumo não encontrado')
@@ -39,6 +45,11 @@ export class PerdaEstoqueService {
       await this.db.update(dbInsumo).set({
         estoqueAtual: sql`${dbInsumo.estoqueAtual} - ${quantidade}`, updatedDt: now, updatedBy: userId,
       }).where(eq(dbInsumo.insumoId, entidadeId))
+      await registrarMovimentacao(this.db, {
+        tipo: 'saida', entidade: 'insumo', entidadeId, quantidade,
+        observacao: `Perda: ${motivo}${observacao ? ' — ' + observacao : ''}`,
+        userId,
+      })
     }
 
     const [perda] = await this.db.insert(dbPerdaEstoque).values({

@@ -5,6 +5,7 @@ import { pool } from '@/lib/db/connection'
 import { dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
 import { dbProduto, dbCliente } from '@/lib/db/schemas/cadastros'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
+import { registrarMovimentacao, registrarMovimentacaoNoClient } from '@/lib/services/estoque/registrarMovimentacao'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
 import { CaixaService } from '@/lib/services/caixa/CaixaService'
@@ -134,7 +135,11 @@ export class VendaService {
    * Debita os insumos da ficha técnica de cada produto vendido.
    * Usa pool direto com search_path para garantir schema correto.
    */
-  private async debitarInsumosDaVenda(itens: { produtoId: number; quantidade: number }[], userId: number) {
+  private async debitarInsumosDaVenda(
+    itens: { produtoId: number; quantidade: number }[],
+    userId: number,
+    vendaId?: number,
+  ) {
     if (!this.schemaName) return // sem schema, pula silenciosamente
 
     const client = await pool.connect()
@@ -162,6 +167,13 @@ export class VendaService {
             UPDATE t_insumo SET estoque_atual = $1, updated_dt = $2, updated_by = $3
             WHERE insumo_id = $4
           `, [novoEstoque, now, userId, fi.insumo_id])
+
+          await registrarMovimentacaoNoClient(client, {
+            tipo: 'saida', entidade: 'insumo', entidadeId: fi.insumo_id,
+            quantidade: qtdTotal,
+            observacao: `Consumo pela venda${vendaId ? ` #${vendaId}` : ''}`,
+            userId,
+          })
         }
       }
     } finally {
@@ -239,6 +251,12 @@ export class VendaService {
               WHERE produto_id = $3`,
             [qtd, userId, it.produto_id],
           )
+          await registrarMovimentacaoNoClient(client, {
+            tipo: 'entrada', entidade: 'produto', entidadeId: it.produto_id,
+            quantidade: qtd,
+            observacao: `Devolução por cancelamento da venda #${vendaId}`,
+            userId,
+          })
 
           // 2. Insumos da ficha voltam, com a mesma conversão de unidade da baixa.
           const ficha = await client.query(
@@ -262,6 +280,12 @@ export class VendaService {
                 WHERE insumo_id = $3`,
               [novo, userId, fi.insumo_id],
             )
+            await registrarMovimentacaoNoClient(client, {
+              tipo: 'entrada', entidade: 'insumo', entidadeId: fi.insumo_id,
+              quantidade: qtdTotal,
+              observacao: `Devolução por cancelamento da venda #${vendaId}`,
+              userId,
+            })
           }
         }
 
@@ -489,19 +513,30 @@ export class VendaService {
       })
     }
 
-    // Debita estoque do produto acabado
+    // Debita estoque do produto acabado, deixando rastro no extrato.
+    //
+    // A venda mexia no saldo sem registrar movimentação — o número mudava e o
+    // histórico não sabia por quê. Ver registrarMovimentacao.
     for (const item of itemsDetalhados) {
       await this.db.update(dbProduto).set({
         estoqueAtual: sql`${dbProduto.estoqueAtual} - ${item.quantidade}`,
         updatedDt: now, updatedBy: userId,
       }).where(eq(dbProduto.produtoId, item.produtoId))
+
+      await registrarMovimentacao(this.db, {
+        tipo: 'saida', entidade: 'produto', entidadeId: item.produtoId,
+        quantidade: item.quantidade,
+        observacao: `Venda #${venda.vendaId}`,
+        userId,
+      })
     }
 
     // Debita insumos da ficha técnica via pool direto com search_path
     try {
       await this.debitarInsumosDaVenda(
         itemsDetalhados.map(i => ({ produtoId: i.produtoId, quantidade: i.quantidade })),
-        userId
+        userId,
+        venda.vendaId,
       )
     } catch (_) {
       // Não bloqueia a venda se o débito de insumos falhar

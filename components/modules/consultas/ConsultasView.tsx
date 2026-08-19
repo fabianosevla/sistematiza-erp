@@ -17,7 +17,7 @@
 // é semanal.
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Sprout, Receipt, FileBarChart, Printer, Boxes } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, ShoppingCart, PackagePlus, Sprout, Receipt, FileBarChart, Printer, Boxes, ArrowLeftRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { InfoTip } from '@/components/ui/InfoTip'
@@ -35,13 +35,18 @@ import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
-type Aba = 'vendas' | 'vendas-produto' | 'entradas-produto' | 'entradas-insumo' | 'despesas' | 'dre'
+type Aba = 'vendas' | 'vendas-produto' | 'entradas-produto' | 'entradas-insumo'
+  | 'extrato-produto' | 'extrato-insumo' | 'despesas' | 'dre'
 
 const ABAS: { valor: Aba; rotulo: string; icone: any }[] = [
   { valor: 'vendas',           rotulo: 'Vendas',            icone: ShoppingCart },
   { valor: 'vendas-produto',   rotulo: 'Vendas por produto', icone: Boxes },
   { valor: 'entradas-produto', rotulo: 'Entrada de produto', icone: PackagePlus },
   { valor: 'entradas-insumo',  rotulo: 'Entrada de insumo',  icone: Sprout },
+  // Extrato mostra ENTRADA E SAÍDA. As abas de "Entrada" acima só somam o que
+  // entrou; estas respondem por que o saldo está no número em que está.
+  { valor: 'extrato-produto',  rotulo: 'Extrato de produto', icone: ArrowLeftRight },
+  { valor: 'extrato-insumo',   rotulo: 'Extrato de insumo',  icone: ArrowLeftRight },
   { valor: 'despesas',         rotulo: 'Despesas',          icone: Receipt },
   { valor: 'dre',              rotulo: 'DRE',               icone: FileBarChart },
 ]
@@ -591,12 +596,60 @@ export default function ConsultasView({ tenantSlug }: Props) {
     { chave: 'valor',      titulo: 'Valor', alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valor)}</span> },
   ]
 
+
+  // ── EXTRATO ────────────────────────────────────────────────────────────────
+  //
+  // Uma linha por movimento, em ordem cronológica. Entrada e saída em colunas
+  // separadas — misturar as duas numa coluna só com sinal obriga a ler o sinal
+  // para entender, e é onde o olho erra.
+  //
+  // O saldo só aparece quando há UM item filtrado: numa lista de vários
+  // produtos misturados, acumular tudo daria um número sem significado.
+  const colunasExtrato: Coluna[] = [
+    { chave: 'data', titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
+    {
+      chave: 'nome', titulo: 'Item', filtravel: true,
+      classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
+      render: (i: any) => i.nome,
+    },
+    {
+      chave: 'origem', titulo: 'Origem', filtravel: true,
+      cabecalho: <InfoTip titulo="Origem">De onde veio o movimento: venda, produção, compra, perda, ajuste ou devolução.</InfoTip>,
+      render: (i: any) => i.origem || <span className="text-gray-300">—</span>,
+    },
+    {
+      chave: 'entrada', titulo: 'Entrada', alinhamento: 'right',
+      render: (i: any) => i.entrada > 0
+        ? <span className="font-medium text-green-700">+{fmtQtd(i.entrada)}</span>
+        : <span className="text-gray-200">—</span>,
+    },
+    {
+      chave: 'saida', titulo: 'Saída', alinhamento: 'right',
+      render: (i: any) => i.saida > 0
+        ? <span className="font-medium text-red-600">−{fmtQtd(i.saida)}</span>
+        : <span className="text-gray-200">—</span>,
+    },
+    {
+      chave: 'saldo', titulo: 'Saldo', alinhamento: 'right', esconderAte: 'md',
+      cabecalho: <InfoTip titulo="Saldo acumulado">Só aparece ao filtrar um único item — somar produtos diferentes não teria significado.</InfoTip>,
+      render: (i: any) => i.saldo === null || i.saldo === undefined
+        ? <span className="text-gray-300">—</span>
+        : <span className="font-semibold text-gray-900">{fmtQtd(i.saldo)} <span className="font-normal text-gray-400">{i.unidade}</span></span>,
+    },
+    {
+      chave: 'usuario', titulo: 'Quem', filtravel: true, esconderAte: 'lg',
+      render: (i: any) => i.usuario || <span className="text-gray-300">—</span>,
+    },
+  ]
+
   // 'dre' fica de fora: ela desenha o demonstrativo, não uma listagem.
   const COLUNAS: Partial<Record<Aba, Coluna[]>> = {
     'vendas':           colunasVendas,
     'vendas-produto':   colunasVendasProduto,
     'entradas-produto': colunasEntradas,
     'entradas-insumo':  colunasEntradas,
+    'extrato-produto':  colunasExtrato,
+    'extrato-insumo':   colunasExtrato,
     'despesas':         colunasDespesas,
   }
 
@@ -604,6 +657,8 @@ export default function ConsultasView({ tenantSlug }: Props) {
     'vendas':           'Nenhuma venda neste período.',
     'vendas-produto':   'Nenhuma venda neste período.',
     'entradas-produto': 'Nenhuma entrada de produto neste período.',
+    'extrato-produto':  'Nenhum movimento de produto neste período.',
+    'extrato-insumo':   'Nenhum movimento de insumo neste período.',
     'entradas-insumo':  'Nenhuma entrada de insumo neste período.',
     'despesas':         'Nenhuma despesa neste período.',
   }
@@ -642,6 +697,14 @@ export default function ConsultasView({ tenantSlug }: Props) {
         { rotulo: 'Produtos',      valor: String(kpisVendasProduto.produtos ?? 0) },
         { rotulo: temFiltro ? 'Unidades (filtro)' : 'Unidades', valor: fmtQtd(kpisVendasProduto.unidades ?? 0) },
         { rotulo: temFiltro ? 'Total vendido (filtro)' : 'Total vendido', valor: fmt(kpisVendasProduto.totalVendido ?? 0) },
+      ]
+    : (aba === 'extrato-produto' || aba === 'extrato-insumo')
+    ? [
+        { rotulo: 'Movimentos', valor: String(kpis.movimentos ?? 0) },
+        { rotulo: 'Entradas',   valor: fmtQtd(kpis.entradas ?? 0) },
+        { rotulo: 'Saídas',     valor: fmtQtd(kpis.saidas ?? 0) },
+        // Positivo, o estoque cresceu no período; negativo, encolheu.
+        { rotulo: 'Variação',   valor: fmtQtd(kpis.variacao ?? 0) },
       ]
     : aba !== 'despesas'
     ? [

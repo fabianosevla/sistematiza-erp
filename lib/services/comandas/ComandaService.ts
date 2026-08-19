@@ -4,6 +4,7 @@ import { dbComanda, dbComandaItem, dbVenda, dbVendaItem, dbVendaPagamento } from
 import { dbProduto } from '@/lib/db/schemas/cadastros'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
+import { registrarMovimentacao } from '@/lib/services/estoque/registrarMovimentacao'
 
 export class ComandaService {
   constructor(private db: AppDB) {}
@@ -229,6 +230,13 @@ export class ComandaService {
           updatedBy:    userId,
         })
         .where(eq(dbProduto.produtoId, item.produtoId))
+
+      await registrarMovimentacao(this.db, {
+        tipo: 'saida', entidade: 'produto', entidadeId: item.produtoId,
+        quantidade: item.quantidade,
+        observacao: `Comanda #${comandaId}`,
+        userId,
+      })
     }
 
     // 6. Rascunho de nota fiscal — mesma lógica de VendaService.criarDireta

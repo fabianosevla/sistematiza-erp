@@ -489,4 +489,104 @@ export class ConsultasService {
       },
     }
   }
+
+  /**
+   * EXTRATO DE MOVIMENTAÇÃO — a auditoria do saldo.
+   *
+   * "Entradas" mostra só o que entrou. Isto mostra TUDO: compra, produção,
+   * venda, comanda, entrega de pedido, perda, ajuste e devolução, em ordem
+   * cronológica, com o saldo acumulado ao lado.
+   *
+   * É a tela que responde "por que este produto está com este número". Sem
+   * ela, saldo errado vira investigação no banco.
+   *
+   * ─── O SALDO É RECONSTRUÍDO, NÃO GUARDADO ─────────────────────────────────
+   *
+   * `t_movimentacao_estoque` guarda o movimento, não o saldo. Então o saldo de
+   * cada linha é a soma acumulada desde o início do período — e a coluna
+   * `saldoAntes` diz de onde a contagem partiu.
+   *
+   * Consequência honesta: se algum caminho mexer no saldo sem registrar
+   * movimento, o acumulado aqui diverge do estoque_atual do cadastro. Essa
+   * divergência é informação, não defeito da tela — é onde procurar.
+   */
+  async movimentacoesPorPeriodo({ dataInicio, dataFim, entidade, entidadeId }: {
+    dataInicio?: string; dataFim?: string
+    entidade?: 'produto' | 'insumo'
+    entidadeId?: number
+  }) {
+    const { inicio, fim } = this.limites(dataInicio, dataFim)
+
+    // Saldo anterior ao período: sem isto a primeira linha começaria do zero e
+    // o acumulado não bateria com o cadastro.
+    const antesRes = await this.db.execute(sql`
+      SELECT COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN quantidade ELSE -quantidade END), 0)::numeric AS saldo
+        FROM t_movimentacao_estoque
+       WHERE active_flg = true
+         AND data_movimentacao < ${inicio}
+         ${entidade   ? sql`AND entidade = ${entidade}`     : sql``}
+         ${entidadeId ? sql`AND entidade_id = ${entidadeId}` : sql``}
+    `)
+    const saldoAntes = Number((antesRes.rows as any[])[0]?.saldo ?? 0)
+
+    const res = await this.db.execute(sql`
+      SELECT m.movimentacao_id, m.data_movimentacao, m.tipo, m.entidade,
+             m.entidade_id, m.quantidade, m.observacao, m.created_by,
+             COALESCE(p.nome, i.nome)         AS nome,
+             COALESCE(p.unidade, i.unidade)   AS unidade,
+             u.nome                            AS usuario
+        FROM t_movimentacao_estoque m
+        LEFT JOIN t_produto p ON m.entidade = 'produto' AND p.produto_id = m.entidade_id
+        LEFT JOIN t_insumo  i ON m.entidade = 'insumo'  AND i.insumo_id  = m.entidade_id
+        LEFT JOIN t_usuario u ON u.usuario_id = m.created_by
+       WHERE m.active_flg = true
+         AND m.data_movimentacao >= ${inicio}
+         AND m.data_movimentacao <= ${fim}
+         ${entidade   ? sql`AND m.entidade = ${entidade}`     : sql``}
+         ${entidadeId ? sql`AND m.entidade_id = ${entidadeId}` : sql``}
+       ORDER BY m.data_movimentacao ASC, m.movimentacao_id ASC
+    `)
+
+    // O acumulado só faz sentido para UM item. Numa lista de vários produtos
+    // misturados, somar tudo daria um número sem significado — por isso o
+    // saldo só aparece quando há filtro de item.
+    const porItem = !!entidadeId
+    let saldo = saldoAntes
+
+    const itens = (res.rows as any[]).map(r => {
+      const qtd    = Number(r.quantidade ?? 0)
+      const entrou = r.tipo === 'entrada'
+      if (porItem) saldo += entrou ? qtd : -qtd
+      return {
+        id:         Number(r.movimentacao_id),
+        data:       r.data_movimentacao,
+        tipo:       r.tipo,
+        entidade:   r.entidade,
+        entidadeId: Number(r.entidade_id),
+        nome:       r.nome ?? `${r.entidade} #${r.entidade_id}`,
+        unidade:    r.unidade ?? '',
+        entrada:    entrou ? qtd : 0,
+        saida:      entrou ? 0 : qtd,
+        origem:     r.observacao ?? '',
+        usuario:    r.usuario ?? '',
+        saldo:      porItem ? parseFloat(saldo.toFixed(4)) : null,
+      }
+    })
+
+    const entradas = itens.reduce((a, i) => a + i.entrada, 0)
+    const saidas   = itens.reduce((a, i) => a + i.saida, 0)
+
+    return {
+      itens,
+      porItem,
+      saldoAntes: porItem ? saldoAntes : null,
+      kpis: {
+        movimentos: itens.length,
+        entradas,
+        saidas,
+        variacao: parseFloat((entradas - saidas).toFixed(4)),
+      },
+    }
+  }
+
 }
