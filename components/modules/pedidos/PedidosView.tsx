@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { MarcaEndereco, enderecoDoCadastro } from '@/components/ui/MarcaEndereco'
 import { SidePanel } from '@/components/ui/SidePanel'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 import { TIPOS_PRECO } from '@/lib/constants'
 
@@ -176,6 +177,11 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [previsaoEntrega, setPrevisaoEntrega]   = useState('')
   const [enderecoEntrega, setEnderecoEntrega]   = useState('')
   const [enderecoCadastro, setEnderecoCadastro] = useState('')
+  // Entrega com estoque insuficiente para e pergunta. Guarda o que o servidor
+  // devolveu para o modal listar produto por produto.
+  const [confirmarEstoque, setConfirmarEstoque] = useState<
+    { id: number; status: string; insuficientes: any[]; message: string } | null
+  >(null)
   // Intenção fiscal do pedido. A nota nasce na ENTREGA, não na baixa: a
   // mercadoria não pode sair sem documento, e o pagamento vem depois.
   const [comNota, setComNota]             = useState(true)
@@ -293,16 +299,25 @@ export default function PedidosView({ tenantSlug }: Props) {
   })
 
   const avancarMut = useMutation({
-    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+    mutationFn: async ({ id, status, confirmar }: { id: number; status: string; confirmar?: boolean }) => {
       const res = await fetch(`${apiBase}/${id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status, confirmarEstoque: confirmar === true }),
       })
       const d = await res.json()
+      // 409 com precisaConfirmar: o estoque nao cobre. Nao e erro — e uma
+      // parada para alguem olhar antes de debitar.
+      if (res.status === 409 && d?.precisaConfirmar) {
+        setConfirmarEstoque({ id, status, insuficientes: d.insuficientes ?? [], message: d.message ?? '' })
+        return { _aguardando: true }
+      }
       if (!res.ok) throw new Error(d.message ?? 'Erro ao atualizar status')
       return d
     },
-    onSuccess: (_, vars) => {
+    onSuccess: (_: any, vars) => {
+      // Ainda esperando o Sim/Não: nada aconteceu no servidor.
+      if (_?._aguardando) return
+      setConfirmarEstoque(null)
       qc.invalidateQueries({ queryKey: ['pedidos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['pedido', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
@@ -874,6 +889,29 @@ export default function PedidosView({ tenantSlug }: Props) {
               </div>
             </div>
         </SidePanel>
+      )}
+
+      {/* ESTOQUE NÃO COBRE — PARADA OBRIGATÓRIA.
+          A entrega debita o produto acabado. Quando o saldo não cobre, quase
+          sempre é produção não registrada na grade, ou mercadoria que já saiu
+          por outra venda. O sistema não sabe qual dos dois — mas sabe que
+          precisa perguntar antes de zerar o estoque em silêncio. */}
+      {confirmarEstoque && (
+        <ConfirmModal
+          title="Estoque não cobre este pedido"
+          message={
+            `${confirmarEstoque.message}\n\n` +
+            confirmarEstoque.insuficientes
+              .map(i => `• ${i.nome}: precisa ${i.precisa}, tem ${i.tem}`)
+              .join('\n')
+          }
+          confirmLabel="Entregar mesmo assim"
+          danger
+          onConfirm={() => avancarMut.mutate({
+            id: confirmarEstoque.id, status: confirmarEstoque.status, confirmar: true,
+          })}
+          onCancel={() => setConfirmarEstoque(null)}
+        />
       )}
     </div>
   )

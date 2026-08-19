@@ -22,6 +22,7 @@
 // Cancelado → não reverte nada, porque nada foi somado.
 //   Cancelar pedido JÁ ENTREGUE é bloqueado: existe venda e conta a receber,
 //   e desfazer isso em silêncio corromperia o financeiro.
+import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
 import { resolveTenant } from '@/lib/auth/tenant'
@@ -101,7 +102,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const tenant = await resolveTenant(params.tenant)
     await exigirModulo(tenant.schemaName, 'pedidos')
-    const { status, totalParcelas: totalParcelasRaw } = await req.json()
+    const { status, totalParcelas: totalParcelasRaw, confirmarEstoque } = await req.json()
     if (!status) return badRequest('Status é obrigatório')
     // Venda a prazo parcelada (PDV "A Prazo" ou pedido normal com acordo de
     // parcelamento): divide a conta a receber gerada na entrega em N parcelas
@@ -193,6 +194,29 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             tem,
           })
         }
+      }
+
+      // ── ESTOQUE NÃO COBRE: PARA E PERGUNTA ────────────────────────────────
+      //
+      // Antes a entrega seguia em frente e zerava o saldo com GREATEST(0,...),
+      // devolvendo um aviso no fim da mensagem de sucesso — fácil de não ler.
+      //
+      // Foi assim que uma venda registrada no balcão e o mesmo pedido entregue
+      // depois debitaram o mesmo estoque duas vezes, sem ninguém perceber. O
+      // sistema não tem como saber que a mercadoria já saiu por outro caminho;
+      // o que ele sabe é que o saldo não cobre. E isso basta para perguntar.
+      //
+      // Não é bloqueio: com `confirmarEstoque` a entrega acontece. É uma
+      // parada obrigatória para alguém olhar.
+      if (insuficientes.length > 0 && !confirmarEstoque) {
+        return NextResponse.json({
+          status: 'error',
+          precisaConfirmar: true,
+          insuficientes,
+          message:
+            'O estoque não cobre este pedido. Isso costuma significar produção não registrada ' +
+            'na grade, ou mercadoria que já saiu por outra venda. Confirme para entregar mesmo assim.',
+        }, { status: 409 })
       }
 
       const subtotal = itens.reduce((a: number, i: any) => a + Number(i.subtotal ?? 0), 0)
