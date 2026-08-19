@@ -8,7 +8,7 @@ import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
 import { decryptSecretOuTextoPuro } from '@/lib/crypto/secretBox'
-import { ok, created, serverError } from '@/lib/api/responses'
+import { ok, created, badRequest, serverError } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string } }
 
@@ -101,19 +101,33 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (action === 'fechar-turno') {
         return ok(await fiscal.fecharTurno({ ...body, userId }))
       }
+      // Emissão/cancelamento passam pela Focus (ou quem estiver configurado) —
+      // erro daqui quase sempre já vem com mensagem útil (SEFAZ, validação de
+      // parametrização, token). Mandar isso pro serverError() genérico
+      // enterrava a mensagem real atrás de "Erro interno do servidor" — quem
+      // clicava em Emitir não via o que de fato aconteceu, só "tente de novo".
+      // Aqui devolve a mensagem original, sem mascarar.
       if (action === 'emitir') {
-        const cfg = await config.get()
-        return ok(await fiscal.emitirViaFocusNfe(body.notaId, {
-          token:    decryptSecretOuTextoPuro(cfg?.focusNfeToken),
-          ambiente: cfg?.focusNfeAmbiente ?? 'homologacao',
-        }))
+        try {
+          const cfg = await config.get()
+          return ok(await fiscal.emitirViaFocusNfe(body.notaId, {
+            token:    decryptSecretOuTextoPuro(cfg?.focusNfeToken),
+            ambiente: cfg?.focusNfeAmbiente ?? 'homologacao',
+          }))
+        } catch (err: any) {
+          return badRequest(err?.message || 'Falha ao emitir a nota — sem mensagem detalhada.')
+        }
       }
       if (action === 'cancelar') {
-        const cfg = await config.get()
-        return ok(await fiscal.cancelarNota(body.notaId, body.motivo, {
-          token:    decryptSecretOuTextoPuro(cfg?.focusNfeToken),
-          ambiente: cfg?.focusNfeAmbiente ?? 'homologacao',
-        }))
+        try {
+          const cfg = await config.get()
+          return ok(await fiscal.cancelarNota(body.notaId, body.motivo, {
+            token:    decryptSecretOuTextoPuro(cfg?.focusNfeToken),
+            ambiente: cfg?.focusNfeAmbiente ?? 'homologacao',
+          }))
+        } catch (err: any) {
+          return badRequest(err?.message || 'Falha ao cancelar a nota — sem mensagem detalhada.')
+        }
       }
 
       const payload = notaSchema.parse(body)

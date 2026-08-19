@@ -100,6 +100,17 @@ descobre quanto tempo a autorização demora e o que a SEFAZ devolve quando cai.
 **Série diferente do Everest.** Everest na 1, Sistematiza na 2. Mesma série
 nos dois sistemas gera duplicidade de numeração.
 
+**De-para de erros fiscais — pedido do Fabiano em 19/08/2026, mais pra frente.**
+Em 19/08 o erro real na tentativa de emissão ("Access token inválido") estava
+mascarado atrás de "Erro interno do servidor" — corrigido ali mesmo (a rota de
+`emitir`/`cancelar` agora devolve a mensagem real, e o front trata erro de
+verdade em vez de tratar qualquer resposta como sucesso). O que falta, sob
+demanda: um **dicionário de erros** — mensagem técnica que a Focus/SEFAZ
+devolve → explicação em português e o que fazer, pra quem está no balcão não
+precisar interpretar código de rejeição da SEFAZ ou jargão da API. Só faz
+sentido depois de ver alguns erros reais em homologação/produção pra saber
+quais valem a pena mapear.
+
 **Arquitetura de conta Focus NFe, decidida em conversa em 13/08/2026 — para
 quando o sistema escalar pra outros clientes.** A API da Focus suporta várias
 empresas (CNPJs) cadastradas sob uma única conta administradora (endpoint de

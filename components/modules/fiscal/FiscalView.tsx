@@ -11,6 +11,7 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { Aviso } from '@/components/ui/Aviso'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { FormModal } from '@/components/ui/FormModal'
+import { useToast } from '@/components/ui/Toast'
 import NovaNotaModal from './NovaNotaModal'
 import PerfisTributariosTab from './PerfisTributariosTab'
 import { fmtMoeda as fmt } from '@/lib/format'
@@ -30,6 +31,7 @@ const Anchor = 'a' as const
 
 export default function FiscalView({ tenantSlug }: Props) {
   const qc = useQueryClient()
+  const { toast } = useToast()
   const api = `/api/${tenantSlug}/fiscal`
   const [aba, setAba]                     = useState<'pdv' | 'nfe-saida' | 'relatorios' | 'parametros'>('pdv')
   const [filtroTipo, setFiltroTipo]       = useState('NFC-e')
@@ -69,20 +71,37 @@ export default function FiscalView({ tenantSlug }: Props) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['turno', tenantSlug] }),
   })
 
+  // `.then(r => r.json())` sozinho nunca dava erro pro React Query — fetch só
+  // rejeita em falha de rede, não em resposta 4xx/5xx. Um "Access token
+  // inválido" vindo 400 do servidor virava onSuccess aqui, e a tela seguia
+  // como se a nota tivesse sido emitida. Por isso o erro real só aparecia na
+  // aba Network do navegador, nunca na tela.
   const emitirMut = useMutation({
-    mutationFn: (notaId: number) => fetch(`${api}?action=emitir`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notaId }),
-    }).then(r => r.json()),
+    mutationFn: async (notaId: number) => {
+      const r = await fetch(`${api}?action=emitir`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notaId }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d?.message || 'Falha ao emitir a nota.')
+      return d
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notas', tenantSlug] }),
+    onError: (e: any) => toast(e.message || 'Falha ao emitir a nota.', 'error'),
   })
 
   const cancelarMut = useMutation({
-    mutationFn: (notaId: number) => fetch(`${api}?action=cancelar`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ notaId, motivo: motivoCancelamento }),
-    }).then(r => r.json()),
+    mutationFn: async (notaId: number) => {
+      const r = await fetch(`${api}?action=cancelar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notaId, motivo: motivoCancelamento }),
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d?.message || 'Falha ao cancelar a nota.')
+      return d
+    },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['notas', tenantSlug] }); setShowCancelar(null) },
+    onError: (e: any) => toast(e.message || 'Falha ao cancelar a nota.', 'error'),
   })
 
   const turno = turnoData?.data
