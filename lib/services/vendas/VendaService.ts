@@ -576,15 +576,32 @@ export class VendaService {
       // cupom que ninguém ia emitir — sujando a fila do módulo Fiscal.
       const cfg = await new ConfiguracoesService(this.db).get()
       if (cfg?.fiscalAtivo && documentoFiscal && documentoFiscal !== 'nenhum') {
+        // O desconto geral da venda (cabeçalho, ex.: cupom, negociação no
+        // balcão) nunca chegava nos itens da nota — só o desconto de linha.
+        // A nota saía com a soma dos itens maior que o valorTotal/pagamento
+        // real, e a Focus rejeita essa divergência. Aqui a fatia de cada
+        // item é proporcional ao que ele já vale líquido do desconto próprio;
+        // o último item absorve a sobra de arredondamento, pra fechar exato.
+        const baseRateio = itemsDetalhados.reduce((a, i) => a + i.subtotal, 0)
+        let descontoDistribuido = 0
+        const itensComDesconto = itemsDetalhados.map((item, idx) => {
+          const ultimo = idx === itemsDetalhados.length - 1
+          const fatia = ultimo
+            ? desconto - descontoDistribuido
+            : (baseRateio > 0 ? Math.round(desconto * item.subtotal / baseRateio) : 0)
+          descontoDistribuido += fatia
+          return {
+            produtoId: item.produtoId,
+            descricao: item.nomeProduto, quantidade: item.quantidade, precoUnitario: item.precoUnitario,
+            descontoItem: item.desconto + fatia,
+          }
+        })
         await new FiscalService(this.db).criarNota({
           tipo: 'NFC-e', valorTotal: total, vendaId: venda.vendaId,
           // produtoId vai junto: é por ele que o FiscalService acha o NCM e o
           // perfil tributário. Sem isso a nota nasce sem classificação fiscal
           // e a emissão recusa.
-          itens: itemsDetalhados.map(item => ({
-            produtoId: item.produtoId,
-            descricao: item.nomeProduto, quantidade: item.quantidade, precoUnitario: item.precoUnitario,
-          })),
+          itens: itensComDesconto,
           userId,
         })
       }

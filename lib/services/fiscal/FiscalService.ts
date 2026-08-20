@@ -172,11 +172,16 @@ export class FiscalService {
     cfop?: string; valorTotal: number; vendaId?: number
     /** Congela o endereço do destinatário, exigido na NF-e modelo 55. */
     clienteId?: number
-    itens: { produtoId?: number; descricao: string; quantidade: number; precoUnitario: number }[]
+    // `descontoItem`: em centavos, já soma o desconto da linha (item) com a
+    // fatia proporcional do desconto geral da venda (cabeçalho). Sem isso, a
+    // soma dos itens da nota ficava maior que valorTotal/formas_pagamento —
+    // a Focus rejeita essa divergência ("total dos pagamentos inferior ao
+    // valor total da nota").
+    itens: { produtoId?: number; descricao: string; quantidade: number; precoUnitario: number; descontoItem?: number }[]
     userId: number
   }) {
     const now = new Date()
-    const subtotal = payload.itens.reduce((a, i) => a + i.precoUnitario * i.quantidade, 0)
+    const subtotal = payload.itens.reduce((a, i) => a + (i.precoUnitario * i.quantidade - (i.descontoItem ?? 0)), 0)
 
     // UF do destinatário decide entre CFOP interno e interestadual.
     const cfgRes = await this.db.execute(sql`
@@ -240,7 +245,7 @@ export class FiscalService {
       }
 
       const cfop = dentroDoEstado ? fiscal.cfop_interno : fiscal.cfop_interestadual
-      const valorTotal = item.precoUnitario * item.quantidade
+      const valorTotal = Math.max(0, item.precoUnitario * item.quantidade - (item.descontoItem ?? 0))
       const aliqIcms = Number(fiscal.aliq_icms ?? 0)
 
       // ── SUBSTITUIÇÃO TRIBUTÁRIA ──────────────────────────────────────────
