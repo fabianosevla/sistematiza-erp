@@ -182,6 +182,9 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [confirmarEstoque, setConfirmarEstoque] = useState<
     { id: number; status: string; insuficientes: any[]; message: string } | null
   >(null)
+  // Cancelar pedido já entregue desfaz estoque e financeiro de verdade — vale
+  // um aviso mais forte que o "Cancelar pedido?" genérico.
+  const [confirmarCancelarEntregue, setConfirmarCancelarEntregue] = useState<number | null>(null)
   // Intenção fiscal do pedido. A nota nasce na ENTREGA, não na baixa: a
   // mercadoria não pode sair sem documento, e o pagamento vem depois.
   const [comNota, setComNota]             = useState(true)
@@ -886,6 +889,12 @@ export default function PedidosView({ tenantSlug }: Props) {
                     Cancelar pedido
                   </Button>
                 )}
+                {detalhe.status === 'entregue' && (
+                  <Button variant="outline" className="w-full text-red-500 border-red-200 hover:bg-red-50"
+                    onClick={() => setConfirmarCancelarEntregue(detalhe.pedidoId)}>
+                    Cancelar pedido (já entregue)
+                  </Button>
+                )}
               </div>
             </div>
         </SidePanel>
@@ -911,6 +920,23 @@ export default function PedidosView({ tenantSlug }: Props) {
             id: confirmarEstoque.id, status: confirmarEstoque.status, confirmar: true,
           })}
           onCancel={() => setConfirmarEstoque(null)}
+        />
+      )}
+
+      {confirmarCancelarEntregue && (
+        <ConfirmModal
+          title="Cancelar pedido já entregue"
+          message={
+            'Este pedido já foi entregue — cancelar agora vai desfazer de verdade:\n\n' +
+            '• Devolve pro estoque o que a entrega debitou\n' +
+            '• Exclui a conta a receber gerada\n' +
+            '• Se a conta já tinha sido baixada, cancela também a venda gerada (o estorno do pagamento ao cliente, se já recebido, precisa ser feito à parte)\n\n' +
+            'Essa ação não pode ser desfeita pelo sistema.'
+          }
+          confirmLabel="Cancelar pedido"
+          danger
+          onConfirm={() => { avancarMut.mutate({ id: confirmarCancelarEntregue, status: 'cancelado' }); setConfirmarCancelarEntregue(null) }}
+          onCancel={() => setConfirmarCancelarEntregue(null)}
         />
       )}
     </div>

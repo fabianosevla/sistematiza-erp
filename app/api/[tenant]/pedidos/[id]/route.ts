@@ -146,11 +146,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         return ok({ ok: true, status, pedidoId, message: 'Status já era esse.' })
       }
 
-      // Entregue é irreversível: o estoque já saiu e existe conta a receber
-      // aberta pelo valor do pedido.
-      if (statusAntigo === 'entregue' && status !== 'entregue') {
+      // Entregue só pode ir para Cancelado — e nesse caso desfaz de verdade
+      // (estoque, conta a receber, venda). Qualquer outra transição a partir
+      // de entregue continua bloqueada, porque não faz sentido "voltar" pra
+      // pendente/produção depois que a mercadoria já saiu.
+      if (statusAntigo === 'entregue' && status !== 'entregue' && status !== 'cancelado') {
         return badRequest(
-          'Pedido já entregue não pode mudar de status. Exclua a conta a receber e ajuste o estoque se precisar desfazer.'
+          'Pedido já entregue só pode ir para Cancelado (que desfaz estoque e financeiro) — não pode voltar para outro status.'
         )
       }
 
@@ -162,8 +164,89 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       `, [pedidoId])
       const itens = itensRes.rows
 
+      // ── CANCELAR PEDIDO JÁ ENTREGUE: desfaz estoque, conta a receber e,
+      //    se já tiver nascido, a venda. ──────────────────────────────────
+      if (statusAntigo === 'entregue' && status === 'cancelado') {
+        await client.query('BEGIN')
+        try {
+          // 1. Produto acabado volta pro estoque — é o que a entrega tirou.
+          //    O insumo NÃO entra aqui: ele saiu na produção, um evento
+          //    separado do pedido, e devolver aqui devolveria insumo que
+          //    nunca pertenceu a este pedido.
+          for (const it of itens as any[]) {
+            await client.query(`
+              UPDATE t_produto
+              SET estoque_atual = estoque_atual + $1, updated_dt = NOW()
+              WHERE produto_id = $2 AND active_flg = true
+            `, [it.quantidade, it.produto_id])
+
+            await client.query(`
+              INSERT INTO t_movimentacao_estoque
+                (tipo, entidade, entidade_id, quantidade, preco_custo, observacao,
+                 data_movimentacao, created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
+              VALUES ('entrada', 'produto', $1, $2, 0, $3, NOW(), 1, 1, NOW(), NOW(), true, 0)
+            `, [it.produto_id, it.quantidade, `Cancelamento do pedido #${pedidoId} (já estava entregue)`])
+          }
+
+          // 2. Conta a receber gerada na entrega — exclui (mesmo padrão do
+          //    botão Excluir em Financeiro: active_flg = false).
+          const contaRes = await client.query(`
+            SELECT conta_receber_id, status FROM t_conta_receber
+            WHERE origem = 'pedido' AND origem_id = $1 AND active_flg = true
+          `, [pedidoId])
+          for (const conta of contaRes.rows as any[]) {
+            await client.query(`
+              UPDATE t_conta_receber SET active_flg = false, updated_dt = NOW()
+              WHERE conta_receber_id = $1
+            `, [conta.conta_receber_id])
+          }
+
+          // 3. Se a conta já tinha sido quitada, a venda já nasceu
+          //    (ContasReceberService.baixar → gerarVendaDoPedido). Cancela a
+          //    venda SEM mexer em estoque de novo — o produto acabado já foi
+          //    devolvido no passo 1, e gerarVendaDoPedido nunca debitou
+          //    estoque (comentário no próprio código: "NÃO mexe em estoque").
+          let vendaCancelada = false
+          if (pedido.venda_id) {
+            const vendaUpd = await client.query(`
+              UPDATE t_venda SET active_flg = false, status = 'cancelada', updated_dt = NOW()
+              WHERE venda_id = $1 AND active_flg = true
+              RETURNING venda_id
+            `, [pedido.venda_id])
+            vendaCancelada = (vendaUpd.rowCount ?? 0) > 0
+
+            // Nota fiscal pendente vinculada à venda: cancela junto. Nota já
+            // autorizada não se desfaz por aqui — cancelamento na SEFAZ é
+            // outro processo, com prazo e motivo próprios (módulo Fiscal).
+            await client.query(`
+              UPDATE t_nota_fiscal SET status = 'cancelada', active_flg = false, updated_dt = NOW()
+              WHERE venda_id = $1 AND status = 'pendente'
+            `, [pedido.venda_id])
+          }
+
+          await client.query(
+            `UPDATE t_pedido SET status = 'cancelado', updated_dt = NOW() WHERE pedido_id = $1`,
+            [pedidoId]
+          )
+
+          await client.query('COMMIT')
+
+          const avisoVenda = vendaCancelada
+            ? ' A venda gerada a partir da baixa também foi cancelada — se o pagamento já tinha sido recebido de verdade, o estorno ao cliente precisa ser feito manualmente.'
+            : ''
+
+          return ok({
+            ok: true, status: 'cancelado', pedidoId,
+            message: `Pedido cancelado. Estoque do produto acabado devolvido (${itens.length} item(ns)), conta a receber excluída.${avisoVenda}`,
+          })
+        } catch (err) {
+          await client.query('ROLLBACK')
+          throw err
+        }
+      }
+
       // ── Transições que NÃO mexem em nada ────────────────────────────────
-      // pendente, producao, pronto e cancelado apenas trocam o status.
+      // pendente, producao e pronto apenas trocam o status.
       if (status !== 'entregue') {
         await client.query(
           `UPDATE t_pedido SET status = $1, updated_dt = NOW() WHERE pedido_id = $2`,
