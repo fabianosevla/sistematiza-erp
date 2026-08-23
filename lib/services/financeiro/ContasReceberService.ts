@@ -5,9 +5,20 @@ import { dbContaReceber, type TpDbContaReceberInsert } from '@/lib/db/schemas/fi
 export class ContasReceberService {
   constructor(private db: AppDB) {}
 
-  async list({ status, dataInicio, dataFim, busca, page = 1, limit = 20 }: {
+  // Colunas que a listagem aceita ordenar — allowlist, nunca interpola o
+  // parâmetro de ordenação direto na query (injeção de SQL via ?sort=).
+  private static ORDENAVEIS: Record<string, any> = {
+    descricao:       dbContaReceber.descricao,
+    nomeCliente:     dbContaReceber.nomeCliente,
+    dataEntrega:     sql`COALESCE(${dbContaReceber.dataEntrega}, ${dbContaReceber.dataVencimento})`,
+    dataVencimento:  dbContaReceber.dataVencimento,
+    valorOriginal:   dbContaReceber.valorOriginal,
+    status:          dbContaReceber.status,
+  }
+
+  async list({ status, dataInicio, dataFim, busca, page = 1, limit = 20, sort = 'dataEntrega', dir = 'desc' }: {
     status?: string; dataInicio?: string; dataFim?: string; busca?: string
-    page?: number; limit?: number
+    page?: number; limit?: number; sort?: string; dir?: 'asc' | 'desc'
   }) {
     const offset = (page - 1) * limit
     const conds = [eq(dbContaReceber.activeFlag, true)]
@@ -29,12 +40,18 @@ export class ContasReceberService {
       )!)
     }
     const where = and(...conds)
+    // Padrão: data de entrega (pedido); conta que não veio de pedido não tem
+    // data de entrega, então cai para o vencimento em vez de ir pro fim da
+    // lista sem critério nenhum.
+    const colunaOrdem = ContasReceberService.ORDENAVEIS[sort] ?? ContasReceberService.ORDENAVEIS.dataEntrega
+    const orderBy = dir === 'asc' ? sql`${colunaOrdem} ASC NULLS LAST` : sql`${colunaOrdem} DESC NULLS LAST`
     const [rows, totals] = await Promise.all([
       this.db.select().from(dbContaReceber).where(where)
-        .orderBy(desc(dbContaReceber.dataVencimento)).limit(limit).offset(offset),
+        .orderBy(orderBy).limit(limit).offset(offset),
       this.db.select({ total: count() }).from(dbContaReceber).where(where),
     ])
-    return { data: rows, meta: { total: Number(totals[0]?.total ?? 0), page, limit } }
+    const total = Number(totals[0]?.total ?? 0)
+    return { data: rows, meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) } }
   }
 
   async kpis() {

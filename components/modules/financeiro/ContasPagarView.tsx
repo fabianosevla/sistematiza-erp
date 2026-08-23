@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { fmtMoeda as fmt, fmtData as fmtDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -42,6 +43,11 @@ export default function ContasPagarView({ tenantSlug }: Props) {
   const [showBaixa, setShowBaixa]       = useState<any | null>(null)
   const [confirmDel, setConfirmDel]     = useState<any | null>(null)
 
+  const [page, setPage]       = useState(1)
+  const [limit, setLimit]     = useState(20)
+  const [sortKey, setSortKey] = useState('dataVencimento')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
   const [form, setForm] = useState({ ...FORM_VAZIO })
   const setF = (k: string, v: string) => setForm(p => ({ ...p, [k]: v }))
 
@@ -62,13 +68,22 @@ export default function ContasPagarView({ tenantSlug }: Props) {
   })
 
   const { data: listRaw, isLoading } = useQuery({
-    queryKey: ['contas-pagar', tenantSlug, filtroStatus, busca],
+    queryKey: ['contas-pagar', tenantSlug, filtroStatus, busca, page, limit, sortKey, sortDir],
     queryFn:  async () => {
-      const p = new URLSearchParams({ status: filtroStatus, limit: '50' })
+      const p = new URLSearchParams({
+        status: filtroStatus, page: String(page), limit: String(limit),
+        sort: sortKey, dir: sortDir,
+      })
       if (busca) p.set('busca', busca)
       return (await fetch(`${api}?${p}`)).json()
     },
   })
+
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+    setPage(1)
+  }
 
   const criarMut = useMutation({
     mutationFn: async () => {
@@ -124,6 +139,60 @@ export default function ContasPagarView({ tenantSlug }: Props) {
 
   const kpis = kpisRaw?.data
   const rows = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
+  const meta = listRaw?.data?.meta ?? null
+
+  const colunas: Coluna[] = [
+    {
+      chave: 'descricao', titulo: 'Descrição', principal: true, ordenavel: true,
+      render: (r: any) => (
+        <>
+          <p className="text-sm font-medium text-gray-900">{r.descricao}</p>
+          {r.numeroDocumento && <p className="text-xs text-gray-400">Doc: {r.numeroDocumento}</p>}
+          {r.totalParcelas > 1 && <p className="text-xs text-gray-400">{r.parcelaAtual}/{r.totalParcelas} parcelas</p>}
+        </>
+      ),
+    },
+    {
+      chave: 'nomeFornecedor', titulo: 'Fornecedor', ordenavel: true,
+      render: (r: any) => r.nomeFornecedor || '—',
+    },
+    {
+      chave: 'dataVencimento', titulo: 'Vencimento', ordenavel: true,
+      render: (r: any) => {
+        const vencida = isVencida(r)
+        return (
+          <>
+            <span className={`text-sm ${vencida ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>{fmtDate(r.dataVencimento)}</span>
+            {vencida && <span className="block text-[10px] text-red-500">Vencida</span>}
+          </>
+        )
+      },
+    },
+    {
+      chave: 'valorOriginal', titulo: 'Valor', ordenavel: true, alinhamento: 'right',
+      render: (r: any) => {
+        const saldo = r.valorOriginal - r.valorPago
+        return (
+          <>
+            <p className="text-sm font-bold text-gray-900">{fmt(r.valorOriginal)}</p>
+            {r.valorPago > 0 && <p className="text-xs text-gray-500">Pago: {fmt(r.valorPago)}</p>}
+            {saldo > 0 && saldo < r.valorOriginal && <p className="text-xs text-amber-600">Saldo: {fmt(saldo)}</p>}
+          </>
+        )
+      },
+    },
+    {
+      chave: 'status', titulo: 'Status', ordenavel: true,
+      render: (r: any) => {
+        const vencida = isVencida(r)
+        return (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${vencida ? 'bg-red-100 text-red-700' : (STATUS_BADGE[r.status]?.cls ?? 'bg-gray-100 text-gray-500')}`}>
+            {vencida ? 'Vencida' : (STATUS_BADGE[r.status]?.label ?? r.status)}
+          </span>
+        )
+      },
+    },
+  ]
 
   return (
     <div className="space-y-5">
@@ -148,83 +217,47 @@ export default function ContasPagarView({ tenantSlug }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {['todas', 'aberta', 'vencidas', 'paga', 'cancelada'].map(s => (
-            <button key={s} onClick={() => setFiltroStatus(s)}
+            <button key={s} onClick={() => { setFiltroStatus(s); setPage(1) }}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${filtroStatus === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
               {s}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar..." className="h-8 text-sm w-48" />
+          <Input value={busca} onChange={e => { setBusca(e.target.value); setPage(1) }} placeholder="Buscar..." className="h-8 text-sm w-48" />
           <Button onClick={() => { setForm({ ...FORM_VAZIO }); setShowModal(true) }} size="sm">
             <Plus size={14} className="mr-1" /> Nova conta
           </Button>
         </div>
       </div>
 
-      {/* Tabela — cabeçalho congelado, mesma regra do DataTable */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 420px)', minHeight: '200px' }}>
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50">
-                {['Descrição', 'Fornecedor', 'Vencimento', 'Valor', 'Status', ''].map((h, i) => (
-                  <th key={i} className={`sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5 ${i === 3 ? 'text-right' : ''}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">Carregando...</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-10 text-sm text-gray-400">Nenhum título encontrado.</td></tr>
-              ) : rows.map((r: any) => {
-                const vencida = isVencida(r)
-                const saldo   = r.valorOriginal - r.valorPago
-                return (
-                  <tr key={r.contaPagarId} className="group border-b border-gray-50 hover:bg-gray-50/80">
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{r.descricao}</p>
-                      {r.numeroDocumento && <p className="text-xs text-gray-400">Doc: {r.numeroDocumento}</p>}
-                      {r.totalParcelas > 1 && <p className="text-xs text-gray-400">{r.parcelaAtual}/{r.totalParcelas} parcelas</p>}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{r.nomeFornecedor || '—'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-sm ${vencida ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
-                        {fmtDate(r.dataVencimento)}
-                      </span>
-                      {vencida && <span className="block text-[10px] text-red-500">Vencida</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <p className="text-sm font-bold text-gray-900">{fmt(r.valorOriginal)}</p>
-                      {r.valorPago > 0 && <p className="text-xs text-gray-500">Pago: {fmt(r.valorPago)}</p>}
-                      {saldo > 0 && saldo < r.valorOriginal && <p className="text-xs text-amber-600">Saldo: {fmt(saldo)}</p>}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${vencida ? 'bg-red-100 text-red-700' : (STATUS_BADGE[r.status]?.cls ?? 'bg-gray-100 text-gray-500')}`}>
-                        {vencida ? 'Vencida' : (STATUS_BADGE[r.status]?.label ?? r.status)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
-                        {r.status !== 'paga' && (
-                          <button onClick={() => { setShowBaixa(r); setBaixaForm({ valorPago: ((r.valorOriginal - r.valorPago) / 100).toFixed(2), dataPagamento: new Date().toISOString().slice(0, 10), formaPagamento: r.formaPagamento ?? '' }) }}
-                            className="p-1 text-green-500 hover:text-green-700" title="Baixar">
-                            <CheckCircle size={14} />
-                          </button>
-                        )}
-                        <button onClick={() => setConfirmDel(r)} className="p-1 text-gray-300 hover:text-red-500">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Tabela */}
+      <DataTable
+        colunas={colunas}
+        itens={rows}
+        chave={(r: any) => r.contaPagarId}
+        carregando={isLoading}
+        usarSkeleton
+        vazio="Nenhum título encontrado."
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
+        meta={meta}
+        onPageChange={setPage}
+        onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        acoes={(r: any) => (
+          <>
+            {r.status !== 'paga' && (
+              <button onClick={() => { setShowBaixa(r); setBaixaForm({ valorPago: ((r.valorOriginal - r.valorPago) / 100).toFixed(2), dataPagamento: new Date().toISOString().slice(0, 10), formaPagamento: r.formaPagamento ?? '' }) }}
+                className="p-1 text-green-500 hover:text-green-700" title="Baixar">
+                <CheckCircle size={14} />
+              </button>
+            )}
+            <button onClick={() => setConfirmDel(r)} className="p-1 text-gray-300 hover:text-red-500">
+              <Trash2 size={13} />
+            </button>
+          </>
+        )}
+      />
 
       {/* Painel nova conta */}
       {showModal && (

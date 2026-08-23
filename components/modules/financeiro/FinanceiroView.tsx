@@ -13,6 +13,7 @@ import { useToast }     from '@/components/ui/Toast'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { SidePanel }    from '@/components/ui/SidePanel'
 import { InfoTip }      from '@/components/ui/InfoTip'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import HistoricoCaixaTab from '@/components/modules/caixa/HistoricoCaixaTab'
@@ -20,6 +21,22 @@ import { fmtMoeda as fmt, fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
+type OrdemLocal = { chave: string; dir: 'asc' | 'desc' } | null
+
+// Ordenação client-side para listas que a API já devolve inteiras (mês/ano já
+// filtram o período). `acessores` normaliza nomes de campo que chegam em
+// snake_case e camelCase misturados na mesma resposta.
+function ordenarLocal<T>(itens: T[], ordem: OrdemLocal, acessores: Record<string, (item: T) => any>): T[] {
+  if (!ordem) return itens
+  const ler = acessores[ordem.chave]
+  if (!ler) return itens
+  return [...itens].sort((a, b) => {
+    const av = ler(a) ?? ''
+    const bv = ler(b) ?? ''
+    const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
+    return ordem.dir === 'asc' ? cmp : -cmp
+  })
+}
 
 const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const CORES  = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c']
@@ -74,6 +91,28 @@ export default function FinanceiroView({ tenantSlug }: Props) {
     if (periodo === 'anual') return { mesInicio: 1, mesFim: 12, anoInicio: a, anoFim: a }
     // tudo — desde jan/ano até mês atual
     return { mesInicio: 1, mesFim: m, anoInicio: a, anoFim: a }
+  }
+
+  // ── Listagem Despesas: paginação/ordenação/filtro client-side ──────────
+  // A API já devolve o mês inteiro (sem paginação própria); replicar aqui,
+  // na apresentação, evita mexer na rota.
+  const [despPage, setDespPage]   = useState(1)
+  const [despLimit, setDespLimit] = useState(20)
+  const [despOrdem, setDespOrdem] = useState<OrdemLocal>(null)
+  const [despFiltroCategoria, setDespFiltroCategoria] = useState('')
+  function toggleDespOrdem(chave: string) {
+    setDespOrdem(prev => !prev || prev.chave !== chave ? { chave, dir: 'asc' } : { chave, dir: prev.dir === 'asc' ? 'desc' : 'asc' })
+    setDespPage(1)
+  }
+
+  // ── Listagem Demonstrativo: ordenação/filtro/paginação client-side ─────
+  const [demoPage, setDemoPage]   = useState(1)
+  const [demoLimit, setDemoLimit] = useState(20)
+  const [demoOrdem, setDemoOrdem] = useState<OrdemLocal>(null)
+  const [demoFiltroMes, setDemoFiltroMes] = useState('')
+  function toggleDemoOrdem(chave: string) {
+    setDemoOrdem(prev => !prev || prev.chave !== chave ? { chave, dir: 'asc' } : { chave, dir: prev.dir === 'asc' ? 'desc' : 'asc' })
+    setDemoPage(1)
   }
 
   // ── Form Despesa ────────────────────────────────────────────────────────
@@ -409,10 +448,57 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       </div>
 
       {/* ABA: DESPESAS */}
-      {aba === 'despesas' && (
+      {aba === 'despesas' && (() => {
+        // INVALID DATE.
+        // Antes: new Date(valor + 'T12:00:00'). Isso só vale se o valor for
+        // AAAA-MM-DD puro, e a API devolve timestamp completo — o resultado
+        // era "2026-08-01T00:00:00.000ZT12:00:00", que não é data. fmtData lê
+        // dia/mês/ano do ISO sem passar por fuso.
+        const DESP_ACESSORES: Record<string, (d: any) => any> = {
+          nome:           d => d.nome ?? d.descricao ?? '',
+          categoria:      d => d.categoria ?? '',
+          data_despesa:   d => d.data_despesa ?? d.dataDespesa ?? '',
+          data_pagamento: d => d.data_pagamento ?? d.dataPagamento ?? '',
+          recorrente:     d => d.recorrente ? 1 : 0,
+          valor:          d => d.valor ?? 0,
+        }
+        const despesasFiltradas = despFiltroCategoria
+          ? despesas.filter((d: any) => (d.categoria ?? '') === despFiltroCategoria)
+          : despesas
+        const despesasOrdenadas = ordenarLocal(despesasFiltradas, despOrdem, DESP_ACESSORES)
+        const despTotalPages   = Math.max(1, Math.ceil(despesasOrdenadas.length / despLimit))
+        const despPageClamped  = Math.min(despPage, despTotalPages)
+        const despesasPagina   = despesasOrdenadas.slice((despPageClamped - 1) * despLimit, despPageClamped * despLimit)
+        const despTotalFiltrado = despesasOrdenadas.reduce((a: number, d: any) => a + (d.valor ?? 0), 0)
+        const despOpcoesCategoria = Array.from(new Set(despesas.map((d: any) => d.categoria).filter(Boolean))) as string[]
+
+        const despColunas: Coluna[] = [
+          { chave: 'nome', titulo: 'Nome', principal: true, ordenavel: true, render: d => d.nome ?? d.descricao },
+          {
+            chave: 'categoria', titulo: 'Categoria', ordenavel: true, filtravel: true,
+            render: d => d.categoria || '—',
+          },
+          { chave: 'data_despesa', titulo: 'Compra', ordenavel: true, render: d => fmtData(d.data_despesa ?? d.dataDespesa) },
+          {
+            chave: 'data_pagamento', titulo: 'Pagamento', ordenavel: true,
+            render: d => (d.data_pagamento ?? d.dataPagamento)
+              ? fmtData(d.data_pagamento ?? d.dataPagamento)
+              : <span className="text-gray-300">à vista</span>,
+          },
+          { chave: 'recorrente', titulo: 'Recorrente', ordenavel: true, render: d => d.recorrente ? '✓' : '—' },
+          {
+            chave: 'valor', titulo: 'Valor', ordenavel: true, alinhamento: 'right',
+            render: d => <span className="font-semibold text-red-600">{fmt(d.valor)}</span>,
+          },
+        ]
+
+        return (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">{despesas.length} lançamento(s)</p>
+            <p className="text-sm text-gray-500">
+              {despesasOrdenadas.length} lançamento(s)
+              {despesasOrdenadas.length > 0 && <> · <span className="font-semibold text-red-600">{fmt(despTotalFiltrado)}</span></>}
+            </p>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => exportCSV(despesas, 'despesas')}>
                 <Download size={13} className="mr-1" /> CSV
@@ -423,81 +509,46 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  {['Nome', 'Categoria', 'Compra', 'Pagamento', 'Recorrente', 'Valor', ''].map((h, i) => (
-                    <th key={i} className={`text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 ${i === 5 ? 'text-right' : ''}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {loadDespesas ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-400">Carregando...</td></tr>
-                ) : despesas.length === 0 ? (
-                  <tr><td colSpan={7} className="text-center py-8 text-sm text-gray-400">Nenhuma despesa neste período.</td></tr>
-                ) : despesas.map((d: any) => (
-                  <tr key={d.despesaId ?? d.despesa_id} className="group border-b border-gray-50 hover:bg-gray-50/80">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{d.nome ?? d.descricao}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{d.categoria || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {/* INVALID DATE.
-                          Antes: new Date(valor + 'T12:00:00'). Isso só vale se
-                          o valor for AAAA-MM-DD puro, e a API devolve
-                          timestamp completo — o resultado era
-                          "2026-08-01T00:00:00.000ZT12:00:00", que não é data.
-                          fmtData lê dia/mês/ano do ISO sem passar por fuso. */}
-                      {fmtData(d.data_despesa ?? d.dataDespesa)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">
-                      {/* Sem data de pagamento a despesa e a vista: mostrar o
-                          traco e mais honesto que repetir a data da compra. */}
-                      {(d.data_pagamento ?? d.dataPagamento)
-                        ? fmtData(d.data_pagamento ?? d.dataPagamento)
-                        : <span className="text-gray-300">à vista</span>}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{d.recorrente ? '✓' : '—'}</td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold text-red-600">{fmt(d.valor)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 justify-end">
-                        <button onClick={() => {
-                          setEditDespesa(d)
-                          setDespForm({
-                            nome: d.nome ?? d.descricao ?? '',
-                            valor: (d.valor / 100).toFixed(2),
-                            categoria: d.categoria ?? '',
-                            dataDespesa: (d.data_despesa || d.dataDespesa)?.slice(0, 10) ?? '',
-                            dataPagamento: (d.data_pagamento || d.dataPagamento)?.slice(0, 10) ?? '',
-                            recorrente: d.recorrente ?? false,
-                          })
-                          setShowDespesa(true)
-                        }} className="p-1 text-gray-400 hover:text-gray-600">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={() => setConfirmDel(d)} className="p-1 text-gray-300 hover:text-red-500">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              {despesas.length > 0 && (
-                <tfoot>
-                  <tr className="border-t border-gray-100 bg-gray-50">
-                    <td colSpan={5} className="px-4 py-2.5 text-xs font-semibold text-gray-600">Total</td>
-                    <td className="px-4 py-2.5 text-right text-sm font-bold text-red-600">
-                      {fmt(despesas.reduce((a: number, d: any) => a + (d.valor ?? 0), 0))}
-                    </td>
-                    <td />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+          <DataTable
+            colunas={despColunas}
+            itens={despesasPagina}
+            chave={(d: any) => d.despesaId ?? d.despesa_id}
+            carregando={loadDespesas}
+            usarSkeleton
+            vazio="Nenhuma despesa neste período."
+            ordem={despOrdem ?? undefined}
+            onOrdenar={toggleDespOrdem}
+            filtros={{ categoria: despFiltroCategoria }}
+            onFiltrar={(chave, valor) => { if (chave === 'categoria') { setDespFiltroCategoria(valor); setDespPage(1) } }}
+            opcoesFiltro={{ categoria: despOpcoesCategoria }}
+            meta={{ page: despPageClamped, totalPages: despTotalPages, total: despesasOrdenadas.length, limit: despLimit }}
+            onPageChange={setDespPage}
+            onLimitChange={(l: number) => { setDespLimit(l); setDespPage(1) }}
+            acoes={(d: any) => (
+              <>
+                <button onClick={() => {
+                  setEditDespesa(d)
+                  setDespForm({
+                    nome: d.nome ?? d.descricao ?? '',
+                    valor: (d.valor / 100).toFixed(2),
+                    categoria: d.categoria ?? '',
+                    dataDespesa: (d.data_despesa || d.dataDespesa)?.slice(0, 10) ?? '',
+                    dataPagamento: (d.data_pagamento || d.dataPagamento)?.slice(0, 10) ?? '',
+                    recorrente: d.recorrente ?? false,
+                  })
+                  setShowDespesa(true)
+                }} className="p-1 text-gray-400 hover:text-gray-600">
+                  <Pencil size={13} />
+                </button>
+                <button onClick={() => setConfirmDel(d)} className="p-1 text-gray-300 hover:text-red-500">
+                  <Trash2 size={13} />
+                </button>
+              </>
+            )}
+          />
         </div>
-      )}
+        )
+      })()}
 
       {/* ABA: DRE */}
       {aba === 'dre' && (() => {
@@ -795,47 +846,70 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 acum += m.resultado
                 return { ...m, resultadoAcumulado: acum }
               })
+
+              const DEMO_ACESSORES: Record<string, (m: any) => any> = {
+                mes: m => m.mesNum ?? m.mes,
+                receita: m => m.receita,
+                taxas: m => m.taxas ?? 0,
+                despesas: m => m.despesas,
+                fixos: m => m.fixos,
+                resultado: m => m.resultado,
+                resultadoAcumulado: m => m.resultadoAcumulado,
+                margem: m => m.margem,
+              }
+              const demoFiltradoPorMes = demoFiltroMes
+                ? demoComAcum.filter((m: any) => m.mes === demoFiltroMes)
+                : demoComAcum
+              const demoOrdenado    = ordenarLocal(demoFiltradoPorMes, demoOrdem, DEMO_ACESSORES)
+              const demoTotalPages  = Math.max(1, Math.ceil(demoOrdenado.length / demoLimit))
+              const demoPageClamped = Math.min(demoPage, demoTotalPages)
+              const demoPagina      = demoOrdenado.slice((demoPageClamped - 1) * demoLimit, demoPageClamped * demoLimit)
+              const demoOpcoesMes   = Array.from(new Set(demoComAcum.map((m: any) => m.mes))) as string[]
+
+              const demoColunas: Coluna[] = [
+                { chave: 'mes', titulo: 'Mês', principal: true, ordenavel: true, filtravel: true },
+                { chave: 'receita', titulo: 'Receita', ordenavel: true, alinhamento: 'right', render: m => m.receita > 0 ? <span className="text-green-600">{fmt(m.receita)}</span> : '—' },
+                { chave: 'taxas', titulo: 'Taxas', ordenavel: true, alinhamento: 'right', render: m => m.taxas > 0 ? <span className="text-red-400">{fmt(m.taxas)}</span> : '—' },
+                { chave: 'despesas', titulo: 'Despesas', ordenavel: true, alinhamento: 'right', render: m => m.despesas > 0 ? <span className="text-red-500">{fmt(m.despesas)}</span> : '—' },
+                { chave: 'fixos', titulo: 'Fixos', ordenavel: true, alinhamento: 'right', render: m => m.fixos > 0 ? <span className="text-red-400">{fmt(m.fixos)}</span> : '—' },
+                {
+                  chave: 'resultado', titulo: 'Resultado', ordenavel: true, alinhamento: 'right',
+                  render: m => (m.receita > 0 || m.despesas > 0)
+                    ? <span className={`font-semibold ${m.resultado >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(m.resultado)}</span>
+                    : '—',
+                },
+                {
+                  chave: 'resultadoAcumulado', titulo: 'Acumulado', ordenavel: true, alinhamento: 'right',
+                  render: m => (m.receita > 0 || m.despesas > 0)
+                    ? <span className={`font-bold ${(m.resultadoAcumulado ?? m.resultado) >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(m.resultadoAcumulado ?? m.resultado)}</span>
+                    : '—',
+                },
+                { chave: 'margem', titulo: 'Margem', ordenavel: true, alinhamento: 'right', render: m => m.receita > 0 ? `${m.margem}%` : '—' },
+              ]
+
               return (
               <>
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50">
-                      {['Mês', 'Receita', 'Taxas', 'Despesas', 'Fixos', 'Resultado', 'Acumulado', 'Margem'].map((h, i) => (
-                        <th key={i} className={`text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 ${i === 0 ? 'text-left' : 'text-right'}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {demoComAcum.map((m: any, i: number) => (
-                      <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
-                        <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{m.mes}</td>
-                        <td className="px-4 py-2.5 text-right text-sm text-green-600">{m.receita > 0 ? fmt(m.receita) : '—'}</td>
-                        <td className="px-4 py-2.5 text-right text-sm text-red-400">{m.taxas > 0 ? fmt(m.taxas) : '—'}</td>
-                        <td className="px-4 py-2.5 text-right text-sm text-red-500">{m.despesas > 0 ? fmt(m.despesas) : '—'}</td>
-                        <td className="px-4 py-2.5 text-right text-sm text-red-400">{m.fixos > 0 ? fmt(m.fixos) : '—'}</td>
-                        <td className={`px-4 py-2.5 text-right text-sm font-semibold ${m.resultado >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {m.receita > 0 || m.despesas > 0 ? fmt(m.resultado) : '—'}
-                        </td>
-                        <td className={`px-4 py-2.5 text-right text-sm font-bold ${(m.resultadoAcumulado ?? m.resultado) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                          {m.receita > 0 || m.despesas > 0 ? fmt(m.resultadoAcumulado ?? m.resultado) : '—'}
-                        </td>
-                        <td className="px-4 py-2.5 text-right text-sm text-gray-500">{m.receita > 0 ? `${m.margem}%` : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t-2 border-gray-200 bg-gray-50">
-                      <td className="px-4 py-2.5 text-xs font-bold text-gray-700">Total</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-green-600">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.receita, 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-400">{fmt(demoComAcum.reduce((a: number, m: any) => a + (m.taxas ?? 0), 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-500">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.despesas, 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-red-400">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.fixos, 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-900">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.resultado, 0))}</td>
-                      <td className="px-4 py-2.5 text-right text-sm font-bold text-gray-700">{fmt(demoComAcum[demoComAcum.length - 1]?.resultadoAcumulado ?? 0)}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
-                </table>
+                <div className="px-4 py-2 border-b border-gray-100 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-gray-500">
+                  <span>Total receita: <span className="font-semibold text-green-600">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.receita, 0))}</span></span>
+                  <span>Total despesas: <span className="font-semibold text-red-500">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.despesas + m.fixos, 0))}</span></span>
+                  <span>Resultado do período: <span className="font-semibold text-gray-900">{fmt(demoComAcum.reduce((a: number, m: any) => a + m.resultado, 0))}</span></span>
+                </div>
+
+                <DataTable
+                  colunas={demoColunas}
+                  itens={demoPagina}
+                  chave={(m: any) => m.mesNum ?? m.mes}
+                  vazio="Sem dados."
+                  ordem={demoOrdem ?? undefined}
+                  onOrdenar={toggleDemoOrdem}
+                  filtros={{ mes: demoFiltroMes }}
+                  onFiltrar={(chave, valor) => { if (chave === 'mes') { setDemoFiltroMes(valor); setDemoPage(1) } }}
+                  opcoesFiltro={{ mes: demoOpcoesMes }}
+                  meta={{ page: demoPageClamped, totalPages: demoTotalPages, total: demoOrdenado.length, limit: demoLimit }}
+                  onPageChange={setDemoPage}
+                  onLimitChange={(l: number) => { setDemoLimit(l); setDemoPage(1) }}
+                  className="rounded-none border-0"
+                />
 
                 {/* Gráfico */}
                 <div className="p-5 border-t border-gray-100">

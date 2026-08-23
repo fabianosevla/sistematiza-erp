@@ -31,6 +31,8 @@ interface Props { tenantSlug: string }
 const fmtDataHora = (d: any) =>
   d ? new Date(d).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
 
+type OrdemLocal = { chave: string; dir: 'asc' | 'desc' } | null
+
 export default function HistoricoCaixaTab({ tenantSlug }: Props) {
   const { toast } = useToast()
   const [periodicidade, setPeriodicidade] = useState<Periodicidade>('mensal')
@@ -38,6 +40,17 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
   const [fimCustom, setFim]   = useState<Date | null>(null)
   const [detalhe, setDetalhe] = useState<any | null>(null)
   const [dialogFormato, setDialogFormato] = useState<DadosFechamentoCaixa | null>(null)
+
+  // Paginação/ordenação/filtro client-side: a API já devolve o período
+  // inteiro (delimitado pelo SeletorPeriodo), sem paginação própria.
+  const [page, setPage]   = useState(1)
+  const [limit, setLimit] = useState(20)
+  const [ordem, setOrdem] = useState<OrdemLocal>(null)
+  const [filtros, setFiltros] = useState<Record<string, string>>({ operador: '', numero_caixa: '' })
+  function toggleOrdem(chave: string) {
+    setOrdem(prev => !prev || prev.chave !== chave ? { chave, dir: 'asc' } : { chave, dir: prev.dir === 'asc' ? 'desc' : 'asc' })
+    setPage(1)
+  }
 
   const periodo = intervaloDe(periodicidade, ancora, fimCustom)
 
@@ -63,30 +76,30 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
   const comFalta  = fechados.filter(t => Number(t.diferenca ?? 0) < 0).length
 
   const colunas: Coluna[] = [
-    { chave: 'aberto_em', titulo: 'Abertura', render: (t: any) => (
+    { chave: 'aberto_em', titulo: 'Abertura', ordenavel: true, render: (t: any) => (
       <span className="text-sm text-gray-700">{fmtDataHora(t.aberto_em)}</span>
     )},
-    { chave: 'operador', titulo: 'Operador', filtravel: true, render: (t: any) => (
+    { chave: 'operador', titulo: 'Operador', ordenavel: true, filtravel: true, render: (t: any) => (
       <span className="text-sm text-gray-900">{t.operador}</span>
     )},
-    { chave: 'numero_caixa', titulo: 'Caixa', filtravel: true, render: (t: any) => (
+    { chave: 'numero_caixa', titulo: 'Caixa', ordenavel: true, filtravel: true, render: (t: any) => (
       <span className="text-sm text-gray-600">{t.numero_caixa}</span>
     )},
-    { chave: 'vendido', titulo: 'Vendido', render: (t: any) => (
+    { chave: 'vendido', titulo: 'Vendido', ordenavel: true, render: (t: any) => (
       <span className="text-sm text-gray-700">{fmt(Number(t.vendido ?? 0))}</span>
     )},
-    { chave: 'valor_esperado', titulo: 'Esperado', esconderAte: 'lg', render: (t: any) => (
+    { chave: 'valor_esperado', titulo: 'Esperado', ordenavel: true, esconderAte: 'lg', render: (t: any) => (
       <span className="text-sm text-gray-600">
         {t.valor_esperado == null ? '—' : fmt(Number(t.valor_esperado))}
       </span>
     )},
-    { chave: 'valor_fechamento', titulo: 'Contado', esconderAte: 'lg', render: (t: any) => (
+    { chave: 'valor_fechamento', titulo: 'Contado', ordenavel: true, esconderAte: 'lg', render: (t: any) => (
       <span className="text-sm text-gray-600">
         {t.valor_fechamento == null ? '—' : fmt(Number(t.valor_fechamento))}
       </span>
     )},
     {
-      chave: 'diferenca', titulo: 'Diferença',
+      chave: 'diferenca', titulo: 'Diferença', ordenavel: true,
       cabecalho: <InfoTip titulo="Diferença">Contado menos esperado. Negativo é falta.</InfoTip>,
       render: (t: any) => {
         if (t.status !== 'fechado') return <span className="text-xs text-gray-400">aberto</span>
@@ -100,6 +113,33 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
       },
     },
   ]
+
+  const CAIXA_ACESSORES: Record<string, (t: any) => any> = {
+    aberto_em:        t => t.aberto_em ?? '',
+    operador:         t => t.operador ?? '',
+    numero_caixa:     t => t.numero_caixa ?? '',
+    vendido:          t => Number(t.vendido ?? 0),
+    valor_esperado:   t => Number(t.valor_esperado ?? 0),
+    valor_fechamento: t => Number(t.valor_fechamento ?? 0),
+    diferenca:        t => Number(t.diferenca ?? 0),
+  }
+  const turnosFiltrados = turnos.filter(t =>
+    (!filtros.operador || String(t.operador ?? '') === filtros.operador) &&
+    (!filtros.numero_caixa || String(t.numero_caixa ?? '') === filtros.numero_caixa)
+  )
+  const turnosOrdenados = !ordem ? turnosFiltrados : [...turnosFiltrados].sort((a, b) => {
+    const ler = CAIXA_ACESSORES[ordem.chave]
+    const av = ler(a) ?? ''; const bv = ler(b) ?? ''
+    const cmp = typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
+    return ordem.dir === 'asc' ? cmp : -cmp
+  })
+  const totalPages   = Math.max(1, Math.ceil(turnosOrdenados.length / limit))
+  const pageClamped  = Math.min(page, totalPages)
+  const turnosPagina = turnosOrdenados.slice((pageClamped - 1) * limit, pageClamped * limit)
+  const opcoesFiltro = {
+    operador:     Array.from(new Set(turnos.map(t => String(t.operador ?? '')).filter(Boolean))),
+    numero_caixa: Array.from(new Set(turnos.map(t => String(t.numero_caixa ?? '')).filter(Boolean))),
+  }
 
   function exportar() {
     if (turnos.length === 0) { toast('Nada para exportar neste período.', 'error'); return }
@@ -162,11 +202,20 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={turnos}
+        itens={turnosPagina}
         chave={(t: any) => t.turno_id}
         carregando={isLoading}
+        usarSkeleton
         vazio="Nenhum turno neste período."
         onLinhaClick={(t: any) => setDetalhe(t)}
+        ordem={ordem ?? undefined}
+        onOrdenar={toggleOrdem}
+        filtros={filtros}
+        onFiltrar={(chave, valor) => { setFiltros(prev => ({ ...prev, [chave]: valor })); setPage(1) }}
+        opcoesFiltro={opcoesFiltro}
+        meta={{ page: pageClamped, totalPages, total: turnosOrdenados.length, limit }}
+        onPageChange={setPage}
+        onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
       />
 
       {detalhe && (

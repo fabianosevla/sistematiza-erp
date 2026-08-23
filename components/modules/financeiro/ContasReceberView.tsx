@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { useToast } from '@/components/ui/Toast'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -40,6 +41,10 @@ export default function ContasReceberView({ tenantSlug }: Props) {
 
   const [filtroStatus, setFiltroStatus] = useState('todas')
   const [busca, setBusca]               = useState('')
+  const [page, setPage]                 = useState(1)
+  const [limit, setLimit]               = useState(20)
+  const [sortKey, setSortKey]           = useState('dataEntrega')
+  const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('desc')
   const [showModal, setShowModal]       = useState(false)
   // Conta em edição. Null = o modal está criando.
   const [editando, setEditando]         = useState<any | null>(null)
@@ -86,13 +91,22 @@ export default function ContasReceberView({ tenantSlug }: Props) {
   })
 
   const { data: listRaw, isLoading } = useQuery({
-    queryKey: ['contas-receber', tenantSlug, filtroStatus, busca],
+    queryKey: ['contas-receber', tenantSlug, filtroStatus, busca, page, limit, sortKey, sortDir],
     queryFn:  async () => {
-      const p = new URLSearchParams({ status: filtroStatus, limit: '50' })
+      const p = new URLSearchParams({
+        status: filtroStatus, page: String(page), limit: String(limit),
+        sort: sortKey, dir: sortDir,
+      })
       if (busca) p.set('busca', busca)
       return (await fetch(`${api}?${p}`)).json()
     },
   })
+
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('desc') }
+    setPage(1)
+  }
 
   function abrirNova() {
     setEditando(null)
@@ -212,8 +226,71 @@ export default function ContasReceberView({ tenantSlug }: Props) {
 
   const kpis = kpisRaw?.data
   const rows = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
+  const meta = listRaw?.data?.meta ?? null
 
   const salvando = criarMut.isPending || editarMut.isPending
+
+  const colunas: Coluna[] = [
+    {
+      chave: 'descricao', titulo: 'Descrição', principal: true, ordenavel: true,
+      render: (r: any) => (
+        <>
+          <p className="text-sm font-medium text-gray-900">{r.descricao}</p>
+          {r.numeroDocumento && <p className="text-xs text-gray-400">Doc: {r.numeroDocumento}</p>}
+          {r.totalParcelas > 1 && <p className="text-xs text-gray-400">{r.parcelaAtual}/{r.totalParcelas} parcelas</p>}
+        </>
+      ),
+    },
+    {
+      chave: 'nomeCliente', titulo: 'Cliente', ordenavel: true,
+      render: (r: any) => r.nomeCliente || '—',
+    },
+    {
+      chave: 'dataEntrega', titulo: 'Entregue', ordenavel: true,
+      render: (r: any) => r.dataEntrega ? fmtDate(r.dataEntrega) : '—',
+    },
+    {
+      chave: 'dataVencimento', titulo: 'Vencimento', ordenavel: true,
+      render: (r: any) => {
+        const vencida = isVencida(r)
+        return (
+          <>
+            <span className={`text-sm ${vencida ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>{fmtDate(r.dataVencimento)}</span>
+            {vencida && <span className="block text-[10px] text-red-500">Vencida</span>}
+          </>
+        )
+      },
+    },
+    {
+      chave: 'valorOriginal', titulo: 'Valor', ordenavel: true, alinhamento: 'right',
+      render: (r: any) => {
+        const saldo = r.valorOriginal - r.valorRecebido
+        return (
+          <>
+            <p className="text-sm font-bold text-gray-900">{fmt(r.valorOriginal)}</p>
+            {r.valorRecebido > 0 && <p className="text-xs text-green-600">Recebido: {fmt(r.valorRecebido)}</p>}
+            {saldo > 0 && saldo < r.valorOriginal && <p className="text-xs text-gray-500">Saldo: {fmt(saldo)}</p>}
+          </>
+        )
+      },
+    },
+    {
+      chave: 'status', titulo: 'Status', ordenavel: true,
+      render: (r: any) => {
+        const vencida = isVencida(r)
+        return (
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+            vencida ? 'bg-red-100 text-red-700' :
+            r.status === 'recebida' ? 'bg-green-100 text-green-700' :
+            r.status === 'aberta'   ? 'bg-gray-100 text-gray-700'  :
+            'bg-gray-100 text-gray-500'
+          }`}>
+            {vencida ? 'Vencida' : r.status === 'recebida' ? 'Recebida' : r.status === 'aberta' ? 'Aberta' : r.status}
+          </span>
+        )
+      },
+    },
+  ]
 
   return (
     <div className="space-y-5">
@@ -238,14 +315,14 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           {['todas', 'aberta', 'vencidas', 'recebida', 'cancelada'].map(s => (
-            <button key={s} onClick={() => setFiltroStatus(s)}
+            <button key={s} onClick={() => { setFiltroStatus(s); setPage(1) }}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize ${filtroStatus === s ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
               {s}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <Input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar..." className="h-8 text-sm w-48" />
+          <Input value={busca} onChange={e => { setBusca(e.target.value); setPage(1) }} placeholder="Buscar..." className="h-8 text-sm w-48" />
           <Button onClick={abrirNova} size="sm">
             <Plus size={14} className="mr-1" /> Nova conta
           </Button>
@@ -253,80 +330,38 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       </div>
 
       {/* Tabela */}
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-100">
-              {['Descrição', 'Cliente', 'Entregue', 'Vencimento', 'Valor', 'Status', ''].map((h, i) => (
-                <th key={i} className={`text-left text-xs font-medium text-gray-400 px-4 py-3 ${i === 4 ? 'text-right' : ''}`}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={7} className="text-center py-10 text-sm text-gray-400">Carregando...</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={7} className="text-center py-10 text-sm text-gray-400">Nenhum título encontrado.</td></tr>
-            ) : rows.map((r: any) => {
-              const vencida = isVencida(r)
-              const saldo   = r.valorOriginal - r.valorRecebido
-              return (
-                <tr key={r.contaReceberId} className="group border-b border-gray-50 hover:bg-gray-50/80">
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-gray-900">{r.descricao}</p>
-                    {r.numeroDocumento && <p className="text-xs text-gray-400">Doc: {r.numeroDocumento}</p>}
-                    {r.totalParcelas > 1 && <p className="text-xs text-gray-400">{r.parcelaAtual}/{r.totalParcelas} parcelas</p>}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{r.nomeCliente || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {r.dataEntrega ? fmtDate(r.dataEntrega) : '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-sm ${vencida ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
-                      {fmtDate(r.dataVencimento)}
-                    </span>
-                    {vencida && <span className="block text-[10px] text-red-500">Vencida</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <p className="text-sm font-bold text-gray-900">{fmt(r.valorOriginal)}</p>
-                    {r.valorRecebido > 0 && <p className="text-xs text-green-600">Recebido: {fmt(r.valorRecebido)}</p>}
-                    {saldo > 0 && saldo < r.valorOriginal && <p className="text-xs text-gray-500">Saldo: {fmt(saldo)}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                      vencida ? 'bg-red-100 text-red-700' :
-                      r.status === 'recebida' ? 'bg-green-100 text-green-700' :
-                      r.status === 'aberta'   ? 'bg-gray-100 text-gray-700'  :
-                      'bg-gray-100 text-gray-500'
-                    }`}>
-                      {vencida ? 'Vencida' : r.status === 'recebida' ? 'Recebida' : r.status === 'aberta' ? 'Aberta' : r.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100">
-                      {r.status !== 'recebida' && (
-                        <>
-                          <button onClick={() => abrirEdicao(r)}
-                            className="p-1 text-gray-400 hover:text-gray-600" title="Editar (vencimento, valor, dados)">
-                            <Pencil size={13} />
-                          </button>
-                          <button onClick={() => { setShowBaixa(r); setBaixaForm({ valorRecebido: ((r.valorOriginal - r.valorRecebido) / 100).toFixed(2), dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: r.formaRecebimento ?? '' }) }}
-                            className="p-1 text-green-500 hover:text-green-700" title="Baixar">
-                            <CheckCircle size={14} />
-                          </button>
-                        </>
-                      )}
-                      <button onClick={() => setConfirmDel(r)} className="p-1 text-gray-300 hover:text-red-500">
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        colunas={colunas}
+        itens={rows}
+        chave={(r: any) => r.contaReceberId}
+        carregando={isLoading}
+        usarSkeleton
+        vazio="Nenhum título encontrado."
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
+        meta={meta}
+        onPageChange={setPage}
+        onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        acoes={(r: any) => (
+          <>
+            {r.status !== 'recebida' && (
+              <>
+                <button onClick={() => abrirEdicao(r)}
+                  className="p-1 text-gray-400 hover:text-gray-600" title="Editar (vencimento, valor, dados)">
+                  <Pencil size={13} />
+                </button>
+                <button onClick={() => { setShowBaixa(r); setBaixaForm({ valorRecebido: ((r.valorOriginal - r.valorRecebido) / 100).toFixed(2), dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: r.formaRecebimento ?? '' }) }}
+                  className="p-1 text-green-500 hover:text-green-700" title="Baixar">
+                  <CheckCircle size={14} />
+                </button>
+              </>
+            )}
+            <button onClick={() => setConfirmDel(r)} className="p-1 text-gray-300 hover:text-red-500">
+              <Trash2 size={13} />
+            </button>
+          </>
+        )}
+      />
 
       {/* Modal nova conta / edição */}
       {showModal && (

@@ -27,6 +27,8 @@ export async function GET(req: NextRequest, { params }: P) {
         busca:      url.searchParams.get('busca') ?? undefined,
         page:       Number(url.searchParams.get('page') ?? 1),
         limit:      Number(url.searchParams.get('limit') ?? 20),
+        sort:       url.searchParams.get('sort') ?? undefined,
+        dir:        (url.searchParams.get('dir') === 'asc' ? 'asc' : 'desc'),
       }))
     } finally { release() }
   } catch (err) { return serverError(err) }

@@ -1,13 +1,23 @@
-import { and, eq, gte, lte, desc, count, sql, or } from 'drizzle-orm'
+import { and, eq, gte, lte, count, sql, or } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbContaPagar, type TpDbContaPagarInsert } from '@/lib/db/schemas/financeiro-completo'
 
 export class ContasPagarService {
   constructor(private db: AppDB) {}
 
-  async list({ status, dataInicio, dataFim, busca, page = 1, limit = 20 }: {
+  // Colunas que a listagem aceita ordenar — allowlist, nunca interpola o
+  // parâmetro de ordenação direto na query (injeção de SQL via ?sort=).
+  private static ORDENAVEIS: Record<string, any> = {
+    descricao:       dbContaPagar.descricao,
+    nomeFornecedor:  dbContaPagar.nomeFornecedor,
+    dataVencimento:  dbContaPagar.dataVencimento,
+    valorOriginal:   dbContaPagar.valorOriginal,
+    status:          dbContaPagar.status,
+  }
+
+  async list({ status, dataInicio, dataFim, busca, page = 1, limit = 20, sort = 'dataVencimento', dir = 'desc' }: {
     status?: string; dataInicio?: string; dataFim?: string; busca?: string
-    page?: number; limit?: number
+    page?: number; limit?: number; sort?: string; dir?: 'asc' | 'desc'
   }) {
     const offset = (page - 1) * limit
     const conds = [eq(dbContaPagar.activeFlag, true)]
@@ -36,14 +46,18 @@ export class ContasPagarService {
     }
     const where = and(...conds)
 
+    const colunaOrdem = ContasPagarService.ORDENAVEIS[sort] ?? ContasPagarService.ORDENAVEIS.dataVencimento
+    const orderBy = dir === 'asc' ? sql`${colunaOrdem} ASC NULLS LAST` : sql`${colunaOrdem} DESC NULLS LAST`
+
     const [rows, totals] = await Promise.all([
       this.db.select().from(dbContaPagar).where(where)
-        .orderBy(desc(dbContaPagar.dataVencimento)).limit(limit).offset(offset),
+        .orderBy(orderBy).limit(limit).offset(offset),
       this.db.select({ total: count() }).from(dbContaPagar).where(where),
     ])
+    const total = Number(totals[0]?.total ?? 0)
     return {
       data: rows,
-      meta: { total: Number(totals[0]?.total ?? 0), page, limit },
+      meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
     }
   }
 
