@@ -21,14 +21,34 @@ type Params = { params: { tenant: string } }
  * (aluguel, luz, salário), o número aqui ficava muito abaixo do real.
  */
 export async function despesaDoMes(db: any, mes: number, ano: number): Promise<number> {
-  const avulsaRes = await db.execute(sql`SELECT COALESCE(SUM(valor),0)::bigint as total FROM t_despesa WHERE active_flg=true AND mes_competencia=${mes} AND ano_competencia=${ano}`)
+  const { total } = await despesaDoMesDetalhada(db, mes, ano)
+  return total
+}
+
+/**
+ * Mesmo total de despesaDoMes(), mas quebrado por origem — pra tela de Metas
+ * explicar o que compõe o número em vez de jogar tudo debaixo de "Despesa".
+ * Insumos vem do próprio categoria='Insumos' que Compras já grava em
+ * t_despesa/t_conta_pagar (compra à vista ou baixa da compra a prazo) — não é
+ * estimativa, é o valor real já rotulado na origem.
+ */
+export async function despesaDoMesDetalhada(db: any, mes: number, ano: number): Promise<{ insumos: number; operacionais: number; gastosFixos: number; total: number }> {
+  const avulsaRes = await db.execute(sql`
+    SELECT COALESCE(SUM(valor) FILTER (WHERE categoria = 'Insumos'), 0)::bigint as insumos,
+           COALESCE(SUM(valor) FILTER (WHERE categoria IS DISTINCT FROM 'Insumos'), 0)::bigint as operacionais
+      FROM t_despesa
+     WHERE active_flg=true AND mes_competencia=${mes} AND ano_competencia=${ano}
+  `)
   const fixoRes = await db.execute(sql`
     SELECT COALESCE(SUM(gv.valor),0)::bigint as total
       FROM t_gasto_fixo_valor gv
       JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
      WHERE gv.active_flg = true AND gv.mes = ${mes} AND gv.ano = ${ano}
   `).catch(() => ({ rows: [{ total: 0 }] }))
-  return Number(avulsaRes.rows[0]?.total ?? 0) + Number(fixoRes.rows[0]?.total ?? 0)
+  const insumos      = Number(avulsaRes.rows[0]?.insumos ?? 0)
+  const operacionais  = Number(avulsaRes.rows[0]?.operacionais ?? 0)
+  const gastosFixos   = Number(fixoRes.rows[0]?.total ?? 0)
+  return { insumos, operacionais, gastosFixos, total: insumos + operacionais + gastosFixos }
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
@@ -262,9 +282,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       const [meta] = await db.select().from(dbMeta).where(and(eq(dbMeta.mes, mes), eq(dbMeta.ano, ano), eq(dbMeta.activeFlag, true)))
       const receitaRes = await db.execute(sql`SELECT COALESCE(SUM(total),0)::bigint as receita FROM t_venda WHERE active_flg=true AND EXTRACT(MONTH FROM vendida_em)=${mes} AND EXTRACT(YEAR FROM vendida_em)=${ano}`)
       const receita = Number(receitaRes.rows[0]?.receita ?? 0)
-      const despesa = await despesaDoMes(db, mes, ano)
+      const detalheDespesa = await despesaDoMesDetalhada(db, mes, ano)
+      const despesa = detalheDespesa.total
       const lucro = receita - despesa
-      return ok({ meta: meta ?? { metaReceita: 0, metaDespesaMaxima: 0, metaLucro: 0, mes, ano }, real: { receita, despesa, lucro }, progresso: { receita: meta?.metaReceita > 0 ? Math.min(100, (receita/meta.metaReceita)*100) : null, despesa: meta?.metaDespesaMaxima > 0 ? Math.min(100, (despesa/meta.metaDespesaMaxima)*100) : null, lucro: meta?.metaLucro > 0 ? Math.min(100, (lucro/meta.metaLucro)*100) : null } })
+      return ok({ meta: meta ?? { metaReceita: 0, metaDespesaMaxima: 0, metaLucro: 0, mes, ano }, real: { receita, despesa, lucro, detalheDespesa }, progresso: { receita: meta?.metaReceita > 0 ? Math.min(100, (receita/meta.metaReceita)*100) : null, despesa: meta?.metaDespesaMaxima > 0 ? Math.min(100, (despesa/meta.metaDespesaMaxima)*100) : null, lucro: meta?.metaLucro > 0 ? Math.min(100, (lucro/meta.metaLucro)*100) : null } })
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

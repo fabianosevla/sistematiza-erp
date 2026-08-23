@@ -140,18 +140,34 @@ export default function MetasResumoView({ tenantSlug }: Props) {
         {real && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
-              { label: 'Receita',  real: real.receita, metaVal: meta?.metaReceita ?? 0,       icon: TrendingUp,   corReal: 'text-green-600', invertColor: false, labelMeta: 'Meta' },
-              { label: 'Despesas', real: real.despesa, metaVal: meta?.metaDespesaMaxima ?? 0, icon: TrendingDown, corReal: 'text-red-600',   invertColor: true,  labelMeta: 'Máximo' },
-              { label: 'Lucro',    real: real.lucro,   metaVal: meta?.metaLucro ?? 0,         icon: DollarSign,   corReal: real.lucro >= 0 ? 'text-green-600' : 'text-red-600', invertColor: false, labelMeta: 'Meta' },
+              { label: 'Receita',  real: real.receita, metaVal: meta?.metaReceita ?? 0,       icon: TrendingUp,   corIcone: 'text-green-600', invertColor: false, labelMeta: 'Meta' },
+              {
+                label: 'Débitos', real: real.despesa, metaVal: meta?.metaDespesaMaxima ?? 0, icon: TrendingDown, corIcone: 'text-red-600', invertColor: true, labelMeta: 'Máximo',
+                info: real.detalheDespesa ? (
+                  <>
+                    Soma de tudo que saiu de caixa no mês:<br />
+                    Compras de insumos: {fmt(real.detalheDespesa.insumos)}<br />
+                    Despesas: {fmt(real.detalheDespesa.operacionais)}<br />
+                    Gasto fixo: {fmt(real.detalheDespesa.gastosFixos)}
+                  </>
+                ) : undefined,
+              },
+              { label: 'Lucro',    real: real.lucro,   metaVal: meta?.metaLucro ?? 0,         icon: DollarSign,   corIcone: real.lucro >= 0 ? 'text-green-600' : 'text-red-600', invertColor: false, labelMeta: 'Meta' },
             ].map((card, i) => {
               const pct = card.metaVal > 0 ? Math.min(100, (card.real / card.metaVal) * 100) : null
               return (
                 <div key={i} className="bg-white rounded-xl border border-gray-100 p-5">
                   <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2"><card.icon size={16} className={card.corReal} /><p className="text-sm font-medium text-gray-700">{card.label}</p></div>
+                    <div className="flex items-center gap-2">
+                      <card.icon size={16} className={card.corIcone} />
+                      <p className="text-sm font-medium text-gray-700">{card.label}</p>
+                      {card.info && <InfoTip titulo="O que compõe os débitos">{card.info}</InfoTip>}
+                    </div>
                     {pct !== null && <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${(!card.invertColor && pct >= 100) || (card.invertColor && pct <= 80) ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{pct.toFixed(0)}%</span>}
                   </div>
-                  <p className={`text-2xl font-bold ${card.corReal}`}>{fmt(card.real)}</p>
+                  {/* Número em preto — cor só no ícone e nos indicadores de progresso,
+                      pra não sobrecarregar a tela com vermelho/laranja repetido. */}
+                  <p className="text-2xl font-bold text-gray-900">{fmt(card.real)}</p>
                   {card.metaVal > 0 ? (
                     <>
                       <p className="text-xs text-gray-400 mt-1">
@@ -212,7 +228,7 @@ export default function MetasResumoView({ tenantSlug }: Props) {
         >
           <div className="p-6 space-y-4">
             <div><Label>Meta de Receita (R$)</Label><Input type="number" min="0" step="0.01" value={fReceita} onChange={e => setFReceita(e.target.value)} className="mt-1" placeholder="Ex: 30000,00" autoFocus /></div>
-            <div><Label>Despesa Máxima (R$)</Label><Input type="number" min="0" step="0.01" value={fDespesa} onChange={e => setFDespesa(e.target.value)} className="mt-1" placeholder="Ex: 8000,00" /></div>
+            <div><Label>Débitos Máximo (R$)</Label><Input type="number" min="0" step="0.01" value={fDespesa} onChange={e => setFDespesa(e.target.value)} className="mt-1" placeholder="Ex: 8000,00" /></div>
             <div><Label>Meta de Lucro (R$)</Label><Input type="number" min="0" step="0.01" value={fLucro} onChange={e => setFLucro(e.target.value)} className="mt-1" placeholder="Ex: 15000,00" /></div>
             <div className="flex justify-end gap-3 pt-2">
               <Button variant="outline" onClick={() => setShowEditMeta(false)}>Cancelar</Button>
