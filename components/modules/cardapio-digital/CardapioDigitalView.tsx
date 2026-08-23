@@ -1,599 +1,399 @@
-'use client';
+'use client'
+// components/modules/cardapio-digital/CardapioDigitalView.tsx
+//
+// Menu próprio do Cardápio Digital — antes vivia como uma seção dentro de
+// Configurações (Header.tsx). Três abas: Layout (mensagem/cor — o logo é o
+// mesmo já cadastrado em Configurações, não duplica upload aqui), Configurações
+// (ativo, WhatsApp que recebe o pedido, tipos de venda permitidos) e QR Code
+// (tela pronta pra imprimir: logo + QR embaixo).
+import { useEffect, useRef, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import QRCode from 'qrcode'
+import { Palette, Settings, QrCode as QrCodeIcon, Copy, Printer, Upload, Check, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useToast } from '@/components/ui/Toast'
+import { InfoTip } from '@/components/ui/InfoTip'
+import { PageHeader } from '@/components/ui/PageHeader'
 
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Image as ImageIcon, 
-  Upload, 
-  Trash2, 
-  Save, 
-  Clock, 
-  Truck, 
-  Palette, 
-  MessageSquare, 
-  CheckCircle2, 
-  AlertCircle,
-  ExternalLink,
-  Loader2
-} from 'lucide-react';
+interface Props { tenantSlug: string }
 
-interface CardapioConfig {
-  layout_tipo?: string;
-  banner_url?: string | null;
-  cor_primaria?: string;
-  mensagem_topo?: string;
-  mensagem_rodape?: string;
-  pedido_minimo?: number;
-  taxa_entrega_padrao?: number;
-  tempo_entrega_estimado?: string;
-  horarios?: {
-    dia: number; // 0 a 6 (Domingo a Sábado)
-    dia_nome: string;
-    aberto: boolean;
-    abertura: string;
-    fechamento: string;
-  }[];
-}
+const DIAS_SEMANA = [
+  ['dom', 'Domingo'], ['seg', 'Segunda'], ['ter', 'Terça'], ['qua', 'Quarta'],
+  ['qui', 'Quinta'], ['sex', 'Sexta'], ['sab', 'Sábado'],
+] as const
+const DIA_PADRAO = { aberto: true, abre: '08:00', fecha: '18:00' }
 
-interface CardapioDigitalViewProps {
-  tenant: string;
-}
+const LAYOUTS = [
+  { id: 'classico',  nome: 'Clássico',  descricao: 'Lista com foto pequena ao lado de cada produto.' },
+  { id: 'grade',      nome: 'Grade',     descricao: 'Cards em grade, foto grande em cima do nome/preço.' },
+  { id: 'capa',       nome: 'Capa',      descricao: 'Foto de fundo grande no topo, com o cardápio abaixo.' },
+  { id: 'compacto',   nome: 'Compacto',  descricao: 'Lista densa, sem foto — ótimo pra cardápio com muitos itens.' },
+] as const
 
-// ---------------------------------------------------------------------------
-// Função Utilitária: Compressão e Redimensionamento de Imagem no Navegador
-// ---------------------------------------------------------------------------
-function comprimirImagem(file: File, maxDimensao = 1200, qualidade = 0.75): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > maxDimensao) {
-            height = Math.round((height * maxDimensao) / width);
-            width = maxDimensao;
-          }
-        } else {
-          if (height > maxDimensao) {
-            width = Math.round((width * maxDimensao) / height);
-            height = maxDimensao;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          return reject(new Error('Falha ao processar canvas de imagem.'));
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-        // Gera Base64 em formato JPEG comprimido
-        resolve(canvas.toDataURL('image/jpeg', qualidade));
-      };
-      img.onerror = (err) => reject(err);
-    };
-    reader.onerror = (err) => reject(err);
-  });
-}
-
-export default function CardapioDigitalView({ tenant }: CardapioDigitalViewProps) {
-  const [config, setConfig] = useState<CardapioConfig>({
-    layout_tipo: 'cards',
-    banner_url: null,
-    cor_primaria: '#10b981',
-    mensagem_topo: '',
-    mensagem_rodape: '',
-    pedido_minimo: 0,
-    taxa_entrega_padrao: 0,
-    tempo_entrega_estimado: '40-60 min',
-    horarios: [
-      { dia: 0, dia_nome: 'Domingo', aberto: false, abertura: '18:00', fechamento: '23:00' },
-      { dia: 1, dia_nome: 'Segunda-feira', aberto: false, abertura: '18:00', fechamento: '23:00' },
-      { dia: 2, dia_nome: 'Terça-feira', aberto: true, abertura: '18:00', fechamento: '23:00' },
-      { dia: 3, dia_nome: 'Quarta-feira', aberto: true, abertura: '18:00', fechamento: '23:00' },
-      { dia: 4, dia_nome: 'Quinta-feira', aberto: true, abertura: '18:00', fechamento: '23:00' },
-      { dia: 5, dia_nome: 'Sexta-feira', aberto: true, abertura: '18:00', fechamento: '23:30' },
-      { dia: 6, dia_nome: 'Sábado', aberto: true, abertura: '18:00', fechamento: '23:30' },
-    ]
-  });
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [feedback, setFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
-  const [abaAtiva, setAbaAtiva] = useState<'visual' | 'horarios' | 'entrega' | 'mensagens'>('visual');
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    carregarConfiguracoes();
-  }, [tenant]);
-
-  const mostrarFeedback = (tipo: 'sucesso' | 'erro', texto: string) => {
-    setFeedback({ tipo, texto });
-    setTimeout(() => setFeedback(null), 5000);
-  };
-
-  const carregarConfiguracoes = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch(`/api/${tenant}/cardapio/config`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Object.keys(data).length > 0) {
-          setConfig((prev) => ({
-            ...prev,
-            ...data,
-            horarios: data.horarios && data.horarios.length > 0 ? data.horarios : prev.horarios,
-          }));
-        }
-      }
-    } catch (err) {
-      console.error('Erro ao carregar configurações do cardápio:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ---------------------------------------------------------------------------
-  // Upload Seguro com Compressão de Imagem
-  // ---------------------------------------------------------------------------
-  const handleUploadImagemFundo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validação básica de tipo
-    if (!file.type.startsWith('image/')) {
-      mostrarFeedback('erro', 'Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP).');
-      return;
-    }
-
-    try {
-      setUploadingImage(true);
-      setFeedback(null);
-
-      // 1. Redimensiona e comprime no cliente (máx 1200px, 75% de qualidade JPEG)
-      const base64Comprimido = await comprimirImagem(file, 1200, 0.75);
-
-      // 2. Envia para a API de banner / fundo
-      const res = await fetch(`/api/${tenant}/cardapio/banner`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ banner_url: base64Comprimido }),
-      });
-
-      if (!res.ok) {
-        let mensagemErro = 'Falha ao processar upload da imagem.';
-        try {
-          const dadosErro = await res.json();
-          mensagemErro = dadosErro.error || dadosErro.message || mensagemErro;
-        } catch {
-          const texto = await res.text();
-          if (texto) mensagemErro = texto;
-        }
-        throw new Error(mensagemErro);
-      }
-
-      const resData = await res.json().catch(() => ({}));
-      const urlFinal = resData.banner_url || base64Comprimido;
-
-      setConfig((prev) => ({ ...prev, banner_url: urlFinal }));
-      mostrarFeedback('sucesso', 'Imagem de fundo enviada e aplicada com sucesso!');
-    } catch (err: any) {
-      console.error('Erro no upload de imagem de fundo:', err);
-      mostrarFeedback('erro', err.message || 'Erro ao enviar imagem de fundo.');
-    } finally {
-      setUploadingImage(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleRemoverImagemFundo = async () => {
-    try {
-      setUploadingImage(true);
-      const res = await fetch(`/api/${tenant}/cardapio/banner`, {
-        method: 'DELETE',
-      });
-
-      if (!res.ok) {
-        const texto = await res.text();
-        throw new Error(texto || 'Erro ao remover imagem.');
-      }
-
-      setConfig((prev) => ({ ...prev, banner_url: null }));
-      mostrarFeedback('sucesso', 'Imagem de fundo removida.');
-    } catch (err: any) {
-      mostrarFeedback('erro', err.message || 'Erro ao remover imagem.');
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  const handleSalvarConfiguracoes = async () => {
-    try {
-      setSaving(true);
-      setFeedback(null);
-
-      const res = await fetch(`/api/${tenant}/cardapio/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-      });
-
-      if (!res.ok) {
-        let mensagemErro = 'Erro ao salvar configurações.';
-        try {
-          const errData = await res.json();
-          mensagemErro = errData.error || errData.message || mensagemErro;
-        } catch {
-          const txt = await res.text();
-          if (txt) mensagemErro = txt;
-        }
-        throw new Error(mensagemErro);
-      }
-
-      mostrarFeedback('sucesso', 'Configurações do cardápio salvas com sucesso!');
-    } catch (err: any) {
-      mostrarFeedback('erro', err.message || 'Erro ao salvar configurações.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) {
+/** Miniatura ilustrativa de cada layout — não é screenshot, é só um esquema. */
+function MockupLayout({ tipo }: { tipo: string }) {
+  const base = 'w-full rounded bg-gray-100'
+  if (tipo === 'grade') {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+      <div className="space-y-1.5">
+        <div className={`${base} h-3`} />
+        <div className="grid grid-cols-2 gap-1.5">
+          <div className="bg-gray-200 rounded h-8" />
+          <div className="bg-gray-200 rounded h-8" />
+          <div className="bg-gray-200 rounded h-8" />
+          <div className="bg-gray-200 rounded h-8" />
+        </div>
       </div>
-    );
+    )
+  }
+  if (tipo === 'capa') {
+    return (
+      <div className="space-y-1.5">
+        <div className="bg-gray-300 rounded h-10" />
+        <div className={`${base} h-2.5`} />
+        <div className={`${base} h-2.5`} />
+        <div className={`${base} h-2.5`} />
+      </div>
+    )
+  }
+  if (tipo === 'compacto') {
+    return (
+      <div className="space-y-1">
+        <div className={`${base} h-2.5`} />
+        {[...Array(6)].map((_, i) => <div key={i} className="bg-gray-100 rounded h-1.5" />)}
+      </div>
+    )
+  }
+  // classico
+  return (
+    <div className="space-y-1.5">
+      <div className={`${base} h-3`} />
+      {[...Array(3)].map((_, i) => (
+        <div key={i} className="flex items-center gap-1.5">
+          <div className="bg-gray-200 rounded w-4 h-4 flex-shrink-0" />
+          <div className="bg-gray-100 rounded h-2 flex-1" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export default function CardapioDigitalView({ tenantSlug }: Props) {
+  const qc        = useQueryClient()
+  const { toast } = useToast()
+  const api       = `/api/${tenantSlug}/cardapio/config`
+
+  const [aba, setAba] = useState<'layout' | 'config' | 'qrcode'>('layout')
+
+  const { data: cfgRaw } = useQuery({
+    queryKey: ['cardapio-config', tenantSlug],
+    queryFn:  async () => (await fetch(api)).json(),
+  })
+  const { data: empresaRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+  })
+
+  const cfg     = cfgRaw?.data
+  const empresa = empresaRaw?.data
+
+  const [local, setLocal] = useState<any>(null)
+  useEffect(() => { if (cfg && !local) setLocal(cfg) }, [cfg])
+
+  function set(campo: string, valor: any) {
+    setLocal((prev: any) => ({ ...(prev ?? {}), [campo]: valor }))
+  }
+
+  function setDia(dia: string, campo: 'aberto' | 'abre' | 'fecha', valor: any) {
+    setLocal((prev: any) => ({
+      ...(prev ?? {}),
+      horario: {
+        ...(prev?.horario ?? {}),
+        [dia]: { ...DIA_PADRAO, ...(prev?.horario?.[dia] ?? {}), [campo]: valor },
+      },
+    }))
+  }
+
+  const salvarMut = useMutation({
+    mutationFn: () => fetch(api, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(local),
+    }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['cardapio-config', tenantSlug] }); toast('Salvo!') },
+    onError:   () => toast('Erro ao salvar.', 'error'),
+  })
+
+  // Link + QR Code do cardápio público — mesma lógica que existia em Header.tsx.
+  const [urlCardapio, setUrlCardapio] = useState('')
+  const [qrDataUrl, setQrDataUrl]     = useState('')
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const url = `${window.location.origin}/cardapio/${tenantSlug}`
+    setUrlCardapio(url)
+    QRCode.toDataURL(url, { width: 480, margin: 1 }).then(setQrDataUrl).catch(() => {})
+  }, [tenantSlug])
+
+  function copiarLink() {
+    navigator.clipboard?.writeText(urlCardapio)
+    toast('Link copiado!')
+  }
+
+  const bannerInputRef = useRef<HTMLInputElement>(null)
+  const [enviandoBanner, setEnviandoBanner] = useState(false)
+
+  async function enviarBanner(file: File) {
+    if (file.size > 5 * 1024 * 1024) { toast('Imagem acima de 5 MB. Escolha uma menor.', 'error'); return }
+    setEnviandoBanner(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res  = await fetch(`/api/${tenantSlug}/cardapio/banner`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar imagem')
+      set('bannerUrl', data.data.bannerUrl)
+      qc.invalidateQueries({ queryKey: ['cardapio-config', tenantSlug] })
+      toast('Foto de fundo atualizada!')
+    } catch (e: any) {
+      toast(e?.message ?? 'Não foi possível enviar a imagem.', 'error')
+    } finally {
+      setEnviandoBanner(false)
+    }
+  }
+
+  async function removerBanner() {
+    setEnviandoBanner(true)
+    try {
+      const res  = await fetch(`/api/${tenantSlug}/cardapio/banner`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.message ?? 'Erro ao remover imagem')
+      set('bannerUrl', null)
+      qc.invalidateQueries({ queryKey: ['cardapio-config', tenantSlug] })
+      toast('Foto de fundo removida!')
+    } catch (e: any) {
+      toast(e?.message ?? 'Não foi possível remover a imagem.', 'error')
+    } finally {
+      setEnviandoBanner(false)
+    }
+  }
+
+  if (!local) {
+    return <div className="text-center py-12 text-sm text-gray-400">Carregando...</div>
   }
 
   return (
-    <div className="space-y-6">
-      {/* Cabeçalho */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Cardápio Digital</h1>
-          <p className="text-sm text-zinc-400">
-            Personalize a aparência, horários e regras do seu cardápio público online.
-          </p>
+    <div>
+      {/* A tela inteira some da impressão — só o pôster (mais abaixo) aparece. */}
+      <div className="print:hidden">
+        <PageHeader
+          titulo="Cardápio Digital"
+          subtitulo="Página pública de pedidos, sem login — o cliente acessa pelo link ou QR Code."
+        />
+
+        <div className="flex gap-1 mb-6 bg-gray-100 rounded-lg p-1 w-fit">
+          {([
+            { value: 'layout', label: 'Layout',       icon: Palette },
+            { value: 'config', label: 'Configurações', icon: Settings },
+            { value: 'qrcode', label: 'QR Code',       icon: QrCodeIcon },
+          ] as const).map(a => (
+            <button key={a.value} onClick={() => setAba(a.value)}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              <a.icon size={14} /> {a.label}
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-3">
-          <a
-            href={`/cardapio/${tenant}`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3.5 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
-          >
-            <ExternalLink className="h-4 w-4" />
-            Ver Cardápio Público
-          </a>
-          <button
-            onClick={handleSalvarConfiguracoes}
-            disabled={saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow transition-colors hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Salvar Alterações
-          </button>
-        </div>
-      </div>
 
-      {/* Alertas de Feedback */}
-      {feedback && (
-        <div
-          className={`flex items-center gap-3 rounded-lg border p-4 text-sm ${
-            feedback.tipo === 'sucesso'
-              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-              : 'border-red-500/30 bg-red-500/10 text-red-300'
-          }`}
-        >
-          {feedback.tipo === 'sucesso' ? (
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
-          ) : (
-            <AlertCircle className="h-5 w-5 shrink-0" />
-          )}
-          <span>{feedback.texto}</span>
-        </div>
-      )}
-
-      {/* Navegação de Abas */}
-      <div className="flex border-b border-zinc-800">
-        <button
-          onClick={() => setAbaAtiva('visual')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-            abaAtiva === 'visual'
-              ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Palette className="h-4 w-4" />
-          Aparência e Imagem de Fundo
-        </button>
-        <button
-          onClick={() => setAbaAtiva('horarios')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-            abaAtiva === 'horarios'
-              ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Clock className="h-4 w-4" />
-          Horários de Funcionamento
-        </button>
-        <button
-          onClick={() => setAbaAtiva('entrega')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-            abaAtiva === 'entrega'
-              ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <Truck className="h-4 w-4" />
-          Entrega e Valores
-        </button>
-        <button
-          onClick={() => setAbaAtiva('mensagens')}
-          className={`flex items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
-            abaAtiva === 'mensagens'
-              ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <MessageSquare className="h-4 w-4" />
-          Mensagens e Avisos
-        </button>
-      </div>
-
-      {/* Conteúdo da Aba: Aparência e Imagem de Fundo */}
-      {abaAtiva === 'visual' && (
-        <div className="space-y-6">
-          {/* Seção: Imagem de Fundo / Banner */}
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
-            <h2 className="text-lg font-semibold text-zinc-200">Imagem de Fundo / Banner do Cardápio</h2>
-            <p className="mt-1 text-sm text-zinc-400">
-              Esta imagem será exibida como cabeçalho ou fundo nos layouts visuais do seu cardápio.
-            </p>
-
-            <div className="mt-4 flex flex-col gap-6 md:flex-row md:items-start">
-              {/* Pré-visualização */}
-              <div className="relative h-48 w-full max-w-md overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950 flex items-center justify-center">
-                {config.banner_url ? (
-                  <img
-                    src={config.banner_url}
-                    alt="Fundo do Cardápio"
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center gap-2 text-zinc-500">
-                    <ImageIcon className="h-10 w-10 stroke-1" />
-                    <span className="text-xs">Nenhuma imagem de fundo configurada</span>
-                  </div>
-                )}
-
-                {uploadingImage && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                    <Loader2 className="h-7 w-7 animate-spin text-emerald-400" />
-                  </div>
-                )}
-              </div>
-
-              {/* Botões de Ação */}
-              <div className="flex flex-col gap-3">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleUploadImagemFundo}
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingImage}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-800 px-4 py-2.5 text-sm font-medium text-zinc-200 hover:bg-zinc-700 border border-zinc-700 transition-colors disabled:opacity-50"
-                >
-                  <Upload className="h-4 w-4" />
-                  {config.banner_url ? 'Trocar Imagem de Fundo' : 'Enviar Imagem de Fundo'}
-                </button>
-
-                {config.banner_url && (
-                  <button
-                    type="button"
-                    onClick={handleRemoverImagemFundo}
-                    disabled={uploadingImage}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-red-950/40 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-900/50 border border-red-900/50 transition-colors disabled:opacity-50"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Remover Imagem
-                  </button>
-                )}
-
-                <span className="text-xs text-zinc-500">
-                  Formatos recomendados: JPG, PNG ou WebP. A imagem é otimizada automaticamente antes do envio.
-                </span>
+        {/* ABA: LAYOUT */}
+        {aba === 'layout' && (
+          <div className="space-y-4 max-w-2xl">
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <p className="text-sm font-semibold text-gray-700 mb-3">Disposição da tela</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {LAYOUTS.map(l => {
+                  const selecionado = (local.layout ?? 'classico') === l.id
+                  return (
+                    <button key={l.id} onClick={() => set('layout', l.id)}
+                      className={`text-left rounded-xl border-2 p-3 transition-colors ${selecionado ? 'border-green-500 bg-green-50/40' : 'border-gray-100 hover:border-gray-200'}`}>
+                      <div className="mb-2"><MockupLayout tipo={l.id} /></div>
+                      <p className="text-xs font-semibold text-gray-800 inline-flex items-center gap-1">
+                        {l.nome} {selecionado && <Check size={12} className="text-green-600" />}
+                      </p>
+                      <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">{l.descricao}</p>
+                    </button>
+                  )
+                })}
               </div>
             </div>
-          </div>
 
-          {/* Seção: Estilo do Layout */}
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
-            <h2 className="text-lg font-semibold text-zinc-200">Tipo de Layout</h2>
-            <p className="mt-1 text-sm text-zinc-400">Escolha a disposição visual dos produtos no cardápio público.</p>
-
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-              {[
-                { id: 'cards', nome: 'Cards com Foto', desc: 'Ideal para produtos com fotos grandes e destaque visual.' },
-                { id: 'lista', nome: 'Lista Compacta', desc: 'Visualização rápida em formato de lista simples.' },
-                { id: 'fundo-imagem', nome: 'Fundo com Imagem', desc: 'A imagem de fundo fica em destaque em toda a tela.' },
-              ].map((layout) => (
-                <label
-                  key={layout.id}
-                  className={`flex cursor-pointer flex-col justify-between rounded-lg border p-4 transition-all ${
-                    config.layout_tipo === layout.id
-                      ? 'border-emerald-500 bg-emerald-500/10 text-zinc-100'
-                      : 'border-zinc-800 bg-zinc-950/50 text-zinc-400 hover:border-zinc-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-zinc-200">{layout.nome}</span>
-                    <input
-                      type="radio"
-                      name="layout_tipo"
-                      value={layout.id}
-                      checked={config.layout_tipo === layout.id}
-                      onChange={(e) => setConfig((prev) => ({ ...prev, layout_tipo: e.target.value }))}
-                      className="text-emerald-500 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <p className="mt-2 text-xs text-zinc-400">{layout.desc}</p>
-                </label>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Conteúdo da Aba: Horários */}
-      {abaAtiva === 'horarios' && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
-          <h2 className="text-lg font-semibold text-zinc-200">Horários de Atendimento</h2>
-          <p className="mt-1 text-sm text-zinc-400">
-            Defina quando o cardápio estará aberto para receber pedidos dos clientes.
-          </p>
-
-          <div className="mt-6 divide-y divide-zinc-800">
-            {config.horarios?.map((h, index) => (
-              <div key={h.dia} className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3 w-40">
-                  <input
-                    type="checkbox"
-                    id={`dia-${h.dia}`}
-                    checked={h.aberto}
-                    onChange={(e) => {
-                      const novos = [...(config.horarios || [])];
-                      novos[index].aberto = e.target.checked;
-                      setConfig((prev) => ({ ...prev, horarios: novos }));
-                    }}
-                    className="h-4 w-4 rounded border-zinc-700 bg-zinc-800 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <label htmlFor={`dia-${h.dia}`} className="text-sm font-medium text-zinc-200">
-                    {h.dia_nome}
-                  </label>
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Foto de fundo / capa
+                  <InfoTip titulo="Onde aparece">Usada como fundo no topo do cardápio — mais evidente no layout Capa.</InfoTip>
+                </Label>
+                <div className="flex items-center gap-3 mt-2">
+                  {local.bannerUrl ? (
+                    <div className="relative">
+                      <img src={local.bannerUrl} alt="" className="w-24 h-14 rounded-lg object-cover border border-gray-100" />
+                      <button type="button" onClick={removerBanner} disabled={enviandoBanner}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white border border-gray-200 shadow flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200">
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-24 h-14 rounded-lg bg-gray-100" />
+                  )}
+                  <input ref={bannerInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) enviarBanner(f) }} />
+                  <Button variant="outline" size="sm" onClick={() => bannerInputRef.current?.click()} disabled={enviandoBanner}>
+                    <Upload size={13} className="mr-1.5" /> {enviandoBanner ? 'Enviando...' : 'Trocar imagem'}
+                  </Button>
                 </div>
-
-                {h.aberto ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="time"
-                      value={h.abertura}
-                      onChange={(e) => {
-                        const novos = [...(config.horarios || [])];
-                        novos[index].abertura = e.target.value;
-                        setConfig((prev) => ({ ...prev, horarios: novos }));
-                      }}
-                      className="rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
-                    />
-                    <span className="text-xs text-zinc-500">até</span>
-                    <input
-                      type="time"
-                      value={h.fechamento}
-                      onChange={(e) => {
-                        const novos = [...(config.horarios || [])];
-                        novos[index].fechamento = e.target.value;
-                        setConfig((prev) => ({ ...prev, horarios: novos }));
-                      }}
-                      className="rounded-md border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
-                    />
-                  </div>
-                ) : (
-                  <span className="text-xs font-medium text-zinc-500">Fechado</span>
-                )}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
 
-      {/* Conteúdo da Aba: Entrega e Valores */}
-      {abaAtiva === 'entrega' && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-200">Taxa e Tempo de Entrega</h2>
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+            <InfoTip titulo="Logo">
+              O logo mostrado no cardápio é o mesmo já cadastrado em Configurações — não precisa subir de novo aqui.
+            </InfoTip>
             <div>
-              <label className="text-xs font-medium text-zinc-400">Taxa Padrão de Entrega (R$)</label>
-              <input
-                type="number"
-                step="0.50"
-                min="0"
-                value={config.taxa_entrega_padrao ?? 0}
-                onChange={(e) => setConfig((prev) => ({ ...prev, taxa_entrega_padrao: parseFloat(e.target.value) || 0 }))}
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
-              />
+              <Label className="inline-flex items-center gap-1">
+                Mensagem de boas-vindas
+                <InfoTip titulo="Onde aparece">Texto mostrado no topo do cardápio, abaixo do nome da empresa.</InfoTip>
+              </Label>
+              <Input value={local.mensagemBoasVindas ?? ''} onChange={e => set('mensagemBoasVindas', e.target.value)}
+                className="mt-1" placeholder="Ex: Peça já sua massa fresquinha!" maxLength={300} />
             </div>
             <div>
-              <label className="text-xs font-medium text-zinc-400">Tempo Estimado de Entrega</label>
-              <input
-                type="text"
-                placeholder="Ex: 40-60 min"
-                value={config.tempo_entrega_estimado || ''}
-                onChange={(e) => setConfig((prev) => ({ ...prev, tempo_entrega_estimado: e.target.value }))}
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
-              />
+              <Label className="inline-flex items-center gap-1">
+                Cor de destaque
+                <InfoTip titulo="Onde aparece">Cor dos botões e destaques do cardápio.</InfoTip>
+              </Label>
+              <div className="flex items-center gap-2 mt-1">
+                <input type="color" value={local.corDestaque ?? '#2ecc71'} onChange={e => set('corDestaque', e.target.value)}
+                  className="w-9 h-9 rounded border border-gray-200 cursor-pointer" />
+                <Input value={local.corDestaque ?? '#2ecc71'} onChange={e => set('corDestaque', e.target.value)} className="flex-1" />
+              </div>
+            </div>
+            <div className="flex justify-end pt-2 border-t border-gray-100">
+              <Button onClick={() => salvarMut.mutate()} disabled={salvarMut.isPending}>{salvarMut.isPending ? 'Salvando...' : 'Salvar'}</Button>
+            </div>
             </div>
           </div>
+        )}
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-zinc-200">Regras de Pedido</h2>
+        {/* ABA: CONFIGURAÇÕES */}
+        {aba === 'config' && (
+          <div className="bg-white rounded-xl border border-gray-100 p-5 max-w-lg space-y-4">
+            <div className="flex items-center justify-between py-2 border-b border-gray-50">
+              <span className="text-sm text-gray-700 inline-flex items-center gap-1">
+                Cardápio ativo
+                <InfoTip titulo="O que isso faz">Liga ou desliga o link público — desligado, ninguém acessa.</InfoTip>
+              </span>
+              <button onClick={() => set('cardapioAtivo', !local.cardapioAtivo)}
+                className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${local.cardapioAtivo ? 'bg-green-500' : 'bg-gray-200'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${local.cardapioAtivo ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
+
             <div>
-              <label className="text-xs font-medium text-zinc-400">Valor Mínimo do Pedido (R$)</label>
-              <input
-                type="number"
-                step="1.00"
-                min="0"
-                value={config.pedido_minimo ?? 0}
-                onChange={(e) => setConfig((prev) => ({ ...prev, pedido_minimo: parseFloat(e.target.value) || 0 }))}
-                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
-              />
+              <Label className="inline-flex items-center gap-1">
+                WhatsApp para receber pedidos
+                <InfoTip titulo="Formato">Com DDD, ex: (35) 99999-9999. É pra esse número que a mensagem do pedido vai.</InfoTip>
+              </Label>
+              <Input value={local.whatsapp ?? ''} onChange={e => set('whatsapp', e.target.value)}
+                className="mt-1" placeholder="(35) 99999-9999" />
+            </div>
+
+            <div>
+              <p className="text-sm text-gray-700 mb-2">Tipos de venda permitidos</p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={local.permiteEntrega ?? true} onChange={e => set('permiteEntrega', e.target.checked)} className="w-4 h-4 rounded" />
+                  Entrega
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                  <input type="checkbox" checked={local.permiteBalcao ?? true} onChange={e => set('permiteBalcao', e.target.checked)} className="w-4 h-4 rounded" />
+                  Retirada no balcão
+                </label>
+              </div>
+            </div>
+
+            {local.permiteEntrega && (
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Taxa de entrega (R$)
+                  <InfoTip titulo="Taxa de entrega">Somada automaticamente ao pedido quando o cliente escolhe entrega. Deixe 0,00 para não cobrar taxa.</InfoTip>
+                </Label>
+                <Input type="number" min="0" step="0.01" inputMode="decimal"
+                  value={((local.taxaEntrega ?? 0) / 100).toFixed(2)}
+                  onChange={e => set('taxaEntrega', Math.round(parseFloat(e.target.value.replace(',', '.') || '0') * 100))}
+                  className="sem-spinner mt-1 max-w-[160px]" />
+              </div>
+            )}
+
+            <div>
+              <Label className="inline-flex items-center gap-1">
+                Horário de atendimento
+                <InfoTip titulo="Horário de atendimento">Fora do horário marcado, o cardápio avisa que está fechado e não deixa fazer pedido. Sem nenhum dia marcado, fica sempre aberto.</InfoTip>
+              </Label>
+              <div className="mt-2 space-y-2">
+                {DIAS_SEMANA.map(([chave, nome]) => {
+                  const diaCfg = local.horario?.[chave] ?? { ...DIA_PADRAO, aberto: false }
+                  return (
+                    <div key={chave} className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 w-28 text-sm text-gray-600 cursor-pointer flex-shrink-0">
+                        <input type="checkbox" checked={diaCfg.aberto} onChange={e => setDia(chave, 'aberto', e.target.checked)} className="w-4 h-4 rounded" />
+                        {nome}
+                      </label>
+                      {diaCfg.aberto ? (
+                        <div className="flex items-center gap-2">
+                          <Input type="time" value={diaCfg.abre} onChange={e => setDia(chave, 'abre', e.target.value)} className="h-8 w-28 text-sm" />
+                          <span className="text-gray-400 text-sm">até</span>
+                          <Input type="time" value={diaCfg.fecha} onChange={e => setDia(chave, 'fecha', e.target.value)} className="h-8 w-28 text-sm" />
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">Fechado</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-gray-100">
+              <Button onClick={() => salvarMut.mutate()} disabled={salvarMut.isPending}>{salvarMut.isPending ? 'Salvando...' : 'Salvar'}</Button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Conteúdo da Aba: Mensagens e Avisos */}
-      {abaAtiva === 'mensagens' && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-zinc-200">Mensagens e Avisos aos Clientes</h2>
-          <div>
-            <label className="text-xs font-medium text-zinc-400">Mensagem no Topo do Cardápio (Destaque)</label>
-            <textarea
-              rows={3}
-              placeholder="Ex: Entregas hoje até às 22h. Faça seu pedido com antecedência!"
-              value={config.mensagem_topo || ''}
-              onChange={(e) => setConfig((prev) => ({ ...prev, mensagem_topo: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
-            />
+        {/* ABA: QR CODE */}
+        {aba === 'qrcode' && (
+          <div className="space-y-4 max-w-lg">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Input readOnly value={urlCardapio} className="text-xs h-9" />
+                <Button variant="outline" size="sm" onClick={copiarLink}>
+                  <Copy size={13} className="mr-1.5" /> Copiar
+                </Button>
+              </div>
+              <Button className="w-full" onClick={() => window.print()}>
+                <Printer size={14} className="mr-1.5" /> Imprimir cartaz com QR Code
+              </Button>
+            </div>
           </div>
-          <div>
-            <label className="text-xs font-medium text-zinc-400">Mensagem no Rodapé</label>
-            <textarea
-              rows={2}
-              placeholder="Ex: Agradecemos a preferência! Dúvidas pelo WhatsApp."
-              value={config.mensagem_rodape || ''}
-              onChange={(e) => setConfig((prev) => ({ ...prev, mensagem_rodape: e.target.value }))}
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-200 focus:border-emerald-500 focus:outline-none"
-            />
-          </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* PÔSTER — só aparece na impressão (ver @media print no print:hidden acima) */}
+      <div className="hidden print:flex print:flex-col print:items-center print:justify-center print:h-screen print:w-full text-center gap-6">
+        {empresa?.logoBase64 && <img src={empresa.logoBase64} alt="" style={{ maxHeight: 160, maxWidth: 320, objectFit: 'contain' }} />}
+        <h1 style={{ fontSize: 32, fontWeight: 700 }}>{empresa?.nomeFantasia || empresa?.nomeEmpresa}</h1>
+        <p style={{ fontSize: 18, color: '#555' }}>Aponte a câmera do celular para ver o cardápio e fazer seu pedido</p>
+        {qrDataUrl && <img src={qrDataUrl} alt="QR Code do cardápio" style={{ width: 320, height: 320 }} />}
+        <p style={{ fontSize: 14, color: '#999' }}>{urlCardapio}</p>
+      </div>
     </div>
-  );
+  )
 }
