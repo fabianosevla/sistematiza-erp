@@ -51,10 +51,9 @@ function MockupLayout({ tipo }: { tipo: string }) {
   if (tipo === 'capa') {
     return (
       <div className="space-y-1.5">
-        <div className="bg-gray-300 rounded h-10" />
-        <div className={`${base} h-2.5`} />
-        <div className={`${base} h-2.5`} />
-        <div className={`${base} h-2.5`} />
+        <div className="bg-gray-300 rounded h-6" />
+        <div className="bg-gray-200 rounded h-7" />
+        <div className="bg-gray-200 rounded h-7" />
       </div>
     )
   }

@@ -231,7 +231,30 @@ export default function CardapioPublico({ tenantSlug }: Props) {
                 ))}
               </div>
 
-            /* CLÁSSICO e CAPA — lista com foto pequena ao lado */
+            /* CAPA — cards grandes, uma coluna, foto larga em cima. É o layout
+               mais visual dos quatro, condizente com o banner grande do topo. */
+            ) : tipoLayout === 'capa' ? (
+              <div className="space-y-3">
+                {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
+                  <div key={p.produtoId} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+                    {p.fotoUrl ? (
+                      <img src={p.fotoUrl} alt="" className="w-full h-36 object-cover" />
+                    ) : (
+                      <div className="w-full h-36 bg-gray-100" />
+                    )}
+                    <div className="p-3 flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{p.nome}</p>
+                        {p.descricao && <p className="text-xs text-gray-400 line-clamp-2">{p.descricao}</p>}
+                        <p className="text-sm font-semibold mt-1" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
+                      </div>
+                      <Quantidade p={p} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+            /* CLÁSSICO — lista com foto pequena ao lado */
             ) : (
               <div className="space-y-2">
                 {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
