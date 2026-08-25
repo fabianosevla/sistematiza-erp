@@ -111,10 +111,10 @@ export default function EvolucaoView({ tenantSlug }: Props) {
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line type="monotone" dataKey="receita" name="Receita" stroke="#2ecc71" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
                   <Line type="monotone" dataKey="despesa" name="Despesa" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-                  <Line type="monotone" dataKey="lucro"   name="Lucro"   stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
+                  <Line type="monotone" dataKey="lucro"   name="Lucro"   stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
                   <Line type="monotone" dataKey="receitaProj" name="Receita (projetada)" stroke="#2ecc71" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} connectNulls />
                   <Line type="monotone" dataKey="despesaProj" name="Despesa (projetada)" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} connectNulls />
-                  <Line type="monotone" dataKey="lucroProj"   name="Lucro (projetado)"   stroke="#3b82f6" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} connectNulls />
+                  <Line type="monotone" dataKey="lucroProj"   name="Lucro (projetado)"   stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3 }} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>

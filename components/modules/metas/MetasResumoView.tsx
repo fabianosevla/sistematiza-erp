@@ -23,13 +23,12 @@ import MesNav, { useMesAno } from './MesNav'
 interface Props { tenantSlug: string }
 interface ItemMeta { _key: string; produtoId: number; nome: string; quantidade: number }
 
-function ProgressBar({ value, max, invertColor = false }: { value: number; max: number; invertColor?: boolean }) {
+function ProgressBar({ value, max }: { value: number; max: number }) {
   if (max <= 0) return null
   const pct = Math.min(100, (value / max) * 100)
-  const cor = invertColor ? (pct > 100 ? '#ef4444' : pct > 80 ? '#f59e0b' : '#2ecc71') : (pct >= 100 ? '#2ecc71' : pct >= 70 ? '#f59e0b' : '#ef4444')
   return (
     <div className="w-full bg-gray-100 rounded-full h-2 mt-2">
-      <div className="h-2 rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: cor }} />
+      <div className="h-2 rounded-full transition-all duration-500 bg-[#2ecc71]" style={{ width: `${pct}%` }} />
     </div>
   )
 }
@@ -175,7 +174,7 @@ export default function MetasResumoView({ tenantSlug }: Props) {
                         {!card.invertColor && card.real < card.metaVal && <span className="ml-2 text-amber-600">faltam {fmt(card.metaVal - card.real)}</span>}
                         {card.invertColor && card.real > card.metaVal && <span className="ml-2 text-red-600">excedido em {fmt(card.real - card.metaVal)}</span>}
                       </p>
-                      <ProgressBar value={card.real} max={card.metaVal} invertColor={card.invertColor} />
+                      <ProgressBar value={card.real} max={card.metaVal} />
                     </>
                   ) : <p className="text-xs text-gray-300 mt-2">Meta não definida</p>}
                 </div>
