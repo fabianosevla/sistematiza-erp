@@ -389,13 +389,16 @@ export class VendaService {
     return result ?? null
   }
 
-  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, documentoFiscal, imprimirNota, numeroCaixa, userId }: {
+  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, acrescimo, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, documentoFiscal, imprimirNota, numeroCaixa, userId }: {
     itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
     clienteId?:         number
     // Cliente avulso: só um nome. Sem cliente_id não há cashback nem
     // histórico — é o limite de não cadastrar.
     nomeClienteAvulso?: string
-    desconto:           number   // desconto geral da venda (no PDV já vem líquido do acréscimo)
+    desconto:           number   // desconto geral da venda (líquido do acréscimo — é o que o total e a nota fiscal usam)
+    // Acréscimo real, à parte — só para a 2ª via do cupom reconstruir os
+    // dois valores depois. Não entra em nenhuma conta aqui.
+    acrescimo?:         number
     pagamentos:         { forma: string; valor: number }[]
     tipoEntrega?:       string
     dataEntrega?:       string
@@ -468,7 +471,7 @@ export class VendaService {
       tipoEntrega:       tipoEntrega || 'Retirada',
       dataEntrega:       dataEntrega ? new Date(dataEntrega) : null,
       enderecoEntrega:   enderecoEntrega || null,
-      subtotal, desconto: descontoTotal, total,
+      subtotal, desconto: descontoTotal, acrescimo: acrescimo ?? 0, total,
       observacao:        observacao || null,
       observacaoInterna: observacaoInterna || null,
       vendedor:          vendedor || null,

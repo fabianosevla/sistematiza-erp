@@ -222,6 +222,9 @@ export default function VendasView({ tenantSlug }: Props) {
         // total = subtotal - desconto, então enviamos (desconto - acréscimo).
         // Não cria linha de frete tributável e o banco não muda.
         desconto:     descontoVal - acrescimoVal,
+        // Real, à parte — só para a 2ª via do cupom (PdvBalcao) reconstruir
+        // os dois valores depois. Não entra na conta de total/nota fiscal.
+        acrescimo:    acrescimoVal,
         usarCashback: cashUsar > 0 ? cashUsar : undefined,
         pagamentos:   pgtosFinais,
       }

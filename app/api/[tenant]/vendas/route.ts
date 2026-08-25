@@ -53,6 +53,11 @@ const criarVendaSchema = z.object({
   // sem histórico, sem tabela de preço e sem cashback.
   nomeClienteAvulso: z.string().max(200).optional().nullable(),
   desconto:        z.number().int().default(0),
+  // Real, não líquido — `desconto` acima já vem líquido do acréscimo (é o
+  // que o total e a nota fiscal usam). Este campo só existe pra 2ª via do
+  // cupom conseguir mostrar os dois valores certos depois. Ver t_venda no
+  // schema do Drizzle.
+  acrescimo:       z.number().int().default(0),
   pagamentos:      z.array(z.object({
     forma:  z.string(),
     valor:  z.number().int(),

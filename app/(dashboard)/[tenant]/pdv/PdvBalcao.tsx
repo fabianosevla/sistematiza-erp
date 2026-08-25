@@ -378,6 +378,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           // total = subtotal - desconto, então enviamos (desconto - acréscimo).
           // Assim não há linha de frete tributável e o banco não muda.
           desconto:   descontoVal - acrescimoVal,
+          // Valor real, à parte — só para a 2ª via do cupom reconstruir os
+          // dois valores depois. Não entra na conta de total/nota fiscal.
+          acrescimo:  acrescimoVal,
           usarCashback: cashUsar > 0 ? cashUsar : undefined,
           pagamentos: totalPagar > 0
             ? [{ forma: formaPgto || formasNomes[0] || 'PIX', valor: totalPagar }]
@@ -952,8 +955,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   //
   // O que não volta, e por quê:
   //   troco     — nunca foi gravado; era conta de tela, do valor recebido
-  //   acréscimo — entra somado ao desconto como "desconto líquido" na venda
   //   unidade e código de barras do item — t_venda_item guarda só o nome
+  //
+  // Desconto e acréscimo voltam certos: `desconto` grava o líquido (é o que
+  // o total e a nota fiscal usam) e `acrescimo` grava o valor real à parte
+  // — dá pra reconstituir os dois originais fazendo a soma. Vendas de antes
+  // desta coluna existir têm acrescimo=0, e saem só com o líquido.
   //
   // O resto — itens, quantidades, valores, forma de pagamento, cliente — sai
   // igual, porque isso está no banco.
@@ -977,13 +984,20 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
       const pgto = (v.pagamentos ?? [])[0]
 
+      // `desconto` grava o líquido (desconto real - acréscimo real);
+      // `acrescimo` grava o acréscimo real à parte. Somando os dois volta o
+      // desconto real original — funciona mesmo quando os dois foram usados
+      // juntos na mesma venda.
+      const acrescimoReal = Number(v.acrescimo ?? 0)
+      const descontoReal  = Number(v.desconto ?? 0) + acrescimoReal
+
       imprimirCupom({
         segundaVia: true,
         vendaId:    v.vendaId,
         itens,
         subtotal:   Number(v.subtotal ?? 0),
-        desconto:   Number(v.desconto ?? 0),
-        acrescimo:  0,
+        desconto:   descontoReal > 0 ? descontoReal : 0,
+        acrescimo:  acrescimoReal,
         cashbackUsado: 0,
         total:      Number(v.total ?? 0),
         forma:      pgto?.forma ?? '—',
@@ -1784,7 +1798,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               </div>
             )}
             <p className="mt-3 text-[11px] text-gray-400">
-              A reimpressão sai marcada como 2ª via. Troco e acréscimo não constam: não ficam gravados na venda.
+              A reimpressão sai marcada como 2ª via. Troco não consta — não fica gravado na venda.
             </p>
           </div>
         </SidePanel>

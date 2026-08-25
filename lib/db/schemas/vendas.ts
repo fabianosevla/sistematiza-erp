@@ -106,7 +106,13 @@ export const dbVenda = pgTable('t_venda', {
   dataEntrega:       timestamp('data_entrega', { withTimezone: true }),
   enderecoEntrega:   varchar('endereco_entrega', { length: 300 }),
   subtotal:          integer('subtotal').notNull().default(0),
+  // `desconto` continua sendo o líquido (desconto real − acréscimo real) —
+  // é o que o cálculo do total e a nota fiscal usam, e mexer nisso arriscava
+  // quebrar os dois. `acrescimo` só guarda o valor real do acréscimo, à
+  // parte, pra 2ª via do cupom conseguir mostrar os dois valores certos —
+  // antes só dava pra recuperar o líquido. Ver reimprimir() em PdvBalcao.tsx.
   desconto:          integer('desconto').notNull().default(0),
+  acrescimo:         integer('acrescimo').notNull().default(0),
   total:             integer('total').notNull().default(0),
   observacao:        varchar('observacao', { length: 500 }),
   observacaoInterna: varchar('observacao_interna', { length: 500 }),
