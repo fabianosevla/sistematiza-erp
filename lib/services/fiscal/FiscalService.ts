@@ -582,13 +582,20 @@ export class FiscalService {
     const result = await response.json().catch(() => ({} as any))
     const now = new Date()
 
+    // A Focus devolve caminho relativo ("/notas_fiscais_consumidor/...html"),
+    // não URL completa. Guardar assim faz o link do DANFE abrir dentro do
+    // nosso próprio domínio — 404, porque a rota não existe aqui — em vez do
+    // arquivo hospedado na Focus.
+    const comBaseFocus = (caminho: string | null | undefined) =>
+      !caminho ? null : /^https?:\/\//.test(caminho) ? caminho : `${baseUrl}${caminho}`
+
     await this.db.update(dbNotaFiscal).set({
       status:      result.status === 'autorizado' ? 'autorizada' : 'pendente',
       chaveAcesso: result.chave_nfe ?? result.chave_nfce ?? null,
       numero:      result.numero ?? null,
       serie:       result.serie ?? null,
-      xmlUrl:      result.caminho_xml_nota_fiscal ?? null,
-      danfeUrl:    result.caminho_danfe ?? null,
+      xmlUrl:      comBaseFocus(result.caminho_xml_nota_fiscal),
+      danfeUrl:    comBaseFocus(result.caminho_danfe),
       updatedDt:   now, updatedBy: 1,
     }).where(eq(dbNotaFiscal.notaId, notaId))
 
