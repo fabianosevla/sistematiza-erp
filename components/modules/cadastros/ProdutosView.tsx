@@ -70,6 +70,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const [origem, setOrigem]           = useState('0')
   const [unidadeTrib, setUnidadeTrib] = useState('')
   const [perfilTrib, setPerfilTrib]   = useState('')
+  const [perfilTribCF, setPerfilTribCF] = useState('')
 
   // ── Cardápio online ──────────────────────────────────────────────────────
   const [disponivelCardapio, setDisponivelCardapio] = useState(false)
@@ -148,6 +149,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
         origem:            origem || '0',
         unidadeTributavel: unidadeTrib.trim() || null,
         perfilTribId:      perfilTrib ? Number(perfilTrib) : null,
+        perfilTribConsumidorFinalId: perfilTribCF ? Number(perfilTribCF) : null,
         disponivelCardapio,
         // inclui modificationNum para suportar o optimistic locking da rota PUT
         ...(editando?.modificationNum !== undefined
@@ -242,6 +244,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setOrigem(item.origem ?? '0')
       setUnidadeTrib(item.unidadeTributavel ?? '')
       setPerfilTrib(item.perfilTribId ? String(item.perfilTribId) : '')
+      setPerfilTribCF(item.perfilTribConsumidorFinalId ? String(item.perfilTribConsumidorFinalId) : '')
       setDisponivelCardapio(item.disponivelCardapio === true)
       setFotoUrl(item.fotoUrl ?? '')
     } else {
@@ -260,7 +263,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       setAtivo(true)
       setRevenda(false)
       setInsumoAtivo(false)
-      setNcm(''); setCest(''); setOrigem('0'); setUnidadeTrib(''); setPerfilTrib('')
+      setNcm(''); setCest(''); setOrigem('0'); setUnidadeTrib(''); setPerfilTrib(''); setPerfilTribCF('')
       setDisponivelCardapio(false)
       setFotoUrl('')
     }
@@ -670,10 +673,23 @@ export default function ProdutosView({ tenantSlug }: Props) {
                 </div>
                 <div>
                   <Label className="inline-flex items-center gap-1">
-                    Perfil tributário
-                    <InfoTip titulo="Perfil tributário">Define CFOP, CSOSN e alíquotas deste produto na nota.</InfoTip>
+                    Perfil tributário — venda a contribuinte
+                    <InfoTip titulo="Perfil tributário — venda a contribuinte">Define CFOP, CSOSN e alíquotas quando o comprador tem CNPJ, usado na NF-e.</InfoTip>
                   </Label>
                   <select value={perfilTrib} onChange={e => setPerfilTrib(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
+                    <option value="">— não classificado —</option>
+                    {perfisTrib.map((pf: any) => (
+                      <option key={pf.perfilTribId} value={pf.perfilTribId}>{pf.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    Perfil tributário — consumidor final
+                    <InfoTip titulo="Perfil tributário — consumidor final">Define CFOP, CSOSN e alíquotas na venda de balcão, usado na NFC-e.</InfoTip>
+                  </Label>
+                  <select value={perfilTribCF} onChange={e => setPerfilTribCF(e.target.value)}
                     className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-2 text-sm bg-white">
                     <option value="">— não classificado —</option>
                     {perfisTrib.map((pf: any) => (

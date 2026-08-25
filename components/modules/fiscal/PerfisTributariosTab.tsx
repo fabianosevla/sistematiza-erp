@@ -173,7 +173,9 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
                 </ul>
               )}
               <p className="text-xs text-gray-500 mt-2">
-                {pront.resumo.produtos} produto(s) · {pront.resumo.produtosSemNcm} sem NCM · {pront.resumo.produtosSemPerfil} sem perfil
+                {pront.resumo.produtos} produto(s) · {pront.resumo.produtosSemNcm} sem NCM ·{' '}
+                {pront.resumo.produtosSemPerfil} sem perfil (contribuinte) ·{' '}
+                {pront.resumo.produtosSemPerfilConsumidorFinal} sem perfil (consumidor final)
               </p>
             </div>
           </div>

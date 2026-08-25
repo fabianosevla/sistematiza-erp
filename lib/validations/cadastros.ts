@@ -143,7 +143,8 @@ export const produtoInsertSchema = z.object({
   cest:              z.string().max(10).optional().nullable(),
   origem:            z.string().max(1).optional().nullable(),
   unidadeTributavel: z.string().max(6).optional().nullable(),
-  perfilTribId:      z.number().int().optional().nullable(),
+  perfilTribId:                z.number().int().optional().nullable(),
+  perfilTribConsumidorFinalId: z.number().int().optional().nullable(),
 
   // ── CARDÁPIO ONLINE ──────────────────────────────────────────────────────
   fotoUrl:            z.string().max(500).optional().nullable(),

@@ -112,7 +112,12 @@ export const dbProduto = pgTable('t_produto', {
   cest:              varchar('cest', { length: 10 }),
   origem:            varchar('origem', { length: 1 }).default('0'),
   unidadeTributavel: varchar('unidade_tributavel', { length: 6 }),
-  perfilTribId:      integer('perfil_trib_id'),
+  // perfilTribId é o perfil para venda a CONTRIBUINTE (NF-e a empresa com
+  // CNPJ). NFC-e e NF-e a consumidor final são operações diferentes para a
+  // SEFAZ — CFOP e CSOSN mudam — por isso o segundo perfil é campo à parte,
+  // não um cálculo em cima do primeiro. Ver FiscalService.criarNota().
+  perfilTribId:                  integer('perfil_trib_id'),
+  perfilTribConsumidorFinalId:   integer('perfil_trib_consumidor_final_id'),
 
   // ── CARDÁPIO ONLINE ──────────────────────────────────────────────────────
   // Foto sobe pro Vercel Blob (Vercel não tem disco persistente); a coluna

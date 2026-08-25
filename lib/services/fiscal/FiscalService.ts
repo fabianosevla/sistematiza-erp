@@ -193,6 +193,13 @@ export class FiscalService {
     const dentroDoEstado = !ufDestino || ufDestino === ufEmpresa
     const simples = ['1', '2'].includes(String(cfg.crt ?? ''))
 
+    // NFC-e é sempre venda a consumidor final. NF-e é a contribuinte só
+    // quando o destinatário tem CNPJ — mesma regra usada em emitirViaFocusNfe
+    // para natureza da operação. CFOP e CSOSN mudam entre os dois casos, por
+    // isso o produto carrega dois perfis (ver ARMADILHAS no CLAUDE.md).
+    const ehNfce = String(payload.tipo).toUpperCase() === 'NFC-E'
+    const ehParaContribuinte = !ehNfce && !!payload.cnpjCpf
+
     // Endereço do destinatário, congelado agora. Buscar na hora de emitir
     // faria uma nota de agosto sair com o endereço que o cliente passou a ter
     // em outubro.
@@ -230,18 +237,44 @@ export class FiscalService {
       // digitado à mão — os campos ficam vazios e a emissão vai reclamar.
       let fiscal: any = {}
       if (item.produtoId) {
+        // Dois perfis possíveis por produto: pt1 (venda a contribuinte) e
+        // pt2 (consumidor final). Busca os dois e escolhe pelo tipo da nota
+        // — não dá pra decidir isso com uma coluna só, CFOP e CSOSN mudam.
         const r = await this.db.execute(sql`
           SELECT p.ncm, p.cest, p.origem, p.unidade_tributavel,
-                 pt.cfop_interno, pt.cfop_interestadual,
-                 pt.csosn, pt.cst_icms, pt.aliq_icms,
-                 pt.cst_pis, pt.aliq_pis, pt.cst_cofins, pt.aliq_cofins,
-                 pt.cst_ipi, pt.aliq_ipi, pt.tem_st, pt.mva, pt.aliq_icms_st
+                 pt1.cfop_interno AS c_cfop_interno, pt1.cfop_interestadual AS c_cfop_interestadual,
+                 pt1.csosn AS c_csosn, pt1.cst_icms AS c_cst_icms, pt1.aliq_icms AS c_aliq_icms,
+                 pt1.cst_pis AS c_cst_pis, pt1.aliq_pis AS c_aliq_pis, pt1.cst_cofins AS c_cst_cofins, pt1.aliq_cofins AS c_aliq_cofins,
+                 pt1.cst_ipi AS c_cst_ipi, pt1.aliq_ipi AS c_aliq_ipi, pt1.tem_st AS c_tem_st, pt1.mva AS c_mva, pt1.aliq_icms_st AS c_aliq_icms_st,
+                 pt2.cfop_interno AS cf_cfop_interno, pt2.cfop_interestadual AS cf_cfop_interestadual,
+                 pt2.csosn AS cf_csosn, pt2.cst_icms AS cf_cst_icms, pt2.aliq_icms AS cf_aliq_icms,
+                 pt2.cst_pis AS cf_cst_pis, pt2.aliq_pis AS cf_aliq_pis, pt2.cst_cofins AS cf_cst_cofins, pt2.aliq_cofins AS cf_aliq_cofins,
+                 pt2.cst_ipi AS cf_cst_ipi, pt2.aliq_ipi AS cf_aliq_ipi, pt2.tem_st AS cf_tem_st, pt2.mva AS cf_mva, pt2.aliq_icms_st AS cf_aliq_icms_st
             FROM t_produto p
-            LEFT JOIN t_perfil_tributario pt ON pt.perfil_trib_id = p.perfil_trib_id
+            LEFT JOIN t_perfil_tributario pt1 ON pt1.perfil_trib_id = p.perfil_trib_id
+            LEFT JOIN t_perfil_tributario pt2 ON pt2.perfil_trib_id = p.perfil_trib_consumidor_final_id
            WHERE p.produto_id = ${item.produtoId}
            LIMIT 1
         `)
-        fiscal = (r.rows as any[])[0] ?? {}
+        const row = (r.rows as any[])[0] ?? {}
+        const pfx = ehParaContribuinte ? 'c_' : 'cf_'
+        fiscal = {
+          ncm: row.ncm, cest: row.cest, origem: row.origem, unidade_tributavel: row.unidade_tributavel,
+          cfop_interno:       row[`${pfx}cfop_interno`],
+          cfop_interestadual: row[`${pfx}cfop_interestadual`],
+          csosn:      row[`${pfx}csosn`],
+          cst_icms:   row[`${pfx}cst_icms`],
+          aliq_icms:  row[`${pfx}aliq_icms`],
+          cst_pis:    row[`${pfx}cst_pis`],
+          aliq_pis:   row[`${pfx}aliq_pis`],
+          cst_cofins: row[`${pfx}cst_cofins`],
+          aliq_cofins:row[`${pfx}aliq_cofins`],
+          cst_ipi:    row[`${pfx}cst_ipi`],
+          aliq_ipi:   row[`${pfx}aliq_ipi`],
+          tem_st:     row[`${pfx}tem_st`],
+          mva:        row[`${pfx}mva`],
+          aliq_icms_st: row[`${pfx}aliq_icms_st`],
+        }
       }
 
       const cfop = dentroDoEstado ? fiscal.cfop_interno : fiscal.cfop_interestadual
@@ -382,12 +415,15 @@ export class FiscalService {
     // Dados da empresa. Sem CRT nao da para decidir entre CSOSN e CST, e sem
     // saber isso o payload sai errado de um jeito que a SEFAZ aceita.
     const cfgRes = await this.db.execute(sql`
-      SELECT crt, mensagem_fiscal, credenciado_nfce, credenciado_nfe, uf
+      SELECT crt, mensagem_fiscal, credenciado_nfce, credenciado_nfe, uf, cnpj
         FROM t_configuracoes_tenant LIMIT 1
     `)
     const cfg: any = (cfgRes.rows as any[])[0] ?? {}
     if (!String(cfg.crt ?? '').trim()) {
       throw new Error('Regime tributario (CRT) nao configurado. Preencha em Configuracoes > Fiscal.')
+    }
+    if (!String(cfg.cnpj ?? '').replace(/\D/g, '')) {
+      throw new Error('CNPJ da empresa nao configurado. Preencha em Configuracoes > Dados da empresa.')
     }
     const ufEmpresaAtual = String(cfg.uf ?? '').toUpperCase()
 
@@ -482,6 +518,8 @@ export class FiscalService {
       tipo_documento:     '1',
       finalidade_emissao: '1',
       consumidor_final:   ehParaContribuinte ? '0' : '1',
+      // Número, só dígitos — a Focus recusa como string formatada.
+      cnpj_emitente:       Number(soDigitos(cfg.cnpj)),
       // 1 presencial (balcão) · 4 entrega em domicílio
       presenca_comprador: ehNfce ? '1' : '4',
       // 1 interna · 2 interestadual. A SEFAZ usa para validar o CFOP do item.
@@ -497,6 +535,10 @@ export class FiscalService {
         const aliqCofins = Number((item as any).aliqCofins ?? 0)
         return {
           numero_item:               String(i + 1),
+          // Referência interna do vendedor — não é código validado pela
+          // SEFAZ. Item avulso (sem produtoId, digitado à mão) não manda o
+          // campo; a Focus aceita a omissão.
+          ...((item as any).produtoId ? { codigo_produto: String((item as any).produtoId) } : {}),
           descricao:                 item.descricao,
           codigo_ncm:                item.ncm,
           ...((item as any).cest ? { cest: soDigitos((item as any).cest) } : {}),

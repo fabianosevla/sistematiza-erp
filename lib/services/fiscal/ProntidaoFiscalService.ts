@@ -36,6 +36,7 @@ export interface Prontidao {
     produtos:            number
     produtosSemNcm:      number
     produtosSemPerfil:   number
+    produtosSemPerfilConsumidorFinal: number
     perfis:              number
     perfisIncompletos:   number
   }
@@ -114,18 +115,24 @@ export class ProntidaoFiscalService {
     // NCM dele encheria a lista de pendência que ninguém precisa resolver.
     const prodRes = await this.db.execute(sql`
       SELECT COUNT(*)::int AS total,
-             COUNT(*) FILTER (WHERE COALESCE(ncm, '') = '')::int            AS sem_ncm,
-             COUNT(*) FILTER (WHERE perfil_trib_id IS NULL)::int            AS sem_perfil
+             COUNT(*) FILTER (WHERE COALESCE(ncm, '') = '')::int                        AS sem_ncm,
+             COUNT(*) FILTER (WHERE perfil_trib_id IS NULL)::int                        AS sem_perfil,
+             COUNT(*) FILTER (WHERE perfil_trib_consumidor_final_id IS NULL)::int       AS sem_perfil_cf
         FROM t_produto
        WHERE active_flg = true AND COALESCE(insumo_flg, false) = false
     `)
-    const prod: any = (prodRes.rows as any[])[0] ?? { total: 0, sem_ncm: 0, sem_perfil: 0 }
+    const prod: any = (prodRes.rows as any[])[0] ?? { total: 0, sem_ncm: 0, sem_perfil: 0, sem_perfil_cf: 0 }
 
     if (prod.sem_ncm > 0) {
       pendencias.push({ onde: 'produto', item: `${prod.sem_ncm} produto(s)`, falta: 'sem NCM' })
     }
     if (prod.sem_perfil > 0) {
-      pendencias.push({ onde: 'produto', item: `${prod.sem_perfil} produto(s)`, falta: 'sem perfil tributário' })
+      pendencias.push({ onde: 'produto', item: `${prod.sem_perfil} produto(s)`, falta: 'sem perfil tributário de venda a contribuinte' })
+    }
+    // NFC-e é sempre venda a consumidor final — sem este perfil, a emissão do
+    // balcão falha mesmo com o perfil de contribuinte completo.
+    if (prod.sem_perfil_cf > 0) {
+      pendencias.push({ onde: 'produto', item: `${prod.sem_perfil_cf} produto(s)`, falta: 'sem perfil tributário de venda a consumidor final (necessário para NFC-e)' })
     }
 
     return {
@@ -135,6 +142,7 @@ export class ProntidaoFiscalService {
         produtos:          prod.total,
         produtosSemNcm:    prod.sem_ncm,
         produtosSemPerfil: prod.sem_perfil,
+        produtosSemPerfilConsumidorFinal: prod.sem_perfil_cf,
         perfis:            perfis.length,
         perfisIncompletos,
       },
@@ -148,15 +156,19 @@ export class ProntidaoFiscalService {
    * venda pode virar nota?" — e a diferença importa: um produto sem NCM só
    * impede as vendas que contêm aquele produto.
    */
-  async verificarVenda(vendaId: number): Promise<string[]> {
+  // `paraConsumidorFinal`: NFC-e e NF-e a CPF usam o perfil de consumidor
+  // final; NF-e a um CNPJ contribuinte usa o outro. Mesma regra de
+  // FiscalService.criarNota() — ver ARMADILHAS no CLAUDE.md.
+  async verificarVenda(vendaId: number, paraConsumidorFinal = true): Promise<string[]> {
+    const colunaPerfil = paraConsumidorFinal ? 'perfil_trib_consumidor_final_id' : 'perfil_trib_id'
     const r = await this.db.execute(sql`
       SELECT vi.nome_produto,
              COALESCE(p.ncm, '')          AS ncm,
-             p.perfil_trib_id,
+             p.${sql.raw(colunaPerfil)}   AS perfil_trib_id,
              COALESCE(pt.cfop_interno,'') AS cfop
         FROM t_venda_item vi
         LEFT JOIN t_produto p             ON p.produto_id = vi.produto_id
-        LEFT JOIN t_perfil_tributario pt  ON pt.perfil_trib_id = p.perfil_trib_id
+        LEFT JOIN t_perfil_tributario pt  ON pt.perfil_trib_id = p.${sql.raw(colunaPerfil)}
        WHERE vi.venda_id = ${vendaId} AND vi.active_flg = true
     `)
 
