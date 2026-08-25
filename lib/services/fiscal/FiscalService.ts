@@ -594,7 +594,15 @@ export class FiscalService {
 
     // Recusa da SEFAZ não pode voltar como sucesso silencioso: a tela mostraria
     // "emitida" para uma nota que não existe.
-    if (!response.ok && response.status !== 202) {
+    //
+    // A Focus responde HTTP 200 mesmo quando a SEFAZ REJEITA a nota — o
+    // resultado real vem em `result.status`, não no código HTTP. Checar só
+    // `response.ok` deixava passar rejeição como se fosse sucesso: a nota
+    // ficava "pendente" para sempre, sem erro nenhum na tela, e o operador
+    // achava que só não tinha acontecido nada.
+    const autorizado      = result.status === 'autorizado'
+    const emProcessamento = result.status === 'processando_autorizacao' || response.status === 202
+    if (!response.ok || (!autorizado && !emProcessamento)) {
       throw new Error(
         result?.mensagem_sefaz ?? result?.mensagem ?? result?.erros?.[0]?.mensagem ??
         'A emissao foi recusada. Verifique no modulo Fiscal.'
