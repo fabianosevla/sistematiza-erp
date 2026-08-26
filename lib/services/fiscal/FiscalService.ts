@@ -533,6 +533,22 @@ export class FiscalService {
       items: nota.itens.map((item, i) => {
         const aliqPis    = Number((item as any).aliqPis ?? 0)
         const aliqCofins = Number((item as any).aliqCofins ?? 0)
+
+        // A SEFAZ exige vProd = vUnCom × qCom EXATO — não aceita o valor já
+        // líquido de desconto/acréscimo ali. `item.valorTotal` é o líquido
+        // (é o que soma certo com o pagamento); o bruto é preço ×
+        // quantidade. A diferença entre os dois vira campo próprio: positiva
+        // é desconto do item, negativa é acréscimo (frete, taxa) — nenhum
+        // dos dois entra em valor_bruto.
+        //
+        // Rejeição real que motivou isto: "Valor do Produto difere do
+        // produto Valor Unitário de Comercialização e Quantidade Comercial"
+        // numa venda com acréscimo de entrega — a taxa estava inflando
+        // valor_bruto em vez de ir no campo de outras despesas.
+        const qtdNum      = parseFloat(String(item.quantidade))
+        const valorBruto  = Math.round(item.precoUnitario * qtdNum)
+        const ajuste      = valorBruto - item.valorTotal   // >0 desconto · <0 acréscimo/outras despesas
+
         return {
           numero_item:               String(i + 1),
           // Referência interna do vendedor — não é código validado pela
@@ -544,11 +560,13 @@ export class FiscalService {
           ...((item as any).cest ? { cest: soDigitos((item as any).cest) } : {}),
           cfop:                      item.cfop,
           unidade_comercial:         item.unidade || 'UN',
-          quantidade_comercial:      String(parseFloat(String(item.quantidade))),
+          quantidade_comercial:      String(qtdNum),
           valor_unitario_comercial:  (item.precoUnitario / 100).toFixed(2),
           valor_unitario_tributavel: (item.precoUnitario / 100).toFixed(2),
-          quantidade_tributavel:     String(parseFloat(String(item.quantidade))),
-          valor_bruto:               (item.valorTotal / 100).toFixed(2),
+          quantidade_tributavel:     String(qtdNum),
+          valor_bruto:               (valorBruto / 100).toFixed(2),
+          ...(ajuste > 0 ? { valor_desconto: (ajuste / 100).toFixed(2) } : {}),
+          ...(ajuste < 0 ? { valor_outras_despesas: (-ajuste / 100).toFixed(2) } : {}),
           inclui_no_total:           '1',
           icms_situacao_tributaria:  item.cstCsosn,
           icms_origem:               (item as any).origem ?? '0',
