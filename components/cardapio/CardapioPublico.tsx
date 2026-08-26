@@ -9,7 +9,7 @@
 // do jeito que fizer sentido (pedido, PDV, delivery).
 import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Plus, Minus, ShoppingCart, X, MessageCircle } from 'lucide-react'
+import { Plus, Minus, ShoppingCart, X, MessageCircle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -66,6 +66,8 @@ export default function CardapioPublico({ tenantSlug }: Props) {
   // agora, com o fuso de São Paulo; aqui só exibe e trava o pedido.
   const abertoAgora: boolean = raw?.data?.aberto ?? true
   const proximaAbertura: string | undefined = raw?.data?.proximaAbertura
+  const horario: Record<string, { aberto: boolean; abre: string; fecha: string }> | null = raw?.data?.horario ?? null
+  const [showHorario, setShowHorario] = useState(false)
 
   // Se só um dos dois tipos é permitido, usa ele direto — o toggle só
   // aparece quando o cliente realmente tem escolha.
@@ -182,11 +184,40 @@ export default function CardapioPublico({ tenantSlug }: Props) {
         </header>
       )}
 
-      {!abertoAgora && (
-        <div className="bg-red-50 border-b border-red-100 px-4 py-2.5 text-center">
-          <p className="text-sm font-medium text-red-700">
-            Fechado no momento{proximaAbertura ? ` — abre às ${proximaAbertura}` : ''}
-          </p>
+      {horario && (
+        <button
+          onClick={() => setShowHorario(true)}
+          className={`w-full flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b ${
+            abertoAgora ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'
+          }`}
+        >
+          <Clock size={14} />
+          {abertoAgora ? 'Aberto agora' : `Fechado no momento${proximaAbertura ? ` — abre às ${proximaAbertura}` : ''}`}
+          <span className="underline underline-offset-2 ml-0.5">ver horário</span>
+        </button>
+      )}
+
+      {showHorario && horario && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }} onClick={() => setShowHorario(false)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <p className="text-sm font-semibold text-gray-900">Horário de atendimento</p>
+              <button onClick={() => setShowHorario(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-1.5">
+              {[['dom', 'Domingo'], ['seg', 'Segunda'], ['ter', 'Terça'], ['qua', 'Quarta'], ['qui', 'Quinta'], ['sex', 'Sexta'], ['sab', 'Sábado']]
+                .map(([chave, label]) => {
+                  const dia = horario[chave]
+                  const hoje = chave === ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'][new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })).getDay()]
+                  return (
+                    <div key={chave} className={`flex justify-between text-sm px-2 py-1 rounded-lg ${hoje ? 'bg-gray-50 font-semibold text-gray-900' : 'text-gray-600'}`}>
+                      <span>{label}</span>
+                      <span>{dia?.aberto ? `${dia.abre} – ${dia.fecha}` : 'Fechado'}</span>
+                    </div>
+                  )
+                })}
+            </div>
+          </div>
         </div>
       )}
 
