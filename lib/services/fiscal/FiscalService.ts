@@ -4,6 +4,18 @@ import { dbNotaFiscal, dbNotaFiscalItem, dbTurnoCaixa } from '@/lib/db/schemas/f
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
 
 /**
+ * Data/hora de emissão no horário de Brasília, formato que o próprio exemplo
+ * da Focus usa ("-03:00"). `new Date().toISOString()` manda UTC — SEFAZ
+ * aceita, mas uma venda tarde da noite carimbava o dia seguinte (UTC) em vez
+ * do dia local. Brasil não observa horário de verão desde 2019, então o
+ * offset -03:00 é fixo o ano inteiro — não precisa calcular.
+ */
+function dataEmissaoAgora(): string {
+  const spString = new Date().toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' })
+  return spString.replace(' ', 'T') + '-03:00'
+}
+
+/**
  * Grupo de ST do item, no formato que a Focus NFe espera.
  *
  * Só sai quando houve ST calculada. Item sem ST não pode levar o grupo vazio:
@@ -514,7 +526,7 @@ export class FiscalService {
 
     const payload = {
       natureza_operacao:  natureza,
-      data_emissao:       new Date().toISOString(),
+      data_emissao:       dataEmissaoAgora(),
       tipo_documento:     '1',
       finalidade_emissao: '1',
       consumidor_final:   ehParaContribuinte ? '0' : '1',
