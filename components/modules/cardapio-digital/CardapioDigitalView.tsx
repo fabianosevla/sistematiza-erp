@@ -143,13 +143,17 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
   const [enviandoBanner, setEnviandoBanner] = useState(false)
 
   async function enviarBanner(file: File) {
-    if (file.size > 5 * 1024 * 1024) { toast('Imagem acima de 5 MB. Escolha uma menor.', 'error'); return }
+    if (file.size > 4 * 1024 * 1024) { toast('Imagem acima de 4 MB. Escolha uma menor.', 'error'); return }
     setEnviandoBanner(true)
     try {
       const form = new FormData()
       form.append('file', file)
       const res  = await fetch(`/api/${tenantSlug}/cardapio/banner`, { method: 'POST', body: form })
-      const data = await res.json()
+      // Se a requisição estourar o limite da própria Vercel antes de chegar
+      // na rota, a resposta vem em texto puro ("Request Entity Too Large"),
+      // não em JSON — sem o catch aqui, o erro genérico de parse escondia a
+      // causa real.
+      const data = await res.json().catch(() => ({ message: 'Imagem muito grande ou conexão instável. Tente uma imagem menor.' }))
       if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar imagem')
       set('bannerUrl', data.data.bannerUrl)
       qc.invalidateQueries({ queryKey: ['cardapio-config', tenantSlug] })

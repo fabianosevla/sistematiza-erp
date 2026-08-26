@@ -14,7 +14,11 @@ import { ok, badRequest, serverError } from '@/lib/api/responses'
 type Params = { params: { tenant: string } }
 
 const TIPOS_ACEITOS = ['image/jpeg', 'image/png', 'image/webp']
-const TAMANHO_MAXIMO = 5 * 1024 * 1024
+// A Vercel recusa o corpo da requisição antes de chegar aqui quando passa de
+// ~4,5 MB — com um erro de texto puro, não JSON, que o fetch do navegador
+// não consegue interpretar ("Unexpected token... is not valid JSON"). Limite
+// abaixo desse teto pra sempre ser esta rota a recusar, com mensagem clara.
+const TAMANHO_MAXIMO = 4 * 1024 * 1024
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
@@ -25,7 +29,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     if (!file) return badRequest('Nenhum arquivo enviado')
     if (!TIPOS_ACEITOS.includes(file.type)) return badRequest('Use JPG, PNG ou WEBP')
-    if (file.size > TAMANHO_MAXIMO) return badRequest('Imagem acima de 5 MB')
+    if (file.size > TAMANHO_MAXIMO) return badRequest('Imagem acima de 4 MB')
 
     const extensao = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
     const caminho  = `cardapio/${tenant.schemaName}/banner-${Date.now()}.${extensao}`

@@ -272,13 +272,15 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
   async function enviarFoto(file: File) {
     if (!editando?.produtoId) return
-    if (file.size > 5 * 1024 * 1024) { toast('Imagem acima de 5 MB. Escolha uma menor.', 'error'); return }
+    if (file.size > 4 * 1024 * 1024) { toast('Imagem acima de 4 MB. Escolha uma menor.', 'error'); return }
     setEnviandoFoto(true)
     try {
       const form = new FormData()
       form.append('file', file)
       const res  = await fetch(`${api}/${editando.produtoId}/foto`, { method: 'POST', body: form })
-      const data = await res.json()
+      // Se a requisição estourar o limite da própria Vercel antes de chegar
+      // na rota, a resposta vem em texto puro, não em JSON.
+      const data = await res.json().catch(() => ({ message: 'Imagem muito grande ou conexão instável. Tente uma imagem menor.' }))
       if (!res.ok) throw new Error(data?.message ?? 'Erro ao enviar foto')
       setFotoUrl(data.data.fotoUrl)
       // O upload já salva no banco e avança o modification_num — sem
