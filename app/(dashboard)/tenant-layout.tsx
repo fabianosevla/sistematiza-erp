@@ -36,7 +36,7 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     client.release()
   }
 
-  const tenantName = cfg?.nome_empresa || cfg?.nome_fantasia || tenantSlug
+  const tenantName = cfg?.nome_fantasia || cfg?.nome_empresa || tenantSlug
 
   const config = {
     comandasAtivo:   cfg?.comandas_ativo   ?? false,

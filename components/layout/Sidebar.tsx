@@ -5,9 +5,9 @@ import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign,
   ChevronDown, ClipboardList, Factory, CreditCard,
   Search, ClipboardCheck, X, Target, Gift, ShoppingBag, BookOpen,
-  PanelLeftClose, PanelLeftOpen, QrCode,
+  PanelLeftClose, PanelLeftOpen, QrCode, Settings, LogOut,
 } from 'lucide-react'
-import { useUser } from '@clerk/nextjs'
+import { useUser, useClerk } from '@clerk/nextjs'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
@@ -30,11 +30,20 @@ import type { Config } from '@/components/layout/ClientShell'
  * NADA de comportamento mudou: mesmos grupos, mesma ordem, mesmas flags de
  * config, mesmo recolher com memória em localStorage, mesmo rodapé com o nome
  * do usuário vindo do NOSSO cadastro.
+ *
+ * ─── CONFIGURAÇÕES, MODO ESCURO E SAIR VIERAM DA BARRA SUPERIOR ──────────────
+ *
+ * A barra superior agora só tem o atalho do PDV. Configurações virou item
+ * próprio (link de verdade para /configuracoes, não mais painel); modo
+ * escuro entrou como filho dela — é ação, não navegação, então o filho
+ * correspondente não tem `href`, tem `onClick`. Sair foi para o rodapé, ao
+ * lado de quem está logado.
  */
 
 interface Props {
   tenantSlug: string; tenantName: string; config: Config
   open: boolean; onClose: () => void
+  darkMode: boolean; onToggleDarkMode: () => void
 }
 
 interface Filho { label: string; href: string }
@@ -43,10 +52,11 @@ interface Item  { label: string; href?: string; icon: any; children?: Filho[] }
 const LARGURA_ABERTA    = 'w-[234px]'
 const LARGURA_RECOLHIDA = 'w-[64px]'
 
-export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
+export default function Sidebar({ tenantSlug, tenantName, config, open, onClose, darkMode, onToggleDarkMode }: Props) {
   const pathname = usePathname()
   const base     = `/${tenantSlug}`
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+  const { signOut } = useClerk()
 
   // NOME vem do NOSSO cadastro (t_usuario.nome), não do Clerk.
   const { user } = useUser()
@@ -160,7 +170,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     <aside
       className={cn(
         'fixed lg:static inset-y-0 left-0 z-40 h-screen flex flex-col flex-shrink-0',
-        'bg-white dark:bg-[#0F1117] border-r border-gray-200 dark:border-white/5',
+        'bg-gray-100 dark:bg-[#0F1117] border-r border-gray-200 dark:border-white/5',
         'transition-[width,transform] duration-200 ease-in-out',
         recolhida ? LARGURA_RECOLHIDA : LARGURA_ABERTA,
         open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
@@ -269,30 +279,71 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
             </Link>
           )
         })}
+
+        {/* Configurações — sempre visível, não depende de flag de módulo, é
+            conta. Link de verdade (não mais painel) com um único filho fixo,
+            o toggle de modo escuro: como só existe um, não precisa de
+            seta de expandir/recolher, fica sempre à mostra. */}
+        <div className="pt-1 mt-1 border-t border-gray-100 dark:border-white/5">
+          <Link
+            href={`${base}/configuracoes`}
+            onClick={onClose}
+            title={recolhida ? 'Configurações' : undefined}
+            className={cn(
+              'w-full flex items-center rounded-lg text-[13.5px] transition-colors',
+              recolhida ? 'justify-center px-0 py-2.5' : 'gap-[11px] px-2.5 py-[7px]',
+              isActive('/configuracoes')
+                ? 'bg-green-50 text-green-800 font-medium dark:bg-[#2ecc71]/10 dark:text-white'
+                : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-white/50 dark:hover:text-white/80 dark:hover:bg-white/5'
+            )}>
+            <Settings size={15} strokeWidth={1.9} className={cn('flex-shrink-0', isActive('/configuracoes') ? 'text-green-600' : 'text-gray-400')} />
+            {!recolhida && 'Configurações'}
+          </Link>
+
+          {!recolhida && (
+            <div className="mt-px mb-1 ml-[25px] border-l border-gray-200 dark:border-white/10 pl-2.5">
+              <button
+                onClick={onToggleDarkMode}
+                className="block w-full text-left rounded-md px-2 py-1.5 text-[13px] text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/45 dark:hover:text-white/85 dark:hover:bg-white/5 transition-colors"
+              >
+                {darkMode ? 'Modo claro' : 'Modo escuro'}
+              </button>
+            </div>
+          )}
+        </div>
       </nav>
 
-      {/* Rodapé — QUEM ESTÁ LOGADO. */}
+      {/* Rodapé — QUEM ESTÁ LOGADO, com Sair ao lado (veio da barra superior). */}
       <div className={cn('border-t border-gray-200 dark:border-white/5', recolhida ? 'p-3' : 'px-4 py-3')}>
-        <div className={cn('flex items-center gap-2.5', recolhida && 'justify-center')}>
-          {fotoUsuario ? (
-            <img
-              src={fotoUsuario}
-              alt=""
-              title={`${nomeUsuario} · ${tenantName}`}
-              className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-gray-200"
-            />
-          ) : (
-            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[10.5px] font-semibold bg-green-50 text-green-800 border border-green-100"
-              title={`${nomeUsuario} · ${tenantName}`}>
-              {iniciaisUsuario || initials}
-            </div>
-          )}
-          {!recolhida && (
-            <div className="min-w-0">
-              <p className="text-[12.5px] font-medium text-gray-900 dark:text-white/75 truncate">{nomeUsuario}</p>
-              <p className="text-[11px] text-gray-400 dark:text-white/30 truncate">{tenantName}</p>
-            </div>
-          )}
+        <div className={cn('flex items-center gap-2.5', recolhida ? 'flex-col' : 'justify-between')}>
+          <div className={cn('flex items-center gap-2.5 min-w-0', recolhida && 'flex-col')}>
+            {fotoUsuario ? (
+              <img
+                src={fotoUsuario}
+                alt=""
+                title={`${nomeUsuario} · ${tenantName}`}
+                className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-gray-200"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[10.5px] font-semibold bg-green-50 text-green-800 border border-green-100"
+                title={`${nomeUsuario} · ${tenantName}`}>
+                {iniciaisUsuario || initials}
+              </div>
+            )}
+            {!recolhida && (
+              <div className="min-w-0">
+                <p className="text-[12.5px] font-medium text-gray-900 dark:text-white/75 truncate">{nomeUsuario}</p>
+                <p className="text-[11px] text-gray-400 dark:text-white/30 truncate">{tenantName}</p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => signOut({ redirectUrl: '/sign-in' })}
+            title="Sair"
+            className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:text-white/40 dark:hover:text-red-400 dark:hover:bg-white/5 transition-colors"
+          >
+            <LogOut size={15} strokeWidth={1.9} />
+          </button>
         </div>
       </div>
     </aside>

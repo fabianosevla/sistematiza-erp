@@ -8,48 +8,13 @@ import { pool } from '@/lib/db/connection'
 import { usuarioAtualIdDb } from '@/lib/auth/usuarioAtual'
 import { dbMeta } from '@/lib/db/schemas/metas'
 import { ok, serverError } from '@/lib/api/responses'
+import { despesaDoMes, despesaDoMesDetalhada } from '@/lib/services/metas/despesa'
 
 // GET desta rota muda de resultado a cada salvar (meta, meta por produto,
 // evolução) — nunca pode ser servida de cache.
 export const dynamic = 'force-dynamic'
 
 type Params = { params: { tenant: string } }
-
-/**
- * Despesa real do mês = avulsas (t_despesa) + gastos fixos (t_gasto_fixo_valor).
- * Mesma conta que o Financeiro usa no KPI e no DRE — sem os gastos fixos
- * (aluguel, luz, salário), o número aqui ficava muito abaixo do real.
- */
-export async function despesaDoMes(db: any, mes: number, ano: number): Promise<number> {
-  const { total } = await despesaDoMesDetalhada(db, mes, ano)
-  return total
-}
-
-/**
- * Mesmo total de despesaDoMes(), mas quebrado por origem — pra tela de Metas
- * explicar o que compõe o número em vez de jogar tudo debaixo de "Despesa".
- * Insumos vem do próprio categoria='Insumos' que Compras já grava em
- * t_despesa/t_conta_pagar (compra à vista ou baixa da compra a prazo) — não é
- * estimativa, é o valor real já rotulado na origem.
- */
-export async function despesaDoMesDetalhada(db: any, mes: number, ano: number): Promise<{ insumos: number; operacionais: number; gastosFixos: number; total: number }> {
-  const avulsaRes = await db.execute(sql`
-    SELECT COALESCE(SUM(valor) FILTER (WHERE categoria = 'Insumos'), 0)::bigint as insumos,
-           COALESCE(SUM(valor) FILTER (WHERE categoria IS DISTINCT FROM 'Insumos'), 0)::bigint as operacionais
-      FROM t_despesa
-     WHERE active_flg=true AND mes_competencia=${mes} AND ano_competencia=${ano}
-  `)
-  const fixoRes = await db.execute(sql`
-    SELECT COALESCE(SUM(gv.valor),0)::bigint as total
-      FROM t_gasto_fixo_valor gv
-      JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
-     WHERE gv.active_flg = true AND gv.mes = ${mes} AND gv.ano = ${ano}
-  `).catch(() => ({ rows: [{ total: 0 }] }))
-  const insumos      = Number(avulsaRes.rows[0]?.insumos ?? 0)
-  const operacionais  = Number(avulsaRes.rows[0]?.operacionais ?? 0)
-  const gastosFixos   = Number(fixoRes.rows[0]?.total ?? 0)
-  return { insumos, operacionais, gastosFixos, total: insumos + operacionais + gastosFixos }
-}
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {

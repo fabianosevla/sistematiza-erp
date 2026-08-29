@@ -99,16 +99,14 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
         config={config}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        darkMode={darkMode}
+        onToggleDarkMode={toggleDarkMode}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Header
           tenantSlug={tenantSlug}
-          tenantName={tenantName}
-          config={config}
-          darkMode={darkMode}
-          onToggleDarkMode={toggleDarkMode}
-          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
           logoBase64={config.logoBase64}
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
         />
         <main className="flex-1 overflow-y-auto p-6">
           {children}

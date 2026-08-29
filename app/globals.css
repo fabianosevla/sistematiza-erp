@@ -14,10 +14,12 @@
   --font-app:      'Geist', ui-sans-serif, system-ui, sans-serif;
   --font-dm-sans:  var(--font-app);       /* alias de compatibilidade */
 
-  /* Superfícies */
-  --color-canvas:     #FBFBFC;   /* fundo da área de conteúdo */
+  /* Superfícies — o cinza que antes era o fundo da tela foi pro menu
+     lateral; a área de conteúdo é branca, os cartões se separam dela só
+     pela borda hairline. */
+  --color-canvas:     #FFFFFF;   /* fundo da área de conteúdo */
   --color-surface:    #FFFFFF;   /* cartões, tabelas, painéis */
-  --color-sidebar:    #FFFFFF;   /* menu lateral — agora claro */
+  --color-sidebar:    #F4F5F7;   /* menu lateral — leve contraste com o branco */
   --color-hairline:   #E9EBEE;   /* borda de cartão */
   --color-hairline-2: #F1F2F5;   /* divisória interna */
 
