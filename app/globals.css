@@ -2,31 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
+/* ── Tipografia ───────────────────────────────────────────────────────────────
+   Geist substitui a DM Sans: grotesca neutra, números tabulares bem
+   desenhados, e um cinza óptico mais frio — é o que dá o ar "clean" das
+   telas de referência. A variável antiga (--font-dm-sans) continua existindo
+   e apontando para a nova fonte, então nenhum arquivo que a usa precisa
+   mudar. */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --font-dm-sans: 'DM Sans', system-ui, sans-serif;
-  --color-sidebar: #0F1117;
-  --color-accent: #2ecc71;
-  --color-accent-muted: rgba(46, 204, 113, 0.1);
-  --color-accent-border: rgba(46, 204, 113, 1);
+  --font-app:      'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-dm-sans:  var(--font-app);       /* alias de compatibilidade */
+
+  /* Superfícies */
+  --color-canvas:     #FBFBFC;   /* fundo da área de conteúdo */
+  --color-surface:    #FFFFFF;   /* cartões, tabelas, painéis */
+  --color-sidebar:    #FFFFFF;   /* menu lateral — agora claro */
+  --color-hairline:   #E9EBEE;   /* borda de cartão */
+  --color-hairline-2: #F1F2F5;   /* divisória interna */
+
+  /* Marca */
+  --color-accent:        #2ecc71;
+  --color-accent-strong: #186C3C;
+  --color-accent-muted:  #EFF9F3;
+  --color-accent-border: rgba(46, 204, 113, 0.28);
+
+  /* Texto */
+  --color-ink:      #1A1F36;
+  --color-ink-2:    #4F566B;
+  --color-ink-3:    #8792A2;
+  --color-ink-faint:#A5ACB8;
+
+  /* Elevação — sombras quase invisíveis, no lugar do card "flutuando" */
+  --shadow-card:  0 1px 1px rgba(16, 24, 40, 0.03);
+  --shadow-pop:   0 8px 28px rgba(16, 24, 40, 0.10);
+  --shadow-panel: -14px 0 44px rgba(16, 24, 40, 0.10);
 }
 
-* {
-  box-sizing: border-box;
+.dark {
+  --color-canvas:     #0E1120;
+  --color-surface:    #151A2C;
+  --color-sidebar:    #0F1117;
+  --color-hairline:   #232941;
+  --color-hairline-2: #1C2136;
+  --color-ink:        #F4F5F7;
+  --color-ink-2:      #C8CDD5;
+  --color-ink-3:      #8792A2;
 }
+
+* { box-sizing: border-box; }
 
 body {
-  font-family: var(--font-dm-sans);
+  font-family: var(--font-app);
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  /* O tracking levemente negativo é metade do "ar" das telas de referência:
+     sem ele a Geist fica solta em corpo pequeno. */
+  letter-spacing: -0.011em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar customizado */
+/* Números em tabela e em indicador não devem "dançar" ao atualizar. */
+table, .tabular, [data-tabular] { font-variant-numeric: tabular-nums; }
+
+h1, h2, h3 { letter-spacing: -0.028em; }
+
+/* Scrollbar mais discreto */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+::-webkit-scrollbar-thumb { background: #E3E6EA; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #C8CDD5; }
+
+/* Foco visível, discreto — anel fino verde em vez de halo grosso. */
+:focus-visible {
+  outline: 2px solid rgba(46, 204, 113, 0.45);
+  outline-offset: 1px;
+}
 
 /* NENHUM CAMPO NUMÉRICO TEM SETINHA.
    Elas atrapalham em toda parte: um clique sem querer muda o valor, e em

@@ -5,16 +5,8 @@ import { Input } from '@/components/ui/input'
 /**
  * components/ui/SearchInput.tsx
  *
- * Campo de busca padrão das listagens. Marcação extraída do FornecedoresView.
- *
- *   <SearchInput
- *     valor={search}
- *     onChange={v => { setSearch(v); setPage(1) }}
- *     placeholder="Buscar fornecedores..."
- *   />
- *
- * O botão de limpar só aparece quando há texto; passe limpavel={false} para
- * reproduzir exatamente o comportamento antigo de telas que não o tinham.
+ * Campo de busca padrão das listagens. Mesma API; o campo agora nasce com
+ * fundo cinza-claro e vira branco no foco, como a busca do cabeçalho.
  */
 interface Props {
   valor:        string
@@ -31,19 +23,19 @@ export function SearchInput({
 }: Props) {
   return (
     <div className={`relative ${className}`}>
-      <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
       <Input
         value={valor}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
         autoFocus={autoFocus}
-        className={limpavel ? 'pl-9 pr-9' : 'pl-9'}
+        className={`bg-gray-50 focus:bg-white ${limpavel ? 'pl-9 pr-9' : 'pl-9'}`}
       />
       {limpavel && valor && (
         <button
           type="button"
           onClick={() => onChange('')}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
           aria-label="Limpar busca"
         >
           <X size={14} />

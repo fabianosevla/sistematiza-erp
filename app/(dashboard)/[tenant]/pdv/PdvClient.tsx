@@ -234,8 +234,8 @@ export default function PdvClient({ tenantSlug }: Props) {
       <div className="flex items-center justify-between px-4 py-3 bg-[#0F1117] border-b border-white/5 flex-shrink-0">
         {/* Logo */}
         <div className="flex items-baseline gap-0.5">
-          <span className="text-base font-bold text-white">sistematiza</span>
-          <span className="text-base font-bold" style={{ color: '#2ecc71' }}>.ia</span>
+          <span className="text-[15px] font-semibold text-white">sistematiza</span>
+          <span className="text-[15px] font-semibold" style={{ color: '#2ecc71' }}>.ia</span>
           <span className="ml-2 text-xs text-white/30 font-normal">PDV</span>
         </div>
 
@@ -325,7 +325,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                         className="bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#2ecc71]/30 rounded-xl p-4 text-left transition-all active:scale-95"
                       >
                         <p className="text-white text-sm font-medium leading-tight truncate">{p.nome}</p>
-                        <p className="text-[#2ecc71] text-base font-bold mt-2">
+                        <p className="text-[#2ecc71] text-[15px] font-semibold mt-2">
                           {p.precoVarejo ? fmt(p.precoVarejo) : '—'}
                         </p>
                         <p className="text-white/30 text-xs mt-0.5">{p.unidade}</p>
@@ -378,7 +378,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                         >
                           <Minus size={12} />
                         </button>
-                        <span className="text-white font-bold text-sm w-6 text-center">{item.quantidade}</span>
+                        <span className="text-white font-semibold text-sm w-6 text-center">{item.quantidade}</span>
                         <button
                           onClick={() => alterarQtd(item.produtoId, 1)}
                           className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
@@ -386,7 +386,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                           <Plus size={12} />
                         </button>
                       </div>
-                      <span className="text-[#2ecc71] font-bold text-sm">{fmt(item.subtotal)}</span>
+                      <span className="text-[#2ecc71] font-semibold text-sm">{fmt(item.subtotal)}</span>
                     </div>
                   </div>
                 ))}
@@ -408,7 +408,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                         <span className="text-red-400">-{fmt(desconto)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between text-base font-bold border-t border-white/5 pt-2">
+                    <div className="flex justify-between text-[15px] font-semibold border-t border-white/5 pt-2">
                       <span className="text-white">Total</span>
                       <span style={{ color: '#2ecc71' }}>{fmt(total)}</span>
                     </div>
@@ -461,7 +461,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                       {troco > 0 && (
                         <div className="flex justify-between mt-2 px-1">
                           <span className="text-amber-400 text-sm">Troco</span>
-                          <span className="text-amber-400 font-bold text-sm">{fmt(troco)}</span>
+                          <span className="text-amber-400 font-semibold text-sm">{fmt(troco)}</span>
                         </div>
                       )}
                     </div>
@@ -471,7 +471,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                   <button
                     onClick={() => venderMut.mutate()}
                     disabled={venderMut.isPending}
-                    className="w-full py-4 rounded-xl font-bold text-base transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    className="w-full py-4 rounded-xl font-semibold text-base transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                     style={{ backgroundColor: '#2ecc71', color: '#0F1117' }}
                   >
                     {venderMut.isPending ? (
@@ -524,15 +524,15 @@ export default function PdvClient({ tenantSlug }: Props) {
                       }
                     }}
                     className={`
-                      aspect-square rounded-2xl flex flex-col items-center justify-center gap-1
-                      font-bold text-lg transition-all active:scale-95
+                      aspect-square rounded-xl flex flex-col items-center justify-center gap-1
+                      font-semibold text-lg transition-all active:scale-95
                       ${ocupada
                         ? 'bg-amber-500/20 border-2 border-amber-500/50 text-amber-400 hover:bg-amber-500/30'
                         : 'bg-white/5 border border-white/10 text-white/60 hover:bg-white/10 hover:text-white hover:border-[#2ecc71]/30'
                       }
                     `}
                   >
-                    <span className="text-xl font-bold">{num}</span>
+                    <span className="text-[19px] font-semibold tracking-tight">{num}</span>
                     {ocupada && (
                       <span className="text-[10px] font-normal text-amber-400/70">
                         {fmt(comandaAberta.total)}
@@ -664,7 +664,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                         <p className="text-white text-sm font-medium">{item.nomeProduto}</p>
                         <div className="flex items-center justify-between mt-1">
                           <span className="text-white/40 text-xs">{item.quantidade}x {fmt(item.precoUnitario)}</span>
-                          <span className="text-[#2ecc71] text-sm font-bold">{fmt(item.subtotal)}</span>
+                          <span className="text-[#2ecc71] text-sm font-semibold">{fmt(item.subtotal)}</span>
                         </div>
                       </div>
                     ))}
@@ -691,7 +691,7 @@ export default function PdvClient({ tenantSlug }: Props) {
                       <button
                         onClick={() => fecharComandaMut.mutate()}
                         disabled={fecharComandaMut.isPending}
-                        className="w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
+                        className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
                         style={{ backgroundColor: '#2ecc71', color: '#0F1117' }}
                       >
                         {fecharComandaMut.isPending ? (

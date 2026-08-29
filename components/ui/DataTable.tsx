@@ -8,37 +8,28 @@ import { TableSkeleton } from '@/components/ui/Skeleton'
 /**
  * components/ui/DataTable.tsx
  *
- * Tabela de listagem padrão. Toda a marcação foi extraída das telas existentes
- * (Fornecedores, Clientes, Insumos): mesmo cartão, mesmo cabeçalho, mesma linha
- * com hover, mesma ordenação, mesma paginação. Trocar uma tela por este
- * componente não muda um pixel.
+ * Tabela de listagem padrão. NENHUMA mudança de comportamento nesta versão —
+ * ordenação, filtro por coluna (com portal), cabeçalho congelado, paginação
+ * e cliques continuam idênticos. Mudou só o traje:
+ *
+ *   • cabeçalho branco com uma linha hairline embaixo, em vez da faixa cinza;
+ *   • rótulo de coluna em 11px médio e caixa normal, não CAIXA ALTA bold;
+ *   • linha com divisória #F1F2F5 e hover branco-azulado bem leve;
+ *   • coluna de ações não depende mais de opacity-0 total: 60% em repouso,
+ *     100% no hover — ícone invisível era reclamação de quem não sabia que
+ *     dava para clicar.
  *
  *   const colunas: Coluna[] = [
  *     { chave: 'nome', titulo: 'Nome', principal: true, ordenavel: true },
  *     { chave: 'tipo', titulo: 'Tipo', esconderAte: 'md',
  *       render: i => <Badge variant="secondary">{i.tipo}</Badge> },
  *   ]
- *
- *   <DataTable
- *     colunas={colunas}
- *     itens={itens}
- *     chave={i => i.id}
- *     carregando={isLoading}
- *     usarSkeleton
- *     vazio={<EmptyState ... />}
- *     ordem={{ chave: sortKey, dir: sortDir }}
- *     onOrdenar={toggleSort}
- *     acoes={i => <>...</>}
- *     meta={meta}
- *     onPageChange={setPage}
- *     onLimitChange={setLimit}
- *   />
  */
 
 export interface Coluna {
   chave:            string
   titulo:           string
-  /** primeira coluna: texto escuro e semibold */
+  /** primeira coluna: texto escuro e medium */
   principal?:       boolean
   /** esconde abaixo do breakpoint (hidden md:table-cell) */
   esconderAte?:     'md' | 'lg' | 'xl'
@@ -163,7 +154,7 @@ function FiltroColuna({
     //
     // Mas ele estava em modo de captura, e capturava também a rolagem DE
     // DENTRO da própria lista — descer a barra para achar o produto fechava
-    // o filtro na cara de quem estava escolhendo. Era o bug reaberto pela QA.
+    // o filtro na cara de quem estava escolhendo.
     //
     // Agora a origem do evento decide: veio de dentro do painel, é navegação
     // na lista e não se mexe.
@@ -196,8 +187,8 @@ function FiltroColuna({
         type="button"
         onClick={e => { e.stopPropagation(); aberto ? setAberto(false) : abrir() }}
         title={ativo ? `Filtrando por "${valor}"` : `Filtrar ${titulo}`}
-        className={`ml-1 inline-flex items-center justify-center w-5 h-5 rounded transition-colors align-middle ${
-          ativo ? 'bg-green-100 text-green-700' : 'text-gray-300 hover:text-gray-600 hover:bg-gray-100'
+        className={`ml-1 inline-flex items-center justify-center w-5 h-5 rounded-md transition-colors align-middle ${
+          ativo ? 'bg-green-50 text-green-700' : 'text-gray-300 hover:text-gray-600 hover:bg-gray-100'
         }`}
       >
         <Filter size={11} />
@@ -208,7 +199,7 @@ function FiltroColuna({
           ref={painelRef}
           onClick={e => e.stopPropagation()}
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: 240 }}
-          className="z-[100] bg-white rounded-xl border border-gray-200 shadow-xl normal-case tracking-normal"
+          className="z-[100] bg-white rounded-xl border border-gray-200 shadow-lg normal-case tracking-normal"
         >
           <div className="p-2 border-b border-gray-100">
             <input
@@ -219,7 +210,7 @@ function FiltroColuna({
                 if (e.key === 'Enter' && busca.trim()) { onEscolher(busca.trim()); setAberto(false) }
               }}
               placeholder={`Buscar ${titulo.toLowerCase()}...`}
-              className="w-full h-8 px-2 rounded-lg border border-gray-200 text-[13px] font-normal text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-200"
+              className="w-full h-8 px-2 rounded-lg border border-gray-200 text-[13px] font-normal text-gray-700 focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-50"
             />
             {/* Limpar fica NO TOPO, junto do campo. Antes vivia no rodapé da
                 lista: com muitos valores era preciso rolar até o fim para
@@ -227,7 +218,7 @@ function FiltroColuna({
             {ativo && (
               <button
                 onClick={() => { onEscolher(''); setBusca(''); setAberto(false) }}
-                className="mt-1.5 w-full h-7 flex items-center justify-center gap-1 rounded-lg text-[12px] font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors"
+                className="mt-1.5 w-full h-7 flex items-center justify-center gap-1 rounded-lg text-[12px] font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors"
               >
                 <XIcon size={11} /> Limpar filtro
               </button>
@@ -280,13 +271,13 @@ export function DataTable({
 
   function IconeOrdem({ col }: { col: string }) {
     if (!ordem || ordem.chave !== col) {
-      return <ArrowUpDown size={11} className="ml-1 text-gray-300 inline" />
+      return <ArrowUpDown size={10} className="ml-1 text-gray-300 inline" />
     }
-    return <span className="ml-1 text-green-500 text-[11px] inline">{ordem.dir === 'asc' ? '↑' : '↓'}</span>
+    return <span className="ml-1 text-green-600 text-[11px] inline">{ordem.dir === 'asc' ? '↑' : '↓'}</span>
   }
 
   return (
-    <div className={`bg-white rounded-xl border border-gray-200 overflow-hidden ${className}`}>
+    <div className={`bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden ${className}`}>
       {/* Barra fina de ferramentas — filtros e ordenação ficam aqui, acima da grade */}
       {ferramentas && (
         <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-100">
@@ -303,15 +294,15 @@ export function DataTable({
       <div className="overflow-auto" style={{ maxHeight: alturaMax, minHeight: '160px' }}>
         <table className="w-full">
           <thead>
-            <tr className="bg-gray-50">
+            <tr className="bg-white">
             {colunas.map(col => {
               const podeOrdenar = col.ordenavel && onOrdenar
               return (
                 <th
                   key={col.chave}
                   onClick={podeOrdenar ? () => onOrdenar!(col.chave) : undefined}
-                  className={`sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] ${ALINHAMENTO[col.alinhamento ?? 'left']} text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-2.5 ${visibilidade(col)} ${col.largura ?? ''} ${
-                    podeOrdenar ? 'cursor-pointer select-none hover:text-gray-700' : ''
+                  className={`sticky top-0 z-20 bg-white shadow-[inset_0_-1px_0_#E9EBEE] ${ALINHAMENTO[col.alinhamento ?? 'left']} text-[11px] font-medium text-gray-400 px-4 py-2.5 ${visibilidade(col)} ${col.largura ?? ''} ${
+                    podeOrdenar ? 'cursor-pointer select-none hover:text-gray-600' : ''
                   } ${col.classeCabecalho ?? ''}`}
                 >
                   {col.titulo}
@@ -332,7 +323,7 @@ export function DataTable({
                 </th>
               )
             })}
-            {acoes && <th className="sticky top-0 z-20 bg-gray-50 shadow-[inset_0_-1px_0_#e5e7eb] px-4 py-2.5 w-24" />}
+            {acoes && <th className="sticky top-0 z-20 bg-white shadow-[inset_0_-1px_0_#E9EBEE] px-4 py-2.5 w-24" />}
           </tr>
         </thead>
 
@@ -342,14 +333,14 @@ export function DataTable({
               <TableSkeleton rows={6} cols={totalColunas} />
             ) : (
               <tr>
-                <td colSpan={totalColunas} className="px-4 py-12 text-center text-sm text-gray-400">
+                <td colSpan={totalColunas} className="px-4 py-12 text-center text-[13px] text-gray-400">
                   Carregando...
                 </td>
               </tr>
             )
           ) : itens.length === 0 ? (
             <tr>
-              <td colSpan={totalColunas} className={typeof vazio === 'string' ? 'px-4 py-12 text-center text-sm text-gray-400' : ''}>
+              <td colSpan={totalColunas} className={typeof vazio === 'string' ? 'px-4 py-12 text-center text-[13px] text-gray-400' : ''}>
                 {vazio}
               </td>
             </tr>
@@ -357,7 +348,7 @@ export function DataTable({
             <tr
               key={chave(item)}
               onClick={onLinhaClick ? () => onLinhaClick(item) : undefined}
-              className={`group border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${
+              className={`group border-b border-gray-100 hover:bg-gray-50 transition-colors ${
                 onLinhaClick ? 'cursor-pointer' : ''
               } ${classeLinha ? classeLinha(item) : ''}`}
             >
@@ -365,7 +356,7 @@ export function DataTable({
                 <td
                   key={col.chave}
                   className={col.classeCelula ?? `px-4 py-3 ${ALINHAMENTO[col.alinhamento ?? 'left']} ${
-                    col.principal ? 'text-sm font-medium text-gray-900' : 'text-sm text-gray-500'
+                    col.principal ? 'text-[13.5px] font-medium text-gray-900' : 'text-[13.5px] text-gray-600'
                   } ${visibilidade(col)}`}
                 >
                   {col.render ? col.render(item) : (item?.[col.chave] ?? '—')}
@@ -373,7 +364,7 @@ export function DataTable({
               ))}
               {acoes && (
                 <td className="px-4 py-3">
-                  <div className={`flex items-center ${acoesCentro ? 'justify-center' : 'justify-end'} gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
+                  <div className={`flex items-center ${acoesCentro ? 'justify-center' : 'justify-end'} gap-1 opacity-60 group-hover:opacity-100 transition-opacity`}>
                     {acoes(item)}
                   </div>
                 </td>

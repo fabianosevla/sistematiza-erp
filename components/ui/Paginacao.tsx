@@ -4,14 +4,13 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 /**
  * components/ui/Paginacao.tsx
  *
- * Mudanças em relação à versão anterior — as duas compatíveis com quem já usa:
+ * Mesma API. Mudou só o traje: página ativa em grafite (não verde cheio),
+ * botões hairline, texto de faixa em cinza frio.
  *
- *  1. onLimit virou opcional. Sem ele, o seletor de "registros por página"
- *     não aparece, mas a faixa "1–20 de 143" continua. Isso permite que o
- *     DataTable use este componente mesmo em telas que ainda não controlam
- *     o tamanho de página.
+ *  1. onLimit é opcional. Sem ele, o seletor de "registros por página"
+ *     não aparece, mas a faixa "1–20 de 143" continua.
  *  2. className opcional, para o DataTable ajustar o recuo quando a paginação
- *     fica dentro do cartão da tabela. O padrão é o de sempre.
+ *     fica dentro do cartão da tabela.
  */
 interface Props {
   page:       number
@@ -39,11 +38,11 @@ export default function Paginacao({
       <div className="flex items-center gap-2">
         {onLimit && (
           <>
-            <span className="text-xs text-gray-400">Registros por página:</span>
+            <span className="text-[12px] text-gray-400">Registros por página:</span>
             <select
               value={limit}
               onChange={e => { onLimit(Number(e.target.value)); onPage(1) }}
-              className="h-7 rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:border-green-400"
+              className="h-7 rounded-lg border border-gray-200 bg-white px-2 text-[12px] text-gray-700 focus:outline-none focus:border-green-400"
             >
               {OPCOES_LIMIT.map(n => (
                 <option key={n} value={n}>{n}</option>
@@ -51,7 +50,7 @@ export default function Paginacao({
             </select>
           </>
         )}
-        <span className="text-xs text-gray-400">
+        <span className="text-[12px] text-gray-400">
           {inicio}–{fim} de {total}
         </span>
       </div>
@@ -60,7 +59,7 @@ export default function Paginacao({
         <button
           onClick={() => onPage(page - 1)}
           disabled={page <= 1}
-          className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronLeft size={14} />
         </button>
@@ -81,9 +80,9 @@ export default function Paginacao({
             <button
               key={p}
               onClick={() => onPage(p)}
-              className={`w-7 h-7 rounded-lg text-xs font-medium transition-colors ${
+              className={`w-7 h-7 rounded-lg text-[12px] font-medium transition-colors ${
                 p === page
-                  ? 'bg-green-600 text-white'
+                  ? 'bg-gray-900 text-white'
                   : 'border border-gray-200 hover:bg-gray-50 text-gray-600'
               }`}
             >
@@ -95,7 +94,7 @@ export default function Paginacao({
         <button
           onClick={() => onPage(page + 1)}
           disabled={page >= totalPages}
-          className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
           <ChevronRight size={14} />
         </button>

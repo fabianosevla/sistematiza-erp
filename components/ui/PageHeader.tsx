@@ -4,9 +4,8 @@ import type { ReactNode } from 'react'
 /**
  * components/ui/PageHeader.tsx
  *
- * Cabeçalho de tela. Formato inspirado no padrão que estudamos: título em
- * peso médio, sem subtítulo explicativo, etiqueta opcional ao lado e ações
- * alinhadas à direita em botões pequenos.
+ * Cabeçalho de tela. Título em 21px semibold com tracking negativo, etiqueta
+ * opcional ao lado, ações pequenas à direita. Mesma assinatura de props.
  *
  *   <PageHeader
  *     titulo="Fornecedores"
@@ -31,11 +30,11 @@ export function PageHeader({ titulo, tag, subtitulo, acoes, className = '' }: Pr
     <div className={`flex items-start justify-between gap-4 mb-5 ${className}`}>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-gray-900 tracking-tight">{titulo}</h1>
+          <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">{titulo}</h1>
           {tag}
         </div>
         {subtitulo !== undefined && subtitulo !== null && subtitulo !== '' && (
-          <div className="mt-1">{subtitulo}</div>
+          <div className="mt-1.5">{subtitulo}</div>
         )}
       </div>
       {acoes && <div className="flex items-center gap-2 flex-shrink-0">{acoes}</div>}

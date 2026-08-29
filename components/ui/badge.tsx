@@ -5,19 +5,20 @@ import { cn } from '@/lib/utils'
 /**
  * components/ui/badge.tsx
  *
- * Alinhado ao Tag: fundo claro, borda da mesma família, texto pequeno.
- * Serve para status e classificações dentro de tabelas e cartões.
+ * Selo sem borda: fundo claro e texto escuro da mesma família. A borda saiu
+ * porque, repetida em toda linha de tabela, ela criava um serrilhado de
+ * caixinhas; só o fundo já separa o selo do texto ao lado.
  */
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors',
+  'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors',
   {
     variants: {
       variant: {
-        default:     'bg-green-50 text-green-700 border-green-200',
-        secondary:   'bg-gray-50 text-gray-600 border-gray-200',
-        destructive: 'bg-red-50 text-red-600 border-red-200',
-        warning:     'bg-amber-50 text-amber-700 border-amber-200',
-        outline:     'bg-white border-gray-200 text-gray-500',
+        default:     'bg-green-50 text-green-700',
+        secondary:   'bg-gray-100 text-gray-600',
+        destructive: 'bg-red-50 text-red-600',
+        warning:     'bg-amber-50 text-amber-700',
+        outline:     'bg-white border border-gray-200 text-gray-500',
       },
     },
     defaultVariants: { variant: 'default' },

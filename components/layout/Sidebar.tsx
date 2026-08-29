@@ -13,6 +13,25 @@ import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import type { Config } from '@/components/layout/ClientShell'
 
+/**
+ * components/layout/Sidebar.tsx
+ *
+ * ─── A BARRA FICOU CLARA ─────────────────────────────────────────────────────
+ *
+ * A barra preta dava peso a um menu que é, na prática, mobília: ela puxava o
+ * olho para o canto da tela em vez de para o conteúdo. Agora é branca com uma
+ * linha hairline separando do conteúdo, texto em cinza frio e o item ativo
+ * numa pastilha verde bem clara — o verde volta a significar "aqui você está"
+ * em vez de disputar atenção com tudo.
+ *
+ * No modo escuro ela continua escura (variantes `dark:`), então o toggle segue
+ * funcionando.
+ *
+ * NADA de comportamento mudou: mesmos grupos, mesma ordem, mesmas flags de
+ * config, mesmo recolher com memória em localStorage, mesmo rodapé com o nome
+ * do usuário vindo do NOSSO cadastro.
+ */
+
 interface Props {
   tenantSlug: string; tenantName: string; config: Config
   open: boolean; onClose: () => void
@@ -21,8 +40,8 @@ interface Props {
 interface Filho { label: string; href: string }
 interface Item  { label: string; href?: string; icon: any; children?: Filho[] }
 
-const LARGURA_ABERTA    = 'w-60'
-const LARGURA_RECOLHIDA = 'w-[68px]'
+const LARGURA_ABERTA    = 'w-[234px]'
+const LARGURA_RECOLHIDA = 'w-[64px]'
 
 export default function Sidebar({ tenantSlug, tenantName, config, open, onClose }: Props) {
   const pathname = usePathname()
@@ -30,12 +49,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
   // NOME vem do NOSSO cadastro (t_usuario.nome), não do Clerk.
-  //
-  // Motivo concreto: a conta do Clerk de fabiano.halves02@gmail.com está com
-  // o nome de perfil "Sistematiza Suporte" — foi criada assim. Enquanto a tela
-  // lia user.fullName, o dono do sistema aparecia como suporte. O cadastro do
-  // ERP é a fonte de verdade do nome; o Clerk fica só com a autenticação e a
-  // foto.
   const { user } = useUser()
   const { data: meuAcesso } = useQuery({
     queryKey: ['meu-acesso', tenantSlug],
@@ -87,9 +100,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   ]
 
   const modulares: Item[] = [
-    // Ficha Técnica saiu de dentro de Cadastros: ela não é cadastro de
-    // registro, é a receita que liga produto a insumo e alimenta produção,
-    // custo e margem. Escondida num submenu, ninguém achava.
     { label: 'Fichas Técnicas', href: '/cadastros/ficha-tecnica', icon: BookOpen },
     ...(config.metasAtivo ? [{
       label: 'Metas & Simulador', icon: Target,
@@ -126,8 +136,6 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
   }
 
   // ── Submenu embutido ──────────────────────────────────────────────────────
-  // O grupo abre para baixo, dentro da própria barra. O grupo que contém a
-  // rota atual já nasce aberto, para o operador ver onde está.
   const [abertos, setAbertos] = useState<string[]>([])
 
   useEffect(() => {
@@ -152,23 +160,23 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
     <aside
       className={cn(
         'fixed lg:static inset-y-0 left-0 z-40 h-screen flex flex-col flex-shrink-0',
+        'bg-white dark:bg-[#0F1117] border-r border-gray-200 dark:border-white/5',
         'transition-[width,transform] duration-200 ease-in-out',
         recolhida ? LARGURA_RECOLHIDA : LARGURA_ABERTA,
         open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-      )}
-      style={{ backgroundColor: '#0F1117' }}>
+      )}>
 
       {/* Cabeçalho */}
       <div className={cn(
-        'flex items-center gap-2 pt-5 pb-4 border-b border-white/5',
-        recolhida ? 'px-3 justify-center' : 'px-5 justify-between'
+        'flex items-center gap-2 pt-[18px] pb-4',
+        recolhida ? 'px-3 justify-center' : 'px-4 justify-between'
       )}>
         {!recolhida && (
-          <div className="flex items-center gap-2 min-w-0">
-            <img src="/apple-icon.png" alt="" className="h-7 w-7 flex-shrink-0 rounded object-contain" />
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img src="/apple-icon.png" alt="" className="h-6 w-6 flex-shrink-0 rounded-md object-contain" />
             <div className="flex items-baseline">
-              <span className="text-[19px] font-bold text-white tracking-tight">Sistematiza</span>
-              <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
+              <span className="text-[15.5px] font-semibold tracking-tight text-gray-900 dark:text-white">Sistematiza</span>
+              <span className="text-[15.5px] font-semibold tracking-tight text-green-600">.ai</span>
             </div>
           </div>
         )}
@@ -177,17 +185,17 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
             onClick={alternarRecolhida}
             title={recolhida ? 'Expandir menu' : 'Recolher menu'}
             aria-label={recolhida ? 'Expandir menu' : 'Recolher menu'}
-            className="hidden lg:flex items-center justify-center text-white/80 hover:text-white p-1.5 rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 transition-colors">
-            {recolhida ? <PanelLeftOpen size={17} strokeWidth={2.25} /> : <PanelLeftClose size={17} strokeWidth={2.25} />}
+            className="hidden lg:flex items-center justify-center h-[26px] w-[26px] rounded-lg text-gray-500 hover:text-gray-900 bg-white hover:bg-gray-100 border border-gray-200 transition-colors dark:bg-white/5 dark:border-white/10 dark:text-white/70 dark:hover:text-white">
+            {recolhida ? <PanelLeftOpen size={15} strokeWidth={2} /> : <PanelLeftClose size={15} strokeWidth={2} />}
           </button>
-          <button onClick={onClose} className="lg:hidden text-white/70 hover:text-white p-1 rounded">
-            <X size={17} strokeWidth={2.25} />
+          <button onClick={onClose} className="lg:hidden text-gray-400 hover:text-gray-900 p-1 rounded-lg">
+            <X size={16} strokeWidth={2} />
           </button>
         </div>
       </div>
 
       {/* Navegação */}
-      <nav className="flex-1 py-3 overflow-y-auto space-y-0.5 px-2">
+      <nav className="flex-1 pb-3 overflow-y-auto space-y-px px-2.5">
         {allItems.map(item => {
           const temFilhos = !!item.children
           const ativo     = temFilhos
@@ -196,15 +204,14 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
           const aberto    = abertos.includes(item.label)
 
           const classesBase = cn(
-            'w-full flex items-center rounded-lg text-sm transition-colors',
-            recolhida ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2',
+            'w-full flex items-center rounded-lg text-[13.5px] transition-colors',
+            recolhida ? 'justify-center px-0 py-2.5' : 'gap-[11px] px-2.5 py-[7px]',
             ativo
-              ? 'text-white font-medium bg-[#2ecc71]/10'
-              : 'text-white/50 hover:text-white/80 hover:bg-white/5',
-            ativo && !recolhida ? 'border-l-2 border-[#2ecc71] pl-[10px]' : ''
+              ? 'bg-green-50 text-green-800 font-medium dark:bg-[#2ecc71]/10 dark:text-white'
+              : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-white/50 dark:hover:text-white/80 dark:hover:bg-white/5'
           )
 
-          // Grupo (Cadastros, Compras): abre a lista de filhos logo abaixo
+          // Grupo (Cadastros, Metas): abre a lista de filhos logo abaixo
           if (temFilhos) {
             return (
               <div key={item.label}>
@@ -212,20 +219,21 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
                   onClick={() => alternarGrupo(item.label)}
                   title={recolhida ? item.label : undefined}
                   className={classesBase}>
-                  <item.icon size={16} className="flex-shrink-0" />
+                  <item.icon size={15} strokeWidth={1.9} className={cn('flex-shrink-0', ativo ? 'text-green-600' : 'text-gray-400')} />
                   {!recolhida && (
                     <>
                       <span className="flex-1 text-left">{item.label}</span>
                       <ChevronDown
-                        size={13}
-                        className={cn('text-white/30 transition-transform', aberto && 'rotate-180')}
+                        size={12}
+                        strokeWidth={2.2}
+                        className={cn('text-gray-300 transition-transform', aberto && 'rotate-180')}
                       />
                     </>
                   )}
                 </button>
 
                 {!recolhida && aberto && (
-                  <div className="mt-0.5 mb-1 ml-[26px] border-l border-white/10 pl-2 space-y-0.5">
+                  <div className="mt-px mb-1.5 ml-[25px] border-l border-gray-200 dark:border-white/10 pl-2.5 space-y-px">
                     {item.children!.map(c => {
                       const filhoAtivo = isActive(c.href)
                       return (
@@ -236,8 +244,8 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
                           className={cn(
                             'block rounded-md px-2 py-1.5 text-[13px] transition-colors',
                             filhoAtivo
-                              ? 'text-white font-medium bg-[#2ecc71]/10'
-                              : 'text-white/45 hover:text-white/85 hover:bg-white/5'
+                              ? 'bg-green-50 text-green-800 font-medium dark:bg-[#2ecc71]/10 dark:text-white'
+                              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/45 dark:hover:text-white/85 dark:hover:bg-white/5'
                           )}>
                           {c.label}
                         </Link>
@@ -256,39 +264,33 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose 
               onClick={onClose}
               title={recolhida ? item.label : undefined}
               className={classesBase}>
-              <item.icon size={16} className="flex-shrink-0" />
+              <item.icon size={15} strokeWidth={1.9} className={cn('flex-shrink-0', ativo ? 'text-green-600' : 'text-gray-400')} />
               {!recolhida && item.label}
             </Link>
           )
         })}
       </nav>
 
-      {/* Rodapé — QUEM ESTÁ LOGADO.
-          Antes mostrava a razão social do tenant, que é a mesma para todos e
-          não responde a pergunta que o rodapé de qualquer software responde:
-          "eu sou quem, aqui?". Agora traz nome e foto do usuário; a empresa
-          aparece na linha de baixo, menor, como contexto. */}
-      <div className={cn('border-t border-white/5', recolhida ? 'p-3' : 'p-4')}>
-        <div className={cn('flex items-center gap-3', recolhida && 'justify-center')}>
+      {/* Rodapé — QUEM ESTÁ LOGADO. */}
+      <div className={cn('border-t border-gray-200 dark:border-white/5', recolhida ? 'p-3' : 'px-4 py-3')}>
+        <div className={cn('flex items-center gap-2.5', recolhida && 'justify-center')}>
           {fotoUsuario ? (
             <img
               src={fotoUsuario}
               alt=""
               title={`${nomeUsuario} · ${tenantName}`}
-              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-              style={{ border: '1px solid rgba(255,255,255,0.15)' }}
+              className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-gray-200"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-[11px] font-bold"
-              title={`${nomeUsuario} · ${tenantName}`}
-              style={{ backgroundColor: 'rgba(46,204,113,0.15)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.25)' }}>
+            <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[10.5px] font-semibold bg-green-50 text-green-800 border border-green-100"
+              title={`${nomeUsuario} · ${tenantName}`}>
               {iniciaisUsuario || initials}
             </div>
           )}
           {!recolhida && (
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-white/75 truncate">{nomeUsuario}</p>
-              <p className="text-[10px] text-white/30 truncate">{tenantName}</p>
+              <p className="text-[12.5px] font-medium text-gray-900 dark:text-white/75 truncate">{nomeUsuario}</p>
+              <p className="text-[11px] text-gray-400 dark:text-white/30 truncate">{tenantName}</p>
             </div>
           )}
         </div>

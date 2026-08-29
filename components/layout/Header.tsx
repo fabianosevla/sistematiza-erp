@@ -410,7 +410,7 @@ export default function Header({
 
   return (
     <>
-      <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-4 flex-shrink-0 z-20">
+      <header className="h-14 bg-white dark:bg-[#0F1117] border-b border-gray-200 dark:border-white/5 flex items-center justify-between px-5 flex-shrink-0 z-20">
         {/* Botão hamburger (mobile) */}
         <button
           onClick={onToggleSidebar}
@@ -441,8 +441,7 @@ export default function Header({
           {/* Atalho PDV (ambiente separado) — disponível para todos. */}
           <a
             href={`/${tenantSlug}/pdv`}
-            className="flex items-center gap-1.5 px-3 py-1.5 mr-1 rounded-lg text-sm font-medium text-white transition-colors"
-            style={{ backgroundColor: '#2ecc71' }}
+            className="inline-flex items-center gap-2 h-8 px-3.5 rounded-lg bg-gray-900 text-white text-[12.5px] font-medium hover:bg-gray-800 transition-colors mr-1"
             title="Abrir PDV"
           >
             <Store size={16} /> PDV
@@ -451,7 +450,7 @@ export default function Header({
           {/* Dark mode */}
           <button
             onClick={onToggleDarkMode}
-            className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
             title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
@@ -474,7 +473,7 @@ export default function Header({
           {/* Configurações */}
           <button
             onClick={() => setShowSettings(true)}
-            className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
             <Settings size={18} />
           </button>
@@ -482,7 +481,7 @@ export default function Header({
           {/* Sair */}
           <button
             onClick={() => signOut()}
-            className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors"
             title="Sair"
           >
             <LogOut size={18} />

@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 // app/(dashboard)/[tenant]/pdv/PdvShell.tsx
 
 import { useState } from 'react'
@@ -9,6 +9,23 @@ import ComandasView from '@/components/modules/comandas/ComandasView'
 import PdvBalcao from './PdvBalcao'
 import PdvMesas from './PdvMesas'
 import { useDarkMode } from '@/hooks/useDarkMode'
+
+/**
+ * ─── A BARRA DO PDV ACOMPANHOU O GERENCIAL ───────────────────────────────────
+ *
+ * O gerencial ficou claro, então a barra preta do PDV ficaria órfã: pareceria
+ * outro produto. Agora ela é branca com hairline embaixo, igual ao cabeçalho
+ * do gerencial.
+ *
+ * Uma diferença de propósito foi mantida de pé: o PDV é operado em pé, rápido,
+ * às vezes em monitor ruim. Por isso as abas aqui continuam MAIORES que
+ * qualquer controle do gerencial (h-9, texto 14px, alvo confortável) e a aba
+ * ativa não é só sublinhada — é uma pastilha verde clara, que se acha de
+ * relance sem procurar.
+ *
+ * Nada de comportamento mudou: mesmas quatro abas, mesma checagem de acesso
+ * gerencial, mesmo dark mode, mesmas rolagens por aba.
+ */
 
 interface Props {
   tenantSlug: string
@@ -30,10 +47,6 @@ const ABAS = [
 // seguida de atributos. Esta forma evita o problema por completo.
 const Anchor = 'a' as const
 
-// Mesma cor do menu lateral do gerencial. É a mesma aplicação — o PDV não
-// pode parecer outro produto.
-const COR_BARRA = '#0F1117'
-
 export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props) {
   const [aba, setAba] = useState<Aba>('balcao')
   const { signOut } = useClerk()
@@ -46,38 +59,36 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
   const temGerencial = meuAcessoRaw?.data?.isAdmin === true || meuAcessoRaw?.data?.acessoGerencial === true
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-gray-50">
-      <header
-        className="h-14 flex items-center justify-between px-4 flex-shrink-0 border-b border-white/5"
-        style={{ backgroundColor: COR_BARRA }}
-      >
+    <div className="h-screen flex flex-col overflow-hidden bg-gray-50 dark:bg-[#0E1120]">
+      <header className="h-14 flex items-center justify-between px-4 flex-shrink-0 bg-white dark:bg-[#0F1117] border-b border-gray-200 dark:border-white/5">
         <div className="flex items-center gap-3">
-          {/* Marca idêntica à do menu lateral do gerencial: mesmo ícone,
-              mesma grafia, mesmo tamanho. */}
-          <div className="flex items-center gap-2">
-            <img src="/apple-icon.png" alt="" className="h-7 w-7 flex-shrink-0 rounded object-contain" />
+          {/* Marca idêntica à do menu lateral do gerencial. */}
+          <div className="flex items-center gap-2.5">
+            <img src="/apple-icon.png" alt="" className="h-6 w-6 flex-shrink-0 rounded-md object-contain" />
             <div className="flex items-baseline">
-              <span className="text-[19px] font-bold text-white tracking-tight">Sistematiza</span>
-              <span className="text-[19px] font-bold tracking-tight" style={{ color: '#2ecc71' }}>.ai</span>
+              <span className="text-[15.5px] font-semibold tracking-tight text-gray-900 dark:text-white">Sistematiza</span>
+              <span className="text-[15.5px] font-semibold tracking-tight text-green-600">.ai</span>
             </div>
           </div>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 text-white/60 uppercase tracking-wide">
+          <span className="px-2 py-0.5 rounded-full text-[10.5px] font-medium bg-gray-100 text-gray-500 dark:bg-white/10 dark:text-white/60">
             PDV
           </span>
         </div>
 
-        <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-xl p-1">
+        {/* Abas grandes: é o controle mais usado da tela, e quem opera não
+            está com a mão parada no mouse. */}
+        <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-xl p-1 dark:bg-white/5 dark:border-white/10">
           {ABAS.map(item => (
             <button
               key={item.key}
               onClick={() => setAba(item.key)}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              className={`flex items-center gap-2 px-4 h-9 rounded-lg text-sm font-medium transition-colors ${
                 aba === item.key
-                  ? 'bg-[#2ecc71]/15 text-white'
-                  : 'text-white/50 hover:text-white/80 hover:bg-white/5'
+                  ? 'bg-green-50 text-green-800 dark:bg-[#2ecc71]/15 dark:text-white'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-white dark:text-white/50 dark:hover:text-white/80 dark:hover:bg-white/5'
               }`}
             >
-              <item.icon size={14} />
+              <item.icon size={15} strokeWidth={2} />
               {item.label}
             </button>
           ))}
@@ -86,16 +97,16 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
         <div className="flex items-center gap-1">
           <button
             onClick={toggleDarkMode}
-            className="p-2 text-white/60 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+            className="w-9 h-9 flex items-center justify-center text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10"
             title={darkMode ? 'Modo claro' : 'Modo escuro'}
           >
-            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+            {darkMode ? <Sun size={17} /> : <Moon size={17} />}
           </button>
 
           {temGerencial && (
             <Anchor
               href={`/${tenantSlug}`}
-              className="flex items-center gap-2 text-sm text-white/60 hover:text-white transition-colors px-3 py-2 rounded-lg hover:bg-white/10"
+              className="flex items-center gap-2 text-[13px] font-medium text-gray-600 hover:text-gray-900 transition-colors px-3 h-9 rounded-lg hover:bg-gray-100 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10"
               title="Voltar ao gerencial"
             >
               Gerencial
@@ -103,7 +114,7 @@ export default function PdvShell({ tenantSlug, darkModeInicial = false }: Props)
           )}
           <button
             onClick={() => signOut({ redirectUrl: '/sign-in' })}
-            className="flex items-center gap-2 text-sm text-white/60 hover:text-red-400 transition-colors px-3 py-2 rounded-lg hover:bg-white/10"
+            className="flex items-center gap-2 text-[13px] font-medium text-gray-600 hover:text-red-600 transition-colors px-3 h-9 rounded-lg hover:bg-gray-100 dark:text-white/60 dark:hover:text-red-400 dark:hover:bg-white/10"
             title="Sair do sistema"
           >
             <LogOut size={15} />

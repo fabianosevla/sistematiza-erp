@@ -253,14 +253,14 @@ export default function ComandasView({ tenantSlug }: Props) {
   // Renderizado nas duas vistas (a comanda sai da tela após fechar, então
   // precisa existir também na lista).
   const cupomModal = cupomVenda && (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center" style={{ backgroundColor: 'rgba(26,31,54,0.24)' }}>
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-sm mx-4 p-6 text-center">
         <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
         <p className="text-base font-semibold text-gray-900 mb-1">Comanda fechada — venda registrada!</p>
         <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
         <div className="flex justify-center gap-3">
           <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
-          <Button className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
+          <Button variant="brand" className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
         </div>
       </div>
     </div>
@@ -304,7 +304,7 @@ export default function ComandasView({ tenantSlug }: Props) {
             <ChevronRight size={20} className="rotate-180" />
           </button>
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">
+            <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">
               Comanda: {comandaAtiva.identificacao}
             </h1>
             <p className="text-sm text-gray-400">
@@ -332,7 +332,7 @@ export default function ComandasView({ tenantSlug }: Props) {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Adicionar produto */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">Adicionar produto</h2>
             <div className="space-y-3">
               <div>
@@ -354,7 +354,7 @@ export default function ComandasView({ tenantSlug }: Props) {
                     <button
                       key={p.produtoId}
                       onClick={() => handleAddProduto(p)}
-                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left transition-colors"
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0 text-left transition-colors"
                     >
                       <div>
                         <p className="text-sm font-medium text-gray-900">{p.nome}</p>
@@ -378,7 +378,7 @@ export default function ComandasView({ tenantSlug }: Props) {
                 <div className="flex items-center gap-2 mt-1">
                   <button
                     onClick={() => setQuantidade(q => Math.max(1, q - 1))}
-                    className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 font-bold"
+                    className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 font-semibold"
                   >−</button>
                   <Input
                     type="number"
@@ -389,7 +389,7 @@ export default function ComandasView({ tenantSlug }: Props) {
                   />
                   <button
                     onClick={() => setQuantidade(q => q + 1)}
-                    className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 font-bold"
+                    className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 font-semibold"
                   >+</button>
                 </div>
               </div>
@@ -397,7 +397,7 @@ export default function ComandasView({ tenantSlug }: Props) {
           </div>
 
           {/* Itens */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h2 className="text-sm font-semibold text-gray-700 mb-4">
               Itens da comanda ({itens.length})
             </h2>
@@ -409,7 +409,7 @@ export default function ComandasView({ tenantSlug }: Props) {
             ) : (
               <div className="space-y-2">
                 {itens.map((item: any) => (
-                  <div key={item.itemId} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div key={item.itemId} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">{item.nomeProduto}</p>
                       <p className="text-xs text-gray-400">
@@ -421,7 +421,7 @@ export default function ComandasView({ tenantSlug }: Props) {
                 ))}
                 <div className="flex items-center justify-between pt-3">
                   <p className="text-sm font-semibold text-gray-700">Total</p>
-                  <p className="text-xl font-bold text-gray-900">{formatCents(totalComanda)}</p>
+                  <p className="text-[19px] font-semibold tracking-tight text-gray-900">{formatCents(totalComanda)}</p>
                 </div>
               </div>
             )}
@@ -448,7 +448,7 @@ export default function ComandasView({ tenantSlug }: Props) {
                     <span className="font-medium text-red-500">- {formatCents(totalDesconto)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-bold border-t border-gray-200 pt-2 mt-2">
+                <div className="flex justify-between text-[15px] font-semibold border-t border-gray-200 pt-2 mt-2">
                   <span>Total</span>
                   <span style={{ color: '#2ecc71' }}>{formatCents(totalFinal)}</span>
                 </div>
@@ -517,13 +517,14 @@ export default function ComandasView({ tenantSlug }: Props) {
               {troco > 0 && (
                 <div className="flex justify-between px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
                   <span className="text-sm font-semibold text-green-700">Troco</span>
-                  <span className="text-sm font-bold text-green-700">{formatCents(troco)}</span>
+                  <span className="text-sm font-semibold text-green-700">{formatCents(troco)}</span>
                 </div>
               )}
 
               <div className="flex justify-end gap-3 pt-2">
                 <Button type="button" variant="outline" onClick={() => setShowFechar(false)}>Cancelar</Button>
                 <Button
+                  variant="brand"
                   onClick={() => setConfirmFechar(true)}
                   disabled={fecharMutation.isPending || totalPago < totalFinal}
                 >
@@ -536,13 +537,13 @@ export default function ComandasView({ tenantSlug }: Props) {
 
         {/* CONFIRMAÇÃO da venda (Sim/Não) — modal, por cima do painel */}
         {confirmFechar && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(26,31,54,0.24)' }}>
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-sm mx-4 p-6 text-center">
               <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
-              <p className="text-sm text-gray-500 mb-5">Total: <span className="font-bold text-gray-900">{formatCents(totalFinal)}</span></p>
+              <p className="text-sm text-gray-500 mb-5">Total: <span className="font-semibold text-gray-900">{formatCents(totalFinal)}</span></p>
               <div className="flex justify-center gap-3">
                 <Button variant="outline" className="w-24" onClick={() => setConfirmFechar(false)}>Não</Button>
-                <Button className="w-24" onClick={() => { setConfirmFechar(false); fecharMutation.mutate() }}>Sim</Button>
+                <Button variant="brand" className="w-24" onClick={() => { setConfirmFechar(false); fecharMutation.mutate() }}>Sim</Button>
               </div>
             </div>
           </div>
@@ -559,7 +560,7 @@ export default function ComandasView({ tenantSlug }: Props) {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Comandas</h1>
+          <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">Comandas</h1>
           <p className="text-sm text-gray-400 mt-0.5">{comandas.length} comanda{comandas.length !== 1 ? 's' : ''}</p>
         </div>
         <Button onClick={() => setShowNova(true)}>
@@ -587,7 +588,7 @@ export default function ComandasView({ tenantSlug }: Props) {
       {listLoading ? (
         <div className="text-center py-12 text-sm text-gray-400">Carregando...</div>
       ) : comandas.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
           <p className="text-sm text-gray-400">Nenhuma comanda encontrada.</p>
           <Button className="mt-4" onClick={() => setShowNova(true)}>
             <Plus size={14} className="mr-1.5" /> Criar primeira comanda
@@ -612,8 +613,8 @@ export default function ComandasView({ tenantSlug }: Props) {
                   {c.status === 'aberta' ? <span className="flex items-center gap-1"><Clock size={10} /> Aberta</span> : c.status === 'cancelada' ? 'Cancelada' : 'Fechada'}
                 </Badge>
               </div>
-              <div className="mt-3 pt-3 border-t border-gray-50">
-                <p className="text-lg font-bold text-gray-900">{formatCents(c.total)}</p>
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <p className="text-[17px] font-semibold tracking-tight text-gray-900">{formatCents(c.total)}</p>
               </div>
             </button>
           ))}

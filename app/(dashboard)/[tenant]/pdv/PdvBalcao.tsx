@@ -1054,8 +1054,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         </div>
       )}
       <div className="flex justify-between items-baseline border-t border-gray-100 pt-2">
-        <span className="text-sm font-bold text-gray-900">Total da venda</span>
-        <span className="text-2xl font-semibold" style={{ color: VERDE }}>{fmt(totalAPagar)}</span>
+        <span className="text-sm font-semibold text-gray-900">Total da venda</span>
+        <span className="text-[22px] font-semibold tracking-tighter" style={{ color: VERDE }}>{fmt(totalAPagar)}</span>
       </div>
     </div>
   )
@@ -1067,7 +1067,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
       <div className="flex items-start justify-between gap-3 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">{isDelivery ? 'Delivery' : 'Pedido Balcão'}</h1>
+          <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">{isDelivery ? 'Delivery' : 'Pedido Balcão'}</h1>
           <p className="text-sm text-gray-400 mt-0.5">{isDelivery ? 'Venda para entrega — informe o endereço do cliente' : 'Selecione uma categoria ou busque o produto'}</p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -1124,7 +1124,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <Input ref={searchRef} value={busca} onChange={e => setBusca(e.target.value)}
           onKeyDown={handleBuscaKeyDown} placeholder="Digite o nome ou bipe o código de barras…   (F2)"
-          className="pl-9 pr-9 h-12 text-base" />
+          className="pl-9 pr-9 h-12 text-base bg-gray-50 focus:bg-white" />
         {busca && (
           <button onClick={() => { setBusca(''); searchRef.current?.focus() }}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -1152,7 +1152,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         {loadingProd ? (
           <div className="flex items-center justify-center h-32"><Loader2 size={18} className="text-gray-300 animate-spin" /></div>
         ) : produtosFiltrados.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
             <ShoppingCart size={28} className="text-gray-200 mx-auto mb-2" />
             <p className="text-sm text-gray-400">{busca ? `Nenhum produto para "${busca}"` : 'Nenhum produto nesta categoria'}</p>
           </div>
@@ -1166,8 +1166,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               const noCarrinho = carrinho.find(i => i.produtoId === p.produtoId)
               return (
                 <button key={p.produtoId} onClick={() => addProduto(p)}
-                  className={`relative bg-white rounded-lg border p-3 text-left transition-all active:scale-95 hover:shadow-sm ${
-                    noCarrinho ? 'border-green-300' : 'border-gray-100 hover:border-green-200'
+                  className={`relative bg-white rounded-xl border p-3 text-left transition-colors active:scale-[0.98] ${
+                    noCarrinho ? 'border-green-400 bg-green-50/40' : 'border-gray-200 hover:border-green-300 hover:bg-gray-50'
                   }`}>
                   {noCarrinho && (
                     <span style={{ backgroundColor: VERDE }} className="absolute top-1.5 right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center">
@@ -1227,12 +1227,12 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               )}
               <div className="text-right">
                 <p className="text-[11px] text-gray-400 leading-none">Total</p>
-                <p className="text-2xl font-semibold leading-tight" style={{ color: VERDE }}>{fmt(totalAPagar)}</p>
+                <p className="text-[22px] font-semibold tracking-tighter leading-tight" style={{ color: VERDE }}>{fmt(totalAPagar)}</p>
               </div>
               <Button
                 onClick={() => abrirPainel('itens')}
                 disabled={carrinho.length === 0}
-                className="h-12 px-6 text-base"
+                variant="brand" className="h-12 px-6 text-base"
               >
                 Revisar e finalizar
                 <span className="ml-2 text-xs font-normal opacity-70">(F10)</span>
@@ -1268,7 +1268,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <Button
                   onClick={() => setEtapa('pagamento')}
                   disabled={carrinho.length === 0}
-                  className="h-11 px-6"
+                  variant="brand" className="h-11 px-6"
                 >
                   Ir para pagamento
                   <span className="ml-2 text-xs font-normal opacity-70">(F8)</span>
@@ -1283,7 +1283,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                 <Button
                   onClick={() => setConfirmVenda(true)}
                   disabled={!podeVender}
-                  className="h-11 px-6"
+                  variant="brand" className="h-11 px-6"
                 >
                   {(venderMut.isPending || venderAPrazoMut.isPending)
                     ? <><Loader2 size={16} className="animate-spin mr-2" /> Finalizando...</>
@@ -1317,7 +1317,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                         </thead>
                         <tbody>
                           {carrinho.map((item, idx) => (
-                            <tr key={item.produtoId} className="border-b border-gray-50 hover:bg-gray-50/60">
+                            <tr key={item.produtoId} className="border-b border-gray-100 hover:bg-gray-50/60">
                               <td className="px-2 py-2 text-xs text-gray-300 align-top">{idx + 1}</td>
                               <td className="px-1 py-2">
                                 <p className="font-medium text-gray-900 leading-tight">{item.nomeProduto}</p>
@@ -1331,7 +1331,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                                     className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Minus size={10} /></button>
                                   <input type="number" min="1" value={item.quantidade}
                                     onChange={e => definirQtd(item.produtoId, e.target.value)}
-                                    className="sem-spinner w-10 h-6 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-gray-500" />
+                                    className="sem-spinner w-10 h-6 text-center text-sm border border-gray-200 rounded focus:outline-none focus:border-green-400" />
                                   <button onClick={() => alterarQtd(item.produtoId, 1)}
                                     className="w-6 h-6 rounded bg-gray-100 hover:bg-gray-200 flex items-center justify-center flex-shrink-0"><Plus size={10} /></button>
                                 </div>
@@ -1342,7 +1342,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                                   value={item.desconto ? (item.desconto / 100).toFixed(2) : ''}
                                   onChange={e => definirDescontoItem(item.produtoId, e.target.value)}
                                   placeholder="0,00"
-                                  className="sem-spinner w-16 h-6 text-right text-sm border border-gray-200 rounded px-1 focus:outline-none focus:border-gray-500" />
+                                  className="sem-spinner w-16 h-6 text-right text-sm border border-gray-200 rounded-lg px-1.5 focus:outline-none focus:border-green-400" />
                               </td>
                               <td className="px-2 py-2 text-right font-semibold whitespace-nowrap" style={{ color: VERDE }}>{fmt(item.subtotal)}</td>
                               <td className="px-1 py-2 text-center align-top">
@@ -1409,7 +1409,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                             : (c.cpfCnpj ?? '')
                           return (
                             <button key={c.clienteId} onClick={() => selecionarCliente(c)}
-                              className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 border-b border-gray-50 last:border-0 text-left">
+                              className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0 text-left">
                               <span className="min-w-0">
                                 <span className="block text-sm font-medium text-gray-900 truncate">{principal}</span>
                                 {secundario && (
@@ -1593,7 +1593,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <span className="flex items-center gap-1.5 text-xs font-medium text-gray-600">
                       <Gift size={13} /> Cashback disponível
                     </span>
-                    <span className="text-sm font-bold text-gray-900">{fmt(saldoCashback)}</span>
+                    <span className="text-sm font-semibold text-gray-900">{fmt(saldoCashback)}</span>
                   </div>
                   {cashbackElegivel ? (
                     <label className="mt-2 flex items-center gap-2 cursor-pointer">
@@ -1614,7 +1614,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               <div>
                 <Label className="text-xs">Forma de pagamento <span className="text-gray-300">(F8)</span></Label>
                 <select ref={pgtoRef} value={formaPgto} onChange={e => setFormaPgto(e.target.value)}
-                  className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:border-green-400">
                   <option value="">Selecionar...</option>
                   {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).map((f: string) => (
                     <option key={f} value={f}>{f}</option>
@@ -1628,7 +1628,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   <div>
                     <Label className="text-xs">Parcelas</Label>
                     <select value={parcelas} onChange={e => setParcelas(e.target.value)}
-                      className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:border-green-400">
                       {Array.from({ length: 11 }, (_, i) => i + 2).map(n => (
                         <option key={n} value={n}>{n}x de {fmt(Math.round(totalAPagar / n))}</option>
                       ))}
@@ -1667,7 +1667,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   <div>
                     <Label className="text-xs">Vendedor</Label>
                     <select value={vendedor} onChange={e => setVendedor(e.target.value)}
-                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                      className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:border-green-400">
                       <option value="">Selecionar...</option>
                       {usuarios.map((u: any) => <option key={u.usuarioId} value={u.nome}>{u.nome}</option>)}
                     </select>
@@ -1678,7 +1678,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                       <div>
                         <Label className="text-xs">Tipo de entrega</Label>
                         <select value={tipoEntrega} onChange={e => setTipoEntrega(e.target.value)}
-                          className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                          className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:border-green-400">
                           {['Retirada', 'Entrega', 'Transportadora'].map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
@@ -1775,7 +1775,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   <div
                     key={v.vendaId}
                     onMouseEnter={() => setLinhaSel(i)}
-                    className={`flex items-center gap-3 px-3 py-2.5 border-b border-gray-50 last:border-0 ${
+                    className={`flex items-center gap-3 px-3 py-2.5 border-b border-gray-100 last:border-0 ${
                       i === linhaSel ? 'bg-green-50/70' : ''
                     }`}>
                     <span className="text-xs text-gray-400 w-14 flex-shrink-0">
@@ -1813,10 +1813,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
       {/* Confirmação da venda (Sim/Não) */}
       {confirmVenda && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(26,31,54,0.24)' }}>
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-sm mx-4 p-6 text-center">
             <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
-            <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-900">{fmt(totalAPagar)}</span></p>
+            <p className="text-sm text-gray-500">Total: <span className="font-semibold text-gray-900">{fmt(totalAPagar)}</span></p>
             {ehAtacado && (
               <p className="text-xs text-gray-500 mt-1">
                 Preço de {rotuloTabela}{clienteNomeDisplay ? ` — ${clienteNomeDisplay}` : ''}
@@ -1824,7 +1824,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
             )}
             <div className="flex justify-center gap-3 mt-5">
               <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
-              <Button className="w-24" onClick={() => { setConfirmVenda(false); isAPrazo ? venderAPrazoMut.mutate() : venderMut.mutate() }}>Sim</Button>
+              <Button variant="brand" className="w-24" onClick={() => { setConfirmVenda(false); isAPrazo ? venderAPrazoMut.mutate() : venderMut.mutate() }}>Sim</Button>
             </div>
           </div>
         </div>
@@ -1832,14 +1832,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
       {/* Impressão do cupom (Sim/Não) — aparece depois que a venda foi registrada */}
       {cupomVenda && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(26,31,54,0.24)' }}>
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-sm mx-4 p-6 text-center">
             <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
             <p className="text-base font-semibold text-gray-900 mb-1">Venda registrada!</p>
             <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
             <div className="flex justify-center gap-3">
               <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
-              <Button className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
+              <Button variant="brand" className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
             </div>
           </div>
         </div>
