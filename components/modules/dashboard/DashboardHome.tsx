@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useUser } from '@clerk/nextjs'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell,
@@ -481,6 +482,21 @@ export default function DashboardHome({ tenantSlug }: Props) {
     ? `Visão geral de negócio da ${daEmpresa}`
     : 'Visão geral do negócio'
 
+  // Título vira saudação com o primeiro nome — vem do NOSSO cadastro
+  // (t_usuario.nome), mesma fonte que a sidebar usa, não do Clerk direto.
+  const { user } = useUser()
+  const { data: meuAcessoRaw } = useQuery({
+    queryKey: ['meu-acesso', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/perfis/meu-acesso`)).json(),
+    staleTime: 60000,
+  })
+  const nomeCompleto =
+    String(meuAcessoRaw?.data?.nome ?? '').trim() ||
+    user?.fullName?.trim() ||
+    ''
+  const primeiroNome = nomeCompleto.split(' ')[0] || ''
+  const titulo = primeiroNome ? `Bem-vindo, ${primeiroNome}` : 'Dashboard'
+
   if (isLoading) return (
     <div className="flex items-center justify-center h-64">
       <p className="text-[13px] text-gray-400">Carregando dashboard...</p>
@@ -490,7 +506,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
   if (!data?.data) return (
     <div>
       <div className="mb-6">
-        <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">Dashboard</h1>
+        <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">{titulo}</h1>
         <p className="text-[13px] text-gray-500 mt-1">{subtitulo}</p>
       </div>
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
@@ -527,7 +543,7 @@ export default function DashboardHome({ tenantSlug }: Props) {
     <div className="h-full flex flex-col gap-4 min-h-0">
       <div className="flex items-end justify-between gap-4 flex-shrink-0">
         <div>
-          <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">Dashboard</h1>
+          <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">{titulo}</h1>
           <p className="text-[13px] text-gray-500 mt-1">{subtitulo}</p>
         </div>
         <span className="inline-flex items-center gap-2 text-[12px] text-gray-500">
