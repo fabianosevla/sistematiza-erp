@@ -546,10 +546,6 @@ export default function DashboardHome({ tenantSlug }: Props) {
           <h1 className="text-[21px] font-semibold text-gray-900 tracking-tighter">{titulo}</h1>
           <p className="text-[13px] text-gray-500 mt-1">{subtitulo}</p>
         </div>
-        <span className="inline-flex items-center gap-2 text-[12px] text-gray-500">
-          <span className="w-[5px] h-[5px] rounded-full bg-green-500 ring-3 ring-green-500/15" />
-          Atualiza a cada minuto
-        </span>
       </div>
 
       {/* INDICADORES — uma faixa, cinco divisões.
