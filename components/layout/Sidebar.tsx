@@ -2,7 +2,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  BarChart3, Users, Boxes, ShoppingCart, DollarSign,
+  BarChart3, Users, Boxes, ShoppingCart, DollarSign, Store,
   ChevronDown, ClipboardList, Factory, CreditCard,
   Search, ClipboardCheck, X, Target, Gift, ShoppingBag, BookOpen,
   PanelLeftClose, PanelLeftOpen, QrCode, Settings, LogOut,
@@ -16,43 +16,47 @@ import type { Config } from '@/components/layout/ClientShell'
 /**
  * components/layout/Sidebar.tsx
  *
- * ─── A BARRA FICOU CLARA ─────────────────────────────────────────────────────
+ * ─── SÓ A SIDEBAR, SEM BARRA SUPERIOR ─────────────────────────────────────────
  *
- * A barra preta dava peso a um menu que é, na prática, mobília: ela puxava o
- * olho para o canto da tela em vez de para o conteúdo. Agora é branca com uma
- * linha hairline separando do conteúdo, texto em cinza frio e o item ativo
- * numa pastilha verde bem clara — o verde volta a significar "aqui você está"
- * em vez de disputar atenção com tudo.
+ * A barra de cima (logo + PDV) saiu por completo — menu é só isto aqui agora,
+ * igual à referência que o Fabiano mandou (Kuantum). PDV virou item normal do
+ * menu, logo após Dashboard. A logo da EMPRESA (não a nossa) foi para o
+ * rodapé, acima de quem está logado — mesma lógica da referência, organização
+ * em cima, usuário embaixo.
  *
- * No modo escuro ela continua escura (variantes `dark:`), então o toggle segue
- * funcionando.
+ * ─── CONFIGURAÇÕES É SUBMENU DE VERDADE, IGUAL CADASTROS ─────────────────────
  *
- * NADA de comportamento mudou: mesmos grupos, mesma ordem, mesmas flags de
- * config, mesmo recolher com memória em localStorage, mesmo rodapé com o nome
- * do usuário vindo do NOSSO cadastro.
+ * Antes era um link único com um filho fixo grudado nele por fora do
+ * mecanismo normal de grupo. Agora é um `Item` com `children` como qualquer
+ * outro grupo (Cadastros, Metas): expande, mostra a lista, cada item é uma
+ * página própria. A única diferença real é o último filho, "Modo escuro" —
+ * não é navegação, é ação, então não tem `href`, tem `onClick`.
  *
- * ─── CONFIGURAÇÕES, MODO ESCURO E SAIR VIERAM DA BARRA SUPERIOR ──────────────
+ * ─── HOVER TAMBÉM FICA VERDE ──────────────────────────────────────────────────
  *
- * A barra superior agora só tem o atalho do PDV. Configurações virou item
- * próprio (link de verdade para /configuracoes, não mais painel); modo
- * escuro entrou como filho dela — é ação, não navegação, então o filho
- * correspondente não tem `href`, tem `onClick`. Sair foi para o rodapé, ao
- * lado de quem está logado.
+ * Antes só o item ativo ficava verde; passar o mouse só mudava pra cinza.
+ * Agora hover usa o mesmo verde do ativo (mais claro), pra dar feedback de
+ * "isto é clicável" consistente com o que already significa "você está aqui".
  */
 
 interface Props {
   tenantSlug: string; tenantName: string; config: Config
   open: boolean; onClose: () => void
   darkMode: boolean; onToggleDarkMode: () => void
+  logoBase64: string | null
 }
 
-interface Filho { label: string; href: string }
+interface Filho { label: string; href?: string; onClick?: () => void }
 interface Item  { label: string; href?: string; icon: any; children?: Filho[] }
 
 const LARGURA_ABERTA    = 'w-[234px]'
 const LARGURA_RECOLHIDA = 'w-[64px]'
 
-export default function Sidebar({ tenantSlug, tenantName, config, open, onClose, darkMode, onToggleDarkMode }: Props) {
+// Classes de hover reaproveitadas nos três níveis (item de topo, grupo,
+// filho de submenu) — mesmo verde do estado ativo, mais claro.
+const HOVER = 'hover:bg-green-50 hover:text-green-800 dark:hover:bg-[#2ecc71]/10 dark:hover:text-white'
+
+export default function Sidebar({ tenantSlug, tenantName, config, open, onClose, darkMode, onToggleDarkMode, logoBase64 }: Props) {
   const pathname = usePathname()
   const base     = `/${tenantSlug}`
   const initials = tenantName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
@@ -94,6 +98,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
   // aqui: o menu tem que existir já na primeira pintura, senão pisca.
   const fixos: Item[] = [
     { label: 'Dashboard', href: '', icon: BarChart3 },
+    { label: 'PDV', href: '/pdv', icon: Store },
     {
       label: 'Cadastros', icon: Users,
       children: [
@@ -138,9 +143,30 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
     ...(config.financeiroAtivo ? [{ label: 'Financeiro', href: '/financeiro', icon: DollarSign }]   : []),
   ]
 
-  const allItems: Item[] = [...fixos, ...modulares, ...finais]
+  // Configurações — sempre visível, não depende de flag de módulo, é conta.
+  // Submenu de verdade agora: cada seção que antes era acordeão dentro de
+  // uma página só virou página própria, igual Cadastros faz com Clientes,
+  // Produtos etc. "Modo escuro" é o único filho sem `href` — é ação, não
+  // navegação.
+  const conta: Item[] = [
+    {
+      label: 'Configurações', icon: Settings,
+      children: [
+        { label: 'Caixa',                    href: '/configuracoes/caixa' },
+        { label: 'Arquivos',                 href: '/configuracoes/arquivos' },
+        { label: 'Meu perfil',               href: '/configuracoes/meu-perfil' },
+        { label: 'Dados da empresa',         href: '/configuracoes/dados-da-empresa' },
+        { label: 'Fiscal',                   href: '/configuracoes/fiscal' },
+        { label: 'Habilitações de módulos',  href: '/configuracoes/modulos' },
+        { label: darkMode ? 'Modo claro' : 'Modo escuro', onClick: onToggleDarkMode },
+      ],
+    },
+  ]
 
-  function isActive(href: string) {
+  const allItems: Item[] = [...fixos, ...modulares, ...finais, ...conta]
+
+  function isActive(href?: string) {
+    if (!href) return false
     const full = `${base}${href}`
     return href === '' ? pathname === base : pathname.startsWith(full)
   }
@@ -176,7 +202,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
         open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
 
-      {/* Cabeçalho */}
+      {/* Cabeçalho — marca do Sistematiza (a nossa, não a da empresa cliente) */}
       <div className={cn(
         'flex items-center gap-2 pt-[18px] pb-4',
         recolhida ? 'px-3 justify-center' : 'px-4 justify-between'
@@ -214,14 +240,20 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
           const aberto    = abertos.includes(item.label)
 
           const classesBase = cn(
-            'w-full flex items-center rounded-lg text-[13.5px] transition-colors',
+            'group w-full flex items-center rounded-lg text-[13.5px] transition-colors',
             recolhida ? 'justify-center px-0 py-2.5' : 'gap-[11px] px-2.5 py-[7px]',
             ativo
               ? 'bg-green-50 text-green-800 font-medium dark:bg-[#2ecc71]/10 dark:text-white'
-              : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-white/50 dark:hover:text-white/80 dark:hover:bg-white/5'
+              : cn('text-gray-700 dark:text-white/50', HOVER)
+          )
+          const iconClasses = cn(
+            'flex-shrink-0 transition-colors',
+            ativo ? 'text-green-600' : 'text-gray-400 group-hover:text-green-600 dark:group-hover:text-white'
           )
 
-          // Grupo (Cadastros, Metas): abre a lista de filhos logo abaixo
+          // Grupo (Cadastros, Metas, Configurações): abre a lista de filhos
+          // logo abaixo — mesmo mecanismo pros três, nenhum tratamento
+          // especial por item.
           if (temFilhos) {
             return (
               <div key={item.label}>
@@ -229,7 +261,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
                   onClick={() => alternarGrupo(item.label)}
                   title={recolhida ? item.label : undefined}
                   className={classesBase}>
-                  <item.icon size={15} strokeWidth={1.9} className={cn('flex-shrink-0', ativo ? 'text-green-600' : 'text-gray-400')} />
+                  <item.icon size={15} strokeWidth={1.9} className={iconClasses} />
                   {!recolhida && (
                     <>
                       <span className="flex-1 text-left">{item.label}</span>
@@ -246,17 +278,27 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
                   <div className="mt-px mb-1.5 ml-[25px] border-l border-gray-200 dark:border-white/10 pl-2.5 space-y-px">
                     {item.children!.map(c => {
                       const filhoAtivo = isActive(c.href)
+                      const filhoClasses = cn(
+                        'block w-full text-left rounded-md px-2 py-1.5 text-[13px] transition-colors',
+                        filhoAtivo
+                          ? 'bg-green-50 text-green-800 font-medium dark:bg-[#2ecc71]/10 dark:text-white'
+                          : cn('text-gray-600 dark:text-white/45', HOVER)
+                      )
+                      // "Modo escuro" e qualquer outro filho de ação (sem
+                      // href) vira botão; o resto é link de verdade.
+                      if (!c.href) {
+                        return (
+                          <button key={c.label} onClick={c.onClick} className={filhoClasses}>
+                            {c.label}
+                          </button>
+                        )
+                      }
                       return (
                         <Link
                           key={c.href}
                           href={`${base}${c.href}`}
                           onClick={onClose}
-                          className={cn(
-                            'block rounded-md px-2 py-1.5 text-[13px] transition-colors',
-                            filhoAtivo
-                              ? 'bg-green-50 text-green-800 font-medium dark:bg-[#2ecc71]/10 dark:text-white'
-                              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/45 dark:hover:text-white/85 dark:hover:bg-white/5'
-                          )}>
+                          className={filhoClasses}>
                           {c.label}
                         </Link>
                       )
@@ -274,66 +316,57 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
               onClick={onClose}
               title={recolhida ? item.label : undefined}
               className={classesBase}>
-              <item.icon size={15} strokeWidth={1.9} className={cn('flex-shrink-0', ativo ? 'text-green-600' : 'text-gray-400')} />
+              <item.icon size={15} strokeWidth={1.9} className={iconClasses} />
               {!recolhida && item.label}
             </Link>
           )
         })}
+      </nav>
 
-        {/* Configurações — sempre visível, não depende de flag de módulo, é
-            conta. Link de verdade (não mais painel) com um único filho fixo,
-            o toggle de modo escuro: como só existe um, não precisa de
-            seta de expandir/recolher, fica sempre à mostra. */}
-        <div className="pt-1 mt-1 border-t border-gray-100 dark:border-white/5">
-          <Link
-            href={`${base}/configuracoes`}
-            onClick={onClose}
-            title={recolhida ? 'Configurações' : undefined}
-            className={cn(
-              'w-full flex items-center rounded-lg text-[13.5px] transition-colors',
-              recolhida ? 'justify-center px-0 py-2.5' : 'gap-[11px] px-2.5 py-[7px]',
-              isActive('/configuracoes')
-                ? 'bg-green-50 text-green-800 font-medium dark:bg-[#2ecc71]/10 dark:text-white'
-                : 'text-gray-700 hover:text-gray-900 hover:bg-gray-100 dark:text-white/50 dark:hover:text-white/80 dark:hover:bg-white/5'
-            )}>
-            <Settings size={15} strokeWidth={1.9} className={cn('flex-shrink-0', isActive('/configuracoes') ? 'text-green-600' : 'text-gray-400')} />
-            {!recolhida && 'Configurações'}
-          </Link>
-
+      {/* Rodapé — organização em cima (logo + nome), usuário logado embaixo
+          com Sair ao lado. Mesma ordem da referência: conta antes de
+          pessoa. */}
+      <div className={cn('border-t border-gray-200 dark:border-white/5', recolhida ? 'p-3' : 'px-4 py-3')}>
+        <div className={cn('flex items-center gap-2.5 pb-2.5 mb-2.5 border-b border-gray-200/70 dark:border-white/5', recolhida && 'flex-col')}>
+          {logoBase64 ? (
+            <img
+              src={logoBase64}
+              alt=""
+              title={tenantName}
+              className="w-7 h-7 rounded-lg object-contain flex-shrink-0 bg-white border border-gray-200"
+            />
+          ) : (
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-[10.5px] font-semibold bg-white text-gray-500 border border-gray-200"
+              title={tenantName}>
+              {initials}
+            </div>
+          )}
           {!recolhida && (
-            <div className="mt-px mb-1 ml-[25px] border-l border-gray-200 dark:border-white/10 pl-2.5">
-              <button
-                onClick={onToggleDarkMode}
-                className="block w-full text-left rounded-md px-2 py-1.5 text-[13px] text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-white/45 dark:hover:text-white/85 dark:hover:bg-white/5 transition-colors"
-              >
-                {darkMode ? 'Modo claro' : 'Modo escuro'}
-              </button>
+            <div className="min-w-0">
+              <p className="text-[12.5px] font-medium text-gray-900 dark:text-white/75 truncate">{tenantName}</p>
+              <p className="text-[11px] text-gray-400 dark:text-white/30 truncate">Organização</p>
             </div>
           )}
         </div>
-      </nav>
 
-      {/* Rodapé — QUEM ESTÁ LOGADO, com Sair ao lado (veio da barra superior). */}
-      <div className={cn('border-t border-gray-200 dark:border-white/5', recolhida ? 'p-3' : 'px-4 py-3')}>
         <div className={cn('flex items-center gap-2.5', recolhida ? 'flex-col' : 'justify-between')}>
           <div className={cn('flex items-center gap-2.5 min-w-0', recolhida && 'flex-col')}>
             {fotoUsuario ? (
               <img
                 src={fotoUsuario}
                 alt=""
-                title={`${nomeUsuario} · ${tenantName}`}
+                title={nomeUsuario}
                 className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-gray-200"
               />
             ) : (
               <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-[10.5px] font-semibold bg-green-50 text-green-800 border border-green-100"
-                title={`${nomeUsuario} · ${tenantName}`}>
+                title={nomeUsuario}>
                 {iniciaisUsuario || initials}
               </div>
             )}
             {!recolhida && (
               <div className="min-w-0">
                 <p className="text-[12.5px] font-medium text-gray-900 dark:text-white/75 truncate">{nomeUsuario}</p>
-                <p className="text-[11px] text-gray-400 dark:text-white/30 truncate">{tenantName}</p>
               </div>
             )}
           </div>

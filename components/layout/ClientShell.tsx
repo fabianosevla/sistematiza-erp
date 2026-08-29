@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
-import Header  from './Header'
 import { useDarkMode } from '@/hooks/useDarkMode'
 
 export interface Config {
@@ -101,13 +101,19 @@ export default function ClientShell({ children, tenantSlug, tenantName, config }
         onClose={() => setSidebarOpen(false)}
         darkMode={darkMode}
         onToggleDarkMode={toggleDarkMode}
+        logoBase64={config.logoBase64}
       />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Header
-          tenantSlug={tenantSlug}
-          logoBase64={config.logoBase64}
-          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
-        />
+        {/* Sem barra superior — o menu é só a sidebar agora. No celular, sem
+            barra não há onde colocar o hambúrguer: fica um botão mínimo,
+            flutuante, sem fundo/moldura, só pra abrir o menu. */}
+        <button
+          onClick={() => setSidebarOpen(prev => !prev)}
+          className="lg:hidden fixed top-3 left-3 z-20 p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100"
+          aria-label="Abrir menu"
+        >
+          <Menu size={20} />
+        </button>
         <main className="flex-1 overflow-y-auto p-6">
           {children}
         </main>
