@@ -6,15 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
-import { PageHeader } from '@/components/ui/PageHeader'
 
 /**
  * components/modules/configuracoes/DadosEmpresaView.tsx
  *
- * Era a seção "Dados da empresa" (+ logo) do acordeão único de
- * Configurações; virou página própria
- * (/[tenant]/configuracoes/dados-da-empresa). Mesmos campos, mesma
- * mutation, mesmo tratamento de logo pendente.
+ * Uma das abas de Configurações (`ConfiguracoesView.tsx`), com upload de
+ * logo. Mesmos campos, mesma mutation, mesmo tratamento de logo pendente.
  */
 
 interface Props { tenantSlug: string }
@@ -94,7 +91,6 @@ export default function DadosEmpresaView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <PageHeader titulo="Dados da empresa" />
       <div className="max-w-3xl bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">

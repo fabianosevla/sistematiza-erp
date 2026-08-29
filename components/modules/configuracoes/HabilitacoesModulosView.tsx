@@ -4,13 +4,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
-import { PageHeader } from '@/components/ui/PageHeader'
 
 /**
  * components/modules/configuracoes/HabilitacoesModulosView.tsx
  *
- * Era a seção "Habilitações de módulos" do acordeão único de Configurações;
- * virou página própria (/[tenant]/configuracoes/modulos). Mesma lista,
+ * Uma das abas de Configurações (`ConfiguracoesView.tsx`). Mesma lista,
  * mesma mutation, mesmo reload após salvar (o menu lateral é montado no
  * servidor pelo tenant-layout, então só reflete as chaves novas depois de
  * recarregar).
@@ -91,7 +89,6 @@ export default function HabilitacoesModulosView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <PageHeader titulo="Habilitações de módulos" />
       <div className="max-w-3xl bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <InfoTip className="mb-3 block">
           Define o que aparece no menu lateral. As mudanças só valem depois de salvar.

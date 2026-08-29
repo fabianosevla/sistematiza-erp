@@ -6,16 +6,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
-import { PageHeader } from '@/components/ui/PageHeader'
 
 /**
  * components/modules/configuracoes/FiscalConfigView.tsx
  *
- * Era a seção "Fiscal" do acordeão único de Configurações; virou página
- * própria (/[tenant]/configuracoes/fiscal). Chamado "FiscalConfigView" para
- * não colidir com components/modules/fiscal/ — aquele é o módulo de emissão
- * de NFC-e/NF-e, este é só a parametrização (Tabela A do kit do contador).
- * Mesmos campos, mesma mutation.
+ * Uma das abas de Configurações (`ConfiguracoesView.tsx`). Chamado
+ * "FiscalConfigView" para não colidir com components/modules/fiscal/ —
+ * aquele é o módulo de emissão de NFC-e/NF-e, este é só a parametrização
+ * (Tabela A do kit do contador). Mesmos campos, mesma mutation.
  */
 
 interface Props { tenantSlug: string }
@@ -76,7 +74,6 @@ export default function FiscalConfigView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <PageHeader titulo="Fiscal" />
 
       {!configApi?.fiscalAtivo ? (
         <div className="max-w-3xl bg-white rounded-xl border border-gray-200 shadow-sm p-6">

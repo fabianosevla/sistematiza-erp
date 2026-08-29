@@ -6,16 +6,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
-import { PageHeader } from '@/components/ui/PageHeader'
 
 /**
  * components/modules/configuracoes/CaixaView.tsx
  *
- * Era a seção "Caixa" dentro do acordeão único de Configurações; virou
- * página própria (/[tenant]/configuracoes/caixa), igual a como Cadastros já
- * separa Clientes, Produtos etc. em páginas — Configurações era a única
- * exceção com tudo empilhado numa aba só. Mesmos campos, mesma mutation,
- * mesmo comportamento; só o layout ao redor mudou de acordeão para página.
+ * Uma das abas de Configurações (`ConfiguracoesView.tsx`). Mesmos campos,
+ * mesma mutation, mesmo comportamento de sempre.
  */
 
 interface Props { tenantSlug: string }
@@ -73,7 +69,6 @@ export default function CaixaView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <PageHeader titulo="Caixa" />
 
       {!configApi?.turnoCaixaAtivo ? (
         <div className="max-w-3xl bg-white rounded-xl border border-gray-200 shadow-sm p-6">

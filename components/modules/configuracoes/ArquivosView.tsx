@@ -1,14 +1,12 @@
 'use client'
 import { Download } from 'lucide-react'
 import { InfoTip } from '@/components/ui/InfoTip'
-import { PageHeader } from '@/components/ui/PageHeader'
 
 /**
  * components/modules/configuracoes/ArquivosView.tsx
  *
- * Era a seção "Arquivos" do acordeão único de Configurações; virou página
- * própria (/[tenant]/configuracoes/arquivos). Sem estado, sem mutation — só
- * um link de download, igual estava.
+ * Uma das abas de Configurações (`ConfiguracoesView.tsx`). Sem estado, sem
+ * mutation — só um link de download, igual estava.
  */
 
 interface Props { tenantSlug: string }
@@ -16,7 +14,6 @@ interface Props { tenantSlug: string }
 export default function ArquivosView({ tenantSlug }: Props) {
   return (
     <div>
-      <PageHeader titulo="Arquivos" />
       <div className="max-w-3xl bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1">
           Atalho do PDV

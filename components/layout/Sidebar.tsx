@@ -5,7 +5,7 @@ import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign, Store,
   ChevronDown, ClipboardList, Factory, CreditCard,
   Search, ClipboardCheck, X, Target, Gift, ShoppingBag, BookOpen,
-  PanelLeftClose, PanelLeftOpen, QrCode, Settings, LogOut,
+  PanelLeftClose, PanelLeftOpen, QrCode, Settings, LogOut, Sun, Moon,
 } from 'lucide-react'
 import { useUser, useClerk } from '@clerk/nextjs'
 import { useQuery } from '@tanstack/react-query'
@@ -24,13 +24,15 @@ import type { Config } from '@/components/layout/ClientShell'
  * rodapé, acima de quem está logado — mesma lógica da referência, organização
  * em cima, usuário embaixo.
  *
- * ─── CONFIGURAÇÕES É SUBMENU DE VERDADE, IGUAL CADASTROS ─────────────────────
+ * ─── CONFIGURAÇÕES VOLTOU A SER LINK ÚNICO ────────────────────────────────────
  *
- * Antes era um link único com um filho fixo grudado nele por fora do
- * mecanismo normal de grupo. Agora é um `Item` com `children` como qualquer
- * outro grupo (Cadastros, Metas): expande, mostra a lista, cada item é uma
- * página própria. A única diferença real é o último filho, "Modo escuro" —
- * não é navegação, é ação, então não tem `href`, tem `onClick`.
+ * Chegou a virar grupo com 6 filhos (uma página por seção) — mas 6 itens
+ * expandidos não cabiam na sidebar. As 6 seções agora são ABAS dentro da
+ * própria página (`ConfiguracoesView`, no padrão de Consultas), então aqui
+ * é de novo um `Item` simples, um `href` só. "Modo escuro" não tinha mais
+ * onde se aninhar sem o grupo — virou item próprio, sem `href` (não navega,
+ * é ação): o mesmo truque de item-vira-botão que os filhos de ação já
+ * usavam, só que num item de topo agora.
  *
  * ─── HOVER TAMBÉM FICA VERDE ──────────────────────────────────────────────────
  *
@@ -47,7 +49,7 @@ interface Props {
 }
 
 interface Filho { label: string; href?: string; onClick?: () => void }
-interface Item  { label: string; href?: string; icon: any; children?: Filho[] }
+interface Item  { label: string; href?: string; icon: any; children?: Filho[]; onClick?: () => void }
 
 const LARGURA_ABERTA    = 'w-[234px]'
 const LARGURA_RECOLHIDA = 'w-[64px]'
@@ -144,23 +146,14 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
   ]
 
   // Configurações — sempre visível, não depende de flag de módulo, é conta.
-  // Submenu de verdade agora: cada seção que antes era acordeão dentro de
-  // uma página só virou página própria, igual Cadastros faz com Clientes,
-  // Produtos etc. "Modo escuro" é o único filho sem `href` — é ação, não
-  // navegação.
+  // Link único de novo: as 6 seções viraram abas DENTRO da página
+  // (ConfiguracoesView, no padrão de Consultas) — um submenu de 6 itens
+  // expandido não cabia na sidebar. "Modo escuro" não tem mais onde se
+  // aninhar (Configurações não é mais grupo), então vira item próprio, sem
+  // link — é ação, não navegação.
   const conta: Item[] = [
-    {
-      label: 'Configurações', icon: Settings,
-      children: [
-        { label: 'Caixa',                    href: '/configuracoes/caixa' },
-        { label: 'Arquivos',                 href: '/configuracoes/arquivos' },
-        { label: 'Meu perfil',               href: '/configuracoes/meu-perfil' },
-        { label: 'Dados da empresa',         href: '/configuracoes/dados-da-empresa' },
-        { label: 'Fiscal',                   href: '/configuracoes/fiscal' },
-        { label: 'Habilitações de módulos',  href: '/configuracoes/modulos' },
-        { label: darkMode ? 'Modo claro' : 'Modo escuro', onClick: onToggleDarkMode },
-      ],
-    },
+    { label: 'Configurações', href: '/configuracoes', icon: Settings },
+    { label: darkMode ? 'Modo claro' : 'Modo escuro', icon: darkMode ? Sun : Moon, onClick: onToggleDarkMode },
   ]
 
   const allItems: Item[] = [...fixos, ...modulares, ...finais, ...conta]
@@ -236,7 +229,7 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
           const temFilhos = !!item.children
           const ativo     = temFilhos
             ? item.children!.some(c => isActive(c.href))
-            : isActive(item.href ?? '')
+            : item.href !== undefined && isActive(item.href)
           const aberto    = abertos.includes(item.label)
 
           const classesBase = cn(
@@ -309,10 +302,24 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
             )
           }
 
+          // Item de ação (Modo escuro): sem href, não navega — vira botão.
+          if (item.href === undefined) {
+            return (
+              <button
+                key={item.label}
+                onClick={item.onClick}
+                title={recolhida ? item.label : undefined}
+                className={classesBase}>
+                <item.icon size={15} strokeWidth={1.9} className={iconClasses} />
+                {!recolhida && item.label}
+              </button>
+            )
+          }
+
           return (
             <Link
               key={item.label}
-              href={`${base}${item.href ?? ''}`}
+              href={`${base}${item.href}`}
               onClick={onClose}
               title={recolhida ? item.label : undefined}
               className={classesBase}>

@@ -5,14 +5,12 @@ import { Upload } from 'lucide-react'
 import { useUser } from '@clerk/nextjs'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/components/ui/Toast'
-import { PageHeader } from '@/components/ui/PageHeader'
 
 /**
  * components/modules/configuracoes/MeuPerfilView.tsx
  *
- * Era a seção "Meu perfil" do acordeão único de Configurações; virou página
- * própria (/[tenant]/configuracoes/meu-perfil). A foto grava no Clerk, não
- * no nosso banco — sem coluna nova, sem rota nova, sem Salvar: some/aparece
+ * Uma das abas de Configurações (`ConfiguracoesView.tsx`). A foto grava no
+ * Clerk, não no nosso banco — sem coluna nova, sem Salvar: some/aparece
  * assim que escolhida.
  */
 
@@ -70,7 +68,6 @@ export default function MeuPerfilView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <PageHeader titulo="Meu perfil" />
       <div className="max-w-3xl bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <div className="flex items-center gap-4">
           {fotoAtual ? (
