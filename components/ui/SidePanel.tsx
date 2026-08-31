@@ -29,12 +29,15 @@ interface Props {
   largura?:    string
   /** Abre já expandido. Útil em telas com muitos campos, como Ficha Técnica. */
   iniciarExpandido?: boolean
+  /** id do <aside>. Permite achar o painel de fora (ex.: navegação por teclado). */
+  id?: string
 }
 
 export function SidePanel({
   titulo, subtitulo, cabecalho, rodape, onClose, children,
   largura = 'w-[25vw] min-w-[420px]',
   iniciarExpandido = false,
+  id,
 }: Props) {
   const [expandido, setExpandido] = useState(iniciarExpandido)
   const [montado, setMontado]     = useState(false)
@@ -70,6 +73,7 @@ export function SidePanel({
       />
 
       <aside
+        id={id}
         role="dialog"
         aria-modal="true"
         aria-label={titulo}

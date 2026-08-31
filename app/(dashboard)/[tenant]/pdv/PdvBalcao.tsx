@@ -733,6 +733,34 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     setPainelAberto(true)
   }
 
+  // ENTER AVANÇA CAMPO NO PAGAMENTO — venda inteira sem soltar o teclado.
+  //
+  // Não é Tab: em vez de seguir a ordem de tabulação do navegador (que inclui
+  // botão de porcentagem de desconto, "Cadastrar novo cliente" etc.), pula só
+  // entre input/select/textarea visíveis, na ordem em que aparecem no
+  // formulário. No último campo, Enter finaliza — abre a mesma confirmação
+  // do botão "Finalizar" (F10).
+  function handlePagamentoKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== 'Enter') return
+    const alvo = e.target as HTMLElement
+    if (alvo.tagName === 'TEXTAREA' || alvo.tagName === 'BUTTON') return
+    e.preventDefault()
+    const painel = document.getElementById('pdv-etapa-panel')
+    if (!painel) return
+    const campos = Array.from(
+      painel.querySelectorAll<HTMLElement>(
+        'input:not([type=hidden]):not(:disabled), select:not(:disabled), textarea:not(:disabled)'
+      )
+    ).filter(el => el.offsetParent !== null)
+    const proximo = campos[campos.indexOf(alvo) + 1]
+    if (proximo) {
+      proximo.focus()
+      if (proximo instanceof HTMLInputElement) proximo.select()
+    } else if (podeVender) {
+      setConfirmVenda(true)
+    }
+  }
+
   // Atalhos: F2 busca · F3 cliente · F6 desconto · F8 vai direto ao pagamento,
   // pulando a revisão · F10 avança uma etapa por vez · Ctrl+P reimprime
   // Ctrl+Delete limpa o carrinho · Esc volta uma etapa.
@@ -786,6 +814,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         setEtapa('itens')
         return
       }
+      // Enter na confirmação final = clicar em "Sim". Fecha o ciclo do Enter
+      // que vem avançando campo a campo no formulário de pagamento.
+      if (e.key === 'Enter' && confirmVenda) {
+        e.preventDefault(); e.stopImmediatePropagation()
+        setConfirmVenda(false)
+        isAPrazo ? venderAPrazoMut.mutate() : venderMut.mutate()
+        return
+      }
       if (algumModal) return
       if (e.key === 'F2')  { e.preventDefault(); setPainelAberto(false); setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select() }, 60) }
       if (e.key === 'F3')  { e.preventDefault(); abrirPainel('pagamento'); setTimeout(() => clienteRef.current?.focus(), 120) }
@@ -802,7 +838,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, painelAberto, etapa, showVendasDia, vendasDia, linhaSel])
+  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, painelAberto, etapa, showVendasDia, vendasDia, linhaSel, isAPrazo, venderMut, venderAPrazoMut])
 
   // Carrinho esvaziado com o painel aberto: não há o que conferir nem pagar.
   useEffect(() => {
@@ -1072,6 +1108,14 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
   return (
     <div className="h-full flex flex-col min-h-0 gap-3">
+      {/* Campo ativo do formulário de pagamento em negrito — indicador visual
+          de onde o Enter vai atuar a seguir (ver handlePagamentoKeyDown). */}
+      <style jsx global>{`
+        .pdv-form-avancar :focus {
+          outline: 2px solid #16a34a;
+          outline-offset: -1px;
+        }
+      `}</style>
 
       {/* ── ETAPA 1 — CATÁLOGO EM TELA CHEIA ─────────────────────────────── */}
 
@@ -1256,6 +1300,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       {/* ── ETAPA 2 — PAINEL LATERAL ─────────────────────────────────────── */}
       {painelAberto && (
         <SidePanel
+          id="pdv-etapa-panel"
           titulo={etapa === 'itens' ? 'Conferir itens' : 'Pagamento'}
           subtitulo={etapa === 'itens'
             ? `${carrinho.length} produto(s) · ${qtdItens} un`
@@ -1380,7 +1425,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
 
           {/* ── PAINEL, PARTE 2: PAGAMENTO ───────────────────────────────── */}
           {etapa === 'pagamento' && (
-            <div className="p-6 space-y-4">
+            <div className="p-6 space-y-4 pdv-form-avancar" onKeyDown={handlePagamentoKeyDown}>
 
               {/* Cliente — necessário para o cashback e para a tabela de preço */}
               <div>
