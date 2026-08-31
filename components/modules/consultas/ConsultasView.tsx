@@ -312,7 +312,10 @@ export default function ConsultasView({ tenantSlug }: Props) {
     const chaves = Object.keys(filtros)
     if (chaves.length === 0) return todos
     return todos.filter(item =>
-      chaves.every(k => valorFiltravel(item, k).some(v => v === filtros[k]))
+      chaves.every(k => {
+        const alvo = filtros[k].toLowerCase()
+        return valorFiltravel(item, k).some(v => v.toLowerCase().includes(alvo))
+      })
     )
   }, [todos, filtros])
 

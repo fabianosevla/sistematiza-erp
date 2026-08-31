@@ -152,7 +152,7 @@ export class EstoqueService {
             )
           } else {
             debitoInsumos = await new DebitoInsumoService(this.db, this.schemaName)
-              .debitar(entidadeId, Math.abs(quantidade), userId)
+              .debitar(entidadeId, Math.abs(quantidade), userId, 'Consumo pela entrada de produto')
           }
         }
       }

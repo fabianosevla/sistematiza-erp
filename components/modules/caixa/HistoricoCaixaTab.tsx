@@ -124,8 +124,8 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
     diferenca:        t => Number(t.diferenca ?? 0),
   }
   const turnosFiltrados = turnos.filter(t =>
-    (!filtros.operador || String(t.operador ?? '') === filtros.operador) &&
-    (!filtros.numero_caixa || String(t.numero_caixa ?? '') === filtros.numero_caixa)
+    (!filtros.operador || String(t.operador ?? '').toLowerCase().includes(filtros.operador.toLowerCase())) &&
+    (!filtros.numero_caixa || String(t.numero_caixa ?? '').toLowerCase().includes(filtros.numero_caixa.toLowerCase()))
   )
   const turnosOrdenados = !ordem ? turnosFiltrados : [...turnosFiltrados].sort((a, b) => {
     const ler = CAIXA_ACESSORES[ordem.chave]

@@ -394,6 +394,8 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     onSuccess: (d) => {
       const usado = d?.data?.cashbackUsado ?? 0
       const ganho = d?.data?.cashbackCreditado ?? 0
+      const notaEmitida = d?.data?.notaEmitida === true
+      const notaErro    = d?.data?.notaErro as string | undefined
 
       // Congela os dados da venda ANTES do reset, para o cupom
       const dVal = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
@@ -468,10 +470,18 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       qc.invalidateQueries({ queryKey: ['caixa-resumo', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['caixa', tenantSlug] })
 
-      if (usado > 0 || ganho > 0) {
-        toast(`Venda registrada! ${usado > 0 ? `Cashback usado: ${fmt(usado)}. ` : ''}${ganho > 0 ? `Ganhou ${fmt(ganho)} de cashback.` : ''}`)
+      const sufixoCashback = usado > 0 || ganho > 0
+        ? ` ${usado > 0 ? `Cashback usado: ${fmt(usado)}. ` : ''}${ganho > 0 ? `Ganhou ${fmt(ganho)} de cashback.` : ''}`
+        : ''
+
+      if (notaErro) {
+        // A venda já aconteceu — o erro é só da emissão. Mostra sem travar
+        // o operador: a nota fica pendente pra emitir no módulo Fiscal.
+        toast(`Venda registrada, mas a nota fiscal não foi emitida: ${notaErro}`, 'error')
+      } else if (notaEmitida) {
+        toast(`Venda registrada! Nota fiscal emitida.${sufixoCashback}`)
       } else {
-        toast('Venda registrada!')
+        toast(`Venda registrada!${sufixoCashback}`)
       }
     },
     onError: (e: any) => toast(e.message || 'Erro ao registrar venda.', 'error'),
@@ -1701,7 +1711,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               )}
 
               {/* Emitir nota — só aparece com o módulo fiscal contratado.
-                  Registra a intenção; a emissão acontece no módulo Fiscal. */}
+                  Marcado, a nota é transmitida à SEFAZ na hora, junto com a
+                  venda; se a emissão falhar a venda segue e a nota fica
+                  pendente pra emitir manualmente no módulo Fiscal. */}
               {fiscalAtivo && (
                 <div className="rounded-xl border border-gray-100 px-4 py-3 space-y-2.5">
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -1734,7 +1746,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <span className="text-sm text-gray-700 inline-flex items-center gap-1.5">
                       Imprimir a nota
                       <InfoTip titulo="Imprimir a nota">
-                        Sem marcar, a nota é emitida e fica guardada no módulo Fiscal — só não sai na impressora.
+                        Sem marcar, a nota é emitida do mesmo jeito — só não sai na impressora.
                       </InfoTip>
                     </span>
                   </label>

@@ -10,6 +10,7 @@ import { ConfiguracoesService } from '@/lib/services/configuracoes/Configuracoes
 import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
 import { CaixaService } from '@/lib/services/caixa/CaixaService'
 import { converterUnidade } from '@/lib/unidades'
+import { decryptSecretOuTextoPuro } from '@/lib/crypto/secretBox'
 
 function resolverPreco(produto: any, tipoPrecao: string): number {
   switch (tipoPrecao) {
@@ -31,8 +32,8 @@ function resolverPreco(produto: any, tipoPrecao: string): number {
 export class VendaService {
   constructor(private db: AppDB, private schemaName: string = '') {}
 
-  async list({ page, limit, dataInicio, dataFim, origem, tipoEntrega }: {
-    page: number; limit: number; dataInicio?: string; dataFim?: string; origem?: string; tipoEntrega?: string
+  async list({ page, limit, dataInicio, dataFim, origem, tipoEntrega, busca }: {
+    page: number; limit: number; dataInicio?: string; dataFim?: string; origem?: string; tipoEntrega?: string; busca?: string
   }) {
     const offset = (page - 1) * limit
     const conditions = [eq(dbVenda.activeFlag, true)]
@@ -43,6 +44,20 @@ export class VendaService {
     }
     if (origem)      conditions.push(eq(dbVenda.origem, origem))
     if (tipoEntrega) conditions.push(eq(dbVenda.tipoEntrega, tipoEntrega))
+    // Cliente cadastrado não tem nome em t_venda — só clienteId. Por isso a
+    // busca de nome precisa ir buscar em t_cliente via subquery; vendedor e
+    // cliente avulso já estão na própria linha.
+    if (busca && busca.trim()) {
+      const termo = `%${busca.trim()}%`
+      conditions.push(sql`(
+        ${dbVenda.vendedor} ILIKE ${termo}
+        OR ${dbVenda.nomeClienteAvulso} ILIKE ${termo}
+        OR ${dbVenda.clienteId} IN (
+          SELECT cliente_id FROM t_cliente
+          WHERE nome_completo ILIKE ${termo} OR nome_fantasia ILIKE ${termo}
+        )
+      )`)
+    }
     const whereClause = and(...conditions)
 
     const [vendas, totals] = await Promise.all([
@@ -572,7 +587,10 @@ export class VendaService {
       // fidelidade não configurada / tabelas ausentes — ignora
     }
 
-    // Gera rascunho fiscal se módulo ativo
+    // Gera rascunho fiscal se módulo ativo, e emite na hora se o checkbox
+    // do PDV pediu nota — igual à maioria dos pontos de venda com NFC-e.
+    let notaEmitida = false
+    let notaErro: string | undefined
     try {
       // O rascunho só nasce se a venda pediu nota. Antes ele era criado em
       // toda venda com o módulo ligado, e o balcão acumulava rascunho de
@@ -599,7 +617,7 @@ export class VendaService {
             descontoItem: item.desconto + fatia,
           }
         })
-        await new FiscalService(this.db).criarNota({
+        const nota = await new FiscalService(this.db).criarNota({
           tipo: 'NFC-e', valorTotal: total, vendaId: venda.vendaId,
           // produtoId vai junto: é por ele que o FiscalService acha o NCM e o
           // perfil tributário. Sem isso a nota nasce sem classificação fiscal
@@ -607,9 +625,23 @@ export class VendaService {
           itens: itensComDesconto,
           userId,
         })
+
+        // Falta de parametrização fiscal não pode travar o balcão: a venda já
+        // aconteceu, o rascunho já existe. Se a emissão falhar aqui, ela fica
+        // pendente pra emitir manualmente no módulo Fiscal — só reporta o
+        // motivo pro operador em vez de sumir com o erro.
+        try {
+          await new FiscalService(this.db).emitirViaFocusNfe(nota.notaId, {
+            token:    decryptSecretOuTextoPuro(cfg.focusNfeToken),
+            ambiente: cfg.focusNfeAmbiente || 'homologacao',
+          })
+          notaEmitida = true
+        } catch (e: any) {
+          notaErro = e?.message || 'Falha ao emitir a nota fiscal.'
+        }
       }
     } catch (_) {}
 
-    return { vendaId: venda.vendaId, cashbackUsado, cashbackCreditado }
+    return { vendaId: venda.vendaId, cashbackUsado, cashbackCreditado, notaEmitida, notaErro }
   }
 }

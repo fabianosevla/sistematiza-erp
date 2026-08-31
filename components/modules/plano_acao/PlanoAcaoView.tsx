@@ -94,7 +94,9 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
     if (chaves.length === 0) return daAba
-    return daAba.filter(a => chaves.every(k => String(a[k] ?? '') === filtros[k]))
+    return daAba.filter(a => chaves.every(k =>
+      String(a[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())
+    ))
   }, [daAba, filtros])
 
   const opcoesFiltro = useMemo(() => {

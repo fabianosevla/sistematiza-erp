@@ -1,6 +1,7 @@
 import type { AppDB } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { converterUnidade } from '@/lib/unidades'
+import { registrarMovimentacaoNoClient } from './registrarMovimentacao'
 
 
 
@@ -50,7 +51,12 @@ export class DebitoInsumoService {
     }
   }
 
-  async debitar(produtoId: number, quantidade: number, userId: number) {
+  // `origem`: o que aparece no extrato explicando de onde veio o consumo
+  // (ex.: "Consumo pela produção #12"). Este débito é chamado tanto pela
+  // entrada de produto (EstoqueService) quanto pela produção
+  // (ProducaoRegistroService) — sem o chamador dizer de onde veio, o
+  // extrato mostraria um consumo genérico demais pra rastrear depois.
+  async debitar(produtoId: number, quantidade: number, userId: number, origem?: string) {
     if (quantidade <= 0) return { itens: [], teveInsuficiencia: false }
     const simulacao = await this.simular(produtoId, quantidade)
     const client = await pool.connect()
@@ -71,6 +77,19 @@ export class DebitoInsumoService {
             [novoEstoque, now, userId, item.insumoId]
           )
         }
+
+        // O saldo mudava sem deixar rastro — este era o único dos consumos
+        // por ficha técnica que não gravava em t_movimentacao_estoque
+        // (a venda já gravava o dela direto; produção e entrada de produto
+        // passam por aqui e ficavam de fora do extrato de insumo).
+        await registrarMovimentacaoNoClient(client, {
+          tipo:       'saida',
+          entidade:   item.ehProduto ? 'produto' : 'insumo',
+          entidadeId: item.ehProduto ? -item.insumoId : item.insumoId,
+          quantidade: item.qtdTotalDebitar,
+          observacao: origem ?? 'Consumo por ficha técnica',
+          userId,
+        })
       }
     } finally {
       client.release()

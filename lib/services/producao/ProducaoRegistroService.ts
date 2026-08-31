@@ -87,7 +87,7 @@ export class ProducaoRegistroService {
     try {
       // 1. Debita os insumos pela base escolhida
       await new DebitoInsumoService(this.db, this.schemaName)
-        .debitar(produtoId, previa.baseUsada, userId)
+        .debitar(produtoId, previa.baseUsada, userId, `Consumo pela produção de ${dataProducao}`)
 
       // 2. Soma o produzido no estoque do produto
       await this.db.execute(sql`
@@ -178,7 +178,7 @@ export class ProducaoRegistroService {
         const data      = String(item.dataProducao)
 
         const itensDebitados = await debito.simular(produtoId, qtd)
-        await debito.debitar(produtoId, qtd, userId)
+        await debito.debitar(produtoId, qtd, userId, `Consumo pela produção de ${data}`)
 
         await this.db.execute(sql`
           UPDATE t_produto

@@ -138,7 +138,9 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
     if (chaves.length === 0) return todos
-    return todos.filter(i => chaves.every(k => String(i[k] ?? '') === filtros[k]))
+    return todos.filter(i => chaves.every(k =>
+      String(i[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())
+    ))
   }, [todos, filtros])
 
   const opcoesFiltro = useMemo(() => {

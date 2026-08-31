@@ -237,6 +237,12 @@ export class ComprasService {
              WHERE insumo_id = ${it.insumoId}
           `)
 
+          // data_movimentacao leva NOW(), não ${payload.dataCompra}::date: um
+          // cast pra date puro grava meia-noite, diferente de toda outra
+          // origem de movimentação (venda, produção, ajuste), que grava o
+          // instante real. Isso não perde a compra da consulta (o filtro é
+          // por dia, não por hora), mas tira a precisão de quando ela
+          // realmente entrou no sistema — e destoa do resto do extrato.
           await this.db.execute(sql`
             INSERT INTO t_movimentacao_estoque
               (tipo, entidade, entidade_id, quantidade, preco_custo, observacao,
@@ -244,7 +250,7 @@ export class ComprasService {
             VALUES
               ('entrada', 'insumo', ${it.insumoId}, ${it.quantidade}, ${it.valorUnitario},
                ${`Compra #${compraId}${payload.documento ? ` · doc ${payload.documento}` : ''}`},
-               ${payload.dataCompra}::date, ${uid}, ${uid}, NOW(), NOW(), true, 0)
+               NOW(), ${uid}, ${uid}, NOW(), NOW(), true, 0)
           `)
         }
       }
