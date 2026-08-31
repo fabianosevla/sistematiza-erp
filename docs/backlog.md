@@ -10,30 +10,37 @@ promessa de fazer agora; é garantia de não esquecer.
 
 ---
 
-## Próximos passos combinados (11/08/2026)
+## Próximos passos combinados (11/08/2026, revisado em 31/08/2026)
 
-Ordem decidida pelo Fabiano — a bola está com ele agora, não é para eu agir
-sem ele voltar a pedir:
+Ordem original decidida pelo Fabiano. **Revisão de 31/08:** os itens 2 e 3
+mudaram de status — conferido no banco de produção da Zaghi e no código, não
+por suposição.
 
-1. **Focus NFe** — ele mesmo vai configurar a conta pra poder testar
-   homologação. É o que está travando o módulo fiscal hoje (ver seção
-   "Fiscal — a desenvolver junto com a Zaghi e o contador", acima).
-2. **Depois disso**: revisitar **Metas & Simulador** e **Fidelidade** — os
-   dois módulos já existem no sistema, mas estão **desabilitados** (flag de
-   módulo desligada) e, segundo o Fabiano, "super atrasados" — precisam de
-   revisão antes de religar, não é só apertar o interruptor.
-3. **Depois de Fidelidade**: novo menu **"Painel do Contador"** (decidido em
-   13/08/2026) — ver seção "12. Painel do Contador — plano de contas
-   (versão enxuta)", abaixo.
-4. **Lá na frente**: lembrar de atualizar a documentação (`Documentação
-   Técnica` no Drive — ver [[reference_drive_documentacao]] na memória) pra
-   refletir o que mudar no fiscal, Metas, Fidelidade e Painel do Contador.
+1. **Focus NFe** — sem mudança confirmada desde 11/08. Mantido como estava.
+2. ~~Revisitar Metas & Simulador e Fidelidade~~ — **feito, com correção**:
+   - **Metas & Simulador já está ligado** (`metas_ativo = true` no banco da
+     Zaghi). A nota de 11/08 dizia que os dois módulos estavam desabilitados;
+     isso não é mais verdade para Metas. Não há registro aqui de quando ou
+     quem religou, nem evidência de que a "revisão antes de religar" citada em
+     11/08 tenha sido feita a sério — só que o flag está ligado e o módulo
+     tem 5 telas reais (resumo, evolução, previsão de produção, simulador),
+     não é stub. Se o Fabiano usou e não achou problema, dá para considerar
+     concluído; se não usou ainda, vale uma passada nele.
+   - **Fidelidade: concluído e ligado em 31/08/2026** — ver seção 13, abaixo.
+3. **Painel do Contador** — continua sendo o próximo da fila, agora que
+   Fidelidade está de fato pronta (ver seção 12, mais abaixo, com as
+   perguntas em aberto antes de começar a codar).
+4. **Lá na frente**: atualizar a documentação (`Documentação Técnica` no
+   Drive) pra refletir o que mudou no fiscal, Metas, Fidelidade e (quando
+   existir) Painel do Contador.
 
 ---
 
 ## 0. TESTES PENDENTES — nada disso foi validado em uso real
 
 Três frentes construídas e não testadas. Enquanto ninguém usou, é teoria.
+Nenhum item desta seção foi reconfirmado nesta revisão — são testes manuais,
+não dá para confirmar por código ou banco sozinho.
 
 ### Novo Financeiro
 
@@ -55,12 +62,20 @@ Caixa, e o fluxo de dinheiro que mudou de lugar.
 
 **Atualizado em 11/08/2026.** Já existe plano (`docs/provisionamento.md`),
 script (`scripts/provisionar-tenant.js`) e `tenant_modelo` no banco. Rodado
-hoje: o modelo tinha ficado 13 colunas fiscais atrás da Zaghi
+naquele dia: o modelo tinha ficado 13 colunas fiscais atrás da Zaghi
 (`t_nota_fiscal`, `t_pedido` — o módulo fiscal evoluiu depois que o modelo
 foi criado). Resincronizado com `criar-schema-modelo.js --recriar` +
 `semear-schema-modelo.js`, e `tenant_teste_provisionamento` foi recriado a
-partir do modelo corrigido. `comparar-schemas.js` dá **OK limpo** contra a
-Zaghi agora: mesma estrutura, zero coluna faltando, zero sequence cruzada.
+partir do modelo corrigido. `comparar-schemas.js` deu **OK limpo** contra a
+Zaghi naquele dia: mesma estrutura, zero coluna faltando, zero sequence
+cruzada.
+
+**Nota da revisão de 31/08:** desde então, ao menos duas migrações novas
+rodaram nos 4 schemas de tenant existentes (incluindo `tenant_modelo`) —
+`migrate-fidelidade-indicacao.js` entre elas. Rodaram nos 4 schemas junto,
+então `tenant_modelo` segue sincronizado por enquanto. Mas o **lembrete**
+abaixo continua valendo: é fácil essa sincronia quebrar de novo se uma
+migração futura for escrita só para o schema da Zaghi.
 
 Recorte da vez: nicho alimentício (bar, restaurante, fábrica de comida) — o
 modelo já É esse perfil (clone da Zaghi), e comandas/mesas do PDV já servem
@@ -77,7 +92,7 @@ Pendente:
 - Confirmar que o vínculo Clerk↔schema se faz sozinho no primeiro acesso.
 - **Lembrete:** depois de validado, rodar `criar-schema-modelo.js --recriar`
   de novo toda vez que o schema da Zaghi ganhar coluna/tabela nova — senão o
-  modelo volta a ficar pra trás, como aconteceu agora.
+  modelo volta a ficar pra trás, como já aconteceu uma vez.
 
 O passo mais provável de revelar buraco é o cadastro da empresa em
 Configurações: a linha de `t_configuracoes_tenant` é montada por inspeção de
@@ -96,6 +111,17 @@ Não é teste de tela: é implantação com terceiros.
 O desenho do PDV fiscal — o que fazer quando a nota não sai com o cliente
 esperando — fica para depois da primeira emissão em homologação. É lá que se
 descobre quanto tempo a autorização demora e o que a SEFAZ devolve quando cai.
+
+**Atualizado em 31/08/2026 — emissão automática no PDV.** O checkbox "Emitir
+nota fiscal" no balcão antes só criava um rascunho pendente; a emissão de
+fato só acontecia entrando no módulo Fiscal e clicando em Emitir nota a
+nota. Agora, marcado, a venda já transmite pra SEFAZ na hora
+(`VendaService.criarDireta` chama `FiscalService.emitirViaFocusNfe`
+diretamente). Se a emissão falhar (parametrização fiscal faltando, etc.) a
+venda não trava — segue normal, com aviso na tela, e a nota fica pendente
+pra emitir manualmente depois. Testado via script contra a SEFAZ-MG em
+homologação com uma nota real da Zaghi (autorizada). Não testado pela tela
+de verdade (sem navegador nesta sessão) — vale conferir uma vez no balcão.
 
 **Série diferente do Everest.** Everest na 1, Sistematiza na 2. Mesma série
 nos dois sistemas gera duplicidade de numeração.
@@ -153,6 +179,10 @@ com a de revenda de software. Avaliado MEI x SLU:
 Cada um simula por padrão e só grava com `--aplicar`. **Rode a simulação e leia
 a saída antes de aplicar.** Estrutura antes de dado.
 
+Todos os arquivos abaixo continuam existindo no repositório (conferido em
+31/08/2026). Não há como saber pelo código se já foram rodados — se algum já
+rodou, atualize esta lista.
+
 ```
 # Estrutura
 node scripts/migrate-conta-receber-ajustes.js
@@ -207,20 +237,22 @@ Nasceu de uma dificuldade concreta: abrir o DevTools para descobrir por que uma
 venda não voltava em Consultas, e não conseguir achar a resposta no meio das
 chamadas.
 
-**O que NÃO é problema:** cada rota já é uma função isolada. São 90 arquivos
-`route.ts`, e cada um vira uma serverless function na Vercel. O modelo de "uma
-chamada, uma função" já existe.
+**O que NÃO é problema:** cada rota já é uma função isolada. São mais de 90
+arquivos `route.ts`, e cada um vira uma serverless function na Vercel. O
+modelo de "uma chamada, uma função" já existe.
 
-**O que enche o DevTools:** 13 telas com `refetchInterval`. O PDV recarrega a
-cada 5 e 10 segundos; Comandas a cada 5; Contas a pagar e receber a cada 30.
-É decisão de tela, não do backend — mas torna a aba Network ilegível.
-Paliativo imediato: filtrar por **Fetch/XHR** no DevTools.
+**O que enche o DevTools:** telas com `refetchInterval` recarregando sozinhas
+(11 arquivos, conferido em 31/08/2026 — era 13 em 09/08, então já encolheu um
+pouco). O PDV recarrega a cada 5 e 10 segundos; Comandas a cada 5; Contas a
+pagar e receber a cada 30. É decisão de tela, não do backend — mas torna a
+aba Network ilegível. Paliativo imediato: filtrar por **Fetch/XHR** no
+DevTools.
 
 ### O que precisa ser feito
 
-**1. Documentar a API.** 90 rotas, nenhum contrato escrito. Para saber o que
-uma devolve é preciso abrir o arquivo. Solução: OpenAPI gerado a partir dos
-schemas Zod que já existem em `lib/validations/`.
+**1. Documentar a API.** Mais de 90 rotas, nenhum contrato escrito. Para
+saber o que uma devolve é preciso abrir o arquivo. Solução: OpenAPI gerado a
+partir dos schemas Zod que já existem em `lib/validations/`.
 
 **2. Padronizar `?action=` para caminho próprio.** Dez rotas decidem o que
 fazer por parâmetro de query:
@@ -240,12 +272,29 @@ usuário viu com o que o servidor registrou. Um `x-request-id` gerado no
 middleware, devolvido no header e impresso no log resolve — e é o que faltou
 no dia em que isto foi anotado.
 
-**4. Reduzir os 59 `@ts-nocheck`.** Verificação de tipo desligada justamente na
-fronteira onde os dados entram. Por rota tocada, nunca em bloco.
+**4. Reduzir os `@ts-nocheck`.** 66 arquivos hoje (conferido em 31/08/2026 —
+era 59 em 09/08; cresceu, porque toda rota nova segue nascendo com o pragma
+por padrão). Verificação de tipo desligada justamente na fronteira onde os
+dados entram. Por rota tocada, nunca em bloco.
 
 **5. Revisar os intervalos de recarga.** Cinco segundos no PDV é agressivo para
 dado que muda a cada minuto. Cada recarga é uma conexão do pool — e o pool tem
 teto de 20 por instância.
+
+**6. Módulo desligado por tenant só bloqueia de verdade pra Fidelidade —
+achado em 31/08/2026.** Todo módulo tem um flag em `t_configuracoes_tenant`
+(`vendasAtivo`, `financeiroAtivo`, `fiscalAtivo` etc., ver
+`HabilitacoesModulosView.tsx`), mas até 31/08 esse flag só escondia o item do
+menu lateral — a rota da API continuava respondendo pra quem acessasse
+direto (ou por um perfil com o módulo liberado), mesmo com o tenant tendo
+desligado o módulo inteiro. `lib/auth/permissoes.ts` (`exigirModulo`) agora
+checa `fidelidade_ativo` no banco antes de checar permissão de usuário —
+bloqueia todo mundo, inclusive admin, quando o tenant desliga. **Essa trava
+reforçada existe só pra fidelidade.** Os outros módulos continuam com a
+mesma lacuna: quem tiver o módulo liberado no perfil de acesso acessa a API
+mesmo com o tenant tendo desligado aquele módulo nas Habilitações. Não é
+brecha grave hoje (é preciso ter perfil com acesso pra explorar), mas é
+inconsistente e vale generalizar o mesmo tratamento pros demais módulos.
 
 Nada disso é urgente. Mas os itens 1 e 3 são o que separa "depurar abrindo
 arquivo" de "depurar olhando a resposta".
@@ -256,9 +305,9 @@ arquivo" de "depurar olhando a resposta".
 
 **Por que existe:** hoje é impossível criar uma empresa funcional. A rota
 `app/api/onboarding/route.ts` cria **4 tabelas** (`t_usuario`, `t_cliente`,
-`t_fornecedor`, `t_produto`). Os schemas do projeto declaram **56 tabelas de
-tenant**. Uma empresa criada por ali nasce sem vendas, estoque, produção,
-financeiro — o usuário entra e quebra em quase toda tela.
+`t_fornecedor`, `t_produto`). Os schemas do projeto declaram dezenas de
+tabelas de tenant. Uma empresa criada por ali nasce sem vendas, estoque,
+produção, financeiro — o usuário entra e quebra em quase toda tela.
 
 O schema da Zaghi não foi criado por essa rota: foi montado ao longo de meses
 por scripts de migração avulsos. Ou seja, a estrutura real do banco existe em
@@ -377,24 +426,26 @@ ela não existia e derrubava a escrita.
 
 ## 3. Código morto — verificado, quase tudo resolvido
 
-Varredura feita. Situação real:
+Varredura feita em 09/08, reconferida em 31/08/2026 — situação real não
+mudou:
 
-**Já excluídos** — `app/(dashboard)/[tenant]/comandas/`,
+**Confirmado ainda excluído** — `app/(dashboard)/[tenant]/comandas/`,
 `components/modules/financeiro/ConciliacaoView.tsx`,
 `lib/services/financeiro/ConciliacaoService.ts` e
-`app/api/[tenant]/conciliacao/` não existem mais.
+`app/api/[tenant]/conciliacao/` continuam não existindo.
 
-**NÃO excluir `components/modules/comandas/ComandasView.tsx`.** Apesar do
-caminho sugerir módulo removido, ele é importado por `PdvMesas.tsx` e
-`PdvShell.tsx` — é a tela de comandas que vive dentro do PDV, que deve
-permanecer. Apagar quebra o PDV.
+**Confirmado: NÃO excluir `components/modules/comandas/ComandasView.tsx`.**
+Apesar do caminho sugerir módulo removido, ele continua importado por
+`PdvMesas.tsx` e `PdvShell.tsx` — é a tela de comandas que vive dentro do
+PDV, que deve permanecer. Apagar quebra o PDV.
 
-**Encanamento morto (opcional):** `comandasAtivo` sai do banco
-(`t_configuracoes_tenant.comandas_ativo`), passa por
+**Encanamento morto (opcional):** `comandasAtivo` continua saindo do banco
+(`t_configuracoes_tenant.comandas_ativo`), passando por
 `app/api/[tenant]/configuracoes/route.ts`, `app/(dashboard)/tenant-layout.tsx`
-e `components/layout/ClientShell.tsx` — e não é consumido em lugar nenhum
-desde que Comandas saiu do menu. Contra-argumento para deixar como está: é o
-gancho pronto caso um dia se queira ligar/desligar comandas por cliente.
+e `components/layout/ClientShell.tsx` — e confirmado que ainda não é
+consumido em lugar nenhum desde que Comandas saiu do menu. Contra-argumento
+para deixar como está: é o gancho pronto caso um dia se queira ligar/desligar
+comandas por cliente.
 
 ---
 
@@ -412,9 +463,14 @@ gancho pronto caso um dia se queira ligar/desligar comandas por cliente.
 
 Nenhuma tem referência em código de aplicação — só existem no Postgres:
 
-- `pedido_id` em `t_entrada_nfe` — a tabela nem está declarada no Drizzle.
-- `conciliacao_bancaria_ativo` — citada apenas em
-  `scripts/migrate-financeiro-completo.js` e `scripts/check-financeiro-completo.js`.
+- `pedido_id` em `t_entrada_nfe` — **correção em 31/08/2026:** ao contrário do
+  que este item dizia, a tabela **está** declarada no Drizzle hoje
+  (`dbEntradaNfe` em `lib/db/schemas/estoque-avancado.ts`, com `pedidoId`
+  incluso). A coluna em si continua sem ser lida ou escrita por nenhum
+  serviço — segue morta, só que por outro motivo do que estava anotado aqui.
+- `conciliacao_bancaria_ativo` — confirmado em 31/08: ainda só é citada em
+  `scripts/migrate-financeiro-completo.js` e
+  `scripts/check-financeiro-completo.js`, nada no app lê ou escreve.
 
 Coluna sem uso não custa nada e não atrapalha consulta. `DROP COLUMN` em banco
 de produção, sim, tem risco. A recomendação é **deixar como estão** e só
@@ -426,19 +482,31 @@ item 1.
 ## 6. Venda — limitações conhecidas do cancelamento
 
 O cancelamento devolve estoque de produto e de insumo, estorna cashback e
-derruba o rascunho fiscal. Duas assimetrias permanecem, e as duas têm a mesma
-raiz: **a venda registra os produtos, não os insumos que consumiu.**
+derruba o rascunho fiscal.
+
+**Correção em 31/08/2026:** este item dizia que a venda "decrementa
+`estoque_atual` direto, sem registrar movimento", e que por isso vendas não
+apareciam na consulta de movimentação de estoque. **Isso já foi resolvido** —
+`VendaService` grava `registrarMovimentacao`/`registrarMovimentacaoNoClient`
+tanto para o produto vendido quanto para os insumos debitados pela ficha
+técnica da venda (`lib/services/vendas/VendaService.ts`, método privado
+`debitarInsumosDaVenda` e o laço de baixa de produto em `criarDireta`). Vendas
+já aparecem no extrato de movimentação hoje.
+
+**O que continua genuinamente pendente** — duas assimetrias, confirmadas
+ainda verdadeiras no código (comentário do próprio `cancelar()` documenta as
+duas, datado, não é suposição):
 
 - A baixa de insumo usa `Math.max(0, ...)`. Se o estoque estava abaixo do que
-  a ficha pedia, baixou menos do que deveria — e a devolução soma o valor
-  cheio, então o insumo pode voltar com mais do que saiu.
-- A devolução usa a ficha técnica **de agora**. Se a ficha mudou depois da
-  venda, recompõe pela receita nova.
+  a ficha pedia, baixou menos do que deveria — e a devolução no cancelamento
+  soma o valor cheio, então o insumo pode voltar com mais do que saiu.
+- A devolução no cancelamento usa a ficha técnica **de agora**. Se a ficha
+  mudou depois da venda, recompõe pela receita nova, não pela que valia na
+  hora da venda.
 
-A correção é gravar o consumo de insumo por venda, numa tabela de movimentação
-ou em `t_venda_item`. Isso resolve as duas de uma vez e, de quebra, faz vendas
-aparecerem na consulta de movimentação de estoque — que hoje não as enxerga,
-porque a venda decrementa `estoque_atual` direto, sem registrar movimento.
+A correção é gravar, por item de venda, qual insumo e quanta quantidade foi
+consumida no momento da venda (não só recalcular pela ficha atual quando
+cancela). É mudança de estrutura — não um bug de uma linha.
 
 ---
 
@@ -465,7 +533,8 @@ Regra geral das duas pontas: **dinheiro entrou, receita; dinheiro saiu,
 despesa.** A movimentação de estoque continua acontecendo na entrega e na
 compra, independente do caixa.
 
-Pendente de execução:
+Pendente de execução (mesmos scripts da seção 0.1 — não reconfirmado se já
+rodaram):
 
 - `node scripts/migrate-conta-receber-data-entrega.js --aplicar`
 - `node scripts/desfazer-vendas-de-pedido.js --aplicar`
@@ -495,9 +564,9 @@ indústria/comércio o sistema deveria funcionar, como qualquer ERP escalável.
 **Mais pronto do que parece, em três pontos:**
 
 - Módulos já ligam/desligam por tenant (`producaoAtivo`, `estoqueAtivo`,
-  `fiscalAtivo`, `comandasAtivo`, `comprasAtivo`, `multiplosLocaisAtivo` em
-  `t_configuracoes_tenant`) — já dá pra montar comércio puro ou indústria só
-  configurando flags.
+  `fiscalAtivo`, `comandasAtivo`, `comprasAtivo`, `fidelidadeAtivo`,
+  `multiplosLocaisAtivo` em `t_configuracoes_tenant`) — já dá pra montar
+  comércio puro ou indústria só configurando flags.
 - Comandas e mesas (`PdvMesas.tsx`) já existem, prontas pra restaurante/bar.
 - Categorias (`tipo_insumo` etc.) já vêm de domínio configurável
   (`t_dominio`), não são fixas no código.
@@ -541,12 +610,13 @@ que meu sistema ainda não tem"). Nenhum destes tem prazo — é mapa, não fila
   brócolis").
 - **Lote e validade.** Não existe em `t_produto` nem `t_insumo`. Para
   alimentício é risco de compliance, não luxo — junta-se ao item 9.
-- **Multicanal** (marketplace, e-commerce, catálogo por WhatsApp). Não
-  existe. É onde Bling e Tiny vivem — não é o carro-chefe deste sistema, mas
-  é o que mais aparece como ausência ao comparar com ERPs genéricos.
+- **Multicanal** (marketplace, e-commerce, catálogo por WhatsApp). Parcial:
+  ver item 11 (Cardápio online) — cobre link/QR Code de pedido, não
+  marketplace nem e-commerce completo.
 - **NF-e de compra automatizada / leitura de XML de entrada.** Existe
-  "entrada NFe" no sistema; grau de automação real não foi conferido — falta
-  olhar o código antes de decidir se é lacuna de verdade ou só falta de
+  "entrada NFe" no sistema (`dbEntradaNfe`, `app/api/.../estoque/entrada-nfe`);
+  grau de automação real não foi conferido nesta revisão — falta olhar o
+  fluxo completo antes de decidir se é lacuna de verdade ou só falta de
   documentação.
 - **App mobile / PDV offline.** Nada disso existe hoje. PDV que cai sem
   internet é o tipo de coisa que barra venda para varejo físico — bar e
@@ -561,22 +631,26 @@ pedidos. Página pública (`app/cardapio/[tenant]`), sem login, no estilo
 Saipos/Goomer. Pedido feito ali vira `t_pedido` de verdade, com cliente
 criado/casado em `t_cliente` — não é WhatsApp nem catálogo solto.
 
+**Confirmado em 31/08/2026: o módulo está ligado** (`cardapio_ativo = true`
+no banco da Zaghi).
+
 **O que tem:** liga/desliga por tenant (`cardapio_ativo` em
-`t_configuracoes_tenant`, só a Zaghi ligada), produto com foto (Vercel Blob)
-e checkbox "disponível no cardápio" em Cadastros → Produtos, link + QR Code
-em Configurações → Cardápio online, preço sempre recalculado no servidor
-(nunca confia no que o navegador manda), forma de pagamento vinda do cadastro
-real (`t_forma_pagamento`).
+`t_configuracoes_tenant`), produto com foto (Vercel Blob) e checkbox
+"disponível no cardápio" em Cadastros → Produtos, link + QR Code em
+Configurações → Cardápio online, preço sempre recalculado no servidor (nunca
+confia no que o navegador manda), forma de pagamento vinda do cadastro real
+(`t_forma_pagamento`).
 
 **Testado em produção (dev local, DB real da Zaghi) em 12/08:** página
-pública abre, lista produto marcado, carrinho e formulário funcionam. Não
-testado: o POST de fechamento do pedido de fato (criação de cliente + pedido)
-— parei antes de gravar um pedido fake nos dados reais da Zaghi. Falta esse
-teste ponta a ponta antes de divulgar o link pra clientes de verdade.
+pública abre, lista produto marcado, carrinho e formulário funcionam.
+
+**Ainda não confirmado nesta revisão:** se o POST de fechamento do pedido
+(criação de cliente + pedido de verdade) já foi testado ponta a ponta depois
+de 12/08 — não achei evidência no código de que esse teste tenha acontecido.
+Tratar como pendente até confirmar.
 
 **Pendente:**
-- Marcar produtos de verdade como disponíveis e subir fotos — hoje nenhum
-  produto aparece no link (fica desligado até o Fabiano escolher o quê).
+- Marcar produtos de verdade como disponíveis e subir fotos.
 - Testar o fechamento de pedido de ponta a ponta (com dado de teste combinado
   antes, não um cliente inventado direto na base real).
 - Rate limiting / anti-spam no POST público — inexistente hoje.
@@ -588,10 +662,10 @@ teste ponta a ponta antes de divulgar o link pra clientes de verdade.
 
 ## 12. Painel do Contador — plano de contas (versão enxuta)
 
-Combinado com o Fabiano em 13/08/2026, na fila logo depois de Fidelidade (ver
-"Próximos passos combinados", acima). Menu novo, separado de Financeiro —
-visão técnica pra quem entende partida dobrada, não pro dono do negócio mexer
-no dia a dia.
+Combinado com o Fabiano em 13/08/2026. Agora que Fidelidade está concluída
+(seção 13), este é o próximo item da fila combinada. Menu novo, separado de
+Financeiro — visão técnica pra quem entende partida dobrada, não pro dono do
+negócio mexer no dia a dia.
 
 **Decisão de escopo (definida em conversa, não é ainda um requisito técnico
 detalhado):** versão enxuta, não um motor de contabilidade completo.
@@ -621,6 +695,56 @@ detalhado):** versão enxuta, não um motor de contabilidade completo.
 **Depende de:** Financeiro já grava os eventos-fonte (venda, despesa, conta a
 pagar/receber) — não precisa de dado novo pra começar, só do mapeamento pra
 conta contábil.
+
+---
+
+## 13. Fidelidade — concluído em 31/08/2026
+
+Estava listado como "desabilitado, super atrasado, precisa de revisão antes
+de religar" (nota de 11/08). Revisado e ligado nesta data.
+
+**Estado atual, confirmado no banco da Zaghi:**
+- Módulo ligado (`fidelidade_ativo = true`).
+- Cashback ligado (`programa_ativo = true`), 5% por venda
+  (`cashback_pct_bp = 500`), sem compra mínima, sem validade de expiração.
+- Indique e ganhe ligado (`indicacao_ativa = true`), 5% também.
+- Reativação por WhatsApp **desligada de propósito** — não há credenciais da
+  WhatsApp Business API configuradas (`wa_phone_number_id` e
+  `wa_token_cipher` vazios no banco). Ligar isso é trabalho novo: obter as
+  credenciais da Meta antes.
+
+**Construído nesta sessão — "indique e ganhe":**
+- Campo "Indicado por" no cadastro de cliente novo (PDV e Cadastros →
+  Clientes — só no cadastro novo, não na edição). Busca outro cliente já
+  cadastrado.
+- Na primeira compra do cliente indicado, se o programa estiver ativo, os
+  dois lados (quem indicou e quem foi indicado) recebem cashback — mesmo
+  percentual, sobre o valor daquela compra. Configurável em Fidelidade →
+  Configuração → aba "Indique e ganhe".
+- Se a venda que gerou o bônus for cancelada, os dois créditos são
+  estornados junto — reaproveita o mecanismo de estorno de cashback que já
+  existia (`CashbackService.estornarVenda`), sem precisar de tabela ou tipo
+  de movimento novo.
+- Corrigido de quebra um bug real no estorno: ele reconhecia "já estornado"
+  comparando só cliente + valor, e como agora um cliente pode ter dois
+  créditos de mesmo valor numa venda (cashback normal da compra dele + bônus
+  por ter indicado outro cliente), ia pular o segundo por engano e deixar
+  cashback esquecido no saldo depois de uma venda cancelada. Corrigido pra
+  contar ocorrências em vez de checar existência.
+- Reforço de segurança: `exigirModulo` agora bloqueia a API de fidelidade no
+  servidor quando o tenant desliga o módulo (antes só escondia o menu — ver
+  item 6 da seção 0.2 sobre isso valer só pra fidelidade, não pros outros
+  módulos ainda).
+
+**Pendente:**
+- Testar o fluxo indique-e-ganhe pela tela de verdade (cadastrar dois
+  clientes, vincular indicação, fechar venda do indicado, conferir saldo dos
+  dois) — feito só por código nesta sessão, não pela interface.
+- Reativação por WhatsApp — depende de credenciais da Meta que não existem
+  ainda; não é bug, é falta de insumo externo, igual ao fiscal.
+- Revisar se 5%/5% (cashback normal e bônus de indicação) é o valor certo
+  pra Zaghi ou se era só ponto de partida — ajustável em Fidelidade →
+  Configuração a qualquer momento, sem precisar de código.
 
 ---
 
