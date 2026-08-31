@@ -16,7 +16,7 @@ import { fmtMoeda as fmt, fmtDataHoraLocal as fmtData, fmtDataLocal as fmtDataCu
 interface Props { tenantSlug: string }
 
 type Aba = 'visao' | 'clientes' | 'movimentacoes' | 'reativacao' | 'config'
-type Secao = 'cashback' | 'reativacao' | 'whatsapp' | 'geral'
+type Secao = 'cashback' | 'indicacao' | 'reativacao' | 'whatsapp' | 'geral'
 
 // ── conversões (a API trabalha em centavos e basis points) ─────────────────────
 const bpToPct  = (bp: number) => (Number(bp || 0) / 100)
@@ -58,6 +58,8 @@ export default function FidelidadeView({ tenantSlug }: Props) {
       saldoMinimoUso:         centToBRL(cfg.saldoMinimoUsoCentavos),
       arredondamento:         cfg.arredondamento ?? 'centavo',
       baseCalculo:            cfg.baseCalculo ?? 'liquido',
+      indicacaoAtiva:         !!cfg.indicacaoAtiva,
+      indicacaoPct:           String(bpToPct(cfg.indicacaoPctBp)),
       reativacaoAtiva:        !!cfg.reativacaoAtiva,
       diasInatividade:        String(cfg.diasInatividade ?? 30),
       repetirAviso:           !!cfg.repetirAviso,
@@ -88,6 +90,8 @@ export default function FidelidadeView({ tenantSlug }: Props) {
         saldoMinimoUsoCentavos:   brlToCent(form.saldoMinimoUso),
         arredondamento:           form.arredondamento,
         baseCalculo:              form.baseCalculo,
+        indicacaoAtiva:           form.indicacaoAtiva,
+        indicacaoPctBp:           pctToBp(form.indicacaoPct),
         reativacaoAtiva:          form.reativacaoAtiva,
         diasInatividade:          Number(form.diasInatividade || 0),
         repetirAviso:             form.repetirAviso,
@@ -211,6 +215,34 @@ export default function FidelidadeView({ tenantSlug }: Props) {
                 <Campo label="Arredondamento do crédito">
                   <Select value={form.arredondamento} onChange={v => set('arredondamento', v)}
                     opcoes={[['centavo', 'Ao centavo'], ['real', 'Ao real']]} />
+                </Campo>
+              </div>
+            </Accordion>
+
+            {/* Indique e ganhe */}
+            <Accordion aberto={secao === 'indicacao'} onClick={() => setSecao(secao === 'indicacao' ? null : 'indicacao')}
+              icon={Users} titulo="Indique e ganhe">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-600 inline-flex items-center gap-1">
+                  Bônus de indicação ativo
+                  <InfoTip titulo="Indique e ganhe">
+                    Cliente cadastrado com "Indicado por" preenchido (no PDV ou em Cadastros)
+                    credita cashback pros dois lados — quem indicou e quem foi indicado —
+                    assim que o indicado faz a primeira compra.
+                  </InfoTip>
+                </p>
+                <Toggle on={form.indicacaoAtiva} onChange={v => set('indicacaoAtiva', v)} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Campo label={
+                  <span className="inline-flex items-center gap-1">Bônus por indicação (%)
+                    <InfoTip titulo="Percentual do bônus">
+                      Aplicado sobre o valor da primeira compra do indicado. O mesmo percentual
+                      vira cashback pros dois lados — indicador e indicado recebem o mesmo valor.
+                    </InfoTip>
+                  </span>
+                }>
+                  <Input value={form.indicacaoPct} onChange={e => set('indicacaoPct', e.target.value)} inputMode="decimal" />
                 </Campo>
               </div>
             </Accordion>

@@ -74,8 +74,26 @@ export async function exigirAdmin(schemaName: string): Promise<void> {
   if (!row || !ehAdmin(row)) throw new Error('FORBIDDEN')
 }
 
+// Módulo desligado pelo tenant (Configurações > Habilitações) bloqueia todo
+// mundo, inclusive admin — é "este recurso não existe pra este cliente", não
+// uma questão de permissão de usuário. Hoje só fidelidade tem essa trava
+// reforçada aqui; os demais módulos ainda só escondem o menu (config.*Ativo),
+// sem bloquear a API se alguém acessar a rota direto.
+async function moduloDesligadoNoTenant(schemaName: string, modulo: Modulo): Promise<boolean> {
+  if (modulo !== 'fidelidade') return false
+  const client = await pool.connect()
+  try {
+    await client.query(`SET search_path TO "${schemaName}", public`)
+    const r = await client.query(`SELECT fidelidade_ativo FROM t_configuracoes_tenant LIMIT 1`)
+    return r.rows[0]?.fidelidade_ativo === false
+  } finally {
+    client.release()
+  }
+}
+
 /** Lança FORBIDDEN se o usuário logado não tiver acesso gerencial + o módulo liberado no perfil. */
 export async function exigirModulo(schemaName: string, modulo: Modulo): Promise<void> {
+  if (await moduloDesligadoNoTenant(schemaName, modulo)) throw new Error('FORBIDDEN')
   const row = await carregarAcesso(schemaName)
   if (!row) throw new Error('FORBIDDEN')
   if (ehAdmin(row)) return

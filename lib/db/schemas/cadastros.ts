@@ -43,6 +43,10 @@ export const dbCliente = pgTable('t_cliente', {
   // NF-e leva inscrição estadual do destinatário, e o CFOP da operação.
   inscricaoEstadual: varchar('inscricao_estadual', { length: 20 }),
   indicadorIe:       varchar('indicador_ie', { length: 1 }).default('9'),
+  // ── FIDELIDADE ──────────────────────────────────────────────────────────
+  // Quem trouxe este cliente. Definido no cadastro (PDV ou Cadastros >
+  // Clientes); usado pelo bônus de indicação na primeira compra do indicado.
+  indicadoPorClienteId: integer('indicado_por_cliente_id'),
 })
 
 export type TpDbClienteRow    = InferSelectModel<typeof dbCliente>

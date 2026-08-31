@@ -48,6 +48,8 @@ export async function GET(_req: NextRequest, { params }: Params) {
         saldoMinimoUsoCentavos:  r.saldo_minimo_uso_centavos,
         arredondamento:          r.arredondamento,
         baseCalculo:             r.base_calculo,
+        indicacaoAtiva:          r.indicacao_ativa,
+        indicacaoPctBp:          r.indicacao_pct_bp,
         reativacaoAtiva:         r.reativacao_ativa,
         diasInatividade:         r.dias_inatividade,
         repetirAviso:            r.repetir_aviso,
@@ -79,6 +81,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
     // Validações básicas
     if (NUM(b.cashbackPctBp) < 0 || NUM(b.cashbackPctBp) > 100000) return badRequest('Percentual de cashback inválido')
+    if (NUM(b.indicacaoPctBp) < 0 || NUM(b.indicacaoPctBp) > 100000) return badRequest('Percentual de indicação inválido')
     if (NUM(b.limiteUsoPctBp) < 0 || NUM(b.limiteUsoPctBp) > 10000) return badRequest('Limite de uso deve ser entre 0% e 100%')
     if (NUM(b.horarioInicio) < 0 || NUM(b.horarioInicio) > 23 || NUM(b.horarioFim) < 0 || NUM(b.horarioFim) > 23) return badRequest('Horário de envio inválido')
 
@@ -103,20 +106,22 @@ export async function PUT(req: NextRequest, { params }: Params) {
           saldo_minimo_uso_centavos   = $6,
           arredondamento              = $7,
           base_calculo                = $8,
-          reativacao_ativa            = $9,
-          dias_inatividade            = $10,
-          repetir_aviso               = $11,
-          intervalo_repeticao_dias    = $12,
-          max_avisos                  = $13,
-          saldo_minimo_aviso_centavos = $14,
-          horario_inicio              = $15,
-          horario_fim                 = $16,
-          wa_phone_number_id          = $17,
-          wa_business_account_id      = $18,
-          wa_template_nome            = $19,
-          wa_template_idioma          = $20,
-          mensagem_padrao             = $21,
-          exige_optin                 = $22,
+          indicacao_ativa             = $9,
+          indicacao_pct_bp            = $10,
+          reativacao_ativa            = $11,
+          dias_inatividade            = $12,
+          repetir_aviso               = $13,
+          intervalo_repeticao_dias    = $14,
+          max_avisos                  = $15,
+          saldo_minimo_aviso_centavos = $16,
+          horario_inicio              = $17,
+          horario_fim                 = $18,
+          wa_phone_number_id          = $19,
+          wa_business_account_id      = $20,
+          wa_template_nome            = $21,
+          wa_template_idioma          = $22,
+          mensagem_padrao             = $23,
+          exige_optin                 = $24,
           modification_num            = modification_num + 1,
           updated_dt                  = NOW(),
           updated_by                  = 1
@@ -130,6 +135,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
         NUM(b.saldoMinimoUsoCentavos),
         (b.arredondamento === 'real' ? 'real' : 'centavo'),
         (b.baseCalculo === 'bruto' ? 'bruto' : 'liquido'),
+        BOOL(b.indicacaoAtiva),
+        NUM(b.indicacaoPctBp, 500),
         BOOL(b.reativacaoAtiva),
         NUM(b.diasInatividade, 30),
         BOOL(b.repetirAviso),

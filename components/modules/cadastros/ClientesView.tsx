@@ -18,6 +18,7 @@ import { SearchInput } from '@/components/ui/SearchInput'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { FormModal } from '@/components/ui/FormModal'
+import { ClienteSelectBusca } from '@/components/ui/ClienteSelectBusca'
 import { Aviso } from '@/components/ui/Aviso'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { TIPOS_PRECO } from '@/lib/constants'
@@ -37,9 +38,21 @@ export default function ClientesView({ tenantSlug }: Props) {
   const [confirmDelete, setConfirmDelete]     = useState<any>(null)
   const [formError, setFormError]     = useState('')
   const [flash, setFlash]             = useState('')
+  // Só usado pra exibir o nome escolhido em "Indicado por" — o valor que
+  // vale de verdade (indicadoPorClienteId) vive no react-hook-form.
+  const [indicadoPorNome, setIndicadoPorNome] = useState('')
   const apiBase = `/api/${tenantSlug}/cadastros/clientes`
 
   const flashMsg = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 4000) }
+
+  // Módulo Fidelidade desligado em Configurações > Habilitações: some o
+  // campo "Indicado por" também, não só a tela de Fidelidade.
+  const { data: cfgRaw } = useQuery({
+    queryKey: ['configuracoes', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/configuracoes`)).json(),
+    staleTime: 5 * 60 * 1000,
+  })
+  const fidelidadeAtivo = cfgRaw?.data?.fidelidadeAtivo === true
 
   const { data, isLoading } = useQuery({
     queryKey: ['clientes', tenantSlug, page, limit, search, incluirInativos],
@@ -104,11 +117,12 @@ export default function ClientesView({ tenantSlug }: Props) {
   })
 
   function handleNew() {
-    form.reset({ tipoPessoa: 'PF', tabelaPreco: 'varejo', indicadorIe: '9' }); setEditItem(null); setFormError(''); setShowForm(true)
+    form.reset({ tipoPessoa: 'PF', tabelaPreco: 'varejo', indicadorIe: '9' }); setEditItem(null); setFormError('')
+    setIndicadoPorNome(''); setShowForm(true)
   }
 
   function handleEdit(item: any) {
-    setEditItem(item); setFormError('')
+    setEditItem(item); setFormError(''); setIndicadoPorNome('')
     form.reset({
       tipoPessoa: item.tipoPessoa, nomeCompleto: item.nomeCompleto, nomeFantasia: item.nomeFantasia,
       documento: item.documento, email: item.email, telefone: item.telefone, celular: item.celular,
@@ -315,6 +329,29 @@ export default function ClientesView({ tenantSlug }: Props) {
                 {form.formState.errors.telefone && <p className="text-xs text-red-500 mt-1">{form.formState.errors.telefone.message}</p>}
               </div>
             </div>
+            {/* Indicado por — só no cadastro novo. É neste momento que o
+                operador pergunta "quem te indicou?"; editar depois não faz
+                sentido pro bônus, que já foi pago (ou não) na 1ª compra. */}
+            {!editItem && fidelidadeAtivo && (
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  Indicado por
+                  <InfoTip titulo="Indique e ganhe">
+                    Se este cliente veio por indicação de outro já cadastrado, selecione aqui.
+                    O bônus de indicação (se ativo em Fidelidade) é creditado pros dois lados
+                    na primeira compra deste cliente.
+                  </InfoTip>
+                </Label>
+                <ClienteSelectBusca
+                  tenantSlug={tenantSlug}
+                  clienteId={form.watch('indicadoPorClienteId') ?? null}
+                  nomeAtual={indicadoPorNome}
+                  onChange={(id, nome) => { form.setValue('indicadoPorClienteId', id ?? undefined); setIndicadoPorNome(nome) }}
+                  placeholder="Nome de quem indicou..."
+                />
+              </div>
+            )}
+
             {/* CORREÇÃO (dados ocultos): endereço completo existia no banco mas não aparecia no formulário */}
             <div className="grid grid-cols-3 gap-4">
               <div><Label>CEP</Label><Input {...form.register('cep')} className="mt-1" placeholder="00000-000" /></div>

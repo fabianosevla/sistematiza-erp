@@ -52,6 +52,7 @@ export async function GET(req: NextRequest, { params }: Params) {
                  bairro, cidade, uf, observacao, tabela_preco,
                  -- Fiscal: a NF-e precisa saber se o comprador e contribuinte.
                  inscricao_estadual, indicador_ie,
+                 indicado_por_cliente_id,
                  active_flg, modification_num, created_dt, created_by, updated_dt, updated_by
           FROM t_cliente ${where}
           ORDER BY nome_completo ASC
@@ -86,6 +87,7 @@ export async function GET(req: NextRequest, { params }: Params) {
         inscricaoEstadual: r.inscricao_estadual ?? '',
         // 1 contribuinte · 2 isento · 9 nao contribuinte
         indicadorIe:       r.indicador_ie ?? '9',
+        indicadoPorClienteId: r.indicado_por_cliente_id ?? null,
         activeFlag:      r.active_flg,
         modificationNum: r.modification_num,
         createdDt:       r.created_dt,
@@ -140,9 +142,9 @@ export async function POST(req: NextRequest, { params }: Params) {
         INSERT INTO t_cliente (
           tipo_pessoa, nome_completo, nome_fantasia, documento, email, telefone, celular,
           cep, endereco, numero, complemento, bairro, cidade, uf, observacao, tabela_preco,
-          inscricao_estadual, indicador_ie,
+          inscricao_estadual, indicador_ie, indicado_por_cliente_id,
           active_flg, modification_num, created_by, updated_by, created_dt, updated_dt
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,true,0,$19,$19,NOW(),NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,0,$20,$20,NOW(),NOW())
         RETURNING cliente_id as "clienteId"
       `, [
         body.tipoPessoa?.trim() || 'PF',
@@ -165,6 +167,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           .includes(String(body.tabelaPreco)) ? body.tabelaPreco : 'varejo'),
         body.inscricaoEstadual?.trim() || null,
         (['1','2','9'].includes(String(body.indicadorIe)) ? body.indicadorIe : '9'),
+        Number.isInteger(body.indicadoPorClienteId) ? body.indicadoPorClienteId : null,
         uid,
       ])
       return created(res.rows[0])

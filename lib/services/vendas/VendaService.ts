@@ -583,6 +583,26 @@ export class VendaService {
       cashbackCreditado = await cash.creditar({
         clienteId, vendaId: venda.vendaId, subtotal, total, cashbackUsado, userId,
       })
+      // 3. Indique e ganhe: só na 1ª compra de um cliente que foi indicado
+      //    por outro. Conta as vendas ativas do cliente incluindo esta —
+      //    total 1 significa que esta é a primeira.
+      if (clienteId) {
+        const [clienteRow] = (await this.db.execute(sql`
+          SELECT indicado_por_cliente_id FROM t_cliente WHERE cliente_id = ${clienteId}
+        `)).rows as any[]
+        const indicadoPorClienteId = clienteRow?.indicado_por_cliente_id
+        if (indicadoPorClienteId) {
+          const [{ total_vendas }] = (await this.db.execute(sql`
+            SELECT COUNT(*)::int AS total_vendas FROM t_venda WHERE cliente_id = ${clienteId} AND active_flg = true
+          `)).rows as any[]
+          if (Number(total_vendas) === 1) {
+            await cash.creditarIndicacao({
+              clienteId, indicadoPorClienteId: Number(indicadoPorClienteId),
+              vendaId: venda.vendaId, valorBase: total, userId,
+            })
+          }
+        }
+      }
     } catch (_) {
       // fidelidade não configurada / tabelas ausentes — ignora
     }

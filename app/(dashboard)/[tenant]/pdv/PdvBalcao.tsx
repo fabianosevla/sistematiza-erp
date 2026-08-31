@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { InfoTip } from '@/components/ui/InfoTip'
+import { ClienteSelectBusca } from '@/components/ui/ClienteSelectBusca'
 import { MarcaEndereco, enderecoDoCadastro } from '@/components/ui/MarcaEndereco'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { useToast } from '@/components/ui/Toast'
@@ -147,6 +148,9 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   })
   const fiscalAtivo     = cfgFiscalRaw?.data?.fiscalAtivo === true
   const turnoObrigatorio = cfgFiscalRaw?.data?.turnoCaixaAtivo === true
+  // Módulo desligado em Configurações > Habilitações: nada de fidelidade
+  // aparece — nem cashback, nem "Indicado por" no cadastro rápido.
+  const fidelidadeAtivo = cfgFiscalRaw?.data?.fidelidadeAtivo === true
 
   // Número desta máquina. Vive no navegador — dois PCs na mesma rede são
   // idênticos para o servidor, então não há como deduzir.
@@ -189,6 +193,10 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   }
   const [novoCli, setNovoCli] = useState(CLI_VAZIO)
   const setCli = (k: string, v: string) => setNovoCli(p => ({ ...p, [k]: v }))
+  // "Indicado por" do cadastro rápido — fora de novoCli porque é numérico
+  // (clienteId), não texto. Ver ClienteSelectBusca.
+  const [indicadoPorId, setIndicadoPorId]     = useState<number | null>(null)
+  const [indicadoPorNome, setIndicadoPorNome] = useState('')
   const [buscaCliente, setBuscaCliente]       = useState('')
   // Nome digitado para quem não é cadastrado. Só vale enquanto nenhum cliente
   // foi selecionado — com cadastro, o cadastro manda.
@@ -266,7 +274,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const { data: cashbackRaw } = useQuery({
     queryKey: ['pdv-cashback', tenantSlug, clienteId],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/fidelidade/saldo?clienteId=${clienteId}`)).json(),
-    enabled:  !!clienteId,
+    enabled:  !!clienteId && fidelidadeAtivo,
     staleTime: 5000,
   })
   const cashback = cashbackRaw?.data
@@ -304,6 +312,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           cidade:       novoCli.cidade.trim() || undefined,
           uf:           novoCli.uf.trim().toUpperCase().slice(0, 2) || undefined,
           observacao:   novoCli.observacao.trim() || undefined,
+          indicadoPorClienteId: indicadoPorId ?? undefined,
         }),
       })
       const d = await res.json()
@@ -333,6 +342,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       }
       setShowCadastrarCliente(false)
       setNovoCli(CLI_VAZIO)
+      setIndicadoPorId(null); setIndicadoPorNome('')
       qc.invalidateQueries({ queryKey: ['pdv-clientes', tenantSlug] })
     },
     onError: (e: any) => toast(e.message || 'Erro ao criar cliente.', 'error'),
@@ -1588,8 +1598,26 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <textarea value={novoCli.observacao} onChange={e => setCli('observacao', e.target.value)}
                       className="mt-1 w-full text-sm rounded-md border border-gray-200 px-2 py-1.5 resize-none" rows={2} placeholder="Opcional" />
                   </div>
+                  {fidelidadeAtivo && (
+                  <div>
+                    <Label className="text-xs inline-flex items-center gap-1">
+                      Indicado por
+                      <InfoTip titulo="Indique e ganhe">
+                        Se veio por indicação de outro cliente já cadastrado, selecione aqui. O
+                        bônus (se ativo em Fidelidade) é creditado pros dois lados na 1ª compra.
+                      </InfoTip>
+                    </Label>
+                    <ClienteSelectBusca
+                      tenantSlug={tenantSlug}
+                      clienteId={indicadoPorId}
+                      nomeAtual={indicadoPorNome}
+                      onChange={(id, nome) => { setIndicadoPorId(id); setIndicadoPorNome(nome) }}
+                      placeholder="Nome de quem indicou..."
+                    />
+                  </div>
+                  )}
                   <div className="flex gap-2">
-                    <Button variant="outline" className="flex-1" onClick={() => { setShowCadastrarCliente(false); setNovoCli(CLI_VAZIO) }}>
+                    <Button variant="outline" className="flex-1" onClick={() => { setShowCadastrarCliente(false); setNovoCli(CLI_VAZIO); setIndicadoPorId(null); setIndicadoPorNome('') }}>
                       Cancelar
                     </Button>
                     <Button className="flex-1"
@@ -1642,7 +1670,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
               </div>
 
               {/* Cashback / Fidelidade */}
-              {clienteId && cashback?.programaAtivo && saldoCashback > 0 && (
+              {fidelidadeAtivo && clienteId && cashback?.programaAtivo && saldoCashback > 0 && (
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-xs font-medium text-gray-600">

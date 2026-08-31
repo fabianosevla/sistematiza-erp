@@ -28,6 +28,8 @@ export interface FidelidadeConfig {
   saldoMinimoUsoCentavos:  number
   arredondamento:          'centavo' | 'real'
   baseCalculo:             'bruto' | 'liquido'
+  indicacaoAtiva:          boolean
+  indicacaoPctBp:          number
   reativacaoAtiva:         boolean
   diasInatividade:         number
   repetirAviso:            boolean
@@ -62,9 +64,16 @@ export class CashbackService {
     const res = await this.db.execute(sql`SELECT * FROM t_fidelidade_config ORDER BY config_id LIMIT 1`)
     const r: any = res.rows[0]
     if (!r) return null
+
+    // Módulo desligado em Configurações > Habilitações desliga tudo daqui
+    // pra baixo — cashback, indicação, uso — mesmo que programa_ativo (a
+    // configuração específica de cashback) tenha ficado true de antes.
+    const tenantRes = await this.db.execute(sql`SELECT fidelidade_ativo FROM t_configuracoes_tenant LIMIT 1`)
+    const moduloAtivo = (tenantRes.rows[0] as any)?.fidelidade_ativo !== false
+
     return {
       configId:                r.config_id,
-      programaAtivo:           r.programa_ativo === true,
+      programaAtivo:           moduloAtivo && r.programa_ativo === true,
       cashbackPctBp:           Number(r.cashback_pct_bp ?? 0),
       compraMinimaCentavos:    Number(r.compra_minima_centavos ?? 0),
       validadeDias:            Number(r.validade_dias ?? 0),
@@ -72,7 +81,9 @@ export class CashbackService {
       saldoMinimoUsoCentavos:  Number(r.saldo_minimo_uso_centavos ?? 0),
       arredondamento:          r.arredondamento === 'real' ? 'real' : 'centavo',
       baseCalculo:             r.base_calculo === 'bruto' ? 'bruto' : 'liquido',
-      reativacaoAtiva:         r.reativacao_ativa === true,
+      indicacaoAtiva:          moduloAtivo && r.indicacao_ativa === true,
+      indicacaoPctBp:          Number(r.indicacao_pct_bp ?? 0),
+      reativacaoAtiva:         moduloAtivo && r.reativacao_ativa === true,
       diasInatividade:         Number(r.dias_inatividade ?? 30),
       repetirAviso:            r.repetir_aviso === true,
       intervaloRepeticaoDias:  Number(r.intervalo_repeticao_dias ?? 30),
@@ -147,6 +158,45 @@ export class CashbackService {
   }
 
   /**
+   * Bônus de "indique e ganhe": credita cashback pros dois lados (quem
+   * indicou e quem foi indicado) na primeira compra do indicado. Silencioso
+   * se o programa de indicação estiver desligado.
+   *
+   * Os dois créditos levam o venda_id da compra que disparou o bônus — não
+   * o venda_id de uma venda própria de cada um. É assim que estornarVenda()
+   * (que já existe e não muda) acha e reverte os dois automaticamente se
+   * essa venda for cancelada, sem precisar de um tipo de movimento novo.
+   */
+  async creditarIndicacao({ clienteId, indicadoPorClienteId, vendaId, valorBase, userId = 1 }: {
+    clienteId: number
+    indicadoPorClienteId: number
+    vendaId: number
+    valorBase: number
+    userId?: number
+  }): Promise<number> {
+    const cfg = await this.getConfig()
+    if (!cfg || !cfg.indicacaoAtiva || cfg.indicacaoPctBp <= 0) return 0
+
+    const valor = arredondar(valorBase * (cfg.indicacaoPctBp / 10000), cfg.arredondamento)
+    if (valor <= 0) return 0
+
+    const expira = cfg.validadeDias > 0
+      ? sql`NOW() + (${cfg.validadeDias} || ' days')::interval`
+      : sql`NULL`
+
+    await this.db.execute(sql`
+      INSERT INTO t_fidelidade_movimento
+        (cliente_id, tipo, valor_centavos, venda_id, expira_em, observacao, created_by, updated_by)
+      VALUES
+        (${clienteId}, 'credito', ${valor}, ${vendaId}, ${expira},
+         'Bônus por indicação — 1ª compra', ${userId}, ${userId}),
+        (${indicadoPorClienteId}, 'credito', ${valor}, ${vendaId}, ${expira},
+         ${'Bônus por indicar o cliente #' + clienteId}, ${userId}, ${userId})
+    `)
+    return valor
+  }
+
+  /**
    * Usa (resgata) saldo do cliente numa venda. Respeita saldo disponível,
    * limite de uso por venda (% do total) e saldo mínimo pra usar.
    * Retorna quanto foi efetivamente usado (centavos). Silencioso em qualquer
@@ -192,18 +242,31 @@ export class CashbackService {
       FROM t_fidelidade_movimento
       WHERE venda_id = ${vendaId} AND active_flg = true
         AND tipo IN ('credito','uso')
+      ORDER BY movimento_id
     `)
+
+    // Dedup por CONTAGEM, não por "existe": o bônus de indicação pode gerar
+    // um segundo 'credito' do MESMO cliente com o MESMO valor do cashback
+    // normal da própria compra (ex.: os dois em 5%). Um simples "já existe
+    // estorno com esse cliente+valor?" reconheceria o primeiro estorno e
+    // pularia o segundo crédito, que nunca seria revertido.
+    const estornosExistentes = await this.db.execute(sql`
+      SELECT cliente_id, valor_centavos, tipo
+      FROM t_fidelidade_movimento
+      WHERE venda_id = ${vendaId} AND active_flg = true
+        AND tipo IN ('estorno','estorno_credito')
+    `)
+    const restante = new Map<string, number>()
+    for (const e of estornosExistentes.rows as any[]) {
+      const tipoOriginal = e.tipo === 'estorno_credito' ? 'credito' : 'uso'
+      const chave = `${e.cliente_id}|${tipoOriginal}|${e.valor_centavos}`
+      restante.set(chave, (restante.get(chave) ?? 0) + 1)
+    }
+
     for (const row of mov.rows as any[]) {
-      // Evita estorno duplicado
-      const jaEstornado = await this.db.execute(sql`
-        SELECT 1 FROM t_fidelidade_movimento
-        WHERE venda_id = ${vendaId} AND active_flg = true
-          AND tipo IN ('estorno','estorno_credito')
-          AND cliente_id = ${row.cliente_id}
-          AND valor_centavos = ${row.valor_centavos}
-        LIMIT 1
-      `)
-      if (jaEstornado.rows.length > 0) continue
+      const chave = `${row.cliente_id}|${row.tipo}|${row.valor_centavos}`
+      const jaEstornados = restante.get(chave) ?? 0
+      if (jaEstornados > 0) { restante.set(chave, jaEstornados - 1); continue }
 
       const tipoEstorno = row.tipo === 'credito' ? 'estorno_credito' : 'estorno'
       await this.db.execute(sql`

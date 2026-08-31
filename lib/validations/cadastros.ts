@@ -52,6 +52,9 @@ export const clienteInsertSchema = z.object({
   // maioria é consumidor comum, e supor contribuinte seria pior.
   inscricaoEstadual: z.string().max(20).optional().nullable(),
   indicadorIe:       z.enum(['1', '2', '9']).default('9'),
+  // Quem indicou este cliente — só é definido no cadastro (ver comentário
+  // em lib/db/schemas/cadastros.ts).
+  indicadoPorClienteId: z.number().int().positive().optional().nullable(),
 })
 
 /**
