@@ -208,12 +208,12 @@ export class FiscalService {
       SELECT p.nome AS produto_nome, p.ncm, p.cest, p.origem, p.unidade_tributavel,
              pt1.perfil_trib_id AS c_id, pt1.nome AS c_nome, pt1.origem_mercadoria AS c_origem_merc,
              pt1.cfop_interno AS c_cfop_i, pt1.cfop_interestadual AS c_cfop_e,
-             pt1.csosn AS c_csosn, pt1.cst_icms AS c_cst, pt1.aliq_icms AS c_aliq_icms,
+             pt1.csosn AS c_csosn, pt1.csosn_sem_st AS c_csosn_sem_st, pt1.cst_icms AS c_cst, pt1.cst_sem_st AS c_cst_sem_st, pt1.aliq_icms AS c_aliq_icms,
              pt1.cst_pis AS c_cst_pis, pt1.aliq_pis AS c_aliq_pis, pt1.cst_cofins AS c_cst_cofins, pt1.aliq_cofins AS c_aliq_cofins,
              pt1.cst_ipi AS c_cst_ipi, pt1.aliq_ipi AS c_aliq_ipi, pt1.tem_st AS c_tem_st, pt1.mva AS c_mva, pt1.aliq_icms_st AS c_st,
              pt2.perfil_trib_id AS cf_id, pt2.nome AS cf_nome, pt2.origem_mercadoria AS cf_origem_merc,
              pt2.cfop_interno AS cf_cfop_i, pt2.cfop_interestadual AS cf_cfop_e,
-             pt2.csosn AS cf_csosn, pt2.cst_icms AS cf_cst, pt2.aliq_icms AS cf_aliq_icms,
+             pt2.csosn AS cf_csosn, pt2.csosn_sem_st AS cf_csosn_sem_st, pt2.cst_icms AS cf_cst, pt2.cst_sem_st AS cf_cst_sem_st, pt2.aliq_icms AS cf_aliq_icms,
              pt2.cst_pis AS cf_cst_pis, pt2.aliq_pis AS cf_aliq_pis, pt2.cst_cofins AS cf_cst_cofins, pt2.aliq_cofins AS cf_aliq_cofins,
              pt2.cst_ipi AS cf_cst_ipi, pt2.aliq_ipi AS cf_aliq_ipi, pt2.tem_st AS cf_tem_st, pt2.mva AS cf_mva, pt2.aliq_icms_st AS cf_st
         FROM t_produto p
@@ -230,7 +230,13 @@ export class FiscalService {
     if (!perfilId) return { faltaPerfil: true } as any
 
     const origemMercadoria: OrigemMercadoria | null = row[`${pfx}origem_merc`] ?? null
-    let temSt = row[`${pfx}tem_st`] === true
+    // DENTRO do estado herda o "tem ST" do perfil (é a regra do estado da
+    // própria empresa). FORA do estado, o padrão é SEM ST — o protocolo de
+    // substituição tributária normalmente vale só intra-estadual; conferido
+    // contra DANFE real (venda pra fora não trouxe ST nenhuma, e o CSOSN
+    // também mudou junto, não só o CFOP). Estado específico que também
+    // tem ST vira exceção em t_icms_st_uf, não o padrão.
+    let temSt = mesmoEstado ? row[`${pfx}tem_st`] === true : false
     let mva = row[`${pfx}mva`]
     let aliqIcmsSt = row[`${pfx}st`]
     let mvaPorEstado = false
@@ -255,7 +261,14 @@ export class FiscalService {
       origem: row.origem ?? null, unidadeTributavel: row.unidade_tributavel ?? null,
       perfilTribId: perfilId, perfilNome: row[`${pfx}nome`],
       mesmoEstado, cfop: cfop ?? null,
-      csosnOuCst: (simples ? row[`${pfx}csosn`] : row[`${pfx}cst`]) ?? null,
+      // Sem ST, o CSOSN/CST muda de verdade — não é o mesmo código com o
+      // grupo de ST vazio (ex.: 201 vira 102, não "201 sem MVA"). Perfil sem
+      // o par "sem ST" cadastrado mantém o comportamento de sempre (mesmo
+      // código, com ou sem ST) — não força nada em perfil que ninguém revisou.
+      csosnOuCst: (temSt
+        ? (simples ? row[`${pfx}csosn`] : row[`${pfx}cst`])
+        : (simples ? (row[`${pfx}csosn_sem_st`] ?? row[`${pfx}csosn`]) : (row[`${pfx}cst_sem_st`] ?? row[`${pfx}cst`]))
+      ) ?? null,
       aliqIcms: Number(row[`${pfx}aliq_icms`] ?? 0),
       temSt, mva: temSt ? Number(mva ?? 0) : 0, aliqIcmsSt: temSt ? Number(aliqIcmsSt ?? 0) : 0, mvaPorEstado,
       cstPis: row[`${pfx}cst_pis`] ?? null, aliqPis: Number(row[`${pfx}aliq_pis`] ?? 0),

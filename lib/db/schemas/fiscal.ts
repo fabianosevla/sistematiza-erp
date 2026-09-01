@@ -74,11 +74,17 @@ export const dbPerfilTributario = pgTable('t_perfil_tributario', {
   // producao_propria | revenda — null = perfil legado, CFOP fica manual.
   origemMercadoria:  varchar('origem_mercadoria', { length: 20 }),
 
-  // Simples Nacional
+  // Simples Nacional. csosnSemSt é o par sem substituição tributária — não
+  // é o mesmo código com o campo de ST vazio. Ex.: 201 (com ST) tem como
+  // par 102 (sem ST), não é "201 sem preencher MVA". Usado quando a venda
+  // cai num estado sem essa ST (ver ARMADILHAS: protocolo costuma ser só
+  // intra-estadual — descoberto conferindo DANFE real).
   csosn:            varchar('csosn', { length: 4 }),
+  csosnSemSt:       varchar('csosn_sem_st', { length: 4 }),
 
   // Regime normal
   cstIcms:          varchar('cst_icms', { length: 3 }),
+  cstSemSt:         varchar('cst_sem_st', { length: 3 }),
   aliqIcms:         numeric('aliq_icms', { precision: 5, scale: 2 }).notNull().default('0'),
   redBaseIcms:      numeric('red_base_icms', { precision: 5, scale: 2 }).notNull().default('0'),
 

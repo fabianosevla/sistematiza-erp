@@ -22,7 +22,7 @@ const VAZIO = {
   nome: '', descricao: '',
   origemMercadoria: '' as '' | OrigemMercadoria,
   cfopInterno: '', cfopInterestadual: '',
-  csosn: '', cstIcms: '', aliqIcms: '0', redBaseIcms: '0',
+  csosn: '', csosnSemSt: '', cstIcms: '', cstSemSt: '', aliqIcms: '0', redBaseIcms: '0',
   temSt: false, mva: '0', aliqIcmsSt: '0',
   cstPis: '', aliqPis: '0', cstCofins: '', aliqCofins: '0',
   cstIpi: '', aliqIpi: '0', infoAdicional: '',
@@ -68,7 +68,7 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
       nome: p.nome ?? '', descricao: p.descricao ?? '',
       origemMercadoria: p.origemMercadoria ?? '',
       cfopInterno: p.cfopInterno ?? '', cfopInterestadual: p.cfopInterestadual ?? '',
-      csosn: p.csosn ?? '', cstIcms: p.cstIcms ?? '',
+      csosn: p.csosn ?? '', csosnSemSt: p.csosnSemSt ?? '', cstIcms: p.cstIcms ?? '', cstSemSt: p.cstSemSt ?? '',
       aliqIcms: String(p.aliqIcms ?? 0), redBaseIcms: String(p.redBaseIcms ?? 0),
       temSt: !!p.temSt, mva: String(p.mva ?? 0), aliqIcmsSt: String(p.aliqIcmsSt ?? 0),
       cstPis: p.cstPis ?? '', aliqPis: String(p.aliqPis ?? 0),
@@ -252,6 +252,23 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
                   <Label>CST — regime normal</Label>
                   <Input value={form.cstIcms} onChange={e => setF('cstIcms', e.target.value)}
                     placeholder="00" maxLength={3} className="mt-1" />
+                </div>
+                <div>
+                  <Label className="flex items-center gap-1">
+                    CSOSN sem ST
+                    <InfoTip titulo="Por que existe um segundo CSOSN">
+                      Fora do estado (ou estado sem ST cadastrado), o CSOSN muda de verdade — não é o
+                      mesmo código sem o grupo de ST. Ex.: 201 (com ST) vira 102 (sem ST), não "201 vazio".
+                      Vazio aqui mantém o CSOSN de cima sempre, com ou sem ST.
+                    </InfoTip>
+                  </Label>
+                  <Input value={form.csosnSemSt} onChange={e => setF('csosnSemSt', e.target.value)}
+                    placeholder="Ex.: 102" maxLength={4} className="mt-1" />
+                </div>
+                <div>
+                  <Label>CST sem ST (regime normal)</Label>
+                  <Input value={form.cstSemSt} onChange={e => setF('cstSemSt', e.target.value)}
+                    placeholder="Opcional" maxLength={3} className="mt-1" />
                 </div>
                 <div>
                   <Label>Alíquota ICMS (%)</Label>
