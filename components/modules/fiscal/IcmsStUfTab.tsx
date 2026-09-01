@@ -25,7 +25,7 @@ const UFS = [
   'PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO',
 ]
 
-const VAZIO = { perfilTribId: '', ufDestino: '', mva: '0', aliqIcmsSt: '0', fonte: '', observacao: '' }
+const VAZIO = { perfilTribId: '', ufDestino: '', temSt: '', mva: '0', aliqIcmsSt: '0', fonte: '', observacao: '' }
 
 export default function IcmsStUfTab({ tenantSlug }: Props) {
   const { toast } = useToast()
@@ -43,7 +43,8 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/fiscal/perfis`)).json(),
   })
   const perfis: any[] = perfisRaw?.data?.perfis ?? []
-  const perfisComSt = perfis.filter((p: any) => p.temSt)
+  // Não filtra só perfil com ST: o override por estado pode LIGAR ST onde o
+  // perfil não tem, não só ajustar valor de onde já tem.
   const nomePerfil = (id: number) => perfis.find((p: any) => p.perfilTribId === id)?.nome ?? `#${id}`
 
   const { data, isLoading } = useQuery({
@@ -83,6 +84,7 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
     setEdit(l)
     setForm({
       perfilTribId: String(l.perfilTribId), ufDestino: l.ufDestino,
+      temSt: l.temSt === true ? 'sim' : l.temSt === false ? 'nao' : '',
       mva: String(l.mva), aliqIcmsSt: String(l.aliqIcmsSt),
       fonte: l.fonte ?? '', observacao: l.observacao ?? '',
     })
@@ -95,6 +97,11 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
     )},
     { chave: 'ufDestino', titulo: 'Estado', render: (l: any) => (
       <span className="text-sm font-mono text-gray-900">{l.ufDestino}</span>
+    )},
+    { chave: 'temSt', titulo: 'Tem ST', render: (l: any) => (
+      l.temSt === true ? <span className="text-sm text-green-700">Sim</span>
+      : l.temSt === false ? <span className="text-sm text-red-600">Não</span>
+      : <span className="text-sm text-gray-400">Herda do perfil</span>
     )},
     { chave: 'mva', titulo: 'MVA', alinhamento: 'right', render: (l: any) => (
       <span className="text-sm text-gray-600">{l.mva}%</span>
@@ -124,7 +131,7 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
         carregando={isLoading}
         vazio="Nenhum valor específico por estado — tudo usa o padrão do perfil."
         ferramentas={
-          <Button size="sm" onClick={abrirNovo} disabled={perfisComSt.length === 0}>
+          <Button size="sm" onClick={abrirNovo} disabled={perfis.length === 0}>
             <Plus size={14} className="mr-1" /> Novo valor por estado
           </Button>
         }
@@ -135,8 +142,8 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
           </>
         )}
       />
-      {perfisComSt.length === 0 && (
-        <p className="text-xs text-amber-600">Nenhum perfil tributário está marcado com substituição tributária ainda.</p>
+      {perfis.length === 0 && (
+        <p className="text-xs text-amber-600">Nenhum perfil tributário cadastrado ainda.</p>
       )}
 
       {painel && (
@@ -156,7 +163,7 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
                 <select value={form.perfilTribId} onChange={e => setF('perfilTribId', e.target.value)}
                   className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
                   <option value="">Selecionar...</option>
-                  {perfisComSt.map((p: any) => <option key={p.perfilTribId} value={p.perfilTribId}>{p.nome}</option>)}
+                  {perfis.map((p: any) => <option key={p.perfilTribId} value={p.perfilTribId}>{p.nome}</option>)}
                 </select>
               </div>
               <div>
@@ -168,10 +175,28 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label>MVA (%)</Label><Input value={form.mva} onChange={e => setF('mva', e.target.value)} className="sem-spinner mt-1" inputMode="decimal" /></div>
-              <div><Label>Alíquota ICMS-ST (%)</Label><Input value={form.aliqIcmsSt} onChange={e => setF('aliqIcmsSt', e.target.value)} className="sem-spinner mt-1" inputMode="decimal" /></div>
+            <div>
+              <Label className="inline-flex items-center gap-1">
+                Tem ST neste estado?
+                <InfoTip titulo="Por que perguntar de novo">
+                  O protocolo de substituição tributária é por estado — nem todo estado aderiu ao mesmo.
+                  "Herdar do perfil" mantém o comportamento padrão; escolha Sim ou Não só quando
+                  este estado específico divergir do perfil.
+                </InfoTip>
+              </Label>
+              <select value={form.temSt} onChange={e => setF('temSt', e.target.value)}
+                className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                <option value="">Herdar do perfil</option>
+                <option value="sim">Sim, tem ST neste estado</option>
+                <option value="nao">Não, não tem ST neste estado</option>
+              </select>
             </div>
+            {form.temSt !== 'nao' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label>MVA (%)</Label><Input value={form.mva} onChange={e => setF('mva', e.target.value)} className="sem-spinner mt-1" inputMode="decimal" /></div>
+                <div><Label>Alíquota ICMS-ST (%)</Label><Input value={form.aliqIcmsSt} onChange={e => setF('aliqIcmsSt', e.target.value)} className="sem-spinner mt-1" inputMode="decimal" /></div>
+              </div>
+            )}
             <div>
               <Label className="inline-flex items-center gap-1">
                 Fonte

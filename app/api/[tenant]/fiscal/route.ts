@@ -101,6 +101,15 @@ export async function POST(req: NextRequest, { params }: Params) {
       if (action === 'fechar-turno') {
         return ok(await fiscal.fecharTurno({ ...body, userId }))
       }
+      // Devolução, transferência, bonificação e afins — CFOP/CSOSN vêm da
+      // regra escolhida, não do perfil do produto (ver criarNotaOperacao).
+      if (action === 'criar-operacao') {
+        try {
+          return created(await fiscal.criarNotaOperacao({ ...body, userId }))
+        } catch (err: any) {
+          return badRequest(err?.message || 'Falha ao registrar a operação.')
+        }
+      }
       // Emissão/cancelamento passam pela Focus (ou quem estiver configurado) —
       // erro daqui quase sempre já vem com mensagem útil (SEFAZ, validação de
       // parametrização, token). Mandar isso pro serverError() genérico

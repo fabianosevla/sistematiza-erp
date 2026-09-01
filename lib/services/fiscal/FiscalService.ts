@@ -2,6 +2,7 @@ import { and, eq, desc, gte, lte, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbNotaFiscal, dbNotaFiscalItem, dbTurnoCaixa } from '@/lib/db/schemas/fiscal'
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
+import { resolverCfopVenda, type OrigemMercadoria } from '@/lib/fiscal/cfopVenda'
 
 /**
  * Data/hora de emissão no horário de Brasília, formato que o próprio exemplo
@@ -166,6 +167,104 @@ export class FiscalService {
   }
 
   /**
+   * Resolve CFOP, CSOSN/CST, alíquotas e ST de uma venda — um produto, um
+   * destinatário (contribuinte ou não), um estado de destino. Usado por
+   * criarNota (por item) e pelo simulador: um caminho só, pra não existirem
+   * dois lugares calculando a mesma coisa e podendo divergir.
+   *
+   * CFOP: se o perfil tem `origem_mercadoria` preenchida, é CALCULADO (ver
+   * lib/fiscal/cfopVenda.ts) a partir de origem × tem-ST × mesmo-estado —
+   * não dá pra ficar inconsistente com o "tem ST" do mesmo perfil. Perfil
+   * antigo sem essa origem preenchida cai no comportamento de sempre: CFOP
+   * fixo, digitado nos campos cfop_interno/cfop_interestadual.
+   *
+   * ST: cada (perfil, estado de destino) pode ter uma linha em
+   * t_icms_st_uf dizendo se TEM ou NÃO TEM ST ali (o protocolo é estadual —
+   * nem todo estado aderiu ao mesmo), com MVA/alíquota próprios. Sem linha
+   * pro estado, herda o "tem ST" e os valores do perfil.
+   */
+  async resolverFiscalVenda({ produtoId, ehParaContribuinte, ufDestino }: {
+    produtoId: number
+    ehParaContribuinte: boolean
+    ufDestino?: string
+  }): Promise<{
+    produtoNome: string; ncm: string | null; cest: string | null; origem: string | null; unidadeTributavel: string | null
+    perfilTribId: number; perfilNome: string
+    mesmoEstado: boolean; cfop: string | null
+    csosnOuCst: string | null; aliqIcms: number
+    temSt: boolean; mva: number; aliqIcmsSt: number; mvaPorEstado: boolean
+    cstPis: string | null; aliqPis: number; cstCofins: string | null; aliqCofins: number
+    cstIpi: string | null; aliqIpi: number
+    faltaPerfil?: boolean
+  } | null> {
+    const cfgRes = await this.db.execute(sql`SELECT uf, crt FROM t_configuracoes_tenant LIMIT 1`)
+    const cfg: any = (cfgRes.rows as any[])[0] ?? {}
+    const ufEmpresa = String(cfg.uf ?? '').toUpperCase()
+    const ufDestinoResolvido = String(ufDestino ?? ufEmpresa).toUpperCase()
+    const mesmoEstado = !ufDestinoResolvido || ufDestinoResolvido === ufEmpresa
+    const simples = ['1', '2'].includes(String(cfg.crt ?? ''))
+
+    const r = await this.db.execute(sql`
+      SELECT p.nome AS produto_nome, p.ncm, p.cest, p.origem, p.unidade_tributavel,
+             pt1.perfil_trib_id AS c_id, pt1.nome AS c_nome, pt1.origem_mercadoria AS c_origem_merc,
+             pt1.cfop_interno AS c_cfop_i, pt1.cfop_interestadual AS c_cfop_e,
+             pt1.csosn AS c_csosn, pt1.cst_icms AS c_cst, pt1.aliq_icms AS c_aliq_icms,
+             pt1.cst_pis AS c_cst_pis, pt1.aliq_pis AS c_aliq_pis, pt1.cst_cofins AS c_cst_cofins, pt1.aliq_cofins AS c_aliq_cofins,
+             pt1.cst_ipi AS c_cst_ipi, pt1.aliq_ipi AS c_aliq_ipi, pt1.tem_st AS c_tem_st, pt1.mva AS c_mva, pt1.aliq_icms_st AS c_st,
+             pt2.perfil_trib_id AS cf_id, pt2.nome AS cf_nome, pt2.origem_mercadoria AS cf_origem_merc,
+             pt2.cfop_interno AS cf_cfop_i, pt2.cfop_interestadual AS cf_cfop_e,
+             pt2.csosn AS cf_csosn, pt2.cst_icms AS cf_cst, pt2.aliq_icms AS cf_aliq_icms,
+             pt2.cst_pis AS cf_cst_pis, pt2.aliq_pis AS cf_aliq_pis, pt2.cst_cofins AS cf_cst_cofins, pt2.aliq_cofins AS cf_aliq_cofins,
+             pt2.cst_ipi AS cf_cst_ipi, pt2.aliq_ipi AS cf_aliq_ipi, pt2.tem_st AS cf_tem_st, pt2.mva AS cf_mva, pt2.aliq_icms_st AS cf_st
+        FROM t_produto p
+        LEFT JOIN t_perfil_tributario pt1 ON pt1.perfil_trib_id = p.perfil_trib_id
+        LEFT JOIN t_perfil_tributario pt2 ON pt2.perfil_trib_id = p.perfil_trib_consumidor_final_id
+       WHERE p.produto_id = ${produtoId}
+       LIMIT 1
+    `)
+    const row: any = (r.rows as any[])[0]
+    if (!row) return null
+
+    const pfx = ehParaContribuinte ? 'c_' : 'cf_'
+    const perfilId = row[`${pfx}id`]
+    if (!perfilId) return { faltaPerfil: true } as any
+
+    const origemMercadoria: OrigemMercadoria | null = row[`${pfx}origem_merc`] ?? null
+    let temSt = row[`${pfx}tem_st`] === true
+    let mva = row[`${pfx}mva`]
+    let aliqIcmsSt = row[`${pfx}st`]
+    let mvaPorEstado = false
+
+    const ufRow = await this.db.execute(sql`
+      SELECT mva, aliq_icms_st, tem_st FROM t_icms_st_uf
+       WHERE perfil_trib_id = ${perfilId} AND uf_destino = ${ufDestinoResolvido} AND active_flg = true
+       LIMIT 1
+    `)
+    const linhaUf: any = (ufRow.rows as any[])[0]
+    if (linhaUf) {
+      if (linhaUf.tem_st !== null && linhaUf.tem_st !== undefined) temSt = linhaUf.tem_st === true
+      if (temSt) { mva = linhaUf.mva ?? mva; aliqIcmsSt = linhaUf.aliq_icms_st ?? aliqIcmsSt; mvaPorEstado = true }
+    }
+
+    const cfop = origemMercadoria
+      ? resolverCfopVenda(origemMercadoria, temSt, mesmoEstado)
+      : (mesmoEstado ? row[`${pfx}cfop_i`] : row[`${pfx}cfop_e`])
+
+    return {
+      produtoNome: row.produto_nome, ncm: row.ncm ?? null, cest: row.cest ?? null,
+      origem: row.origem ?? null, unidadeTributavel: row.unidade_tributavel ?? null,
+      perfilTribId: perfilId, perfilNome: row[`${pfx}nome`],
+      mesmoEstado, cfop: cfop ?? null,
+      csosnOuCst: (simples ? row[`${pfx}csosn`] : row[`${pfx}cst`]) ?? null,
+      aliqIcms: Number(row[`${pfx}aliq_icms`] ?? 0),
+      temSt, mva: temSt ? Number(mva ?? 0) : 0, aliqIcmsSt: temSt ? Number(aliqIcmsSt ?? 0) : 0, mvaPorEstado,
+      cstPis: row[`${pfx}cst_pis`] ?? null, aliqPis: Number(row[`${pfx}aliq_pis`] ?? 0),
+      cstCofins: row[`${pfx}cst_cofins`] ?? null, aliqCofins: Number(row[`${pfx}aliq_cofins`] ?? 0),
+      cstIpi: row[`${pfx}cst_ipi`] ?? null, aliqIpi: Number(row[`${pfx}aliq_ipi`] ?? 0),
+    }
+  }
+
+  /**
    * Cria o rascunho da nota, JÁ COM A TRIBUTAÇÃO RESOLVIDA.
    *
    * A resolução acontece aqui, e não na hora de emitir, de propósito: nota é
@@ -194,16 +293,6 @@ export class FiscalService {
   }) {
     const now = new Date()
     const subtotal = payload.itens.reduce((a, i) => a + (i.precoUnitario * i.quantidade - (i.descontoItem ?? 0)), 0)
-
-    // UF do destinatário decide entre CFOP interno e interestadual.
-    const cfgRes = await this.db.execute(sql`
-      SELECT uf, crt FROM t_configuracoes_tenant LIMIT 1
-    `)
-    const cfg: any = (cfgRes.rows as any[])[0] ?? {}
-    const ufEmpresa = String(cfg.uf ?? '').toUpperCase()
-    const ufDestino = String(payload.uf ?? ufEmpresa).toUpperCase()
-    const dentroDoEstado = !ufDestino || ufDestino === ufEmpresa
-    const simples = ['1', '2'].includes(String(cfg.crt ?? ''))
 
     // NFC-e é sempre venda a consumidor final. NF-e é a contribuinte só
     // quando o destinatário tem CNPJ — mesma regra usada em emitirViaFocusNfe
@@ -245,90 +334,21 @@ export class FiscalService {
     }).returning({ notaId: dbNotaFiscal.notaId })
 
     for (const item of payload.itens) {
-      // Busca o que o contador parametrizou. Sem produtoId — item avulso
-      // digitado à mão — os campos ficam vazios e a emissão vai reclamar.
-      let fiscal: any = {}
-      if (item.produtoId) {
-        // Dois perfis possíveis por produto: pt1 (venda a contribuinte) e
-        // pt2 (consumidor final). Busca os dois e escolhe pelo tipo da nota
-        // — não dá pra decidir isso com uma coluna só, CFOP e CSOSN mudam.
-        const r = await this.db.execute(sql`
-          SELECT p.ncm, p.cest, p.origem, p.unidade_tributavel,
-                 pt1.perfil_trib_id AS c_perfil_trib_id, pt2.perfil_trib_id AS cf_perfil_trib_id,
-                 pt1.cfop_interno AS c_cfop_interno, pt1.cfop_interestadual AS c_cfop_interestadual,
-                 pt1.csosn AS c_csosn, pt1.cst_icms AS c_cst_icms, pt1.aliq_icms AS c_aliq_icms,
-                 pt1.cst_pis AS c_cst_pis, pt1.aliq_pis AS c_aliq_pis, pt1.cst_cofins AS c_cst_cofins, pt1.aliq_cofins AS c_aliq_cofins,
-                 pt1.cst_ipi AS c_cst_ipi, pt1.aliq_ipi AS c_aliq_ipi, pt1.tem_st AS c_tem_st, pt1.mva AS c_mva, pt1.aliq_icms_st AS c_aliq_icms_st,
-                 pt2.cfop_interno AS cf_cfop_interno, pt2.cfop_interestadual AS cf_cfop_interestadual,
-                 pt2.csosn AS cf_csosn, pt2.cst_icms AS cf_cst_icms, pt2.aliq_icms AS cf_aliq_icms,
-                 pt2.cst_pis AS cf_cst_pis, pt2.aliq_pis AS cf_aliq_pis, pt2.cst_cofins AS cf_cst_cofins, pt2.aliq_cofins AS cf_aliq_cofins,
-                 pt2.cst_ipi AS cf_cst_ipi, pt2.aliq_ipi AS cf_aliq_ipi, pt2.tem_st AS cf_tem_st, pt2.mva AS cf_mva, pt2.aliq_icms_st AS cf_aliq_icms_st
-            FROM t_produto p
-            LEFT JOIN t_perfil_tributario pt1 ON pt1.perfil_trib_id = p.perfil_trib_id
-            LEFT JOIN t_perfil_tributario pt2 ON pt2.perfil_trib_id = p.perfil_trib_consumidor_final_id
-           WHERE p.produto_id = ${item.produtoId}
-           LIMIT 1
-        `)
-        const row = (r.rows as any[])[0] ?? {}
-        const pfx = ehParaContribuinte ? 'c_' : 'cf_'
-        fiscal = {
-          ncm: row.ncm, cest: row.cest, origem: row.origem, unidade_tributavel: row.unidade_tributavel,
-          perfil_trib_id:     row[`${pfx}perfil_trib_id`],
-          cfop_interno:       row[`${pfx}cfop_interno`],
-          cfop_interestadual: row[`${pfx}cfop_interestadual`],
-          csosn:      row[`${pfx}csosn`],
-          cst_icms:   row[`${pfx}cst_icms`],
-          aliq_icms:  row[`${pfx}aliq_icms`],
-          cst_pis:    row[`${pfx}cst_pis`],
-          aliq_pis:   row[`${pfx}aliq_pis`],
-          cst_cofins: row[`${pfx}cst_cofins`],
-          aliq_cofins:row[`${pfx}aliq_cofins`],
-          cst_ipi:    row[`${pfx}cst_ipi`],
-          aliq_ipi:   row[`${pfx}aliq_ipi`],
-          tem_st:     row[`${pfx}tem_st`],
-          mva:        row[`${pfx}mva`],
-          aliq_icms_st: row[`${pfx}aliq_icms_st`],
-        }
-      }
+      // Um resolvedor só (resolverFiscalVenda), usado aqui e no simulador —
+      // dois caminhos separados calculando a mesma coisa é como duas
+      // respostas iguais na aparência divergem sem ninguém perceber.
+      const fiscal = item.produtoId
+        ? await this.resolverFiscalVenda({ produtoId: item.produtoId, ehParaContribuinte, ufDestino: payload.uf })
+        : null
 
-      const cfop = dentroDoEstado ? fiscal.cfop_interno : fiscal.cfop_interestadual
       const valorTotal = Math.max(0, item.precoUnitario * item.quantidade - (item.descontoItem ?? 0))
-      const aliqIcms = Number(fiscal.aliq_icms ?? 0)
-
-      // ── SUBSTITUIÇÃO TRIBUTÁRIA ──────────────────────────────────────────
-      //
-      // O perfil guardava MVA e alíquota e nada disso chegava na nota: a
-      // emissão saía sem o grupo de ST, que a SEFAZ exige quando o CSOSN é
-      // 201. Rejeição na certa.
-      //
-      // A conta reproduz exatamente a NF-e 3.313 do Everest:
-      //   base ST = valor × (1 + MVA)        1.317,00 × 1,35 = 1.777,95 ✓
-      //   ST      = base × alíq − valor × alíq
-      //             1.777,95 × 18% − 1.317,00 × 18% = 82,97   (DANFE: 82,98,
-      //             diferença de arredondamento por item)
-      //
-      // A dedução usa a mesma alíquota interna como "ICMS próprio presumido",
-      // que é o tratamento do Simples em MG. O contador precisa confirmar —
-      // está anotado no kit.
-      // MVA/alíquota por estado de destino, quando cadastrado (ver
-      // t_icms_st_uf) — protocolo de ST é estadual, um valor único pro
-      // perfil inteiro só está certo por coincidência. Sem linha pro estado,
-      // cai no valor do perfil, que é o comportamento de sempre.
-      let mvaEfetivo = fiscal.mva, aliqStEfetiva = fiscal.aliq_icms_st
-      if (fiscal.tem_st === true && fiscal.perfil_trib_id && ufDestino) {
-        const uf = await this.db.execute(sql`
-          SELECT mva, aliq_icms_st FROM t_icms_st_uf
-           WHERE perfil_trib_id = ${fiscal.perfil_trib_id} AND uf_destino = ${ufDestino} AND active_flg = true
-           LIMIT 1
-        `)
-        const linhaUf = (uf.rows as any[])[0]
-        if (linhaUf) { mvaEfetivo = linhaUf.mva; aliqStEfetiva = linhaUf.aliq_icms_st }
-      }
-
-      const temSt   = fiscal.tem_st === true
-      const mva     = temSt ? Number(mvaEfetivo ?? 0) : 0
-      const aliqSt  = temSt ? Number(aliqStEfetiva ?? 0) : 0
-      const baseSt  = temSt ? Math.round(valorTotal * (1 + mva / 100)) : 0
+      const aliqIcms = fiscal?.aliqIcms ?? 0
+      const temSt = fiscal?.temSt === true
+      const mva = temSt ? (fiscal?.mva ?? 0) : 0
+      const aliqSt = temSt ? (fiscal?.aliqIcmsSt ?? 0) : 0
+      // base ST = valor × (1 + MVA); ST = (base × alíq) − (valor × alíq).
+      // Conferido contra a NF-e 3.313 do Everest, centavo a centavo.
+      const baseSt = temSt ? Math.round(valorTotal * (1 + mva / 100)) : 0
       const valorSt = temSt
         ? Math.max(0, Math.round(baseSt * aliqSt / 100) - Math.round(valorTotal * aliqSt / 100))
         : 0
@@ -340,31 +360,100 @@ export class FiscalService {
         quantidade: String(item.quantidade),
         precoUnitario: item.precoUnitario,
         valorTotal,
-        ncm:  fiscal.ncm  ?? null,
-        cfop: cfop ?? null,
-        unidade: fiscal.unidade_tributavel ?? null,
-        // No Simples vale o CSOSN; no regime normal, o CST. Guardar o que não
-        // se aplica só confundiria quem for conferir a nota depois.
-        cstCsosn: (simples ? fiscal.csosn : fiscal.cst_icms) ?? null,
+        ncm:  fiscal?.ncm  ?? null,
+        cfop: fiscal?.cfop ?? null,
+        unidade: fiscal?.unidadeTributavel ?? null,
+        cstCsosn: fiscal?.csosnOuCst ?? null,
         aliqIcms: String(aliqIcms),
         valorIcms: Math.round(valorTotal * aliqIcms / 100),
-        aliqIpi: String(fiscal.aliq_ipi ?? 0),
+        aliqIpi: String(fiscal?.aliqIpi ?? 0),
         baseSt, valorSt, mva: String(mva), aliqSt: String(aliqSt),
-        // PIS e COFINS vêm do perfil. Antes a emissão mandava '07' — isento —
-        // para todo item, e alimento com alíquota zero saía igual a alimento
-        // tributado. Ninguém percebia, porque a nota era autorizada do mesmo
-        // jeito.
-        cstPis:      fiscal.cst_pis    ?? null,
-        aliqPis:     String(fiscal.aliq_pis ?? 0),
-        valorPis:    Math.round(valorTotal * Number(fiscal.aliq_pis ?? 0) / 100),
-        cstCofins:   fiscal.cst_cofins ?? null,
-        aliqCofins:  String(fiscal.aliq_cofins ?? 0),
-        valorCofins: Math.round(valorTotal * Number(fiscal.aliq_cofins ?? 0) / 100),
-        origem:      fiscal.origem ?? '0',
-        cest:        fiscal.cest   ?? null,
+        cstPis:      fiscal?.cstPis    ?? null,
+        aliqPis:     String(fiscal?.aliqPis ?? 0),
+        valorPis:    Math.round(valorTotal * (fiscal?.aliqPis ?? 0) / 100),
+        cstCofins:   fiscal?.cstCofins ?? null,
+        aliqCofins:  String(fiscal?.aliqCofins ?? 0),
+        valorCofins: Math.round(valorTotal * (fiscal?.aliqCofins ?? 0) / 100),
+        origem:      fiscal?.origem ?? '0',
+        cest:        fiscal?.cest   ?? null,
         createdBy: payload.userId, updatedBy: payload.userId, createdDt: now, updatedDt: now,
       })
     }
+    return { notaId: nota.notaId }
+  }
+
+  /**
+   * Cria o rascunho de uma nota de OPERAÇÃO QUE NÃO É VENDA — devolução,
+   * transferência, bonificação, remessa para industrialização/conserto,
+   * consignação, compra de uso/consumo ou de ativo. CFOP e CSOSN/CST vêm da
+   * regra escolhida (t_cfop_regra), não do perfil tributário do produto —
+   * aqui não varia por produto, só pelo tipo de operação (ver comentário em
+   * lib/db/schemas/fiscal.ts).
+   *
+   * mesmo cuidado de criarNota: falta CSOSN/CST sugerido na regra, o campo
+   * fica vazio e a emissão recusa depois — nada é inventado aqui.
+   */
+  async criarNotaOperacao(payload: {
+    cfopRegraId: number
+    cnpjCpf?: string; razaoSocial?: string; uf?: string
+    clienteId?: number
+    observacao?: string
+    itens: { produtoId?: number; descricao: string; quantidade: number; precoUnitario: number }[]
+    userId: number
+  }) {
+    const now = new Date()
+
+    const [regra] = (await this.db.execute(sql`
+      SELECT cfop_regra_id, tipo_operacao, direcao, localizacao, cfop, csosn_sugerido, cst_sugerido
+        FROM t_cfop_regra WHERE cfop_regra_id = ${payload.cfopRegraId} AND active_flg = true
+    `)).rows as any[]
+    if (!regra) throw new Error('Regra de CFOP não encontrada.')
+
+    const cfgRes = await this.db.execute(sql`SELECT crt FROM t_configuracoes_tenant LIMIT 1`)
+    const simples = ['1', '2'].includes(String((cfgRes.rows[0] as any)?.crt ?? ''))
+    const cstCsosn = (simples ? regra.csosn_sugerido : regra.cst_sugerido) ?? null
+
+    let dest: any = {}
+    if (payload.clienteId) {
+      const r = await this.db.execute(sql`
+        SELECT cep, endereco, numero, complemento, bairro, cidade, uf, inscricao_estadual, indicador_ie
+          FROM t_cliente WHERE cliente_id = ${payload.clienteId}
+      `)
+      dest = (r.rows as any[])[0] ?? {}
+    }
+
+    const subtotal = payload.itens.reduce((a, i) => a + i.precoUnitario * i.quantidade, 0)
+
+    const [nota] = await this.db.insert(dbNotaFiscal).values({
+      tipo: 'NF-e', status: 'pendente', dataEmissao: now,
+      cnpjCpf: payload.cnpjCpf ?? null, razaoSocial: payload.razaoSocial ?? null,
+      uf: payload.uf ?? dest.uf ?? null, cfop: regra.cfop,
+      cfopRegraId: regra.cfop_regra_id,
+      ie: dest.inscricao_estadual ?? null,
+      indicadorIe: dest.indicador_ie ?? '9',
+      cep: dest.cep ?? null, logradouro: dest.endereco ?? null, numeroDest: dest.numero ?? null,
+      complemento: dest.complemento ?? null, bairro: dest.bairro ?? null, municipio: dest.cidade ?? null,
+      valorProdutos: subtotal, valorTotal: subtotal,
+      observacao: `${regra.tipo_operacao}${payload.observacao ? ' — ' + payload.observacao : ''}`,
+      createdBy: payload.userId, updatedBy: payload.userId, createdDt: now, updatedDt: now,
+    }).returning({ notaId: dbNotaFiscal.notaId })
+
+    for (const item of payload.itens) {
+      let ncm: string | null = null, cest: string | null = null
+      if (item.produtoId) {
+        const r = await this.db.execute(sql`SELECT ncm, cest FROM t_produto WHERE produto_id = ${item.produtoId}`)
+        const row = (r.rows as any[])[0]
+        ncm = row?.ncm ?? null; cest = row?.cest ?? null
+      }
+      const valorTotal = Math.max(0, item.precoUnitario * item.quantidade)
+      await this.db.insert(dbNotaFiscalItem).values({
+        notaId: nota.notaId, produtoId: item.produtoId ?? null, descricao: item.descricao,
+        quantidade: String(item.quantidade), precoUnitario: item.precoUnitario, valorTotal,
+        ncm, cest, cfop: regra.cfop, cstCsosn,
+        createdBy: payload.userId, updatedBy: payload.userId, createdDt: now, updatedDt: now,
+      })
+    }
+
     return { notaId: nota.notaId }
   }
 

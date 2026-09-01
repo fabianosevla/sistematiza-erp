@@ -18,10 +18,11 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { useToast } from '@/components/ui/Toast'
+import RegistrarOperacaoModal from './RegistrarOperacaoModal'
 
 interface Props { tenantSlug: string }
 
-const VAZIO = { tipoOperacao: '', direcao: 'saida', localizacao: 'interno', cfop: '', observacao: '' }
+const VAZIO = { tipoOperacao: '', direcao: 'saida', localizacao: 'interno', cfop: '', csosnSugerido: '', cstSugerido: '', observacao: '' }
 
 export default function CfopRegrasTab({ tenantSlug }: Props) {
   const { toast } = useToast()
@@ -29,6 +30,7 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
   const api = `/api/${tenantSlug}/fiscal/cfop-regras`
 
   const [painel, setPainel]  = useState(false)
+  const [showOperacao, setShowOperacao] = useState(false)
   const [editando, setEdit]  = useState<any | null>(null)
   const [form, setForm]      = useState({ ...VAZIO })
   const [confirmDel, setDel] = useState<any | null>(null)
@@ -71,7 +73,8 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
     setEdit(r)
     setForm({
       tipoOperacao: r.tipoOperacao, direcao: r.direcao, localizacao: r.localizacao,
-      cfop: r.cfop, observacao: r.observacao ?? '',
+      cfop: r.cfop, csosnSugerido: r.csosnSugerido ?? '', cstSugerido: r.cstSugerido ?? '',
+      observacao: r.observacao ?? '',
     })
     setPainel(true)
   }
@@ -110,7 +113,14 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
         chave={(r: any) => r.cfopRegraId}
         carregando={isLoading}
         vazio="Nenhuma regra cadastrada."
-        ferramentas={<Button size="sm" onClick={abrirNovo}><Plus size={14} className="mr-1" /> Nova regra</Button>}
+        ferramentas={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowOperacao(true)} disabled={regras.length === 0}>
+              Registrar operação
+            </Button>
+            <Button size="sm" onClick={abrirNovo}><Plus size={14} className="mr-1" /> Nova regra</Button>
+          </>
+        }
         acoes={(r: any) => (
           <>
             <BotaoIcone titulo="Editar" onClick={() => abrirEditar(r)}><Pencil size={14} /></BotaoIcone>
@@ -158,6 +168,24 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
               <Input value={form.cfop} onChange={e => setF('cfop', e.target.value.replace(/\D/g, '').slice(0, 4))}
                 className="mt-1 font-mono" placeholder="0000" maxLength={4} />
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="inline-flex items-center gap-1">
+                  CSOSN sugerido
+                  <InfoTip titulo="Pra que serve">
+                    Sem isso, "Registrar operação" não consegue gerar a nota — a emissão recusa
+                    por falta de CSOSN/CST, igual acontece com produto sem perfil.
+                  </InfoTip>
+                </Label>
+                <Input value={form.csosnSugerido} onChange={e => setF('csosnSugerido', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  className="mt-1 font-mono" placeholder="Ex.: 400" maxLength={4} />
+              </div>
+              <div>
+                <Label>CST sugerido (regime normal)</Label>
+                <Input value={form.cstSugerido} onChange={e => setF('cstSugerido', e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  className="mt-1 font-mono" placeholder="Opcional" maxLength={3} />
+              </div>
+            </div>
             <div>
               <Label>Observação</Label>
               <Input value={form.observacao} onChange={e => setF('observacao', e.target.value)} className="mt-1" placeholder="Opcional" />
@@ -171,6 +199,10 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
           confirmLabel="Excluir" danger
           onConfirm={() => { excluir.mutate(confirmDel.cfopRegraId); setDel(null) }}
           onCancel={() => setDel(null)} />
+      )}
+
+      {showOperacao && (
+        <RegistrarOperacaoModal tenantSlug={tenantSlug} onClose={() => setShowOperacao(false)} />
       )}
     </div>
   )

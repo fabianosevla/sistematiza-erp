@@ -64,9 +64,15 @@ export const dbPerfilTributario = pgTable('t_perfil_tributario', {
   nome:             varchar('nome', { length: 100 }).notNull(),
   descricao:        varchar('descricao', { length: 300 }),
 
-  // CFOP muda conforme o destino da mercadoria.
+  // CFOP muda conforme o destino da mercadoria. Com origemMercadoria
+  // preenchida, estes dois campos passam a ser CALCULADOS (ver
+  // lib/fiscal/cfopVenda.ts) em vez de digitados — evita que "tem ST" e o
+  // CFOP fiquem contando histórias diferentes. Perfil sem origem
+  // preenchida (legado) continua usando o que estiver aqui, digitado.
   cfopInterno:       varchar('cfop_interno', { length: 4 }),
   cfopInterestadual: varchar('cfop_interestadual', { length: 4 }),
+  // producao_propria | revenda — null = perfil legado, CFOP fica manual.
+  origemMercadoria:  varchar('origem_mercadoria', { length: 20 }),
 
   // Simples Nacional
   csosn:            varchar('csosn', { length: 4 }),
@@ -112,6 +118,24 @@ export const dbCfopRegra = pgTable('t_cfop_regra', {
   localizacao:  varchar('localizacao', { length: 15 }).notNull(),
   cfop:         varchar('cfop', { length: 4 }).notNull(),
   observacao:   varchar('observacao', { length: 500 }),
+  // CSOSN/CST sugerido pra essa operação — sem isso, "registrar a operação"
+  // não tem como gerar nota (falta parametrização, mesma trava de sempre).
+  // "Sugerido" porque é chute de mercado até o contador confirmar, igual
+  // ao resto do que este módulo semeia sem confirmação.
+  csosnSugerido: varchar('csosn_sugerido', { length: 4 }),
+  cstSugerido:   varchar('cst_sugerido', { length: 3 }),
+})
+
+// NCM DE REFERÊNCIA — busca por palavra-chave pra ajudar a classificar
+// produto novo. Curada (não é a tabela oficial completa, ~10 mil códigos),
+// cresce conforme alguém cadastra — mesmo espírito de t_cfop_regra.
+export const dbNcmReferencia = pgTable('t_ncm_referencia', {
+  ncmRefId:     serial('ncm_ref_id').primaryKey(),
+  ...auditFields,
+  ncm:          varchar('ncm', { length: 10 }).notNull(),
+  descricao:    varchar('descricao', { length: 400 }).notNull(),
+  cestSugerido: varchar('cest_sugerido', { length: 20 }),
+  fonte:        varchar('fonte', { length: 300 }),
 })
 
 // MVA/ICMS-ST POR ESTADO DE DESTINO.
@@ -127,6 +151,10 @@ export const dbIcmsStUf = pgTable('t_icms_st_uf', {
   ...auditFields,
   perfilTribId: integer('perfil_trib_id').notNull(),
   ufDestino:    varchar('uf_destino', { length: 2 }).notNull(),
+  // null = herda o "tem ST" do perfil (comportamento de sempre). true/false
+  // = esse estado específico diverge do perfil — o protocolo de ST é
+  // estadual, nem todo estado aderiu ao mesmo.
+  temSt:        boolean('tem_st'),
   mva:          numeric('mva', { precision: 6, scale: 2 }).notNull().default('0'),
   aliqIcmsSt:   numeric('aliq_icms_st', { precision: 5, scale: 2 }).notNull().default('0'),
   // De onde veio o número (protocolo, portaria, data). MVA sem fonte é MVA
@@ -179,6 +207,10 @@ export const dbNotaFiscal = pgTable('t_nota_fiscal', {
   vendaId:             integer('venda_id'),
   observacao:          varchar('observacao', { length: 1000 }),
   motivoCancelamento:  varchar('motivo_cancelamento', { length: 500 }),
+  // Liga a nota à regra de "outras operações" que a originou — só existe
+  // pra devolução/transferência/bonificação etc.; venda normal fica NULL,
+  // porque essa vem do perfil tributário do produto, não daqui.
+  cfopRegraId:         integer('cfop_regra_id'),
 })
 
 export const dbNotaFiscalItem = pgTable('t_nota_fiscal_item', {
@@ -234,3 +266,5 @@ export type TpDbCfopRegraRow           = InferSelectModel<typeof dbCfopRegra>
 export type TpDbCfopRegraInsert        = InferInsertModel<typeof dbCfopRegra>
 export type TpDbIcmsStUfRow            = InferSelectModel<typeof dbIcmsStUf>
 export type TpDbIcmsStUfInsert         = InferInsertModel<typeof dbIcmsStUf>
+export type TpDbNcmReferenciaRow       = InferSelectModel<typeof dbNcmReferencia>
+export type TpDbNcmReferenciaInsert    = InferInsertModel<typeof dbNcmReferencia>

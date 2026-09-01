@@ -34,6 +34,14 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
   const [ufDestino, setUfDestino]       = useState('')
   const [produtoId, setProdutoId]       = useState('')
   const [destinatario, setDestinatario] = useState<'contribuinte' | 'consumidor_final'>('consumidor_final')
+  const [perfilId, setPerfilId]         = useState('')
+
+  const { data: perfisRaw } = useQuery({
+    queryKey: ['perfis-tributarios', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fiscal/perfis`)).json(),
+  })
+  const perfis: any[] = perfisRaw?.data?.perfis ?? []
+  const perfilSelecionado = perfis.find((p: any) => String(p.perfilTribId) === perfilId)
 
   const { data: regrasRaw } = useQuery({
     queryKey: ['cfop-regras', tenantSlug],
@@ -65,7 +73,9 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
   const r = resultRaw?.data
 
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      {/* ── ESQUERDA: simular uma operação ─────────────────────────────── */}
+      <div className="space-y-4">
       <p className="text-xs text-gray-500 inline-flex items-center gap-1">
         Só consulta — não emite nada, não grava nota.
         <InfoTip titulo="Como funciona">
@@ -74,7 +84,7 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
         </InfoTip>
       </p>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4 max-w-2xl">
+      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Tipo de operação</Label>
@@ -118,7 +128,7 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
       </div>
 
       {prontoPraSimular && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 max-w-2xl">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
           {isFetching ? (
             <p className="text-sm text-gray-400 inline-flex items-center gap-1.5"><Search size={13} /> Calculando...</p>
           ) : r?.faltaPerfil || r?.faltaRegra ? (
@@ -136,7 +146,7 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
                   <Linha label="Produto" valor={r.produtoNome} />
                   <Linha label="Perfil tributário" valor={r.perfilNome} />
                   <Linha label="NCM" valor={r.ncm} />
-                  <Linha label={r.regimeLabel} valor={r.csosnOuCst} />
+                  <Linha label="CSOSN / CST" valor={r.csosnOuCst} />
                   <Linha label="Alíquota ICMS" valor={r.aliqIcms ? `${r.aliqIcms}%` : null} />
                   {r.temSt && <>
                     <Linha label={`MVA (ST)${r.mvaPorEstado ? ' — valor específico deste estado' : ''}`} valor={r.mva ? `${r.mva}%` : null} />
@@ -160,6 +170,58 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
           ) : null}
         </div>
       )}
+      </div>
+
+      {/* ── DIREITA: consultar um perfil tributário direto ─────────────── */}
+      <div className="space-y-4">
+        <p className="text-xs text-gray-500 inline-flex items-center gap-1">
+          Mostra tudo que o perfil tem cadastrado, sem precisar escolher produto nem estado.
+          <InfoTip titulo="Diferença pro simulador de venda">
+            À esquerda simula uma venda de verdade (produto + estado). Aqui é só olhar o que
+            está dentro de um perfil — CFOP calculado (se tiver origem definida), CSOSN/CST, ST.
+          </InfoTip>
+        </p>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <div>
+            <Label>Perfil tributário</Label>
+            <select value={perfilId} onChange={e => setPerfilId(e.target.value)}
+              className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+              <option value="">Selecionar...</option>
+              {perfis.map((p: any) => <option key={p.perfilTribId} value={p.perfilTribId}>{p.nome}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {perfilSelecionado && (
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                {perfilSelecionado.origemMercadoria === 'producao_propria' ? 'Produção própria'
+                  : perfilSelecionado.origemMercadoria === 'revenda' ? 'Revenda'
+                  : 'CFOP digitado manualmente'}
+              </span>
+              <span className="text-lg font-bold text-green-700 font-mono">
+                {perfilSelecionado.cfopInterno || '—'} / {perfilSelecionado.cfopInterestadual || '—'}
+              </span>
+            </div>
+            <Linha label="Descrição" valor={perfilSelecionado.descricao} />
+            <Linha label="CSOSN (Simples)" valor={perfilSelecionado.csosn} />
+            <Linha label="CST (regime normal)" valor={perfilSelecionado.cstIcms} />
+            <Linha label="Alíquota ICMS" valor={perfilSelecionado.aliqIcms ? `${perfilSelecionado.aliqIcms}%` : null} />
+            {perfilSelecionado.temSt && <>
+              <Linha label="MVA (padrão do perfil)" valor={perfilSelecionado.mva ? `${perfilSelecionado.mva}%` : null} />
+              <Linha label="Alíquota ICMS-ST (padrão)" valor={perfilSelecionado.aliqIcmsSt ? `${perfilSelecionado.aliqIcmsSt}%` : null} />
+            </>}
+            <Linha label="CST PIS" valor={perfilSelecionado.cstPis} />
+            <Linha label="CST COFINS" valor={perfilSelecionado.cstCofins} />
+            {perfilSelecionado.cstIpi && <Linha label="CST IPI" valor={perfilSelecionado.cstIpi} />}
+            {!perfilSelecionado.temSt && (
+              <p className="text-xs text-gray-400 mt-2">Este perfil não tem substituição tributária.</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

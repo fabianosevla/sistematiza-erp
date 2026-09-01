@@ -14,11 +14,13 @@ import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { useToast } from '@/components/ui/Toast'
+import { resolverCfopVenda, type OrigemMercadoria } from '@/lib/fiscal/cfopVenda'
 
 interface Props { tenantSlug: string }
 
 const VAZIO = {
   nome: '', descricao: '',
+  origemMercadoria: '' as '' | OrigemMercadoria,
   cfopInterno: '', cfopInterestadual: '',
   csosn: '', cstIcms: '', aliqIcms: '0', redBaseIcms: '0',
   temSt: false, mva: '0', aliqIcmsSt: '0',
@@ -37,6 +39,17 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
   const [confirmDel, setDel]  = useState<any | null>(null)
   const setF = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }))
 
+  // Com origem preenchida, o CFOP é CALCULADO — não dá pra digitar um valor
+  // que contradiga o "tem ST" do mesmo perfil (era exatamente o risco:
+  // marcar ST e deixar CFOP da família sem ST, ou o contrário).
+  useEffect(() => {
+    if (!form.origemMercadoria) return
+    const interno = resolverCfopVenda(form.origemMercadoria, form.temSt, true)
+    const fora     = resolverCfopVenda(form.origemMercadoria, form.temSt, false)
+    setForm(p => (p.cfopInterno === interno && p.cfopInterestadual === fora) ? p : { ...p, cfopInterno: interno, cfopInterestadual: fora })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.origemMercadoria, form.temSt])
+
   const { data, isLoading } = useQuery({
     queryKey: ['perfis-tributarios', tenantSlug],
     queryFn:  async () => (await fetch(api)).json(),
@@ -53,6 +66,7 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
     setEdit(p)
     setForm({
       nome: p.nome ?? '', descricao: p.descricao ?? '',
+      origemMercadoria: p.origemMercadoria ?? '',
       cfopInterno: p.cfopInterno ?? '', cfopInterestadual: p.cfopInterestadual ?? '',
       csosn: p.csosn ?? '', cstIcms: p.cstIcms ?? '',
       aliqIcms: String(p.aliqIcms ?? 0), redBaseIcms: String(p.redBaseIcms ?? 0),
@@ -187,6 +201,24 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
                 placeholder="Quais produtos usam este perfil" className="mt-1" />
             </div>
 
+            <div>
+              <Label className="flex items-center gap-1">
+                Origem da mercadoria
+                <InfoTip titulo="Por que isso importa">
+                  Com isso preenchido, o CFOP abaixo é calculado sozinho a partir de origem × ter ou não
+                  substituição tributária × mesmo estado ou não — não dá mais pra digitar um CFOP que
+                  contradiga o "tem ST" logo abaixo. Deixe em branco só se quiser digitar o CFOP manualmente
+                  (perfil antigo, ou caso fora do padrão).
+                </InfoTip>
+              </Label>
+              <select value={form.origemMercadoria} onChange={e => setF('origemMercadoria', e.target.value)}
+                className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-400">
+                <option value="">Não calcular — digitar CFOP manualmente</option>
+                <option value="producao_propria">Produção própria</option>
+                <option value="revenda">Revenda (adquirida de terceiro)</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label className="flex items-center gap-1">
@@ -194,12 +226,14 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
                   <InfoTip titulo="CFOP">Descreve a operação, não o produto — muda conforme o destino.</InfoTip>
                 </Label>
                 <Input value={form.cfopInterno} onChange={e => setF('cfopInterno', e.target.value)}
-                  placeholder="5102" maxLength={4} className="mt-1" />
+                  disabled={!!form.origemMercadoria}
+                  placeholder="5102" maxLength={4} className="mt-1 disabled:bg-gray-50 disabled:text-gray-500" />
               </div>
               <div>
                 <Label>CFOP fora do estado</Label>
                 <Input value={form.cfopInterestadual} onChange={e => setF('cfopInterestadual', e.target.value)}
-                  placeholder="6102" maxLength={4} className="mt-1" />
+                  disabled={!!form.origemMercadoria}
+                  placeholder="6102" maxLength={4} className="mt-1 disabled:bg-gray-50 disabled:text-gray-500" />
               </div>
             </div>
 

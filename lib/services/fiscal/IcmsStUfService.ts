@@ -70,6 +70,8 @@ export class IcmsStUfService {
     return {
       perfilTribId: Number(p.perfilTribId),
       ufDestino:    String(p.ufDestino ?? '').trim().toUpperCase().slice(0, 2),
+      // '' = herda do perfil (null); 'sim'/'nao' = override explícito.
+      temSt:        p.temSt === 'sim' ? true : p.temSt === 'nao' ? false : null,
       mva:          dec(p.mva),
       aliqIcmsSt:   dec(p.aliqIcmsSt),
       fonte:        txt(p.fonte),

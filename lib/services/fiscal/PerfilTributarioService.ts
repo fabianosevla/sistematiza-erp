@@ -115,6 +115,7 @@ export class PerfilTributarioService {
       descricao:         txt(p.descricao),
       cfopInterno:       txt(p.cfopInterno),
       cfopInterestadual: txt(p.cfopInterestadual),
+      origemMercadoria:  txt(p.origemMercadoria),
       csosn:             txt(p.csosn),
       cstIcms:           txt(p.cstIcms),
       aliqIcms:          dec(p.aliqIcms),
