@@ -117,6 +117,15 @@ export const dbEntradaNfeItem = pgTable('t_entrada_nfe_item', {
   valorUnitario: integer('valor_unitario').notNull(),
   valorTotal:    integer('valor_total').notNull(),
   insumoId:      integer('insumo_id'), // mapeado pelo usuário — null até confirmar
+  // Imposto do XML do FORNECEDOR — diz como ELE tributou a venda pra
+  // Zaghi. valorIcmsSt > 0 = o fornecedor já reteve substituição
+  // tributária desse item; sem isso, não dá pra saber qual CSOSN usar
+  // na hora de revender (era exatamente a dúvida do vinho).
+  cfop:          varchar('cfop', { length: 4 }),
+  cstCsosn:      varchar('cst_csosn', { length: 10 }),
+  valorIcms:     integer('valor_icms').notNull().default(0),
+  valorBcSt:     integer('valor_bc_st').notNull().default(0),
+  valorIcmsSt:   integer('valor_icms_st').notNull().default(0),
 })
 export type TpDbEntradaNfeItemRow    = InferSelectModel<typeof dbEntradaNfeItem>
 export type TpDbEntradaNfeItemInsert = InferInsertModel<typeof dbEntradaNfeItem>

@@ -139,7 +139,7 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
                   <Linha label={r.regimeLabel} valor={r.csosnOuCst} />
                   <Linha label="Alíquota ICMS" valor={r.aliqIcms ? `${r.aliqIcms}%` : null} />
                   {r.temSt && <>
-                    <Linha label="MVA (ST)" valor={r.mva ? `${r.mva}%` : null} />
+                    <Linha label={`MVA (ST)${r.mvaPorEstado ? ' — valor específico deste estado' : ''}`} valor={r.mva ? `${r.mva}%` : null} />
                     <Linha label="Alíquota ICMS-ST" valor={r.aliqIcmsSt ? `${r.aliqIcmsSt}%` : null} />
                   </>}
                   <Linha label="CST PIS" valor={r.cstPis} />

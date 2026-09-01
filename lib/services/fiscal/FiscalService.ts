@@ -254,6 +254,7 @@ export class FiscalService {
         // — não dá pra decidir isso com uma coluna só, CFOP e CSOSN mudam.
         const r = await this.db.execute(sql`
           SELECT p.ncm, p.cest, p.origem, p.unidade_tributavel,
+                 pt1.perfil_trib_id AS c_perfil_trib_id, pt2.perfil_trib_id AS cf_perfil_trib_id,
                  pt1.cfop_interno AS c_cfop_interno, pt1.cfop_interestadual AS c_cfop_interestadual,
                  pt1.csosn AS c_csosn, pt1.cst_icms AS c_cst_icms, pt1.aliq_icms AS c_aliq_icms,
                  pt1.cst_pis AS c_cst_pis, pt1.aliq_pis AS c_aliq_pis, pt1.cst_cofins AS c_cst_cofins, pt1.aliq_cofins AS c_aliq_cofins,
@@ -272,6 +273,7 @@ export class FiscalService {
         const pfx = ehParaContribuinte ? 'c_' : 'cf_'
         fiscal = {
           ncm: row.ncm, cest: row.cest, origem: row.origem, unidade_tributavel: row.unidade_tributavel,
+          perfil_trib_id:     row[`${pfx}perfil_trib_id`],
           cfop_interno:       row[`${pfx}cfop_interno`],
           cfop_interestadual: row[`${pfx}cfop_interestadual`],
           csosn:      row[`${pfx}csosn`],
@@ -308,9 +310,24 @@ export class FiscalService {
       // A dedução usa a mesma alíquota interna como "ICMS próprio presumido",
       // que é o tratamento do Simples em MG. O contador precisa confirmar —
       // está anotado no kit.
+      // MVA/alíquota por estado de destino, quando cadastrado (ver
+      // t_icms_st_uf) — protocolo de ST é estadual, um valor único pro
+      // perfil inteiro só está certo por coincidência. Sem linha pro estado,
+      // cai no valor do perfil, que é o comportamento de sempre.
+      let mvaEfetivo = fiscal.mva, aliqStEfetiva = fiscal.aliq_icms_st
+      if (fiscal.tem_st === true && fiscal.perfil_trib_id && ufDestino) {
+        const uf = await this.db.execute(sql`
+          SELECT mva, aliq_icms_st FROM t_icms_st_uf
+           WHERE perfil_trib_id = ${fiscal.perfil_trib_id} AND uf_destino = ${ufDestino} AND active_flg = true
+           LIMIT 1
+        `)
+        const linhaUf = (uf.rows as any[])[0]
+        if (linhaUf) { mvaEfetivo = linhaUf.mva; aliqStEfetiva = linhaUf.aliq_icms_st }
+      }
+
       const temSt   = fiscal.tem_st === true
-      const mva     = temSt ? Number(fiscal.mva ?? 0) : 0
-      const aliqSt  = temSt ? Number(fiscal.aliq_icms_st ?? 0) : 0
+      const mva     = temSt ? Number(mvaEfetivo ?? 0) : 0
+      const aliqSt  = temSt ? Number(aliqStEfetiva ?? 0) : 0
       const baseSt  = temSt ? Math.round(valorTotal * (1 + mva / 100)) : 0
       const valorSt = temSt
         ? Math.max(0, Math.round(baseSt * aliqSt / 100) - Math.round(valorTotal * aliqSt / 100))

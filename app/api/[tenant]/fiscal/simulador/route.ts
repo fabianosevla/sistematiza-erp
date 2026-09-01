@@ -65,6 +65,19 @@ export async function GET(req: NextRequest, { params }: Params) {
           })
         }
 
+        // MVA/alíquota por estado, quando cadastrado — mesma busca que a
+        // emissão de verdade faz (ver criarNota em FiscalService).
+        let mva = row.mva, aliqIcmsSt = row.aliq_icms_st, mvaPorEstado = false
+        if (row.tem_st) {
+          const ufRow = await db.execute(sql`
+            SELECT mva, aliq_icms_st FROM t_icms_st_uf
+             WHERE perfil_trib_id = ${row.perfil_trib_id} AND uf_destino = ${ufDestino} AND active_flg = true
+             LIMIT 1
+          `)
+          const linhaUf: any = (ufRow.rows as any[])[0]
+          if (linhaUf) { mva = linhaUf.mva; aliqIcmsSt = linhaUf.aliq_icms_st; mvaPorEstado = true }
+        }
+
         return ok({
           tipoOperacao, mesmoEstado, destinatario,
           produtoNome: row.produto_nome, ncm: row.ncm, cest: row.cest,
@@ -74,8 +87,7 @@ export async function GET(req: NextRequest, { params }: Params) {
           regimeLabel: simples ? 'CSOSN (Simples Nacional)' : 'CST (regime normal)',
           aliqIcms:    row.aliq_icms,
           temSt:       row.tem_st,
-          mva:         row.mva,
-          aliqIcmsSt:  row.aliq_icms_st,
+          mva, aliqIcmsSt, mvaPorEstado,
           cstPis:      row.cst_pis, aliqPis: row.aliq_pis,
           cstCofins:   row.cst_cofins, aliqCofins: row.aliq_cofins,
           cstIpi:      row.cst_ipi, aliqIpi: row.aliq_ipi,

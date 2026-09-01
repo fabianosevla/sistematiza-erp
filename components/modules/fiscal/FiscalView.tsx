@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/Toast'
 import NovaNotaModal from './NovaNotaModal'
 import PerfisTributariosTab from './PerfisTributariosTab'
 import CfopRegrasTab from './CfopRegrasTab'
+import IcmsStUfTab from './IcmsStUfTab'
 import SimuladorFiscalTab from './SimuladorFiscalTab'
 import { fmtMoeda as fmt } from '@/lib/format'
 
@@ -36,7 +37,7 @@ export default function FiscalView({ tenantSlug }: Props) {
   const { toast } = useToast()
   const api = `/api/${tenantSlug}/fiscal`
   const [aba, setAba]                     = useState<'pdv' | 'nfe-saida' | 'relatorios' | 'parametros'>('pdv')
-  const [subAbaParam, setSubAbaParam]     = useState<'perfis' | 'outras-operacoes' | 'simulador'>('perfis')
+  const [subAbaParam, setSubAbaParam]     = useState<'perfis' | 'outras-operacoes' | 'icms-st-uf' | 'simulador'>('perfis')
   const [filtroTipo, setFiltroTipo]       = useState('NFC-e')
   const [showNovaNota, setShowNovaNota]   = useState(false)
   const [showCancelar, setShowCancelar]   = useState<number | null>(null)
@@ -181,6 +182,7 @@ export default function FiscalView({ tenantSlug }: Props) {
             {([
               { value: 'perfis',            label: 'Perfis tributários' },
               { value: 'outras-operacoes',  label: 'Outras operações (CFOP)' },
+              { value: 'icms-st-uf',        label: 'ICMS-ST por estado' },
               { value: 'simulador',         label: 'Simulador' },
             ] as const).map(a => (
               <button key={a.value} onClick={() => setSubAbaParam(a.value)}
@@ -194,6 +196,7 @@ export default function FiscalView({ tenantSlug }: Props) {
 
           {subAbaParam === 'perfis'           && <PerfisTributariosTab tenantSlug={tenantSlug} />}
           {subAbaParam === 'outras-operacoes' && <CfopRegrasTab tenantSlug={tenantSlug} />}
+          {subAbaParam === 'icms-st-uf'       && <IcmsStUfTab tenantSlug={tenantSlug} />}
           {subAbaParam === 'simulador'        && <SimuladorFiscalTab tenantSlug={tenantSlug} />}
         </div>
       )}

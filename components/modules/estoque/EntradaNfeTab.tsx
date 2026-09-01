@@ -223,6 +223,17 @@ function ItemMapeamento({ item, tenantSlug, onMapear }: { item: any; tenantSlug:
         {item.insumoId && <CheckCircle size={16} className="text-green-500 flex-shrink-0" />}
       </div>
 
+      {/* O que o FORNECEDOR já cobrou de ICMS-ST — decide o CSOSN de quem
+          revender este item depois: veio retido, revenda usa CSOSN 500. */}
+      {Number(item.valorIcmsSt) > 0 ? (
+        <p className="text-[11px] text-amber-700 bg-amber-50 rounded-md px-2 py-1 mb-2 inline-flex items-center gap-1">
+          ICMS-ST já retido pelo fornecedor: {fmt(item.valorIcmsSt)}
+          {item.cstCsosn && ` · CST/CSOSN da compra: ${item.cstCsosn}`}
+        </p>
+      ) : item.cstCsosn ? (
+        <p className="text-[11px] text-gray-400 mb-2">Sem ST retido nesta compra · CST/CSOSN: {item.cstCsosn}</p>
+      ) : null}
+
       {item.insumoId ? (
         <div className="flex items-center justify-between bg-green-50 rounded-lg px-3 py-2">
           <span className="text-sm text-green-700">{nomeInsumoSelecionado || 'Insumo vinculado'}</span>

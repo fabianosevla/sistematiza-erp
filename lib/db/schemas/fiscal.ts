@@ -114,6 +114,27 @@ export const dbCfopRegra = pgTable('t_cfop_regra', {
   observacao:   varchar('observacao', { length: 500 }),
 })
 
+// MVA/ICMS-ST POR ESTADO DE DESTINO.
+//
+// O perfil tributário tem um mva/aliq_icms_st ÚNICO — mas MVA de verdade é
+// definido por protocolo/convênio ESTADUAL, muda de UF pra UF e ao longo do
+// tempo por portaria. Um perfil por estado seria repetir CFOP/CSOSN/PIS/
+// COFINS 27 vezes só pra mudar um número; esta tabela guarda só a exceção
+// por estado, e cai no valor do perfil quando não houver linha aqui —
+// mesmo comportamento de antes de existir, preservado como padrão.
+export const dbIcmsStUf = pgTable('t_icms_st_uf', {
+  icmsStUfId:   serial('icms_st_uf_id').primaryKey(),
+  ...auditFields,
+  perfilTribId: integer('perfil_trib_id').notNull(),
+  ufDestino:    varchar('uf_destino', { length: 2 }).notNull(),
+  mva:          numeric('mva', { precision: 6, scale: 2 }).notNull().default('0'),
+  aliqIcmsSt:   numeric('aliq_icms_st', { precision: 5, scale: 2 }).notNull().default('0'),
+  // De onde veio o número (protocolo, portaria, data). MVA sem fonte é MVA
+  // que ninguém sabe se ainda vale quando a legislação mudar.
+  fonte:        varchar('fonte', { length: 300 }),
+  observacao:   varchar('observacao', { length: 500 }),
+})
+
 export const dbNotaFiscal = pgTable('t_nota_fiscal', {
   notaId:              serial('nota_id').primaryKey(),
   ...auditFields,
@@ -211,3 +232,5 @@ export type TpDbPerfilTributarioRow    = InferSelectModel<typeof dbPerfilTributa
 export type TpDbPerfilTributarioInsert = InferInsertModel<typeof dbPerfilTributario>
 export type TpDbCfopRegraRow           = InferSelectModel<typeof dbCfopRegra>
 export type TpDbCfopRegraInsert        = InferInsertModel<typeof dbCfopRegra>
+export type TpDbIcmsStUfRow            = InferSelectModel<typeof dbIcmsStUf>
+export type TpDbIcmsStUfInsert         = InferInsertModel<typeof dbIcmsStUf>

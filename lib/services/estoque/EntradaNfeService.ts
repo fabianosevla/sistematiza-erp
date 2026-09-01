@@ -10,6 +10,12 @@ interface ItemNfeParsed {
   quantidade: number
   valorUnitario: number // centavos
   valorTotal: number    // centavos
+  // Como o FORNECEDOR tributou esse item — diz se ele já reteve ICMS-ST.
+  cfop: string
+  cstCsosn: string
+  valorIcms: number   // centavos
+  valorBcSt: number   // centavos
+  valorIcmsSt: number // centavos — > 0 = fornecedor já reteve ST
 }
 
 interface NfeParsed {
@@ -59,11 +65,25 @@ export class EntradaNfeService {
       const quantidade    = parseFloat(get(/<qCom>([\d.]+)<\/qCom>/, prodBlock) || '0')
       const valorUnitario = Math.round(parseFloat(get(/<vUnCom>([\d.]+)<\/vUnCom>/, prodBlock) || '0') * 100)
       const valorTotalItem = Math.round(parseFloat(get(/<vProd>([\d.]+)<\/vProd>/, prodBlock) || '0') * 100)
+
+      // Bloco de imposto: a tag que embrulha (ICMS00, ICMS10, ICMSSN102...)
+      // varia com o regime do FORNECEDOR, mas os campos de dentro (CST ou
+      // CSOSN, vICMS, vBCST, vICMSST) têm o mesmo nome em qualquer variante —
+      // por isso busca no bloco <imposto> inteiro, sem precisar saber qual
+      // subtag é. vICMSST > 0 é o que diz "o fornecedor já reteve o ST".
+      const impostoBlock = block.match(/<imposto>([\s\S]*?)<\/imposto>/)?.[1] ?? ''
+      const cstCsosn   = get(/<CSOSN>([^<]+)<\/CSOSN>/, impostoBlock) || get(/<CST>([^<]+)<\/CST>/, impostoBlock)
+      const valorIcms  = Math.round(parseFloat(get(/<vICMS>([\d.]+)<\/vICMS>/, impostoBlock) || '0') * 100)
+      const valorBcSt  = Math.round(parseFloat(get(/<vBCST>([\d.]+)<\/vBCST>/, impostoBlock) || '0') * 100)
+      const valorIcmsSt = Math.round(parseFloat(get(/<vICMSST>([\d.]+)<\/vICMSST>/, impostoBlock) || '0') * 100)
+
       return {
         codigoXml:    get(/<cProd>([^<]+)<\/cProd>/, prodBlock),
         descricaoXml: get(/<xProd>([^<]+)<\/xProd>/, prodBlock),
         ncm:          get(/<NCM>([^<]+)<\/NCM>/, prodBlock),
+        cfop:         get(/<CFOP>([^<]+)<\/CFOP>/, prodBlock),
         quantidade, valorUnitario, valorTotal: valorTotalItem,
+        cstCsosn, valorIcms, valorBcSt, valorIcmsSt,
       }
     })
 
@@ -87,6 +107,8 @@ export class EntradaNfeService {
       await this.db.insert(dbEntradaNfeItem).values({
         entradaId: entrada.entradaId, codigoXml: item.codigoXml, descricaoXml: item.descricaoXml,
         ncm: item.ncm, quantidade: String(item.quantidade), valorUnitario: item.valorUnitario, valorTotal: item.valorTotal,
+        cfop: item.cfop || null, cstCsosn: item.cstCsosn || null,
+        valorIcms: item.valorIcms, valorBcSt: item.valorBcSt, valorIcmsSt: item.valorIcmsSt,
         createdBy: userId, updatedBy: userId, createdDt: now, updatedDt: now,
       })
     }
