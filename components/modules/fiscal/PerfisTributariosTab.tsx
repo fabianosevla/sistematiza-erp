@@ -1,17 +1,10 @@
 'use client'
 // ESTE ARQUIVO VAI EM: components/modules/fiscal/PerfisTributariosTab.tsx
 //
-// PARAMETRIZAÇÃO FISCAL — a tela onde o contador digita.
-//
-// Duas partes: em cima, o que ainda falta para a empresa emitir; embaixo, os
-// perfis tributários.
-//
-// O painel de pendências fica no topo porque é a pergunta que quem implanta faz
-// primeiro — "por que a nota não sai?" — e porque, sem ele, a resposta exigiria
-// abrir cinco telas e conferir campo por campo.
+// PARAMETRIZAÇÃO FISCAL — a tela onde o contador digita os perfis tributários.
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -51,15 +44,8 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
   const perfis: any[] = data?.data?.perfis ?? []
   const uso: Record<number, number> = data?.data?.uso ?? {}
 
-  const { data: prontRaw } = useQuery({
-    queryKey: ['fiscal-prontidao', tenantSlug],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/fiscal/prontidao`)).json(),
-  })
-  const pront = prontRaw?.data
-
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['perfis-tributarios', tenantSlug] })
-    qc.invalidateQueries({ queryKey: ['fiscal-prontidao', tenantSlug] })
   }
 
   function abrirNovo() { setEdit(null); setForm({ ...VAZIO }); setPainel(true) }
@@ -146,41 +132,6 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
 
   return (
     <div className="space-y-4">
-
-      {/* ── PRONTIDÃO ───────────────────────────────────────────────────── */}
-      {pront && (
-        <div className={`rounded-xl border px-5 py-4 ${
-          pront.pronto ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
-        }`}>
-          <div className="flex items-start gap-3">
-            {pront.pronto
-              ? <CheckCircle2 size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
-              : <AlertTriangle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />}
-            <div className="min-w-0 flex-1">
-              <p className={`text-sm font-semibold ${pront.pronto ? 'text-green-800' : 'text-amber-800'}`}>
-                {pront.pronto
-                  ? 'Parametrização fiscal completa'
-                  : `${pront.pendencias.length} pendência(s) antes de emitir`}
-              </p>
-              {!pront.pronto && (
-                <ul className="mt-2 space-y-1">
-                  {pront.pendencias.map((p: any, i: number) => (
-                    <li key={i} className="text-sm text-amber-900">
-                      <span className="text-amber-600/70 uppercase text-[10px] tracking-wide mr-1.5">{p.onde}</span>
-                      {p.item} — {p.falta}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p className="text-xs text-gray-500 mt-2">
-                {pront.resumo.produtos} produto(s) · {pront.resumo.produtosSemNcm} sem NCM ·{' '}
-                {pront.resumo.produtosSemPerfil} sem perfil (contribuinte) ·{' '}
-                {pront.resumo.produtosSemPerfilConsumidorFinal} sem perfil (consumidor final)
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── PERFIS ──────────────────────────────────────────────────────── */}
       <DataTable

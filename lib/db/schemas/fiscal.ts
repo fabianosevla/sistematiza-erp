@@ -92,6 +92,28 @@ export const dbPerfilTributario = pgTable('t_perfil_tributario', {
   infoAdicional:    varchar('info_adicional', { length: 500 }),
 })
 
+// REGRAS DE CFOP — para operações que NÃO são venda.
+//
+// Venda continua resolvida pelo perfil tributário: o CFOP de venda depende do
+// produto (cada um tem seu perfil). Aqui é o contrário — devolução,
+// bonificação, transferência, remessa para industrialização/conserto,
+// consignação, compra de uso/consumo e de ativo não dependem do produto, só
+// do tipo de operação e de a mercadoria ir para dentro ou fora do estado.
+//
+// `tipoOperacao` é texto livre (não enum fixo no código): o contador cadastra
+// uma operação nova pela tela sem precisar de deploy. Ver scripts/migrate-cfop-regras.js
+export const dbCfopRegra = pgTable('t_cfop_regra', {
+  cfopRegraId:  serial('cfop_regra_id').primaryKey(),
+  ...auditFields,
+  tipoOperacao: varchar('tipo_operacao', { length: 100 }).notNull(),
+  // entrada | saida
+  direcao:      varchar('direcao', { length: 10 }).notNull(),
+  // interno | interestadual
+  localizacao:  varchar('localizacao', { length: 15 }).notNull(),
+  cfop:         varchar('cfop', { length: 4 }).notNull(),
+  observacao:   varchar('observacao', { length: 500 }),
+})
+
 export const dbNotaFiscal = pgTable('t_nota_fiscal', {
   notaId:              serial('nota_id').primaryKey(),
   ...auditFields,
@@ -187,3 +209,5 @@ export type TpDbNotaFiscalItemRow   = InferSelectModel<typeof dbNotaFiscalItem>
 export type TpDbNotaFiscalItemInsert = InferInsertModel<typeof dbNotaFiscalItem>
 export type TpDbPerfilTributarioRow    = InferSelectModel<typeof dbPerfilTributario>
 export type TpDbPerfilTributarioInsert = InferInsertModel<typeof dbPerfilTributario>
+export type TpDbCfopRegraRow           = InferSelectModel<typeof dbCfopRegra>
+export type TpDbCfopRegraInsert        = InferInsertModel<typeof dbCfopRegra>

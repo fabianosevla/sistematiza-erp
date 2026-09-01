@@ -14,6 +14,8 @@ import { FormModal } from '@/components/ui/FormModal'
 import { useToast } from '@/components/ui/Toast'
 import NovaNotaModal from './NovaNotaModal'
 import PerfisTributariosTab from './PerfisTributariosTab'
+import CfopRegrasTab from './CfopRegrasTab'
+import SimuladorFiscalTab from './SimuladorFiscalTab'
 import { fmtMoeda as fmt } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -34,6 +36,7 @@ export default function FiscalView({ tenantSlug }: Props) {
   const { toast } = useToast()
   const api = `/api/${tenantSlug}/fiscal`
   const [aba, setAba]                     = useState<'pdv' | 'nfe-saida' | 'relatorios' | 'parametros'>('pdv')
+  const [subAbaParam, setSubAbaParam]     = useState<'perfis' | 'outras-operacoes' | 'simulador'>('perfis')
   const [filtroTipo, setFiltroTipo]       = useState('NFC-e')
   const [showNovaNota, setShowNovaNota]   = useState(false)
   const [showCancelar, setShowCancelar]   = useState<number | null>(null)
@@ -172,7 +175,28 @@ export default function FiscalView({ tenantSlug }: Props) {
 
       {/* Parametrização fica por último na ordem das abas, mas é a primeira a
           ser usada numa implantação: sem ela, nenhuma das outras emite nada. */}
-      {aba === 'parametros' && <PerfisTributariosTab tenantSlug={tenantSlug} />}
+      {aba === 'parametros' && (
+        <div className="space-y-4">
+          <div className="inline-flex gap-1 bg-gray-100 rounded-lg p-1">
+            {([
+              { value: 'perfis',            label: 'Perfis tributários' },
+              { value: 'outras-operacoes',  label: 'Outras operações (CFOP)' },
+              { value: 'simulador',         label: 'Simulador' },
+            ] as const).map(a => (
+              <button key={a.value} onClick={() => setSubAbaParam(a.value)}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                  subAbaParam === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+
+          {subAbaParam === 'perfis'           && <PerfisTributariosTab tenantSlug={tenantSlug} />}
+          {subAbaParam === 'outras-operacoes' && <CfopRegrasTab tenantSlug={tenantSlug} />}
+          {subAbaParam === 'simulador'        && <SimuladorFiscalTab tenantSlug={tenantSlug} />}
+        </div>
+      )}
 
       {showAbrirTurno && (
         <FormModal titulo="Abrir Turno de Caixa" onClose={() => setShowAbrirTurno(false)} largura="max-w-sm">
