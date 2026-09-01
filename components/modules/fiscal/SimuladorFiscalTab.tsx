@@ -146,6 +146,7 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
                   <Linha label="Produto" valor={r.produtoNome} />
                   <Linha label="Perfil tributário" valor={r.perfilNome} />
                   <Linha label="NCM" valor={r.ncm} />
+                  <Linha label="Tem substituição tributária?" valor={r.temSt ? 'Sim' : 'Não'} />
                   <Linha label="CSOSN / CST" valor={r.csosnOuCst} />
                   <Linha label="Alíquota ICMS" valor={r.aliqIcms ? `${r.aliqIcms}%` : null} />
                   {r.temSt && <>
@@ -206,8 +207,12 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
               </span>
             </div>
             <Linha label="Descrição" valor={perfilSelecionado.descricao} />
-            <Linha label="CSOSN (Simples)" valor={perfilSelecionado.csosn} />
-            <Linha label="CST (regime normal)" valor={perfilSelecionado.cstIcms} />
+            <Linha label="Tem ST dentro do estado?" valor={perfilSelecionado.temSt ? 'Sim' : 'Não'} />
+            <Linha label="CSOSN dentro do estado (Simples)" valor={perfilSelecionado.csosn} />
+            <Linha label="CST dentro do estado (regime normal)" valor={perfilSelecionado.cstIcms} />
+            {(perfilSelecionado.csosnSemSt || perfilSelecionado.cstSemSt) && (
+              <Linha label="CSOSN/CST fora do estado (sem ST)" valor={perfilSelecionado.csosnSemSt || perfilSelecionado.cstSemSt} />
+            )}
             <Linha label="Alíquota ICMS" valor={perfilSelecionado.aliqIcms ? `${perfilSelecionado.aliqIcms}%` : null} />
             {perfilSelecionado.temSt && <>
               <Linha label="MVA (padrão do perfil)" valor={perfilSelecionado.mva ? `${perfilSelecionado.mva}%` : null} />
@@ -216,9 +221,11 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
             <Linha label="CST PIS" valor={perfilSelecionado.cstPis} />
             <Linha label="CST COFINS" valor={perfilSelecionado.cstCofins} />
             {perfilSelecionado.cstIpi && <Linha label="CST IPI" valor={perfilSelecionado.cstIpi} />}
-            {!perfilSelecionado.temSt && (
-              <p className="text-xs text-gray-400 mt-2">Este perfil não tem substituição tributária.</p>
-            )}
+            <p className="text-xs text-gray-400 mt-2">
+              {perfilSelecionado.temSt
+                ? 'Isso vale pra dentro do estado. Fora do estado, o padrão é sem ST — a menos que o estado de destino esteja cadastrado como exceção em "ICMS-ST por estado". Use o simulador de venda à esquerda pra ver o resultado por estado.'
+                : 'Este perfil não tem substituição tributária dentro do estado.'}
+            </p>
           </div>
         )}
       </div>
