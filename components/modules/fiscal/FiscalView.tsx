@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { FormModal } from '@/components/ui/FormModal'
 import { useToast } from '@/components/ui/Toast'
 import NovaNotaModal from './NovaNotaModal'
+import EditarDadosFiscaisModal from './EditarDadosFiscaisModal'
 import PerfisTributariosTab from './PerfisTributariosTab'
 import CfopRegrasTab from './CfopRegrasTab'
 import IcmsStUfTab from './IcmsStUfTab'
@@ -41,6 +42,7 @@ export default function FiscalView({ tenantSlug }: Props) {
   const [subAbaParam, setSubAbaParam]     = useState<'perfis' | 'outras-operacoes' | 'icms-st-uf' | 'ncm' | 'simulador'>('perfis')
   const [filtroTipo, setFiltroTipo]       = useState('NFC-e')
   const [showNovaNota, setShowNovaNota]   = useState(false)
+  const [showEditarFiscal, setShowEditarFiscal] = useState<number | null>(null)
   const [showCancelar, setShowCancelar]   = useState<number | null>(null)
   const [motivoCancelamento, setMotivo]   = useState('')
   const [confirmFechar, setConfirmFechar] = useState<any>(null)
@@ -155,6 +157,7 @@ export default function FiscalView({ tenantSlug }: Props) {
 
           <NotasList notas={notas.filter((n: any) => n.tipo === 'NFC-e')} isLoading={isLoading}
             onEmitir={id => emitirMut.mutate(id)}
+            onEditarFiscal={id => setShowEditarFiscal(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
         </div>
       )}
@@ -169,6 +172,7 @@ export default function FiscalView({ tenantSlug }: Props) {
           </div>
           <NotasList notas={notas.filter((n: any) => n.tipo === 'NF-e')} isLoading={isLoading}
             onEmitir={id => emitirMut.mutate(id)}
+            onEditarFiscal={id => setShowEditarFiscal(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
         </div>
       )}
@@ -184,7 +188,7 @@ export default function FiscalView({ tenantSlug }: Props) {
               { value: 'perfis',            label: 'Perfis tributários' },
               { value: 'outras-operacoes',  label: 'Outras operações (CFOP)' },
               { value: 'icms-st-uf',        label: 'ICMS-ST por estado' },
-              { value: 'ncm',               label: 'Simulador de NCM' },
+              { value: 'ncm',               label: 'NCM' },
               { value: 'simulador',         label: 'Simulador' },
             ] as const).map(a => (
               <button key={a.value} onClick={() => setSubAbaParam(a.value)}
@@ -271,13 +275,21 @@ export default function FiscalView({ tenantSlug }: Props) {
           onClose={() => setShowNovaNota(false)}
         />
       )}
+
+      {showEditarFiscal !== null && (
+        <EditarDadosFiscaisModal
+          tenantSlug={tenantSlug}
+          notaId={showEditarFiscal}
+          onClose={() => setShowEditarFiscal(null)}
+        />
+      )}
     </div>
   )
 }
 
-function NotasList({ notas, isLoading, onEmitir, onCancelar }: {
+function NotasList({ notas, isLoading, onEmitir, onEditarFiscal, onCancelar }: {
   notas: any[]; isLoading: boolean
-  onEmitir: (id: number) => void; onCancelar: (id: number) => void
+  onEmitir: (id: number) => void; onEditarFiscal: (id: number) => void; onCancelar: (id: number) => void
 }) {
   if (isLoading) return <div className="text-center py-8 text-sm text-gray-400">Carregando...</div>
   if (notas.length === 0) return (
@@ -312,7 +324,10 @@ function NotasList({ notas, isLoading, onEmitir, onCancelar }: {
                   {/* Ações ficam sempre visíveis: são o caminho principal da tela */}
                   <div className="flex items-center justify-end gap-2">
                     {n.status === 'pendente' && (
-                      <button onClick={() => onEmitir(n.notaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Emitir</button>
+                      <>
+                        <button onClick={() => onEditarFiscal(n.notaId)} className="text-xs text-gray-500 hover:text-gray-700">Editar</button>
+                        <button onClick={() => onEmitir(n.notaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Emitir</button>
+                      </>
                     )}
                     {n.danfeUrl && (
                       <Anchor href={n.danfeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-700">DANFE</Anchor>

@@ -594,6 +594,32 @@ parecido com o que já foi feito pra Zaghi, só que generalizado.
 (provisionamento de tenant) funcionando — hoje não dá pra criar uma empresa
 nova funcional, de nenhum ramo.
 
+### 9.1 URGENTE — combobox de nicho em Configurações, parametrização automática
+
+Levantado pelo Fabiano em 01/09/2026, junto com a curadoria de NCM (o
+`t_ncm_referencia` de hoje é manual, cresce produto a produto — ele achou
+pouco pra escalar pra outros clientes). Ideia: um campo "nicho do
+estabelecimento" em Configurações (combobox) que, ao ser definido, roda um
+script parametrizando o tenant de acordo — NCM/CFOP/CST do ramo (item 9
+acima já previa isso), e possivelmente outras "grandezas" e configurações do
+sistema, não só o fiscal. Ainda não definido o que mais entra nesse script
+além de NCM.
+
+**Discutido e adiado de propósito:** com 1 tenant vivo (Zaghi) e nenhum
+segundo nicho confirmado ainda, construir o motor de auto-provisionamento
+agora seria arquitetura pra demanda que não existe — o pacote "nicho X" seria
+chutado, não um dado real como o da Zaghi (levantado produto a produto,
+verificado contra DANFE real). Adiado, mas marcado urgente pelo Fabiano:
+retomar assim que aparecer o 2º tenant de ramo diferente da Zaghi, ou antes
+disso se o Fabiano decidir que vale investir sem esse gatilho.
+
+**Pré-requisito técnico, quando for construir:** taguear cada linha de
+`t_ncm_referencia` (e possivelmente `t_cfop_regra`) com o nicho a que
+pertence, pra virar filtro do script de seed. Hoje essas tabelas não têm essa
+coluna — foi cogitado adicionar já (nullable, sem mudar comportamento) e o
+Fabiano preferiu deixar pra quando for construir de fato, só registrado aqui
+pra não esquecer.
+
 ---
 
 ## 10. Lacunas frente ao mercado (revenda)

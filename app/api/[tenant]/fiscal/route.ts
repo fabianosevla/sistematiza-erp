@@ -52,6 +52,14 @@ export async function GET(req: NextRequest, { params }: Params) {
       }
 
       if (turno) return ok(await service.getTurnoAberto())
+
+      const notaId = searchParams.get('notaId')
+      if (notaId) {
+        const nota = await service.findNotaById(Number(notaId))
+        if (!nota) return badRequest('Nota não encontrada')
+        return ok(nota)
+      }
+
       return ok(await service.listNotas({ tipo, status }))
     } finally { release() }
   } catch (err) { return serverError(err) }
@@ -100,6 +108,16 @@ export async function POST(req: NextRequest, { params }: Params) {
       }
       if (action === 'fechar-turno') {
         return ok(await fiscal.fecharTurno({ ...body, userId }))
+      }
+      // Editar item de nota pendente — válvula de escape pra estado/cenário
+      // ainda não cadastrado (ver comentário em atualizarItemFiscal).
+      if (action === 'atualizar-item-fiscal') {
+        try {
+          const { itemId, ...campos } = body
+          return ok(await fiscal.atualizarItemFiscal(Number(itemId), campos, userId))
+        } catch (err: any) {
+          return badRequest(err?.message || 'Falha ao atualizar item.')
+        }
       }
       // Devolução, transferência, bonificação e afins — CFOP/CSOSN vêm da
       // regra escolhida, não do perfil do produto (ver criarNotaOperacao).

@@ -167,6 +167,40 @@ export class FiscalService {
   }
 
   /**
+   * Edita os dados fiscais de um item de nota AINDA PENDENTE — a válvula de
+   * escape pra quando a venda cai num estado/cenário que ainda não está
+   * cadastrado (perfil, exceção por estado) e o operador já sabe o CFOP/
+   * CSOSN certo na hora, sem precisar parar a venda pra cadastrar antes.
+   *
+   * Só em nota pendente, de propósito: nota já autorizada é documento — ver
+   * o comentário em criarNota().
+   */
+  async atualizarItemFiscal(itemId: number, campos: {
+    ncm?: string; cfop?: string; cstCsosn?: string; aliqIcms?: number
+    baseSt?: number; valorSt?: number; mva?: number; aliqSt?: number
+  }, userId: number) {
+    const [item] = await this.db.select().from(dbNotaFiscalItem).where(eq(dbNotaFiscalItem.itemId, itemId))
+    if (!item) throw new Error('Item não encontrado')
+    const [nota] = await this.db.select().from(dbNotaFiscal).where(eq(dbNotaFiscal.notaId, item.notaId))
+    if (!nota || nota.status !== 'pendente') {
+      throw new Error('Só dá pra editar item de nota pendente — nota autorizada é documento, não se reescreve.')
+    }
+
+    const set: any = { updatedBy: userId, updatedDt: new Date() }
+    if (campos.ncm !== undefined)      set.ncm = campos.ncm || null
+    if (campos.cfop !== undefined)     set.cfop = campos.cfop || null
+    if (campos.cstCsosn !== undefined) set.cstCsosn = campos.cstCsosn || null
+    if (campos.aliqIcms !== undefined) set.aliqIcms = String(campos.aliqIcms)
+    if (campos.baseSt !== undefined)   set.baseSt = campos.baseSt
+    if (campos.valorSt !== undefined)  set.valorSt = campos.valorSt
+    if (campos.mva !== undefined)      set.mva = String(campos.mva)
+    if (campos.aliqSt !== undefined)   set.aliqSt = String(campos.aliqSt)
+
+    await this.db.update(dbNotaFiscalItem).set(set).where(eq(dbNotaFiscalItem.itemId, itemId))
+    return { ok: true }
+  }
+
+  /**
    * Resolve CFOP, CSOSN/CST, alíquotas e ST de uma venda — um produto, um
    * destinatário (contribuinte ou não), um estado de destino. Usado por
    * criarNota (por item) e pelo simulador: um caminho só, pra não existirem
