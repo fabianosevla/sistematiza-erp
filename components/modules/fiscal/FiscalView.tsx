@@ -119,8 +119,8 @@ export default function FiscalView({ tenantSlug }: Props) {
   })
 
   const turno     = turnoData?.data
-  const notas     = notasData?.data ?? []
-  const notasMeta = notasData?.meta ?? null
+  const notas     = notasData?.data?.data ?? []
+  const notasMeta = notasData?.data?.meta ?? null
 
   function trocarAba(a: typeof aba) { setAba(a); setPaginaNotas(1) }
 
