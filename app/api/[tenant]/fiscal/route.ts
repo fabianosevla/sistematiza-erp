@@ -60,7 +60,9 @@ export async function GET(req: NextRequest, { params }: Params) {
         return ok(nota)
       }
 
-      return ok(await service.listNotas({ tipo, status }))
+      const page  = Math.max(1, Number(searchParams.get('page') ?? 1))
+      const limit = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? 20)))
+      return ok(await service.listNotas({ tipo, status, page, limit }))
     } finally { release() }
   } catch (err) { return serverError(err) }
 }

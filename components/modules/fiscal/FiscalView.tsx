@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { DataTable, type Coluna, type MetaPaginacao } from '@/components/ui/DataTable'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { Aviso } from '@/components/ui/Aviso'
@@ -50,6 +51,7 @@ export default function FiscalView({ tenantSlug }: Props) {
   const [showAbrirTurno, setShowAbrirTurno] = useState(false)
   const [operador, setOperador]             = useState('')
   const [valorAbertura, setValorAbertura]   = useState('0')
+  const [paginaNotas, setPaginaNotas]       = useState(1)
 
   const { data: turnoData } = useQuery({
     queryKey: ['turno', tenantSlug],
@@ -57,9 +59,14 @@ export default function FiscalView({ tenantSlug }: Props) {
     refetchInterval: 30000,
   })
 
+  // A listagem segue a aba aberta (NFC-e ou NF-e), não o `filtroTipo` — esse
+  // último só decide o tipo inicial do modal de nova nota.
+  const tipoListagem = aba === 'nfe-saida' ? 'NF-e' : 'NFC-e'
+
   const { data: notasData, isLoading } = useQuery({
-    queryKey: ['notas', tenantSlug, filtroTipo],
-    queryFn:  async () => (await fetch(`${api}?tipo=${filtroTipo}`)).json(),
+    queryKey: ['notas', tenantSlug, tipoListagem, paginaNotas],
+    queryFn:  async () => (await fetch(`${api}?tipo=${tipoListagem}&page=${paginaNotas}&limit=20`)).json(),
+    enabled:  aba === 'pdv' || aba === 'nfe-saida',
   })
 
   const abrirTurnoMut = useMutation({
@@ -111,8 +118,11 @@ export default function FiscalView({ tenantSlug }: Props) {
     onError: (e: any) => toast(e.message || 'Falha ao cancelar a nota.', 'error'),
   })
 
-  const turno = turnoData?.data
-  const notas = notasData?.data ?? []
+  const turno     = turnoData?.data
+  const notas     = notasData?.data ?? []
+  const notasMeta = notasData?.meta ?? null
+
+  function trocarAba(a: typeof aba) { setAba(a); setPaginaNotas(1) }
 
   return (
     <div>
@@ -128,7 +138,7 @@ export default function FiscalView({ tenantSlug }: Props) {
           { value: 'relatorios',  label: 'Relatórios' },
           { value: 'parametros',  label: 'Parametrização' },
         ] as const).map(a => (
-          <button key={a.value} onClick={() => setAba(a.value)}
+          <button key={a.value} onClick={() => trocarAba(a.value)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${aba === a.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {a.label}
           </button>
@@ -155,7 +165,7 @@ export default function FiscalView({ tenantSlug }: Props) {
             </div>
           </div>
 
-          <NotasList notas={notas.filter((n: any) => n.tipo === 'NFC-e')} isLoading={isLoading}
+          <NotasList notas={notas} isLoading={isLoading} meta={notasMeta} onPageChange={setPaginaNotas}
             onEmitir={id => emitirMut.mutate(id)}
             onEditarFiscal={id => setShowEditarFiscal(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
@@ -170,7 +180,7 @@ export default function FiscalView({ tenantSlug }: Props) {
               <Plus size={14} className="mr-1.5" /> Nova NF-e
             </Button>
           </div>
-          <NotasList notas={notas.filter((n: any) => n.tipo === 'NF-e')} isLoading={isLoading}
+          <NotasList notas={notas} isLoading={isLoading} meta={notasMeta} onPageChange={setPaginaNotas}
             onEmitir={id => emitirMut.mutate(id)}
             onEditarFiscal={id => setShowEditarFiscal(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
@@ -287,62 +297,52 @@ export default function FiscalView({ tenantSlug }: Props) {
   )
 }
 
-function NotasList({ notas, isLoading, onEmitir, onEditarFiscal, onCancelar }: {
+function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFiscal, onCancelar }: {
   notas: any[]; isLoading: boolean
+  meta?: MetaPaginacao | null; onPageChange?: (page: number) => void
   onEmitir: (id: number) => void; onEditarFiscal: (id: number) => void; onCancelar: (id: number) => void
 }) {
-  if (isLoading) return <div className="text-center py-8 text-sm text-gray-400">Carregando...</div>
-  if (notas.length === 0) return (
-    <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-      <p className="text-sm text-gray-400">Nenhuma nota encontrada.</p>
-    </div>
-  )
+  const colunas: Coluna[] = [
+    { chave: 'tipo', titulo: 'Tipo', largura: 'w-24', render: (n: any) => <Badge variant="outline">{n.tipo}</Badge> },
+    { chave: 'numero', titulo: 'Número', principal: true, render: (n: any) => (
+      <span className="font-mono">{n.numero ?? '—'}</span>
+    )},
+    { chave: 'razaoSocial', titulo: 'Destinatário', esconderAte: 'md', render: (n: any) => n.razaoSocial ?? 'Consumidor Final' },
+    { chave: 'status', titulo: 'Status', render: (n: any) => {
+      const s = STATUS_MAP[n.status] ?? STATUS_MAP.pendente
+      return <Badge variant={s.color as any}>{s.label}</Badge>
+    }},
+    { chave: 'valorTotal', titulo: 'Total', alinhamento: 'right', render: (n: any) => (
+      <span className="font-semibold">{fmt(n.valorTotal)}</span>
+    )},
+  ]
+
   return (
-    <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-gray-100 bg-gray-50">
-            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Tipo</th>
-            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Número</th>
-            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3 hidden md:table-cell">Destinatário</th>
-            <th className="text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Status</th>
-            <th className="text-right text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-4 py-3">Total</th>
-            <th className="px-4 py-3 w-32 bg-gray-50" />
-          </tr>
-        </thead>
-        <tbody>
-          {notas.map((n: any) => {
-            const s = STATUS_MAP[n.status] ?? STATUS_MAP.pendente
-            return (
-              <tr key={n.notaId} className="border-b border-gray-50 hover:bg-gray-50/50">
-                <td className="px-4 py-3"><Badge variant="outline">{n.tipo}</Badge></td>
-                <td className="px-4 py-3 text-sm font-mono text-gray-600">{n.numero ?? '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500 hidden md:table-cell">{n.razaoSocial ?? 'Consumidor Final'}</td>
-                <td className="px-4 py-3"><Badge variant={s.color as any}>{s.label}</Badge></td>
-                <td className="px-4 py-3 text-right text-sm font-semibold">{fmt(n.valorTotal)}</td>
-                <td className="px-4 py-3">
-                  {/* Ações ficam sempre visíveis: são o caminho principal da tela */}
-                  <div className="flex items-center justify-end gap-2">
-                    {n.status === 'pendente' && (
-                      <>
-                        <button onClick={() => onEditarFiscal(n.notaId)} className="text-xs text-gray-500 hover:text-gray-700">Editar</button>
-                        <button onClick={() => onEmitir(n.notaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Emitir</button>
-                      </>
-                    )}
-                    {n.danfeUrl && (
-                      <Anchor href={n.danfeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-700">DANFE</Anchor>
-                    )}
-                    {n.status === 'autorizada' && (
-                      <button onClick={() => onCancelar(n.notaId)} className="text-xs text-red-500 hover:text-red-600">Cancelar</button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      colunas={colunas}
+      itens={notas}
+      chave={(n: any) => n.notaId}
+      carregando={isLoading}
+      vazio="Nenhuma nota encontrada."
+      meta={meta}
+      onPageChange={onPageChange}
+      acoes={(n: any) => (
+        <>
+          {n.status === 'pendente' && (
+            <>
+              <button onClick={() => onEditarFiscal(n.notaId)} className="text-xs text-gray-500 hover:text-gray-700">Editar</button>
+              <button onClick={() => onEmitir(n.notaId)} className="text-xs text-green-600 hover:text-green-700 font-medium">Emitir</button>
+            </>
+          )}
+          {n.danfeUrl && (
+            <Anchor href={n.danfeUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-700">DANFE</Anchor>
+          )}
+          {n.status === 'autorizada' && (
+            <button onClick={() => onCancelar(n.notaId)} className="text-xs text-red-500 hover:text-red-600">Cancelar</button>
+          )}
+        </>
+      )}
+    />
   )
 }
 

@@ -1,4 +1,4 @@
-import { and, eq, desc, gte, lte, sql } from 'drizzle-orm'
+import { and, eq, desc, gte, lte, sql, count } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { dbNotaFiscal, dbNotaFiscalItem, dbTurnoCaixa } from '@/lib/db/schemas/fiscal'
 import { dbConfiguracoesTenant } from '@/lib/db/schemas/vendas'
@@ -146,16 +146,21 @@ export class FiscalService {
 
   // ── Notas Fiscais ─────────────────────────────────────────────────────────
 
-  async listNotas({ tipo, status, dataInicio, dataFim }: {
+  async listNotas({ tipo, status, dataInicio, dataFim, page = 1, limit = 20 }: {
     tipo?: string; status?: string; dataInicio?: string; dataFim?: string
+    page?: number; limit?: number
   }) {
     const conditions = [eq(dbNotaFiscal.activeFlag, true)]
     if (tipo)       conditions.push(eq(dbNotaFiscal.tipo, tipo))
     if (status)     conditions.push(eq(dbNotaFiscal.status, status))
     if (dataInicio) conditions.push(gte(dbNotaFiscal.dataEmissao, new Date(dataInicio)))
     if (dataFim)    conditions.push(lte(dbNotaFiscal.dataEmissao, new Date(dataFim)))
-    return this.db.select().from(dbNotaFiscal).where(and(...conditions))
+
+    const [{ total }] = await this.db.select({ total: count() }).from(dbNotaFiscal).where(and(...conditions))
+    const data = await this.db.select().from(dbNotaFiscal).where(and(...conditions))
       .orderBy(desc(dbNotaFiscal.dataEmissao))
+      .limit(limit).offset((page - 1) * limit)
+    return { data, meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) } }
   }
 
   async findNotaById(id: number) {

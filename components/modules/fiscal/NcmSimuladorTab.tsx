@@ -15,6 +15,7 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { useToast } from '@/components/ui/Toast'
 
 interface Props { tenantSlug: string }
@@ -72,6 +73,17 @@ export default function NcmSimuladorTab({ tenantSlug }: Props) {
     setPainel(true)
   }
 
+  const colunas: Coluna[] = [
+    { chave: 'ncm', titulo: 'NCM', largura: 'w-28', render: (r: any) => (
+      <span className="text-sm font-mono font-semibold text-green-700">{r.ncm}</span>
+    )},
+    { chave: 'descricao', titulo: 'Descrição', principal: true },
+    { chave: 'cestSugerido', titulo: 'CEST sugerido', esconderAte: 'md', render: (r: any) => (
+      <span className="text-sm font-mono">{r.cestSugerido || '—'}</span>
+    )},
+    { chave: 'fonte', titulo: 'Fonte', esconderAte: 'lg' },
+  ]
+
   return (
     <div className="space-y-4">
       <p className="text-xs text-gray-500 inline-flex items-center gap-1">
@@ -91,34 +103,19 @@ export default function NcmSimuladorTab({ tenantSlug }: Props) {
         <Button size="sm" onClick={abrirNovo}><Plus size={14} className="mr-1" /> Novo NCM</Button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {isLoading ? (
-          <p className="text-sm text-gray-400 text-center py-8">Buscando...</p>
-        ) : resultados.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-8">
-            {termo ? 'Nenhum NCM encontrado pra essa busca.' : 'Nenhum NCM cadastrado ainda.'}
-          </p>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {resultados.map((r: any) => (
-              <div key={r.ncmRefId} className="flex items-start gap-3 px-4 py-3 group">
-                <span className="text-sm font-mono font-semibold text-green-700 flex-shrink-0 mt-0.5 w-24">{r.ncm}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-gray-900">{r.descricao}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {r.cestSugerido && <>CEST sugerido: {r.cestSugerido} · </>}
-                    {r.fonte}
-                  </p>
-                </div>
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 flex-shrink-0">
-                  <BotaoIcone titulo="Editar" onClick={() => abrirEditar(r)}><Pencil size={13} /></BotaoIcone>
-                  <BotaoIcone titulo="Excluir" variante="perigo" onClick={() => setDel(r)}><Trash2 size={13} /></BotaoIcone>
-                </div>
-              </div>
-            ))}
-          </div>
+      <DataTable
+        colunas={colunas}
+        itens={resultados}
+        chave={(r: any) => r.ncmRefId}
+        carregando={isLoading}
+        vazio={termo ? 'Nenhum NCM encontrado pra essa busca.' : 'Nenhum NCM cadastrado ainda.'}
+        acoes={(r: any) => (
+          <>
+            <BotaoIcone titulo="Editar" onClick={() => abrirEditar(r)}><Pencil size={13} /></BotaoIcone>
+            <BotaoIcone titulo="Excluir" variante="perigo" onClick={() => setDel(r)}><Trash2 size={13} /></BotaoIcone>
+          </>
         )}
-      </div>
+      />
 
       {painel && (
         <SidePanel titulo={editando ? 'Editar NCM' : 'Novo NCM de referência'} onClose={() => setPainel(false)}
