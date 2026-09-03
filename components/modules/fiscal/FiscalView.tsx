@@ -20,7 +20,7 @@ import CfopRegrasTab from './CfopRegrasTab'
 import IcmsStUfTab from './IcmsStUfTab'
 import SimuladorFiscalTab from './SimuladorFiscalTab'
 import NcmSimuladorTab from './NcmSimuladorTab'
-import { fmtMoeda as fmt } from '@/lib/format'
+import { fmtMoeda as fmt, fmtDataHoraLocal } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
@@ -306,6 +306,9 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
     { chave: 'tipo', titulo: 'Tipo', largura: 'w-24', render: (n: any) => <Badge variant="outline">{n.tipo}</Badge> },
     { chave: 'numero', titulo: 'Número', principal: true, render: (n: any) => (
       <span className="font-mono">{n.numero ?? '—'}</span>
+    )},
+    { chave: 'dataEmissao', titulo: 'Data', render: (n: any) => (
+      <span className="text-gray-500">{fmtDataHoraLocal(n.dataEmissao)}</span>
     )},
     { chave: 'razaoSocial', titulo: 'Destinatário', esconderAte: 'md', render: (n: any) => n.razaoSocial ?? 'Consumidor Final' },
     { chave: 'status', titulo: 'Status', render: (n: any) => {
