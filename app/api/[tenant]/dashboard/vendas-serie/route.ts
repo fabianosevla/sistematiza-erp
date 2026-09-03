@@ -39,8 +39,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         sql = `
           WITH baldes AS (
             SELECT generate_series(
-              DATE_TRUNC('month', NOW()) - INTERVAL '11 months',
-              DATE_TRUNC('month', NOW()), INTERVAL '1 month'
+              DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Sao_Paulo') - INTERVAL '11 months',
+              DATE_TRUNC('month', NOW() AT TIME ZONE 'America/Sao_Paulo'), INTERVAL '1 month'
             ) AS balde
           )
           SELECT b.balde,
@@ -48,7 +48,7 @@ export async function GET(req: NextRequest, { params }: Params) {
                  COUNT(v.venda_id)::int AS qtd
           FROM baldes b
           LEFT JOIN t_venda v ON v.active_flg = true
-            AND DATE_TRUNC('month', v.vendida_em) = b.balde
+            AND DATE_TRUNC('month', v.vendida_em AT TIME ZONE 'America/Sao_Paulo') = b.balde
           GROUP BY b.balde ORDER BY b.balde
         `
         formatarLabel = (d) => `${MES_BR[d.getUTCMonth()]}/${String(d.getUTCFullYear()).slice(-2)}`
@@ -56,8 +56,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         sql = `
           WITH baldes AS (
             SELECT generate_series(
-              DATE_TRUNC('year', NOW()) - INTERVAL '4 years',
-              DATE_TRUNC('year', NOW()), INTERVAL '1 year'
+              DATE_TRUNC('year', NOW() AT TIME ZONE 'America/Sao_Paulo') - INTERVAL '4 years',
+              DATE_TRUNC('year', NOW() AT TIME ZONE 'America/Sao_Paulo'), INTERVAL '1 year'
             ) AS balde
           )
           SELECT b.balde,
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest, { params }: Params) {
                  COUNT(v.venda_id)::int AS qtd
           FROM baldes b
           LEFT JOIN t_venda v ON v.active_flg = true
-            AND DATE_TRUNC('year', v.vendida_em) = b.balde
+            AND DATE_TRUNC('year', v.vendida_em AT TIME ZONE 'America/Sao_Paulo') = b.balde
           GROUP BY b.balde ORDER BY b.balde
         `
         formatarLabel = (d) => String(d.getUTCFullYear())

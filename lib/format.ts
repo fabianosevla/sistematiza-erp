@@ -125,6 +125,14 @@ export function fmtDataHoraLocal(valor: any): string {
   })
 }
 
+/** Momento → "27/07", já convertido para o fuso do navegador. */
+export function fmtDataCurtaLocal(valor: any): string {
+  if (valor === null || valor === undefined || valor === '') return TRACO
+  const d = valor instanceof Date ? valor : new Date(String(valor))
+  if (isNaN(d.getTime())) return TRACO
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
+
 // ── Números ─────────────────────────────────────────────────────────────────
 
 /**

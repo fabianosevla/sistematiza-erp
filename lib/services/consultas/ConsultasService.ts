@@ -438,7 +438,7 @@ export class ConsultasService {
 
     const res = await this.db.execute(sql`
       SELECT
-        DATE(v.vendida_em)                          AS dia,
+        DATE(v.vendida_em AT TIME ZONE 'America/Sao_Paulo') AS dia,
         vi.produto_id,
         vi.nome_produto,
         SUM(vi.quantidade)::numeric                 AS quantidade,
@@ -450,7 +450,7 @@ export class ConsultasService {
       JOIN t_venda v ON v.venda_id = vi.venda_id AND v.active_flg = true
       LEFT JOIN t_produto p ON p.produto_id = vi.produto_id
       WHERE v.vendida_em >= ${inicio} AND v.vendida_em <= ${fim}
-      GROUP BY DATE(v.vendida_em), vi.produto_id, vi.nome_produto
+      GROUP BY DATE(v.vendida_em AT TIME ZONE 'America/Sao_Paulo'), vi.produto_id, vi.nome_produto
       ORDER BY dia DESC, SUM(vi.subtotal) DESC
     `)
 

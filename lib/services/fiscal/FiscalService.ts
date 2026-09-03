@@ -869,16 +869,16 @@ export class FiscalService {
 
   async relatorioResumoMensal(ano: number) {
     const result = await this.db.execute(sql`
-      SELECT TO_CHAR(DATE_TRUNC('month', data_emissao), 'Mon/YY') as mes,
+      SELECT TO_CHAR(DATE_TRUNC('month', data_emissao AT TIME ZONE 'America/Sao_Paulo'), 'Mon/YY') as mes,
              tipo,
              COUNT(*) FILTER (WHERE status = 'autorizada')::int as autorizadas,
              COUNT(*) FILTER (WHERE status = 'cancelada')::int  as canceladas,
              COUNT(*) FILTER (WHERE status = 'pendente')::int   as pendentes,
              COALESCE(SUM(valor_total) FILTER (WHERE status = 'autorizada'), 0)::bigint as valor_total
       FROM t_nota_fiscal
-      WHERE active_flg = true AND EXTRACT(YEAR FROM data_emissao) = ${ano}
-      GROUP BY DATE_TRUNC('month', data_emissao), tipo
-      ORDER BY DATE_TRUNC('month', data_emissao)
+      WHERE active_flg = true AND EXTRACT(YEAR FROM data_emissao AT TIME ZONE 'America/Sao_Paulo') = ${ano}
+      GROUP BY DATE_TRUNC('month', data_emissao AT TIME ZONE 'America/Sao_Paulo'), tipo
+      ORDER BY DATE_TRUNC('month', data_emissao AT TIME ZONE 'America/Sao_Paulo')
     `)
     return (result.rows as any[]).map(r => ({
       mes: r.mes, tipo: r.tipo,
@@ -902,7 +902,7 @@ export class FiscalService {
 
   async relatorioApuracaoImpostos({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string }) {
     const result = await this.db.execute(sql`
-      SELECT TO_CHAR(DATE_TRUNC('month', n.data_emissao), 'Mon/YY') as mes,
+      SELECT TO_CHAR(DATE_TRUNC('month', n.data_emissao AT TIME ZONE 'America/Sao_Paulo'), 'Mon/YY') as mes,
              COALESCE(SUM(i.valor_icms), 0)::bigint as icms,
              COALESCE(SUM(i.valor_ipi),  0)::bigint as ipi,
              COALESCE(SUM(i.base_st),    0)::bigint as base_st,
@@ -912,7 +912,8 @@ export class FiscalService {
       WHERE n.active_flg = true AND n.status = 'autorizada'
         ${dataInicio ? sql`AND n.data_emissao >= ${dataInicio}` : sql``}
         ${dataFim    ? sql`AND n.data_emissao <= ${dataFim}`    : sql``}
-      GROUP BY DATE_TRUNC('month', n.data_emissao) ORDER BY DATE_TRUNC('month', n.data_emissao)
+      GROUP BY DATE_TRUNC('month', n.data_emissao AT TIME ZONE 'America/Sao_Paulo')
+      ORDER BY DATE_TRUNC('month', n.data_emissao AT TIME ZONE 'America/Sao_Paulo')
     `)
     return (result.rows as any[]).map(r => ({
       mes: r.mes, icms: Number(r.icms), ipi: Number(r.ipi), baseSt: Number(r.base_st), valorSt: Number(r.valor_st),

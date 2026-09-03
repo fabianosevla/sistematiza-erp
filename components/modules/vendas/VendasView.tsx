@@ -16,12 +16,17 @@ import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { useToast } from '@/components/ui/Toast'
 import { useDominio } from '@/hooks/useDominio'
-import { fmtMoeda, fmtDataHora as fmtDataHoraPadrao } from '@/lib/format'
+import { fmtMoeda, fmtDataHoraLocal as fmtDataHoraPadrao } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 // Formatação vem de lib/format — a tela tinha cópias locais que divergiam do
 // resto do sistema (o padrão usa ano com 2 dígitos na lista).
+//
+// `vendidaEm` é MOMENTO (quando a venda aconteceu), não data pura — por isso
+// usa a variante "Local" (converte pro fuso do navegador). Usar a variante
+// sem fuso aqui mostrava a hora em UTC direto (ex.: 20:41 em vez de 17:41,
+// 3h de diferença de Passos/MG) — bug encontrado em 03/09/2026.
 const fmt          = (c: number) => fmtMoeda(c)
 const fmtDate      = (d: string) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—')
 const fmtDateHora  = (d: string) => fmtDataHoraPadrao(d)

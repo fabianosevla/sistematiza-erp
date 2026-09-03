@@ -31,12 +31,17 @@ import {
   SeletorPeriodo, PERIODICIDADES, intervaloDe, deslocar,
   type Periodicidade,
 } from '@/components/ui/SeletorPeriodo'
+import { fmtDataLocal as fmtConcluidoEm } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 const POR_PAGINA = 25
 const hojeISO = () => new Date().toISOString().slice(0, 10)
 
+// `dataAcao` é data pura (dia escolhido, sem hora) — o truque do meio-dia
+// evita ela mudar de dia por causa do fuso. `concluidoEm` é MOMENTO (hora
+// real de quando marcou como concluída) — usa fmtConcluidoEm, que converte
+// pro fuso do navegador de verdade, em vez do mesmo truque aplicado errado.
 const fmtData = (d: any) =>
   d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
@@ -212,7 +217,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
       ...itens.map(a => [
         fmtData(a.dataAcao), a.identificacao, a.acao, a.responsavel ?? '',
         a.status === 'concluida' ? 'Concluida' : 'Pendente',
-        a.concluidoEm ? fmtData(a.concluidoEm) : '',
+        a.concluidoEm ? fmtConcluidoEm(a.concluidoEm) : '',
       ]),
     ]
     const csv = linhas.map(l => l.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
@@ -254,7 +259,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
     {
       chave: 'status', titulo: 'Status',
       render: (a: any) => a.status === 'concluida'
-        ? <Badge variant="secondary">Concluída {a.concluidoEm ? `· ${fmtData(a.concluidoEm)}` : ''}</Badge>
+        ? <Badge variant="secondary">Concluída {a.concluidoEm ? `· ${fmtConcluidoEm(a.concluidoEm)}` : ''}</Badge>
         : <Badge variant="default">Pendente</Badge>,
     },
   ]

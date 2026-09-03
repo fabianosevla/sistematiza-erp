@@ -17,7 +17,7 @@ import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import HistoricoCaixaTab from '@/components/modules/caixa/HistoricoCaixaTab'
-import { fmtMoeda as fmt, fmtData } from '@/lib/format'
+import { fmtMoeda as fmt, fmtDataLocal as fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 

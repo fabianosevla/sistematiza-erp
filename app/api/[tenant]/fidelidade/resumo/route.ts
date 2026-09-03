@@ -41,8 +41,8 @@ export async function GET(_req: NextRequest, { params }: { params: { tenant: str
           SELECT
             COALESCE(SUM(valor_centavos) FILTER (WHERE tipo = 'credito'), 0)::bigint AS creditado_total,
             COALESCE(SUM(valor_centavos) FILTER (WHERE tipo = 'uso'), 0)::bigint     AS usado_total,
-            COALESCE(SUM(valor_centavos) FILTER (WHERE tipo = 'credito' AND created_dt >= date_trunc('month', NOW())), 0)::bigint AS creditado_mes,
-            COALESCE(SUM(valor_centavos) FILTER (WHERE tipo = 'uso'     AND created_dt >= date_trunc('month', NOW())), 0)::bigint AS usado_mes
+            COALESCE(SUM(valor_centavos) FILTER (WHERE tipo = 'credito' AND created_dt >= date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'), 0)::bigint AS creditado_mes,
+            COALESCE(SUM(valor_centavos) FILTER (WHERE tipo = 'uso'     AND created_dt >= date_trunc('month', NOW() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'), 0)::bigint AS usado_mes
           FROM t_fidelidade_movimento WHERE active_flg = true
         `),
         client.query(`
