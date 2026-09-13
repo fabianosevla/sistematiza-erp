@@ -811,28 +811,16 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
         return
       }
 
+      // Confirmação (venda, cupom, limpar carrinho) usa <ConfirmModal>, que
+      // cuida do próprio teclado (Enter/setas/Esc) — aqui só sai da frente
+      // pra esse listener chegar até ele, sem F2/F3 etc. vazando por baixo.
       const algumModal = confirmVenda || !!cupomVenda || confirmLimpar
-      if (e.key === 'Escape' && algumModal) {
-        e.stopImmediatePropagation()
-        if (confirmVenda) setConfirmVenda(false)
-        else if (cupomVenda) setCupomVenda(null)
-        else if (confirmLimpar) setConfirmLimpar(false)
-        return
-      }
+      if (algumModal) return
       if (e.key === 'Escape' && painelAberto && etapa === 'pagamento') {
         e.stopImmediatePropagation()
         setEtapa('itens')
         return
       }
-      // Enter na confirmação final = clicar em "Sim". Fecha o ciclo do Enter
-      // que vem avançando campo a campo no formulário de pagamento.
-      if (e.key === 'Enter' && confirmVenda) {
-        e.preventDefault(); e.stopImmediatePropagation()
-        setConfirmVenda(false)
-        isAPrazo ? venderAPrazoMut.mutate() : venderMut.mutate()
-        return
-      }
-      if (algumModal) return
       if (e.key === 'F2')  { e.preventDefault(); setPainelAberto(false); setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select() }, 60) }
       if (e.key === 'F3')  { e.preventDefault(); abrirPainel('pagamento'); setTimeout(() => clienteRef.current?.focus(), 120) }
       if (e.key === 'F6')  { e.preventDefault(); abrirPainel('pagamento'); setTimeout(() => { descontoRef.current?.focus(); descontoRef.current?.select() }, 120) }
@@ -848,7 +836,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, painelAberto, etapa, showVendasDia, vendasDia, linhaSel, isAPrazo, venderMut, venderAPrazoMut])
+  }, [podeVender, carrinho.length, confirmVenda, cupomVenda, confirmLimpar, painelAberto, etapa, showVendasDia, vendasDia, linhaSel])
 
   // Carrinho esvaziado com o painel aberto: não há o que conferir nem pagar.
   useEffect(() => {
@@ -1896,38 +1884,34 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           onCancel={() => setConfirmLimpar(false)} />
       )}
 
-      {/* Confirmação da venda (Sim/Não) */}
+      {/* Confirmação da venda (Sim/Não) — Enter confirma, setas trocam pra
+          Não, Esc cancela: tudo isso já vem de série do ConfirmModal. */}
       {confirmVenda && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(26,31,54,0.24)' }}>
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-sm mx-4 p-6 text-center">
-            <p className="text-base font-semibold text-gray-900 mb-1">Deseja confirmar a venda?</p>
-            <p className="text-sm text-gray-500">Total: <span className="font-semibold text-gray-900">{fmt(totalAPagar)}</span></p>
-            {ehAtacado && (
-              <p className="text-xs text-gray-500 mt-1">
-                Preço de {rotuloTabela}{clienteNomeDisplay ? ` — ${clienteNomeDisplay}` : ''}
-              </p>
-            )}
-            <div className="flex justify-center gap-3 mt-5">
-              <Button variant="outline" className="w-24" onClick={() => setConfirmVenda(false)}>Não</Button>
-              <Button variant="brand" className="w-24" onClick={() => { setConfirmVenda(false); isAPrazo ? venderAPrazoMut.mutate() : venderMut.mutate() }}>Sim</Button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Deseja confirmar a venda?"
+          message={`Total: ${fmt(totalAPagar)}`}
+          confirmLabel="Sim" cancelLabel="Não"
+          onConfirm={() => { setConfirmVenda(false); isAPrazo ? venderAPrazoMut.mutate() : venderMut.mutate() }}
+          onCancel={() => setConfirmVenda(false)}
+        >
+          {ehAtacado && (
+            <p className="text-xs text-gray-500 text-center">
+              Preço de {rotuloTabela}{clienteNomeDisplay ? ` — ${clienteNomeDisplay}` : ''}
+            </p>
+          )}
+        </ConfirmModal>
       )}
 
       {/* Impressão do cupom (Sim/Não) — aparece depois que a venda foi registrada */}
       {cupomVenda && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(26,31,54,0.24)' }}>
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 w-full max-w-sm mx-4 p-6 text-center">
-            <CheckCircle size={28} className="mx-auto text-green-500 mb-2" />
-            <p className="text-base font-semibold text-gray-900 mb-1">Venda registrada!</p>
-            <p className="text-sm text-gray-500 mb-5">Deseja imprimir cupom?</p>
-            <div className="flex justify-center gap-3">
-              <Button variant="outline" className="w-24" onClick={() => setCupomVenda(null)}>Não</Button>
-              <Button variant="brand" className="w-24" onClick={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}>Sim</Button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Venda registrada!"
+          message="Deseja imprimir cupom?"
+          icon={<CheckCircle size={28} className="text-green-500" />}
+          confirmLabel="Sim" cancelLabel="Não"
+          onConfirm={() => { imprimirCupom(cupomVenda); setCupomVenda(null) }}
+          onCancel={() => setCupomVenda(null)}
+        />
       )}
     </div>
   )
