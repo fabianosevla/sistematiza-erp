@@ -18,6 +18,8 @@ export const conflict = (message: string, modificationNum?: number) =>
   )
 export const badRequest = (message: string) =>
   NextResponse.json({ status: 'error', message }, { status: 400 })
+export const tooManyRequests = (message = 'Muitas tentativas. Aguarde um pouco e tente de novo.') =>
+  NextResponse.json({ status: 'error', message }, { status: 429 })
 
 export const serverError = (err: unknown) => {
   if (err instanceof ZodError) {

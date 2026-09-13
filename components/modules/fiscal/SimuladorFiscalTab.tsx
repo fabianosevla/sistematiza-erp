@@ -146,6 +146,7 @@ export default function SimuladorFiscalTab({ tenantSlug }: Props) {
                   <Linha label="Produto" valor={r.produtoNome} />
                   <Linha label="Perfil tributário" valor={r.perfilNome} />
                   <Linha label="NCM" valor={r.ncm} />
+                  <Linha label="CEST" valor={r.cest} />
                   <Linha label="Tem substituição tributária?" valor={r.temSt ? 'Sim' : 'Não'} />
                   <Linha label="CSOSN / CST" valor={r.csosnOuCst} />
                   <Linha label="Alíquota ICMS" valor={r.aliqIcms ? `${r.aliqIcms}%` : null} />

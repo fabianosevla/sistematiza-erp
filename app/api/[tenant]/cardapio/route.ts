@@ -7,13 +7,19 @@
 import type { NextRequest } from 'next/server'
 import { resolveTenantPublico } from '@/lib/auth/tenantPublico'
 import { pool } from '@/lib/db/connection'
-import { ok, notFound, serverError } from '@/lib/api/responses'
+import { ok, notFound, serverError, tooManyRequests } from '@/lib/api/responses'
 import { estaAberto } from '@/lib/cardapio/horario'
+import { checarLimite } from '@/lib/api/rateLimit'
 
 type Params = { params: { tenant: string } }
 
 export async function GET(req: NextRequest, { params }: Params) {
   try {
+    // Rota pública, sem login — o limite é a única barreira contra um
+    // script martelando a rota (ver revisão de segurança de 13/09/2026).
+    const limite = checarLimite(req, 'cardapio-get', { limite: 30, janelaMs: 60_000 })
+    if (!limite.permitido) return tooManyRequests()
+
     const tenant = await resolveTenantPublico(params.tenant)
     if (!tenant) return notFound('Cardápio não disponível')
 

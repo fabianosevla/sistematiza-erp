@@ -16,8 +16,9 @@ import { resolveTenantPublico } from '@/lib/auth/tenantPublico'
 import { getDbForTenant, pool } from '@/lib/db/connection'
 import { dbProduto } from '@/lib/db/schemas/cadastros'
 import { fmtMoeda } from '@/lib/format'
-import { ok, notFound, badRequest, serverError } from '@/lib/api/responses'
+import { ok, notFound, badRequest, serverError, tooManyRequests } from '@/lib/api/responses'
 import { estaAberto } from '@/lib/cardapio/horario'
+import { checarLimite } from '@/lib/api/rateLimit'
 
 type Params = { params: { tenant: string } }
 
@@ -46,6 +47,10 @@ function normalizarWhatsapp(valor: string): string {
 
 export async function POST(req: NextRequest, { params }: Params) {
   try {
+    // Rota pública, sem login — ver revisão de segurança de 13/09/2026.
+    const limite = checarLimite(req, 'cardapio-mensagem', { limite: 10, janelaMs: 60_000 })
+    if (!limite.permitido) return tooManyRequests()
+
     const tenant = await resolveTenantPublico(params.tenant)
     if (!tenant) return notFound('Cardápio não disponível')
 
