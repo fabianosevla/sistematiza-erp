@@ -207,6 +207,11 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
   const [dataEntrega, setDataEntrega]         = useState('')
   const [enderecoEntrega, setEnderecoEntrega] = useState('')
   const [enderecoCadastro, setEnderecoCadastro] = useState('')
+  // Pedido chegou pelo cardápio digital (WhatsApp) e foi lançado aqui direto
+  // no balcão, em vez de pela tela de Pedidos. Mesma marcação de lá — é o
+  // que permite o CRM contar quantas visualizações do cardápio viraram
+  // venda de verdade, também para quem opera pelo PDV.
+  const [origemCardapio, setOrigemCardapio]   = useState(false)
 
   // Reimpressão: painel das vendas de hoje. `linhaSel` é o índice destacado,
   // para o operador escolher com as setas e imprimir com Enter — no balcão a
@@ -375,6 +380,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           documentoFiscal: comNota ? 'nfce' : 'nenhum',
           imprimirNota:    comNota && imprimirNota,
           numeroCaixa:     numeroCaixa ?? undefined,
+          origemCardapio:  origemCardapio || undefined,
           // O desconto de cada linha vai no próprio item; o servidor soma tudo
           // no desconto da venda. tipoPrecao diz ao VendaService qual coluna de
           // preço usar — e fica gravado em t_venda_item para o histórico.
@@ -459,6 +465,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       setEnderecoEntrega('')
       setEnderecoCadastro('')
       setUsarCashback(false)
+      setOrigemCardapio(false)
       setShowExtras(false)
       setShowCadastrarCliente(false)
       // Venda fechada devolve o operador ao catálogo, pronto para a próxima.
@@ -519,6 +526,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
           nomeClienteAvulso: clienteId ? undefined : (nomeAvulso.trim() || undefined),
           tipoVenda:  'balcao',
           dataPedido: hoje,
+          origem:     origemCardapio ? 'cardapio' : 'direta',
           observacao: observacao || undefined,
           itens: carrinho.map(i => ({
             produtoId:     i.produtoId,
@@ -556,6 +564,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
       setObservacao('')
       setFormaPgto('')
       setParcelas('2')
+      setOrigemCardapio(false)
       setShowExtras(false)
       setShowCadastrarCliente(false)
       setPainelAberto(false)
@@ -1768,6 +1777,19 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <Label className="text-xs">Observação</Label>
                     <Input value={observacao} onChange={e => setObservacao(e.target.value)} className="mt-1 h-9 text-sm" />
                   </div>
+                  <label className="flex items-center gap-2 cursor-pointer pt-1">
+                    <input type="checkbox" checked={origemCardapio}
+                      onChange={e => setOrigemCardapio(e.target.checked)}
+                      className="w-4 h-4 rounded" />
+                    <span className="text-xs text-gray-600 inline-flex items-center gap-1">
+                      Pedido via cardápio digital
+                      <InfoTip titulo="Pra que serve">
+                        Marca que este pedido chegou pelo link público do cardápio e foi lançado
+                        aqui no balcão — o CRM usa isso pra contar quantas vendas de verdade
+                        vieram do cardápio, junto com o que é lançado em Pedidos.
+                      </InfoTip>
+                    </span>
+                  </label>
                 </div>
               )}
 

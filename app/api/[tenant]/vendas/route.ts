@@ -82,6 +82,9 @@ const criarVendaSchema = z.object({
   imprimirNota:       z.boolean().optional(),
   // Qual maquina fez a venda. Cada PC guarda o proprio numero.
   numeroCaixa:        z.number().int().positive().optional(),
+  // Veio do cardápio digital — mesma marcação de t_pedido.origem, só que
+  // pro lado do PDV (que não passa por Pedido). Alimenta o funil do CRM.
+  origemCardapio:     z.boolean().optional(),
 })
 
 export async function POST(req: NextRequest, { params }: Params) {
@@ -116,6 +119,7 @@ export async function POST(req: NextRequest, { params }: Params) {
         documentoFiscal: payload.documentoFiscal ?? 'nenhum',
         imprimirNota:    payload.imprimirNota ?? false,
         numeroCaixa:     payload.numeroCaixa ?? undefined,
+        origemCardapio:  payload.origemCardapio === true,
         userId: await usuarioAtualIdDb(db),
       })
       return created(result)

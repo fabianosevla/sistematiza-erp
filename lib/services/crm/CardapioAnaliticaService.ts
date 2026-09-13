@@ -2,11 +2,15 @@
 //
 // Funil do cardápio digital: visualização → pedido montado (WhatsApp) →
 // venda confirmada. Os dois primeiros vêm de t_cardapio_evento; o terceiro
-// vem de t_pedido.origem = 'cardapio' já faturado (venda_id preenchido) —
-// não tem como saber com certeza além disso (ver comentário em
-// app/api/[tenant]/cardapio/mensagem/route.ts: o pedido vira mensagem de
-// WhatsApp, a venda é lançada à mão depois, sem vínculo automático — por
-// isso a origem precisa ser marcada manualmente ao registrar o pedido).
+// vem de t_venda, por dois caminhos possíveis — não tem como saber com
+// certeza além disso (ver comentário em app/api/[tenant]/cardapio/mensagem/
+// route.ts: o pedido vira mensagem de WhatsApp, a venda é lançada à mão
+// depois, sem vínculo automático — por isso a origem precisa ser marcada
+// manualmente ao registrar):
+//   1. Pela tela de Pedidos, com origem 'cardapio' — a venda nasce na
+//      entrega (t_pedido.venda_id) e carrega t_venda.origem_cardapio junto.
+//   2. Direto no PDV, marcando "Pedido via cardápio digital" no balcão —
+//      t_venda.origem_cardapio fica true sem nunca existir um t_pedido.
 import { sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 
@@ -26,12 +30,14 @@ export class CardapioAnaliticaService {
          ORDER BY dia
       `),
       this.db.execute(sql`
-        SELECT DATE(p.data_pedido AT TIME ZONE 'America/Sao_Paulo') AS dia,
-               COUNT(*)::int AS vendas_confirmadas
-          FROM t_pedido p
-         WHERE p.active_flg = true AND p.origem = 'cardapio' AND p.venda_id IS NOT NULL
-           AND p.data_pedido >= NOW() - (${dias} * INTERVAL '1 day')
-         GROUP BY DATE(p.data_pedido AT TIME ZONE 'America/Sao_Paulo')
+        SELECT DATE(v.vendida_em AT TIME ZONE 'America/Sao_Paulo') AS dia,
+               COUNT(DISTINCT v.venda_id)::int AS vendas_confirmadas
+          FROM t_venda v
+          LEFT JOIN t_pedido p ON p.venda_id = v.venda_id AND p.active_flg = true
+         WHERE v.active_flg = true
+           AND (v.origem_cardapio = true OR p.origem = 'cardapio')
+           AND v.vendida_em >= NOW() - (${dias} * INTERVAL '1 day')
+         GROUP BY DATE(v.vendida_em AT TIME ZONE 'America/Sao_Paulo')
       `),
     ])
 

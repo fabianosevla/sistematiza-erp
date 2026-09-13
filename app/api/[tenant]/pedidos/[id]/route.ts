@@ -16,6 +16,16 @@
 //   'pedido', grava o venda_id no pedido, registra a movimentação de estoque e
 //   abre a conta a receber com vencimento na previsão de entrega.
 //
+//   A venda nasce AQUI, na entrega — não mais na baixa da conta a receber.
+//   Pedido entregue já é venda de verdade (a mercadoria saiu), esteja o
+//   dinheiro recebido ou não; separar "faturou" de "recebeu" é assunto de
+//   contas a receber, não de dashboard/relatório de vendas.
+//
+//   `t_pedido.venda_id`, gravado aqui, é a trava contra duplicar: quando o
+//   pagamento é baixado depois (ContasReceberService.baixar →
+//   gerarVendaDoPedido), ver o campo já preenchido faz o método só anexar a
+//   forma de pagamento na venda existente, em vez de criar outra.
+//
 //   O insumo NÃO é debitado aqui. Ele já saiu quando a produção foi
 //   registrada — debitar de novo tiraria a mesma farinha duas vezes.
 //
@@ -122,7 +132,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       // Cabeçalho do pedido + nome do cliente (para a conta a receber)
       const cab = await client.query(`
         SELECT p.pedido_id, p.status, p.cliente_id, p.nome_cliente_avulso, p.venda_id,
-               p.tipo_venda, p.endereco_entrega, p.observacao,
+               p.tipo_venda, p.origem, p.endereco_entrega, p.observacao,
                p.previsao_entrega, p.valor_entrega,
                COALESCE(p.documento_fiscal, 'nenhum') AS documento_fiscal,
                p.nota_id,
@@ -202,11 +212,9 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             `, [conta.conta_receber_id])
           }
 
-          // 3. Se a conta já tinha sido quitada, a venda já nasceu
-          //    (ContasReceberService.baixar → gerarVendaDoPedido). Cancela a
-          //    venda SEM mexer em estoque de novo — o produto acabado já foi
-          //    devolvido no passo 1, e gerarVendaDoPedido nunca debitou
-          //    estoque (comentário no próprio código: "NÃO mexe em estoque").
+          // 3. A venda nasceu na entrega (pedido entregue já é venda, pago ou
+          //    não) — cancela ela SEM mexer em estoque de novo, porque o
+          //    produto acabado já foi devolvido no passo 1.
           let vendaCancelada = false
           if (pedido.venda_id) {
             const vendaUpd = await client.query(`
@@ -233,7 +241,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           await client.query('COMMIT')
 
           const avisoVenda = vendaCancelada
-            ? ' A venda gerada a partir da baixa também foi cancelada — se o pagamento já tinha sido recebido de verdade, o estorno ao cliente precisa ser feito manualmente.'
+            ? ' A venda gerada na entrega também foi cancelada — se o pagamento já tinha sido recebido de verdade, o estorno ao cliente precisa ser feito manualmente.'
             : ''
 
           return ok({
@@ -329,15 +337,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           [pedidoId]
         )
 
-        // A VENDA NÃO NASCE AQUI.
+        // A VENDA NASCE AQUI, NA ENTREGA.
         //
-        // Antes, entregar criava a venda na mesma transação. O efeito era
-        // faturamento aparecendo no relatório de um pedido que ainda não tinha
-        // sido pago — e, se o cliente nunca pagasse, a venda continuava lá.
-        //
-        // Agora entrega e faturamento são momentos separados: a entrega move
-        // mercadoria e abre a cobrança; a venda só existe quando o dinheiro
-        // entra, na baixa da conta a receber (ContasReceberService.baixar).
+        // Pedido entregue já é venda de verdade — a mercadoria saiu — esteja
+        // o dinheiro recebido ou não. A forma de pagamento ainda não se sabe
+        // (só se sabe na baixa da conta a receber), então a venda nasce sem
+        // pagamento registrado; ContasReceberService.baixar → gerarVendaDoPedido
+        // completa isso depois, sem criar uma segunda venda (venda_id já
+        // gravado no pedido trava a duplicação).
         //
         // O insumo continua sem sair aqui: ele já saiu quando a produção foi
         // registrada na grade. Debitar de novo derrubaria o estoque pelo dobro
@@ -360,10 +367,54 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           `, [it.produto_id, it.quantidade, `Entrega do pedido #${pedidoId}`])
         }
 
-        // 3. Conta a receber. A forma de pagamento é informada na baixa, que é
-        //    onde a taxa de cartão aparece — e é lá que a venda vai nascer.
-        //    data_entrega registra quando a mercadoria saiu, que é diferente do
-        //    vencimento e do recebimento.
+        // 2.5 A venda. Mesmo cálculo de subtotal/desconto que
+        //     ContasReceberService.gerarVendaDoPedido usava na baixa — só que
+        //     agora acontece aqui. `origem_cardapio` propaga a marcação do
+        //     pedido pra venda, pro funil do CRM enxergar os dois caminhos
+        //     (Pedidos e PDV) do mesmo jeito.
+        const vendaRes = await client.query(`
+          INSERT INTO t_venda (
+            origem, origem_cardapio, cliente_id, nome_cliente_avulso, status, tipo_entrega,
+            data_entrega, endereco_entrega, subtotal, desconto, total,
+            observacao, vendida_em,
+            created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
+          ) VALUES (
+            'pedido', $1, $2, $3, 'concluida', $4,
+            NOW(), $5, $6, $7, $8,
+            $9, NOW(),
+            1, 1, NOW(), NOW(), true, 0
+          ) RETURNING venda_id
+        `, [
+          pedido.origem === 'cardapio',
+          pedido.cliente_id,
+          pedido.nome_cliente_avulso,
+          pedido.tipo_venda === 'balcao' ? 'Retirada' : 'Entrega',
+          pedido.endereco_entrega,
+          subtotal,
+          subtotal - total,
+          total,
+          `Pedido #${pedidoId}${pedido.observacao ? ' — ' + pedido.observacao : ''}`,
+        ])
+        const vendaId: number | null = vendaRes.rows[0]?.venda_id ?? null
+
+        for (const it of itens as any[]) {
+          await client.query(`
+            INSERT INTO t_venda_item (
+              venda_id, produto_id, nome_produto, quantidade, preco_unitario, desconto, subtotal,
+              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
+            ) VALUES ($1, $2, $3, $4, $5, 0, $6, 1, 1, NOW(), NOW(), true, 0)
+          `, [vendaId, it.produto_id, it.nome_produto, it.quantidade, it.preco_unitario, it.subtotal])
+        }
+
+        if (vendaId) {
+          await client.query(
+            `UPDATE t_pedido SET venda_id = $1, updated_dt = NOW() WHERE pedido_id = $2`,
+            [vendaId, pedidoId]
+          )
+        }
+
+        // 3. Conta a receber. data_entrega registra quando a mercadoria saiu,
+        //    que é diferente do vencimento e do recebimento.
         //
         //    totalParcelas > 1 divide o valor em N contas, uma por mês a partir
         //    do vencimento — mesmo cálculo do ContasReceberService.criar(), pra
@@ -479,12 +530,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           ok: true,
           status: 'entregue',
           pedidoId,
+          vendaId,
           total,
           totalParcelas,
           notaId,
           vencimento: venc,
           insuficientes,
-          message: `Entrega confirmada. ${msgConta}${avisoNota}${aviso}`,
+          message: `Entrega confirmada. Venda #${vendaId} gerada. ${msgConta}${avisoNota}${aviso}`,
         })
       } catch (err) {
         await client.query('ROLLBACK')

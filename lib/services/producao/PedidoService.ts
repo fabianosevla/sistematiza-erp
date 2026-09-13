@@ -46,26 +46,40 @@ export class PedidoService {
     }
   }
 
-  async list({ status, periodo }: { status?: string; periodo?: string } = {}) {
-    const res = await this.db.execute(sql`
-      SELECT
-        p.pedido_id, p.cliente_id, p.nome_cliente_avulso, p.tipo_venda, p.origem, p.status,
-        p.data_pedido, p.previsao_producao, p.previsao_entrega,
-        p.valor_entrega, p.endereco_entrega, p.observacao, p.venda_id,
-        p.documento_fiscal, p.imprimir_nota, p.nota_id,
-        p.active_flg, p.modification_num,
-        p.created_dt, p.created_by, p.updated_dt, p.updated_by,
-        cl.nome_completo AS cliente_razao,
-        cl.nome_fantasia AS cliente_fantasia
-      FROM t_pedido p
-      LEFT JOIN t_cliente cl ON cl.cliente_id = p.cliente_id
+  async list({ status, periodo, page = 1, limit = 20 }: { status?: string; periodo?: string; page?: number; limit?: number } = {}) {
+    const offset = (Math.max(1, page) - 1) * limit
+    const where = sql`
       WHERE p.active_flg = true
         ${status ? sql`AND p.status = ${status}` : sql``}
         ${this.recorteDePeriodo(periodo)}
-      ORDER BY p.data_pedido DESC, p.pedido_id DESC
-    `)
+    `
 
-    return (res.rows as any[]).map(r => {
+    const [res, totalRes] = await Promise.all([
+      this.db.execute(sql`
+        SELECT
+          p.pedido_id, p.cliente_id, p.nome_cliente_avulso, p.tipo_venda, p.origem, p.status,
+          p.data_pedido, p.previsao_producao, p.previsao_entrega,
+          p.valor_entrega, p.endereco_entrega, p.observacao, p.venda_id,
+          p.documento_fiscal, p.imprimir_nota, p.nota_id,
+          p.active_flg, p.modification_num,
+          p.created_dt, p.created_by, p.updated_dt, p.updated_by,
+          cl.nome_completo AS cliente_razao,
+          cl.nome_fantasia AS cliente_fantasia
+        FROM t_pedido p
+        LEFT JOIN t_cliente cl ON cl.cliente_id = p.cliente_id
+        ${where}
+        ORDER BY p.data_pedido DESC, p.pedido_id DESC
+        LIMIT ${limit} OFFSET ${offset}
+      `),
+      this.db.execute(sql`
+        SELECT COUNT(*)::int AS total
+        FROM t_pedido p
+        ${where}
+      `),
+    ])
+
+    const total = Number((totalRes.rows as any[])[0]?.total ?? 0)
+    const data = (res.rows as any[]).map(r => {
       const fantasia = String(r.cliente_fantasia ?? '').trim()
       const razao    = String(r.cliente_razao ?? '').trim()
       const avulso   = String(r.nome_cliente_avulso ?? '').trim()
@@ -102,6 +116,8 @@ export class PedidoService {
         updatedBy:        r.updated_by,
       }
     })
+
+    return { data, meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) } }
   }
 
   async findById(id: number) {

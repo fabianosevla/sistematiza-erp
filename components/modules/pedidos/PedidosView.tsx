@@ -1,7 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, X, Trash2, ChevronRight, Clock, CheckCircle, XCircle, Package, ArrowRight, Pencil, Tag } from 'lucide-react'
+import { Plus, X, Trash2, Clock, CheckCircle, XCircle, Package, ArrowRight, Pencil, Tag, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,6 +11,8 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { MarcaEndereco, enderecoDoCadastro } from '@/components/ui/MarcaEndereco'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { fmtMoeda as fmt, fmtData as fmtDate, toInputDate } from '@/lib/format'
 import { TIPOS_PRECO } from '@/lib/constants'
 
@@ -73,6 +75,13 @@ const FLUXO: Record<string, { next: string; label: string; btnLabel: string; col
 // "cancelado": é a entrega que move estoque e gera a conta a receber, então
 // até "pronto" ainda dá pra corrigir data, itens etc. sem sujar nada.
 const STATUS_EDITAVEIS = ['pendente', 'producao', 'pronto']
+
+// Rótulos usados tanto na tabela quanto no filtro de coluna — precisam ser os
+// mesmos dos dois lados, senão o valor escolhido no filtro não bate com o que
+// a célula mostra.
+function statusLabel(s: string): string { return FLUXO[s]?.label ?? s }
+function tipoLabel(t: string): string { return t === 'balcao' ? 'Balcão' : 'Entrega' }
+function origemLabel(o: string): string { return o === 'cardapio' ? 'Cardápio digital' : 'Direta' }
 
 const PERIODOS = [
   { value: 'mes',      label: 'Este mês' },
@@ -159,6 +168,20 @@ export default function PedidosView({ tenantSlug }: Props) {
 
   const [filtroStatus, setFiltroStatus]   = useState('pendente')
   const [periodo, setPeriodo]             = useState('mes')
+  const [pageNum, setPageNum]             = useState(1)
+  // Filtro por coluna (funil no cabeçalho) sobre a página já carregada —
+  // mesmo padrão do resto do sistema (ConsultasView, VendasView): os pills de
+  // status e o período acima já filtram no servidor, isto aqui é uma camada
+  // extra, por coluna.
+  const [filtrosCol, setFiltrosCol]       = useState<Record<string, string>>({})
+  function aplicarFiltroCol(chave: string, valor: string) {
+    setFiltrosCol(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
   const [showNovo, setShowNovo]           = useState(false)
   const [showDetalhe, setShowDetalhe]     = useState<number | null>(null)
   const [editandoPedidoId, setEditandoPedidoId] = useState<number | null>(null)
@@ -209,11 +232,12 @@ export default function PedidosView({ tenantSlug }: Props) {
   const ehAtacado    = tabelaPreco !== 'varejo'
 
   const { data: listData, isLoading } = useQuery({
-    queryKey: ['pedidos', tenantSlug, filtroStatus, periodo],
+    queryKey: ['pedidos', tenantSlug, filtroStatus, periodo, pageNum],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (filtroStatus) params.set('status', filtroStatus)
       if (periodo) params.set('periodo', periodo)
+      params.set('page', String(pageNum))
       return (await fetch(`${apiBase}?${params}`)).json()
     },
   })
@@ -489,19 +513,80 @@ export default function PedidosView({ tenantSlug }: Props) {
     setItens(prev => prev.map(i => i.produtoId === produtoId ? { ...i, quantidade: qtd } : i))
   }
 
-  const pedidos  = listData?.data ?? []
+  const pedidos  = Array.isArray(listData?.data?.data) ? listData.data.data : Array.isArray(listData?.data) ? listData.data : []
+  const meta     = listData?.data?.meta ?? null
   const detalhe  = detalheData?.data
   const clientes = clientesData?.data?.data ?? clientesData?.data ?? []
   const produtos = produtosData?.data?.data ?? produtosData?.data ?? []
   const totalPedidos = itens.reduce((a, i) => a + i.quantidade * i.precoUnitario, 0)
   const salvando = criarMut.isPending || editarMut.isPending
 
+  // Opções do funil vêm do conjunto SEM filtro — escolher um valor não pode
+  // apagar os outros da própria lista de opções.
+  const pedidosFiltrados = useMemo(() => {
+    const chaves = Object.keys(filtrosCol)
+    if (chaves.length === 0) return pedidos
+    return pedidos.filter((p: any) => chaves.every(k => {
+      const val = k === 'clienteNome'  ? (p.clienteNome ?? 'Consumidor Final')
+        : k === 'statusLabel' ? statusLabel(p.status)
+        : k === 'tipoLabel'   ? tipoLabel(p.tipoVenda)
+        : k === 'origemLabel' ? origemLabel(p.origem)
+        : p?.[k]
+      return String(val ?? '').toLowerCase().includes(filtrosCol[k].toLowerCase())
+    }))
+  }, [pedidos, filtrosCol])
+
+  const opcoesFiltroCol = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    const setCliente = new Set<string>(), setStatus = new Set<string>(), setTipo = new Set<string>(), setOrigem = new Set<string>()
+    for (const p of pedidos) {
+      setCliente.add(String(p.clienteNome ?? 'Consumidor Final'))
+      setStatus.add(statusLabel(p.status))
+      setTipo.add(tipoLabel(p.tipoVenda))
+      setOrigem.add(origemLabel(p.origem))
+    }
+    if (setCliente.size > 0) mapa.clienteNome  = Array.from(setCliente).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    if (setStatus.size  > 0) mapa.statusLabel  = Array.from(setStatus).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    if (setTipo.size    > 0) mapa.tipoLabel    = Array.from(setTipo).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    if (setOrigem.size  > 0) mapa.origemLabel  = Array.from(setOrigem).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return mapa
+  }, [pedidos])
+
+  const colunas: Coluna[] = [
+    { chave: 'pedidoId', titulo: '#', largura: 'w-14',
+      render: (p: any) => <span className="text-xs font-mono text-gray-400">#{p.pedidoId}</span> },
+    { chave: 'clienteNome', titulo: 'Cliente', principal: true, filtravel: true,
+      render: (p: any) => (
+        <span>
+          {p.clienteNome ?? 'Consumidor Final'}
+          {p.clienteAvulso && (
+            <span className="ml-2 text-[10px] font-normal text-gray-400 border border-gray-200 rounded-full px-1.5 py-0.5 align-middle">
+              não cadastrado
+            </span>
+          )}
+        </span>
+      ) },
+    { chave: 'statusLabel', titulo: 'Status', filtravel: true,
+      render: (p: any) => {
+        const cfg = FLUXO[p.status] ?? FLUXO.pendente
+        return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
+      } },
+    { chave: 'tipoLabel', titulo: 'Tipo', filtravel: true, esconderAte: 'md',
+      render: (p: any) => <Badge variant="outline" className="text-xs">{tipoLabel(p.tipoVenda)}</Badge> },
+    { chave: 'origemLabel', titulo: 'Origem', filtravel: true, esconderAte: 'lg',
+      render: (p: any) => origemLabel(p.origem) },
+    { chave: 'dataPedido', titulo: 'Pedido', esconderAte: 'md',
+      render: (p: any) => fmtDate(p.dataPedido) },
+    { chave: 'previsaoEntrega', titulo: 'Previsão entrega', esconderAte: 'lg',
+      render: (p: any) => p.previsaoEntrega ? fmtDate(p.previsaoEntrega) : '—' },
+  ]
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Pedidos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-400 mt-0.5">{meta?.total ?? pedidos.length} pedido{(meta?.total ?? pedidos.length) !== 1 ? 's' : ''}</p>
         </div>
         <Button onClick={() => { resetForm(); setShowNovo(true) }}>
           <Plus size={15} className="mr-1.5" /> Novo pedido
@@ -518,7 +603,7 @@ export default function PedidosView({ tenantSlug }: Props) {
             { value: 'entregue',  label: 'Entregues' },
             { value: '',          label: 'Todos' },
           ].map(f => (
-            <button key={f.value} onClick={() => setFiltroStatus(f.value)}
+            <button key={f.value} onClick={() => { setFiltroStatus(f.value); setPageNum(1) }}
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${filtroStatus === f.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
               {f.label}
             </button>
@@ -529,70 +614,56 @@ export default function PedidosView({ tenantSlug }: Props) {
             em Pendentes a lista vinha cortada em "Este mês" sem que houvesse
             como ver nem trocar. Filtro que age escondido faz o operador
             concluir que o pedido sumiu. */}
-        <select value={periodo} onChange={e => setPeriodo(e.target.value)}
+        <select value={periodo} onChange={e => { setPeriodo(e.target.value); setPageNum(1) }}
           className="h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
           {PERIODOS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
       </div>
 
-      {/* Lista */}
-      {isLoading ? (
-        <div className="text-center py-12 text-sm text-gray-400">Carregando...</div>
-      ) : pedidos.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-          <Package size={28} className="text-gray-200 mx-auto mb-2" />
-          <p className="text-sm text-gray-400">Nenhum pedido encontrado.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {pedidos.map((p: any) => {
-            const cfg = FLUXO[p.status] ?? FLUXO.pendente
-            return (
-              <div key={p.pedidoId} className="bg-white rounded-xl border border-gray-100 p-4 flex items-center gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-gray-400">#{p.pedidoId}</span>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
-                    <Badge variant="outline" className="text-xs">{p.tipoVenda === 'entrega' ? 'Entrega' : 'Balcão'}</Badge>
-                  </div>
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {p.clienteNome ?? 'Consumidor Final'}
-                    {p.clienteAvulso && (
-                      <span className="ml-2 text-[10px] font-normal text-gray-400 border border-gray-200 rounded-full px-1.5 py-0.5 align-middle">
-                        não cadastrado
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Pedido: {fmtDate(p.dataPedido)}
-                    {p.previsaoProducao && ` · Produção: ${fmtDate(p.previsaoProducao)}`}
-                    {p.previsaoEntrega && ` · Entrega: ${fmtDate(p.previsaoEntrega)}`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {cfg.btnLabel && (
-                    <Button size="sm" variant="outline" className="text-xs"
-                      onClick={() => avancarMut.mutate({ id: p.pedidoId, status: cfg.next })}
-                      disabled={avancarMut.isPending}>
-                      {cfg.btnLabel}
-                    </Button>
-                  )}
-                  {STATUS_EDITAVEIS.includes(p.status) && (
-                    <button onClick={() => abrirEdicao(p.pedidoId)}
-                      className="text-xs text-gray-600 hover:text-gray-700 font-medium flex items-center gap-1">
-                      <Pencil size={12} /> Editar
-                    </button>
-                  )}
-                  <button onClick={() => setShowDetalhe(p.pedidoId)}
-                    className="text-xs text-green-600 hover:text-green-700 font-medium flex items-center gap-1 ml-1">
-                    Ver <ChevronRight size={12} />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {/* Lista — mesma tabela padrão do resto do sistema: paginação real no
+          servidor e filtro por coluna (funil no cabeçalho) sobre a página
+          carregada. As ações por linha são as mesmas de sempre: avançar de
+          etapa, editar (só nos status ainda editáveis) e ver detalhe. */}
+      <DataTable
+        colunas={colunas}
+        itens={pedidosFiltrados}
+        chave={(p: any) => p.pedidoId}
+        carregando={isLoading}
+        usarSkeleton
+        vazio={
+          <div className="py-12 text-center">
+            <Package size={28} className="text-gray-200 mx-auto mb-2" />
+            <p className="text-sm text-gray-400">Nenhum pedido encontrado.</p>
+          </div>
+        }
+        filtros={filtrosCol}
+        onFiltrar={aplicarFiltroCol}
+        opcoesFiltro={opcoesFiltroCol}
+        meta={meta}
+        onPageChange={setPageNum}
+        acoes={(p: any) => {
+          const cfg = FLUXO[p.status] ?? FLUXO.pendente
+          return (
+            <>
+              {cfg.btnLabel && (
+                <Button size="sm" variant="outline" className="text-xs whitespace-nowrap"
+                  onClick={() => avancarMut.mutate({ id: p.pedidoId, status: cfg.next })}
+                  disabled={avancarMut.isPending}>
+                  {cfg.btnLabel}
+                </Button>
+              )}
+              {STATUS_EDITAVEIS.includes(p.status) && (
+                <BotaoIcone titulo="Editar" onClick={() => abrirEdicao(p.pedidoId)}>
+                  <Pencil size={13} />
+                </BotaoIcone>
+              )}
+              <BotaoIcone titulo="Ver detalhes" variante="info" onClick={() => setShowDetalhe(p.pedidoId)}>
+                <Eye size={13} />
+              </BotaoIcone>
+            </>
+          )
+        }}
+      />
 
       {/* Painel novo / editar pedido */}
       {showNovo && (
@@ -673,7 +744,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                 )}
               </div>
 
-              {/* Tipo + origem + data */}
+              {/* Tipo + data */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Tipo</Label>
@@ -684,25 +755,22 @@ export default function PedidosView({ tenantSlug }: Props) {
                   </select>
                 </div>
                 <div>
-                  <Label className="inline-flex items-center gap-1">
-                    Origem
-                    <InfoTip titulo="Pra que serve">
-                      Marcar "Cardápio digital" é o que permite o CRM contar quantas vendas de
-                      verdade vieram do link público — sem essa marcação, essa venda não entra
-                      nessa conta.
-                    </InfoTip>
-                  </Label>
-                  <select value={origem} onChange={e => setOrigem(e.target.value)}
-                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
-                    <option value="direta">Direta</option>
-                    <option value="cardapio">Cardápio digital</option>
-                  </select>
+                  <Label>Data do pedido</Label>
+                  <Input type="date" value={dataPedido} onChange={e => setDataPedido(e.target.value)} className="mt-1" />
                 </div>
               </div>
-              <div>
-                <Label>Data do pedido</Label>
-                <Input type="date" value={dataPedido} onChange={e => setDataPedido(e.target.value)} className="mt-1 max-w-[200px]" />
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={origem === 'cardapio'}
+                  onChange={e => setOrigem(e.target.checked ? 'cardapio' : 'direta')}
+                  className="w-4 h-4 rounded" />
+                <span className="text-sm text-gray-700 inline-flex items-center gap-1">
+                  Pedido via cardápio digital
+                  <InfoTip titulo="Pra que serve">
+                    Marcar é o que permite o CRM contar quantas vendas de verdade vieram do link
+                    público — sem essa marcação, esse pedido não entra nessa conta.
+                  </InfoTip>
+                </span>
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Previsão produção</Label>
@@ -950,7 +1018,7 @@ export default function PedidosView({ tenantSlug }: Props) {
             'Este pedido já foi entregue — cancelar agora vai desfazer de verdade:\n\n' +
             '• Devolve pro estoque o que a entrega debitou\n' +
             '• Exclui a conta a receber gerada\n' +
-            '• Se a conta já tinha sido baixada, cancela também a venda gerada (o estorno do pagamento ao cliente, se já recebido, precisa ser feito à parte)\n\n' +
+            '• Cancela também a venda gerada na entrega (o estorno do pagamento ao cliente, se já recebido, precisa ser feito à parte)\n\n' +
             'Essa ação não pode ser desfeita pelo sistema.'
           }
           confirmLabel="Cancelar pedido"

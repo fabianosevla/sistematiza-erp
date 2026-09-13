@@ -94,6 +94,14 @@ export const dbVenda = pgTable('t_venda', {
   vendaId:           serial('venda_id').primaryKey(),
   ...auditFields,
   origem:            varchar('origem', { length: 20 }).notNull().default('direta'),
+  // Veio do cardápio digital? Independente de `origem` — que já distingue
+  // venda direta do PDV de venda faturada de pedido ('pedido'). Esta aqui
+  // é a MESMA marcação que existe em t_pedido.origem, só que no PDV: quem
+  // lança no balcão um pedido que chegou pelo cardápio marca aqui, porque o
+  // PDV não passa por t_pedido. É o que alimenta o funil do CRM (Cardápio
+  // Digital → visualizações → pedidos montados → vendas confirmadas).
+  // Ver scripts/migrate-venda-origem-cardapio.js
+  origemCardapio:    boolean('origem_cardapio').notNull().default(false),
   comandaId:         integer('comanda_id'),
   clienteId:         integer('cliente_id'),
   // Cliente avulso: quem compra uma vez e não vale cadastrar. É só um nome —

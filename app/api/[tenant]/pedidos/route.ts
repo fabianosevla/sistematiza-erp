@@ -22,8 +22,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       // descartava aqui, antes de chegar no service. Por isso o seletor de
       // período não surtia efeito nenhum na listagem.
       const periodo = searchParams.get('periodo') ?? undefined
+      const page    = Math.max(1, Number(searchParams.get('page')) || 1)
+      const limit   = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 20))
       const service = new PedidoService(db)
-      const result  = await service.list({ status, periodo })
+      const result  = await service.list({ status, periodo, page, limit })
       return ok(result)
     } finally {
       release()

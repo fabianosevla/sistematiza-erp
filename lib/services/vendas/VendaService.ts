@@ -404,7 +404,7 @@ export class VendaService {
     return result ?? null
   }
 
-  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, acrescimo, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, documentoFiscal, imprimirNota, numeroCaixa, userId }: {
+  async criarDireta({ itens, clienteId, nomeClienteAvulso, desconto, acrescimo, pagamentos, tipoEntrega, dataEntrega, enderecoEntrega, observacao, observacaoInterna, vendedor, usarCashback, documentoFiscal, imprimirNota, numeroCaixa, origemCardapio, userId }: {
     itens: { produtoId: number; quantidade: number; tipoPrecao?: string; desconto?: number }[]
     clienteId?:         number
     // Cliente avulso: só um nome. Sem cliente_id não há cashback nem
@@ -428,6 +428,9 @@ export class VendaService {
     imprimirNota?:      boolean
     // Qual máquina fez a venda. Cada PC guarda o próprio número.
     numeroCaixa?:       number
+    // Veio do cardápio digital (pedido feito por WhatsApp e lançado aqui à
+    // mão, em vez de pela tela de Pedidos). Alimenta o mesmo funil do CRM.
+    origemCardapio?:    boolean
     userId:             number
   }) {
     const now = new Date()
@@ -480,6 +483,7 @@ export class VendaService {
 
     const [venda] = await this.db.insert(dbVenda).values({
       origem:            'direta',
+      origemCardapio:    origemCardapio === true,
       clienteId:         clienteId ?? null,
       nomeClienteAvulso: avulso,
       status:            'concluida',

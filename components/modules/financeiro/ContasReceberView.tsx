@@ -206,15 +206,15 @@ export default function ContasReceberView({ tenantSlug }: Props) {
     },
     onSuccess: (d: any) => {
       inv()
-      // Quitar conta de pedido cria a venda. Estoque não muda — ele já saiu na
-      // entrega —, mas vendas, consultas e dashboard passam a contar o valor.
+      // A venda de um pedido já nasce na entrega, não aqui. Mesmo assim
+      // invalida — a baixa completa a forma de pagamento nela (ou, num
+      // pedido entregue antes dessa mudança, cria a venda só agora).
       for (const chave of ['vendas', 'vendas-kpis', 'consultas', 'dashboard', 'pedidos']) {
         qc.invalidateQueries({ queryKey: [chave] })
       }
       setShowBaixa(null)
       setBaixaForm({ valorRecebido: '', dataRecebimento: new Date().toISOString().slice(0, 10), formaRecebimento: '' })
-      const vendaId = d?.data?.vendaId
-      toast(vendaId ? `Recebimento registrado. Venda #${vendaId} gerada.` : 'Recebimento registrado.')
+      toast('Recebimento registrado.')
     },
     onError: (e: any) => toast(e.message || 'Erro.', 'error'),
   })
@@ -518,7 +518,7 @@ export default function ContasReceberView({ tenantSlug }: Props) {
               <div>
                 <Label className="flex items-center gap-1">
                   Forma de recebimento
-                  <InfoTip titulo="Forma de recebimento">Vai para a venda gerada na quitação e permite filtrar por ela em Consultas.</InfoTip>
+                  <InfoTip titulo="Forma de recebimento">Vai para a venda do pedido (gerada na entrega) e permite filtrar por ela em Consultas.</InfoTip>
                 </Label>
                 <select
                   value={baixaForm.formaRecebimento}

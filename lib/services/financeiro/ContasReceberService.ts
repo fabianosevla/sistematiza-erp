@@ -141,12 +141,14 @@ export class ContasReceberService {
     }).where(eq(dbContaReceber.contaReceberId, id))
       .returning({ id: dbContaReceber.contaReceberId, status: dbContaReceber.status })
 
-    // A VENDA NASCE AQUI, não na entrega.
+    // A VENDA JÁ NASCEU NA ENTREGA (ver app/api/[tenant]/pedidos/[id]/route.ts)
+    // — pedido entregue já é venda, pago ou não. O que acontece aqui é só
+    // completar a forma de pagamento na venda que já existe, sem criar outra
+    // (gerarVendaDoPedido trava em cima de t_pedido.venda_id).
     //
-    // Entregar move mercadoria e abre cobrança. Faturar é outra coisa: só
-    // acontece quando o dinheiro entra. Antes a venda era criada junto com a
-    // entrega, e o relatório mostrava faturamento de pedido que ninguém tinha
-    // pagado ainda.
+    // O fallback (criar a venda agora) só roda para pedido entregue ANTES
+    // desta mudança de arquitetura — que nunca chegou a gerar venda na
+    // entrega e ainda não tinha sido pago.
     //
     // Só na quitação total. Baixa parcial vai somando em valor_recebido e a
     // conta segue aberta — uma conta, uma venda.
@@ -163,16 +165,22 @@ export class ContasReceberService {
   }
 
   /**
-   * Cria a venda de um pedido já entregue e pago.
+   * Completa a forma de pagamento na venda de um pedido já entregue — ou,
+   * no caso de um pedido entregue ANTES desta venda passar a nascer na
+   * entrega (ver app/api/[tenant]/pedidos/[id]/route.ts), cria a venda agora,
+   * na quitação, como acontecia antes.
    *
    * NÃO mexe em estoque. O produto acabado saiu na entrega, com movimentação
    * registrada, e o insumo saiu antes ainda, no registro de produção. Baixar
    * de novo aqui tiraria a mesma mercadoria três vezes.
    *
-   * `t_pedido.venda_id` serve de trava: preenchido, o pedido já foi faturado e
-   * uma segunda baixa não duplica a venda.
+   * `t_pedido.venda_id` serve de trava: preenchido, o pedido já tem venda —
+   * uma segunda baixa não cria outra, só anexa a forma de pagamento na que
+   * já existe (sem repetir se já tiver uma, senão a mesma venda ficaria com
+   * dois pagamentos por causa de duas baixas parciais até a quitação).
    *
-   * Devolve o id da venda criada, ou null se não havia o que faturar.
+   * Devolve o id da venda (criada agora ou já existente), ou null se não
+   * havia o que faturar.
    */
   private async gerarVendaDoPedido(
     pedidoId: number,
@@ -187,7 +195,30 @@ export class ContasReceberService {
        LIMIT 1
     `)
     const pedido = (ped.rows as any[])[0]
-    if (!pedido || pedido.venda_id) return null
+    if (!pedido) return null
+
+    // Venda já existe (nasceu na entrega) — só falta a forma de pagamento,
+    // se ainda não tiver uma gravada.
+    if (pedido.venda_id) {
+      if (forma) {
+        const jaTem = await this.db.execute(sql`
+          SELECT 1 FROM t_venda_pagamento
+           WHERE venda_id = ${pedido.venda_id} AND active_flg = true LIMIT 1
+        `)
+        if ((jaTem.rows as any[]).length === 0) {
+          await this.db.execute(sql`
+            INSERT INTO t_venda_pagamento (
+              venda_id, forma, valor,
+              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num
+            ) VALUES (
+              ${pedido.venda_id}, ${forma}, ${total},
+              ${userId}, ${userId}, NOW(), NOW(), true, 0
+            )
+          `)
+        }
+      }
+      return Number(pedido.venda_id)
+    }
 
     const itensRes = await this.db.execute(sql`
       SELECT produto_id, nome_produto, quantidade, preco_unitario, subtotal
