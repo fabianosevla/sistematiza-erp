@@ -28,6 +28,45 @@ export class Cliente360Service {
     }))
   }
 
+  /**
+   * Lista paginada de clientes com resumo de compra — pra tabela padrão
+   * (DataTable com paginação/filtro) na Visão Geral do CRM. Mesma ideia da
+   * Ficha 360°, só que uma linha resumida por cliente em vez do detalhe
+   * completo.
+   */
+  async listarComResumo({ page, limit, search }: { page: number; limit: number; search?: string }) {
+    const offset = (page - 1) * limit
+    const filtro = search?.trim() ? sql`AND (c.nome_completo ILIKE ${'%' + search.trim() + '%'} OR c.nome_fantasia ILIKE ${'%' + search.trim() + '%'})` : sql``
+
+    const [dataRes, totalRes] = await Promise.all([
+      this.db.execute(sql`
+        SELECT c.cliente_id, c.nome_completo, c.nome_fantasia, c.tipo_pessoa, c.telefone, c.celular,
+               COUNT(v.venda_id)::int AS qtd_compras,
+               COALESCE(SUM(v.total), 0)::bigint AS total_gasto,
+               MAX(v.vendida_em) AS ultima_compra
+          FROM t_cliente c
+          LEFT JOIN t_venda v ON v.cliente_id = c.cliente_id AND v.active_flg = true
+         WHERE c.active_flg = true ${filtro}
+         GROUP BY c.cliente_id
+         ORDER BY ultima_compra DESC NULLS LAST
+         LIMIT ${limit} OFFSET ${offset}
+      `),
+      this.db.execute(sql`
+        SELECT COUNT(*)::int AS total FROM t_cliente c WHERE c.active_flg = true ${filtro}
+      `),
+    ])
+
+    const total = (totalRes.rows as any[])[0]?.total ?? 0
+    return {
+      data: (dataRes.rows as any[]).map(c => ({
+        clienteId: c.cliente_id, nome: c.nome_completo, nomeFantasia: c.nome_fantasia,
+        tipoPessoa: c.tipo_pessoa, telefone: c.telefone ?? c.celular,
+        qtdCompras: c.qtd_compras, totalGasto: Number(c.total_gasto), ultimaCompra: c.ultima_compra,
+      })),
+      meta: { total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) },
+    }
+  }
+
   async ficha(clienteId: number) {
     const [clienteRes, resumoRes, vendasRes, pedidosRes, fidelidadeRes, indicacoesRes] = await Promise.all([
       this.db.execute(sql`

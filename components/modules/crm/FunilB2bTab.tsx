@@ -57,7 +57,7 @@ export default function FunilB2bTab({ tenantSlug }: Props) {
       })
       if (!res.ok) throw new Error((await res.json())?.message ?? 'Erro ao atualizar')
     },
-    onSuccess: () => { inv(); toast('Lead atualizado.') },
+    onSuccess: () => { inv(); toast('Oportunidade atualizada.') },
     onError: (e: any) => toast(e.message, 'error'),
   })
 
@@ -66,7 +66,7 @@ export default function FunilB2bTab({ tenantSlug }: Props) {
       const res = await fetch(`${api}/${leadId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error((await res.json())?.message ?? 'Erro ao excluir')
     },
-    onSuccess: () => { inv(); toast('Lead excluído.') },
+    onSuccess: () => { inv(); toast('Oportunidade excluída.') },
     onError: (e: any) => toast(e.message, 'error'),
   })
 
@@ -76,12 +76,12 @@ export default function FunilB2bTab({ tenantSlug }: Props) {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500">Prospecção de mercado/restaurante — não é venda de balcão.</p>
-        <Button size="sm" onClick={() => setPainel('novo')}><Plus size={14} className="mr-1" /> Novo lead</Button>
+        <Button size="sm" onClick={() => setPainel('novo')}><Plus size={14} className="mr-1" /> Nova oportunidade</Button>
       </div>
 
       {abertos.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
-          <p className="text-sm text-gray-400">Nenhum lead em aberto ainda.</p>
+          <p className="text-sm text-gray-400">Nenhuma oportunidade em aberto ainda.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -169,7 +169,7 @@ export default function FunilB2bTab({ tenantSlug }: Props) {
       )}
 
       {confirmDel && (
-        <ConfirmModal title="Excluir lead" message={`Excluir "${confirmDel.nomeEmpresa}" do funil?`}
+        <ConfirmModal title="Excluir oportunidade" message={`Excluir "${confirmDel.nomeEmpresa}" do funil?`}
           confirmLabel="Excluir" danger
           onConfirm={() => { excluir.mutate(confirmDel.leadId); setDel(null) }}
           onCancel={() => setDel(null)} />
