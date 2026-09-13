@@ -70,11 +70,14 @@ export async function GET(req: NextRequest, { params }: Params) {
         `
         formatarLabel = (d) => String(d.getUTCFullYear())
       } else {
-        // dia: últimos 14 dias corridos, no fuso da loja.
+        // dia: do dia 1º do mês corrente até hoje, no fuso da loja — não é
+        // mais janela rolante de 14 dias. Pedido do Fabiano (13/09/2026):
+        // "Diário" deve mostrar só o mês em que se está, igual olhando um
+        // calendário — não um recorte que emenda com o fim do mês anterior.
         sql = `
           WITH baldes AS (
             SELECT generate_series(
-              (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo') - INTERVAL '13 days',
+              DATE_TRUNC('month', CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'),
               (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'), INTERVAL '1 day'
             ) AS balde
           )

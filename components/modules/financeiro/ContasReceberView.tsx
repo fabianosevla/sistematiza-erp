@@ -2,7 +2,7 @@
 // components/modules/financeiro/ContasReceberView.tsx
 // Espelho de ContasPagarView mas para recebimentos
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, CheckCircle, Pencil } from 'lucide-react'
 import { FormModal } from '@/components/ui/FormModal'
@@ -225,8 +225,35 @@ export default function ContasReceberView({ tenantSlug }: Props) {
   })
 
   const kpis = kpisRaw?.data
-  const rows = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
+  const rowsPagina = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
   const meta = listRaw?.data?.meta ?? null
+
+  // Filtro por coluna (funil no cabeçalho) sobre a página já carregada — os
+  // pills de status acima e a busca já filtram no SERVIDOR (inclusive
+  // "vencidas", que nem é uma coluna); isto aqui é uma camada extra, por
+  // cliente, igual ao resto do sistema.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const rows = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return rowsPagina
+    return rowsPagina.filter((r: any) => chaves.every(k =>
+      String(r?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [rowsPagina, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    const set = new Set<string>()
+    for (const r of rowsPagina) { if (r.nomeCliente) set.add(String(r.nomeCliente)) }
+    if (set.size > 0) mapa.nomeCliente = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return mapa
+  }, [rowsPagina])
 
   const salvando = criarMut.isPending || editarMut.isPending
 
@@ -242,7 +269,7 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'nomeCliente', titulo: 'Cliente', ordenavel: true,
+      chave: 'nomeCliente', titulo: 'Cliente', ordenavel: true, filtravel: true,
       render: (r: any) => r.nomeCliente || '—',
     },
     {
@@ -342,6 +369,9 @@ export default function ContasReceberView({ tenantSlug }: Props) {
         meta={meta}
         onPageChange={setPage}
         onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         acoes={(r: any) => (
           <>
             {r.status !== 'recebida' && (

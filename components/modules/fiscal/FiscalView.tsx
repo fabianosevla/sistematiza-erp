@@ -302,6 +302,40 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
   meta?: MetaPaginacao | null; onPageChange?: (page: number) => void
   onEmitir: (id: number) => void; onEditarFiscal: (id: number) => void; onCancelar: (id: number) => void
 }) {
+  // Mesmo padrão de filtro por coluna do resto do sistema — funil no
+  // cabeçalho, opções sempre do conjunto sem filtro. Diferença aqui: esta
+  // lista é paginada no SERVIDOR (page/limit reais, ver FiscalView acima),
+  // não carregada inteira como em ConsultasView — então o filtro por coluna
+  // enxerga só a página já carregada, não a lista inteira. Não mexe na
+  // paginação/busca existente, só filtra por cima do que já veio.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  // razaoSocial e status têm um valor de exibição diferente do campo cru
+  // (destinatário vazio vira "Consumidor Final", status vira o label do
+  // badge) — usa a mesma função pro filtro e pras opções do funil, senão
+  // escolher "Consumidor Final" ou um status na lista não bate com nada.
+  function valorFiltravel(n: any, chave: string) {
+    if (chave === 'razaoSocial') return n?.razaoSocial ?? 'Consumidor Final'
+    if (chave === 'status') return STATUS_MAP[n.status]?.label ?? n.status
+    return n?.[chave]
+  }
+  const chaves = Object.keys(filtros)
+  const notasFiltradas = chaves.length === 0 ? notas
+    : notas.filter(n => chaves.every(k => String(valorFiltravel(n, k) ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  const opcoesFiltro: Record<string, string[]> = {}
+  for (const chave of ['razaoSocial', 'status']) {
+    const set = new Set<string>()
+    for (const n of notas) { const v = valorFiltravel(n, chave); if (v) set.add(String(v)) }
+    if (set.size > 0) opcoesFiltro[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }
+
   const colunas: Coluna[] = [
     { chave: 'tipo', titulo: 'Tipo', largura: 'w-24', render: (n: any) => <Badge variant="outline">{n.tipo}</Badge> },
     { chave: 'numero', titulo: 'Número', principal: true, render: (n: any) => (
@@ -310,8 +344,8 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
     { chave: 'dataEmissao', titulo: 'Data', render: (n: any) => (
       <span className="text-gray-500">{fmtDataHoraLocal(n.dataEmissao)}</span>
     )},
-    { chave: 'razaoSocial', titulo: 'Destinatário', esconderAte: 'md', render: (n: any) => n.razaoSocial ?? 'Consumidor Final' },
-    { chave: 'status', titulo: 'Status', render: (n: any) => {
+    { chave: 'razaoSocial', titulo: 'Destinatário', esconderAte: 'md', filtravel: true, render: (n: any) => n.razaoSocial ?? 'Consumidor Final' },
+    { chave: 'status', titulo: 'Status', filtravel: true, render: (n: any) => {
       const s = STATUS_MAP[n.status] ?? STATUS_MAP.pendente
       return <Badge variant={s.color as any}>{s.label}</Badge>
     }},
@@ -323,10 +357,13 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
   return (
     <DataTable
       colunas={colunas}
-      itens={notas}
+      itens={notasFiltradas}
       chave={(n: any) => n.notaId}
       carregando={isLoading}
       vazio="Nenhuma nota encontrada."
+      filtros={filtros}
+      onFiltrar={aplicarFiltro}
+      opcoesFiltro={opcoesFiltro}
       meta={meta}
       onPageChange={onPageChange}
       acoes={(n: any) => (

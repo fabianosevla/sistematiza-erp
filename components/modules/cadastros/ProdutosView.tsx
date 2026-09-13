@@ -1,5 +1,5 @@
 ﻿'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Download, Upload, BookOpen, Package, EyeOff, Pencil, Lock, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -363,9 +363,43 @@ export default function ProdutosView({ tenantSlug }: Props) {
       return sortDir === 'asc' ? cmp : -cmp
     })
 
+  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
+  // A busca acima já filtra no SERVIDOR (nome) e pagina; este filtro atua
+  // sobre a PÁGINA já carregada, por cima disso — as opções do funil só
+  // listam valores da página atual, não do cadastro inteiro. Mesma
+  // limitação aceita em ClientesView; não vale trocar a paginação do
+  // servidor só por causa do funil.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  function valorFiltravel(p: any, chave: string): string {
+    if (chave === 'activeFlag') return p.activeFlag === false ? 'Inativo' : 'Ativo'
+    return String(p?.[chave] ?? '')
+  }
+  const produtosFiltrados = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return produtos
+    return produtos.filter((p: any) => chaves.every(k => valorFiltravel(p, k).toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [produtos, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['nome', 'tipo', 'unidade', 'activeFlag']) {
+      const set = new Set<string>()
+      for (const p of todos) { const v = valorFiltravel(p, chave); if (v) set.add(v) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [todos])
+
   const colunas: Coluna[] = [
     {
-      chave: 'nome', titulo: 'Nome', ordenavel: true,
+      chave: 'nome', titulo: 'Nome', ordenavel: true, filtravel: true,
       classeCelula: 'pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150',
       render: (p: any) => {
         const inativo = p.activeFlag === false
@@ -392,10 +426,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
       },
     },
     {
-      chave: 'tipo', titulo: 'Tipo', ordenavel: true, alinhamento: 'center',
+      chave: 'tipo', titulo: 'Tipo', ordenavel: true, alinhamento: 'center', filtravel: true,
       render: (p: any) => <Badge variant="secondary">{p.tipo ?? '—'}</Badge>,
     },
-    { chave: 'unidade', titulo: 'Unidade', alinhamento: 'center', render: (p: any) => p.unidade ?? '—' },
+    { chave: 'unidade', titulo: 'Unidade', alinhamento: 'center', filtravel: true, render: (p: any) => p.unidade ?? '—' },
     {
       chave: 'precoVarejo', titulo: 'Varejo', ordenavel: true, alinhamento: 'center',
       classeCelula: 'px-4 py-3 text-center text-sm font-medium',
@@ -417,7 +451,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'activeFlag', titulo: 'Status', alinhamento: 'center',
+      chave: 'activeFlag', titulo: 'Status', alinhamento: 'center', filtravel: true,
       render: (p: any) => {
         const inativo = p.activeFlag === false
         return <Badge variant={inativo ? 'secondary' : 'default'}>{inativo ? 'Inativo' : 'Ativo'}</Badge>
@@ -454,7 +488,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={produtos}
+        itens={produtosFiltrados}
         chave={(p: any) => p.produtoId}
         carregando={isLoading}
         usarSkeleton
@@ -469,6 +503,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
         meta={raw?.data?.meta}
         onPageChange={setPage}
         onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         acoes={(p: any) => {
           const inativo = p.activeFlag === false
           return (

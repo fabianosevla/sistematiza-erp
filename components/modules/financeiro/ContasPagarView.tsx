@@ -1,7 +1,7 @@
 'use client'
 // components/modules/financeiro/ContasPagarView.tsx
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Trash2, CheckCircle, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -138,8 +138,35 @@ export default function ContasPagarView({ tenantSlug }: Props) {
   })
 
   const kpis = kpisRaw?.data
-  const rows = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
+  const rowsPagina = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
   const meta = listRaw?.data?.meta ?? null
+
+  // Filtro por coluna (funil no cabeçalho) sobre a página já carregada — os
+  // pills de status acima e a busca já filtram no SERVIDOR (inclusive
+  // "vencidas", que nem é uma coluna); isto aqui é uma camada extra, por
+  // fornecedor, igual ao resto do sistema.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const rows = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return rowsPagina
+    return rowsPagina.filter((r: any) => chaves.every(k =>
+      String(r?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [rowsPagina, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    const set = new Set<string>()
+    for (const r of rowsPagina) { if (r.nomeFornecedor) set.add(String(r.nomeFornecedor)) }
+    if (set.size > 0) mapa.nomeFornecedor = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return mapa
+  }, [rowsPagina])
 
   const colunas: Coluna[] = [
     {
@@ -153,7 +180,7 @@ export default function ContasPagarView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'nomeFornecedor', titulo: 'Fornecedor', ordenavel: true,
+      chave: 'nomeFornecedor', titulo: 'Fornecedor', ordenavel: true, filtravel: true,
       render: (r: any) => r.nomeFornecedor || '—',
     },
     {
@@ -244,6 +271,9 @@ export default function ContasPagarView({ tenantSlug }: Props) {
         meta={meta}
         onPageChange={setPage}
         onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         acoes={(r: any) => (
           <>
             {r.status !== 'paga' && (

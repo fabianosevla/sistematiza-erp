@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Upload, Clock, Trash2, Eye, EyeOff, Contact } from 'lucide-react'
 import { useForm } from 'react-hook-form'
@@ -159,12 +159,49 @@ export default function ClientesView({ tenantSlug }: Props) {
   const meta      = data?.data?.meta
   const isPending = createMutation.isPending || updateMutation.isPending
 
+  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
+  // A busca acima já filtra no SERVIDOR (nome/fantasia/documento, e pagina);
+  // este filtro é sobre a PÁGINA já carregada, por cima disso — as opções do
+  // funil só listam valores da página atual, não do cadastro inteiro. É a
+  // mesma limitação aceita em ConsultasView (que carrega o período inteiro
+  // em vez de paginar do servidor); aqui não vale trocar a paginação do
+  // servidor só por causa do funil.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const clientesFiltrados = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return clientes
+    return clientes.filter((c: any) => chaves.every(k => {
+      const v = k === 'nomeCompleto' ? ((c.nomeFantasia ?? '').trim() || c.nomeCompleto) : c?.[k]
+      return String(v ?? '').toLowerCase().includes(filtros[k].toLowerCase())
+    }))
+  }, [clientes, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['nomeCompleto', 'tipoPessoa', 'tabelaPreco', 'cidade']) {
+      const set = new Set<string>()
+      for (const c of clientes) {
+        const v = chave === 'nomeCompleto' ? ((c.nomeFantasia ?? '').trim() || c.nomeCompleto) : c?.[chave]
+        if (v) set.add(String(v))
+      }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [clientes])
+
   const colunas: Coluna[] = [
     {
       // Mostra o nome fantasia quando existe — é como o cliente é conhecido no
       // dia a dia. A razão social fica embaixo, menor, porque ainda é
       // necessária para nota fiscal e conferência de cadastro.
-      chave: 'nomeCompleto', titulo: 'Nome', principal: true,
+      chave: 'nomeCompleto', titulo: 'Nome', principal: true, filtravel: true,
       render: (c: any) => {
         const fantasia = (c.nomeFantasia ?? '').trim()
         const razao    = (c.nomeCompleto ?? '').trim()
@@ -183,12 +220,12 @@ export default function ClientesView({ tenantSlug }: Props) {
       },
     },
     {
-      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md',
+      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', filtravel: true,
       render: (c: any) => <Badge variant={c.tipoPessoa === 'PJ' ? 'secondary' : 'outline'}>{c.tipoPessoa}</Badge>,
     },
     { chave: 'email', titulo: 'E-mail', esconderAte: 'lg', render: (c: any) => c.email ?? '—' },
     {
-      chave: 'tabelaPreco', titulo: 'Tabela', esconderAte: 'md', alinhamento: 'center',
+      chave: 'tabelaPreco', titulo: 'Tabela', esconderAte: 'md', alinhamento: 'center', filtravel: true,
       // Todo cliente tem tabela — quem não escolheu está em varejo. Mostrar
       // travessão dava a impressão de campo vazio. Varejo usa o estilo neutro
       // e atacado o de destaque, então dá para separar os dois de relance.
@@ -202,7 +239,7 @@ export default function ClientesView({ tenantSlug }: Props) {
       },
     },
     {
-      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg',
+      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg', filtravel: true,
       render: (c: any) => c.cidade ? `${c.cidade}/${c.uf ?? ''}` : '—',
     },
   ]
@@ -237,10 +274,13 @@ export default function ClientesView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={clientes}
+        itens={clientesFiltrados}
         chave={(c: any) => c.clienteId}
         carregando={isLoading}
         vazio="Nenhum cliente encontrado."
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         meta={meta}
         onPageChange={setPage}
         onLimitChange={setLimit}

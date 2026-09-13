@@ -5,7 +5,7 @@
 // é estadual, muda por portaria). O perfil tributário tem um valor único —
 // aqui cadastra a exceção por estado; sem linha aqui, a emissão usa o valor
 // padrão do perfil, que é o comportamento de sempre.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -52,6 +52,34 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(api)).json(),
   })
   const linhas: any[] = data?.data?.linhas ?? []
+  // perfilNome entra na linha só pra dar pro filtro de coluna (abaixo) algo
+  // legível pra listar — filtrar por perfilTribId cru mostraria número, não nome.
+  const linhasComNome = useMemo(() => linhas.map(l => ({ ...l, perfilNome: nomePerfil(l.perfilTribId) })), [linhas, perfis])
+
+  // Mesmo padrão de filtro por coluna do resto do sistema.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const linhasFiltradas = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return linhasComNome
+    return linhasComNome.filter(l => chaves.every(k => String(l?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [linhasComNome, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['perfilNome', 'ufDestino']) {
+      const set = new Set<string>()
+      for (const l of linhasComNome) { const v = l?.[chave]; if (v) set.add(String(v)) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [linhasComNome])
 
   const inv = () => qc.invalidateQueries({ queryKey: ['icms-st-uf', tenantSlug] })
 
@@ -92,10 +120,10 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
   }
 
   const colunas: Coluna[] = [
-    { chave: 'perfilTribId', titulo: 'Perfil', render: (l: any) => (
+    { chave: 'perfilNome', titulo: 'Perfil', filtravel: true, render: (l: any) => (
       <span className="text-sm font-medium text-gray-900">{nomePerfil(l.perfilTribId)}</span>
     )},
-    { chave: 'ufDestino', titulo: 'Estado', render: (l: any) => (
+    { chave: 'ufDestino', titulo: 'Estado', filtravel: true, render: (l: any) => (
       <span className="text-sm font-mono text-gray-900">{l.ufDestino}</span>
     )},
     { chave: 'temSt', titulo: 'Tem ST', render: (l: any) => (
@@ -126,10 +154,13 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={linhas}
+        itens={linhasFiltradas}
         chave={(l: any) => l.icmsStUfId}
         carregando={isLoading}
         vazio="Nenhum valor específico por estado — tudo usa o padrão do perfil."
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         ferramentas={
           <Button size="sm" onClick={abrirNovo} disabled={perfis.length === 0}>
             <Plus size={14} className="mr-1" /> Novo valor por estado

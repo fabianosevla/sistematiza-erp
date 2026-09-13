@@ -1,5 +1,5 @@
 ﻿'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Download, Upload, Package2, Clock, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -178,9 +178,39 @@ export default function InsumosView({ tenantSlug }: Props) {
     return sortDir === 'asc' ? cmp : -cmp
   })
 
+  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
+  // A busca acima já filtra no SERVIDOR (nome) e pagina; este filtro atua
+  // sobre a PÁGINA já carregada, por cima disso — as opções do funil só
+  // listam valores da página atual, não do cadastro inteiro. Mesma
+  // limitação aceita em ClientesView/ProdutosView; não vale trocar a
+  // paginação do servidor só por causa do funil.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const insumosFiltrados = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return insumos
+    return insumos.filter((ins: any) => chaves.every(k => String(ins?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [insumos, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['nome', 'tipo', 'unidade']) {
+      const set = new Set<string>()
+      for (const ins of pagina) { const v = ins?.[chave]; if (v) set.add(String(v)) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [pagina])
+
   const colunas: Coluna[] = [
     {
-      chave: 'nome', titulo: 'Nome', ordenavel: true,
+      chave: 'nome', titulo: 'Nome', ordenavel: true, filtravel: true,
       classeCelula: 'pl-[10px] pr-4 py-3 border-l-2 border-transparent group-hover:border-green-500 transition-all duration-150',
       render: (ins: any) => (
         <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700" onClick={() => abrirModal(ins)}>
@@ -189,11 +219,11 @@ export default function InsumosView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'tipo', titulo: 'Tipo', ordenavel: true, alinhamento: 'center',
+      chave: 'tipo', titulo: 'Tipo', ordenavel: true, alinhamento: 'center', filtravel: true,
       render: (ins: any) => <Badge variant="secondary">{ins.tipo ?? '—'}</Badge>,
     },
     {
-      chave: 'unidade', titulo: 'Unidade', alinhamento: 'center',
+      chave: 'unidade', titulo: 'Unidade', alinhamento: 'center', filtravel: true,
       render: (ins: any) => ins.unidade ?? '—',
     },
     {
@@ -237,7 +267,7 @@ export default function InsumosView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={insumos}
+        itens={insumosFiltrados}
         chave={(ins: any) => ins.insumoId}
         carregando={isLoading}
         usarSkeleton
@@ -251,6 +281,9 @@ export default function InsumosView({ tenantSlug }: Props) {
         meta={meta}
         onPageChange={setPage}
         onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         acoes={(ins: any) => (
           <>
             <BotaoIcone titulo="Histórico" variante="destaque" onClick={() => setShowHistorico(ins)}>

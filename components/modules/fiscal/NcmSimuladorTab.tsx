@@ -103,6 +103,10 @@ export default function NcmSimuladorTab({ tenantSlug }: Props) {
         <Button size="sm" onClick={abrirNovo}><Plus size={14} className="mr-1" /> Novo NCM</Button>
       </div>
 
+      {/* Sem filtro de coluna aqui: NCM, descrição e fonte são ~únicos por linha
+          (não têm um conjunto pequeno de valores repetidos pra um funil fazer
+          sentido) e a busca acima já cobre código/palavra sobre a lista toda,
+          não só a página carregada — filtro de coluna seria redundante. */}
       <DataTable
         colunas={colunas}
         itens={resultados}

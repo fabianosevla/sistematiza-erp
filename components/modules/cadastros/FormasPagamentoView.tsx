@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -85,9 +85,34 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
 
   const formas = data?.data ?? []
 
+  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
+  // Lista inteira já vem numa única página (sem paginação no servidor), então
+  // as opções do funil refletem o cadastro inteiro, sem limitações.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const formasFiltradas = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return formas
+    return formas.filter((f: any) => chaves.every(k => String(f?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [formas, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    const set = new Set<string>()
+    for (const f of formas) { if (f.nome) set.add(String(f.nome)) }
+    if (set.size > 0) mapa.nome = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return mapa
+  }, [formas])
+
   const colunas: Coluna[] = [
     {
-      chave: 'nome', titulo: 'Nome',
+      chave: 'nome', titulo: 'Nome', filtravel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700',
       render: (f: any) => <span onClick={() => abrirEdicao(f)}>{f.nome}</span>,
     },
@@ -110,10 +135,13 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={formas}
+        itens={formasFiltradas}
         chave={(f: any) => f.formaId}
         carregando={isLoading}
         vazio="Nenhuma forma cadastrada."
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         acoes={(f: any) => (
           <>
             <BotaoIcone titulo="Editar" onClick={() => abrirEdicao(f)}>

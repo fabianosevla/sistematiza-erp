@@ -2,7 +2,7 @@
 // ESTE ARQUIVO VAI EM: components/modules/fiscal/PerfisTributariosTab.tsx
 //
 // PARAMETRIZAÇÃO FISCAL — a tela onde o contador digita os perfis tributários.
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -56,6 +56,32 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
   })
   const perfis: any[] = data?.data?.perfis ?? []
   const uso: Record<number, number> = data?.data?.uso ?? {}
+
+  // Mesmo padrão de filtro por coluna do resto do sistema — funil no
+  // cabeçalho, opções sempre do conjunto sem filtro.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const perfisFiltrados = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return perfis
+    return perfis.filter(p => chaves.every(k => String(p?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [perfis, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['nome', 'cfopInterno', 'csosn', 'cstPis']) {
+      const set = new Set<string>()
+      for (const p of perfis) { const v = p?.[chave]; if (v) set.add(String(v)) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [perfis])
 
   const inv = () => {
     qc.invalidateQueries({ queryKey: ['perfis-tributarios', tenantSlug] })
@@ -114,24 +140,24 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
   })
 
   const colunas: Coluna[] = [
-    { chave: 'nome', titulo: 'Perfil', render: (p: any) => (
+    { chave: 'nome', titulo: 'Perfil', filtravel: true, render: (p: any) => (
       <div className="min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{p.nome}</p>
         {p.descricao && <p className="text-xs text-gray-400 truncate">{p.descricao}</p>}
       </div>
     )},
-    { chave: 'cfopInterno', titulo: 'CFOP', render: (p: any) => (
+    { chave: 'cfopInterno', titulo: 'CFOP', filtravel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">
         {p.cfopInterno || <span className="text-red-500">—</span>}
         {p.cfopInterestadual ? ` / ${p.cfopInterestadual}` : ''}
       </span>
     )},
-    { chave: 'csosn', titulo: 'CSOSN / CST', render: (p: any) => (
+    { chave: 'csosn', titulo: 'CSOSN / CST', filtravel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">
         {p.csosn || p.cstIcms || <span className="text-red-500">—</span>}
       </span>
     )},
-    { chave: 'cstPis', titulo: 'PIS / COFINS', esconderAte: 'lg', render: (p: any) => (
+    { chave: 'cstPis', titulo: 'PIS / COFINS', esconderAte: 'lg', filtravel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">
         {p.cstPis || '—'} / {p.cstCofins || '—'}
       </span>
@@ -150,10 +176,13 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
       {/* ── PERFIS ──────────────────────────────────────────────────────── */}
       <DataTable
         colunas={colunas}
-        itens={perfis}
+        itens={perfisFiltrados}
         chave={(p: any) => p.perfilTribId}
         carregando={isLoading}
         vazio="Nenhum perfil tributário. O contador define quais existem."
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         ferramentas={
           <Button size="sm" onClick={abrirNovo}>
             <Plus size={14} className="mr-1" /> Novo perfil

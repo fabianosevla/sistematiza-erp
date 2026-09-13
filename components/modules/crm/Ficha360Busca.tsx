@@ -6,7 +6,7 @@
 // ClienteSelectBusca que já existe pra "Indicado por") + tabela de
 // histórico de venda do cliente escolhido, vazia até alguém ser
 // selecionado.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
@@ -45,12 +45,37 @@ export default function Ficha360Busca({ tenantSlug }: Props) {
     enabled:  !!selecionado,
   })
   const ficha = fichaData?.data
+  const vendas: any[] = ficha?.vendas ?? []
+
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const vendasFiltradas = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return vendas
+    return vendas.filter(v => chaves.every(k => String(v?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [vendas, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['origem', 'status']) {
+      const set = new Set<string>()
+      for (const v of vendas) { const val = v?.[chave]; if (val) set.add(String(val)) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [vendas])
 
   const colunas: Coluna[] = [
     { chave: 'vendaId', titulo: 'Venda', largura: 'w-20', render: (v: any) => <span className="font-mono text-xs text-gray-500">#{v.vendaId}</span> },
     { chave: 'vendidaEm', titulo: 'Data', render: (v: any) => fmtDataHora(v.vendidaEm) },
-    { chave: 'origem', titulo: 'Origem', esconderAte: 'md', render: (v: any) => <Badge variant="outline">{v.origem}</Badge> },
-    { chave: 'status', titulo: 'Status', esconderAte: 'md' },
+    { chave: 'origem', titulo: 'Origem', esconderAte: 'md', filtravel: true, render: (v: any) => <Badge variant="outline">{v.origem}</Badge> },
+    { chave: 'status', titulo: 'Status', esconderAte: 'md', filtravel: true },
     { chave: 'total', titulo: 'Total', alinhamento: 'right', render: (v: any) => <span className="font-semibold">{fmt(v.total)}</span> },
   ]
 
@@ -110,10 +135,13 @@ export default function Ficha360Busca({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={ficha?.vendas ?? []}
+        itens={vendasFiltradas}
         chave={(v: any) => v.vendaId}
         carregando={!!selecionado && loadingFicha}
         vazio={selecionado ? 'Esse cliente ainda não tem venda registrada.' : 'Selecione um cliente para ver o histórico.'}
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
       />
     </div>
   )

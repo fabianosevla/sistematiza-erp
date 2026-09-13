@@ -1,9 +1,8 @@
 'use client'
 // components/modules/crm/VisaoGeralTab.tsx
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Loader2, Search } from 'lucide-react'
-import { Input } from '@/components/ui/input'
+import { Loader2 } from 'lucide-react'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { fmtMoeda as fmt, fmtDataLocal as fmtData } from '@/lib/format'
 
@@ -12,6 +11,11 @@ interface Props { tenantSlug: string }
 const ESTAGIO_LABEL: Record<string, string> = {
   novo: 'Novo', contatado: 'Contatado', negociando: 'Negociando', proposta: 'Proposta',
 }
+
+// Mesmo padrão de filtro por coluna do resto do sistema (ver ConsultasView):
+// funil no cabeçalho, opções sempre do conjunto SEM filtro, filtro e
+// paginação no cliente — nada de caixa de busca solta acima da tabela.
+const POR_PAGINA = 20
 
 function Card({ label, valor, sub }: { label: string; valor: string; sub?: string }) {
   return (
@@ -30,14 +34,49 @@ export default function VisaoGeralTab({ tenantSlug }: Props) {
   })
   const r = data?.data
 
-  const [page, setPage]     = useState(1)
-  const [search, setSearch] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+
   const { data: clientesData, isLoading: loadingClientes } = useQuery({
-    queryKey: ['crm-clientes-lista', tenantSlug, page, search],
-    queryFn:  async () => (await fetch(`/api/${tenantSlug}/crm/clientes-lista?page=${page}&limit=20&search=${encodeURIComponent(search)}`)).json(),
+    queryKey: ['crm-clientes-lista', tenantSlug],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/crm/clientes-lista?page=1&limit=1000`)).json(),
   })
-  const clientes: any[] = clientesData?.data?.data ?? []
-  const meta = clientesData?.data?.meta ?? null
+  const todos: any[] = clientesData?.data?.data ?? []
+
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+    setPagina(1)
+  }
+
+  const itens = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return todos
+    return todos.filter(c => chaves.every(k => {
+      const v = c?.[k]
+      return String(v ?? '').toLowerCase().includes(filtros[k].toLowerCase())
+    }))
+  }, [todos, filtros])
+
+  // Opções do funil: sempre do conjunto sem filtro, senão escolher um valor
+  // apaga a chance de trocar pra outro sem limpar antes.
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['nome', 'tipoPessoa']) {
+      const set = new Set<string>()
+      for (const c of todos) { const v = c?.[chave]; if (v) set.add(String(v)) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [todos])
+
+  const totalPaginas = Math.max(1, Math.ceil(itens.length / POR_PAGINA))
+  const paginaAtual  = Math.min(pagina, totalPaginas)
+  const itensPagina  = itens.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
 
   const colunas: Coluna[] = [
     { chave: 'nome', titulo: 'Cliente', principal: true, filtravel: true,
@@ -46,7 +85,7 @@ export default function VisaoGeralTab({ tenantSlug }: Props) {
           {c.nomeFantasia || c.nome}
         </a>
       ) },
-    { chave: 'tipoPessoa', titulo: 'Tipo', largura: 'w-16', esconderAte: 'md' },
+    { chave: 'tipoPessoa', titulo: 'Tipo', largura: 'w-16', esconderAte: 'md', filtravel: true },
     { chave: 'telefone', titulo: 'Telefone', esconderAte: 'lg', render: (c: any) => c.telefone || '—' },
     { chave: 'qtdCompras', titulo: 'Compras', alinhamento: 'right', esconderAte: 'md' },
     { chave: 'totalGasto', titulo: 'Total gasto', alinhamento: 'right', render: (c: any) => fmt(c.totalGasto) },
@@ -84,21 +123,18 @@ export default function VisaoGeralTab({ tenantSlug }: Props) {
       )}
 
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-gray-700">Clientes</p>
-          <div className="relative max-w-xs">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
-            <Input value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} className="pl-8 h-8 text-sm" placeholder="Buscar cliente..." />
-          </div>
-        </div>
+        <p className="text-sm font-semibold text-gray-700">Clientes</p>
         <DataTable
           colunas={colunas}
-          itens={clientes}
+          itens={itensPagina}
           chave={(c: any) => c.clienteId}
           carregando={loadingClientes}
           vazio="Nenhum cliente encontrado."
-          meta={meta}
-          onPageChange={setPage}
+          filtros={filtros}
+          onFiltrar={aplicarFiltro}
+          opcoesFiltro={opcoesFiltro}
+          meta={{ total: itens.length, page: paginaAtual, limit: POR_PAGINA, totalPages: totalPaginas }}
+          onPageChange={setPagina}
         />
       </div>
     </div>

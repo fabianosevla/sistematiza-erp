@@ -1,5 +1,5 @@
 ﻿'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Shield, User, Mail, Pencil, UserX, KeyRound } from 'lucide-react'
 import { useForm } from 'react-hook-form'
@@ -191,9 +191,41 @@ export default function UsuariosView({ tenantSlug }: Props) {
     return item.perfil === 'admin' ? 'Administrador' : 'Vendedor'
   }
 
+  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
+  // Lista inteira já vem numa única página (sem paginação no servidor), então
+  // as opções do funil refletem o cadastro inteiro, sem limitações.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  function valorFiltravel(item: any, chave: string): string {
+    if (chave === 'perfil') return nomePerfilDoItem(item)
+    if (chave === 'clerkId') return String(item.clerkId ?? '').startsWith('pending') ? 'convite pendente' : 'ativo'
+    return String(item?.[chave] ?? '')
+  }
+  const itemsFiltrados = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return items
+    return items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [items, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['nome', 'perfil', 'clerkId']) {
+      const set = new Set<string>()
+      for (const item of items) { const v = valorFiltravel(item, chave); if (v) set.add(v) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [items])
+
   const colunas: Coluna[] = [
     {
-      chave: 'nome', titulo: 'Nome',
+      chave: 'nome', titulo: 'Nome', filtravel: true,
       classeCelula: 'px-4 py-3',
       render: (item: any) => (
         <div className="flex items-center gap-2">
@@ -214,7 +246,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
       render: (item: any) => item.email || '—',
     },
     {
-      chave: 'perfil', titulo: 'Perfil',
+      chave: 'perfil', titulo: 'Perfil', filtravel: true,
       classeCelula: 'px-4 py-3',
       render: (item: any) => (
         <Badge variant={item.perfil === 'admin' ? 'default' : 'secondary'}>
@@ -223,7 +255,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'clerkId', titulo: 'Acesso', alinhamento: 'center',
+      chave: 'clerkId', titulo: 'Acesso', alinhamento: 'center', filtravel: true,
       // Vínculo pendente = convite não aceito. Antes isso era invisível, e um
       // usuário nesse estado loga e não vê nada — foi o caso da Maria Julia.
       render: (item: any) => String(item.clerkId ?? '').startsWith('pending')
@@ -251,10 +283,13 @@ export default function UsuariosView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={items}
+        itens={itemsFiltrados}
         chave={(item: any) => item.usuarioId}
         carregando={isLoading}
         vazio="Nenhum usuário encontrado."
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         acoes={(item: any) => (
           <>
             <BotaoIcone titulo="Editar" variante="info" tamanho="md" onClick={() => abrirEdicao(item)}>

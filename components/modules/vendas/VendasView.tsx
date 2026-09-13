@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Trash2, Download, Eye, Gift, Pencil } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -86,6 +86,24 @@ function novoItem(): ItemVenda {
   }
 }
 
+// ── Canal de venda (retirada/entrega/transportadora) ────────────────────────
+const CANAL_MAP: Record<string, { label: string; cls: string }> = {
+  retirada:       { label: 'Loja',     cls: 'bg-gray-100 text-gray-700' },
+  entrega:        { label: 'Delivery', cls: 'bg-green-100 text-green-700' },
+  transportadora: { label: 'B2B',      cls: 'bg-gray-100 text-gray-700' },
+}
+function canalLabel(tipo: string) {
+  return CANAL_MAP[tipo?.toLowerCase()]?.label ?? tipo
+}
+function CanalBadge({ tipo }: { tipo: string }) {
+  const cfg = CANAL_MAP[tipo?.toLowerCase()] ?? { label: tipo, cls: 'bg-gray-100 text-gray-600' }
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cfg.cls}`}>
+      {cfg.label}
+    </span>
+  )
+}
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export default function VendasView({ tenantSlug }: Props) {
@@ -105,6 +123,21 @@ export default function VendasView({ tenantSlug }: Props) {
   const [cupomVenda, setCupomVenda]       = useState<any>(null)
   const [busca, setBusca]                 = useState('')
   const [pageNum, setPageNum]             = useState(1)
+  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
+  // A caixa "Buscar por cliente ou vendedor" continua existindo à parte: ela
+  // busca no SERVIDOR, no histórico inteiro de vendas; este filtro aqui é
+  // client-side, só sobre a página de 20 já carregada — mesma limitação que
+  // faz sentido pra uma lista que cresce sem limite (diferente de Clientes/
+  // CRM, onde o total cabe inteiro na memória).
+  const [filtrosCol, setFiltrosCol] = useState<Record<string, string>>({})
+  function aplicarFiltroCol(chave: string, valor: string) {
+    setFiltrosCol(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [clienteId, setClienteId]             = useState('')
@@ -363,10 +396,36 @@ export default function VendasView({ tenantSlug }: Props) {
   const usuarios = Array.isArray(usuariosRaw?.data?.data) ? usuariosRaw.data.data
     : Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
 
-  const vendas = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
+  const vendasPagina = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
     : Array.isArray(vendasData?.data) ? vendasData.data : []
   const meta = vendasData?.data?.meta
   const kpis = kpisData?.data
+
+  // Filtro de coluna aplicado sobre a página já carregada (20 vendas) — as
+  // opções vêm do conjunto SEM filtro, senão escolher um valor esconderia os
+  // outros do próprio seletor.
+  const vendas = useMemo(() => {
+    const chaves = Object.keys(filtrosCol)
+    if (chaves.length === 0) return vendasPagina
+    return vendasPagina.filter((v: any) => chaves.every(k => {
+      const val = k === 'clienteNome' ? (v.clienteNome ?? 'Consumidor Final')
+        : k === 'tipoEntrega' ? canalLabel(v.tipoEntrega ?? 'retirada')
+        : v?.[k]
+      return String(val ?? '').toLowerCase().includes(filtrosCol[k].toLowerCase())
+    }))
+  }, [vendasPagina, filtrosCol])
+  const opcoesFiltroCol = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    const setCliente = new Set<string>()
+    const setCanal = new Set<string>()
+    for (const v of vendasPagina) {
+      setCliente.add(String(v.clienteNome ?? 'Consumidor Final'))
+      setCanal.add(canalLabel(v.tipoEntrega ?? 'retirada'))
+    }
+    if (setCliente.size > 0) mapa.clienteNome = Array.from(setCliente).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    if (setCanal.size > 0) mapa.tipoEntrega = Array.from(setCanal).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    return mapa
+  }, [vendasPagina])
 
   const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
   const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
@@ -428,31 +487,16 @@ export default function VendasView({ tenantSlug }: Props) {
     setTimeout(() => { win.print(); win.close() }, 300)
   }
 
-  // ── Badge de canal ─────────────────────────────────────────────────────────
-  function CanalBadge({ tipo }: { tipo: string }) {
-    const map: Record<string, { label: string; cls: string }> = {
-      retirada:       { label: 'Loja',     cls: 'bg-gray-100 text-gray-700' },
-      entrega:        { label: 'Delivery', cls: 'bg-green-100 text-green-700' },
-      transportadora: { label: 'B2B',      cls: 'bg-gray-100 text-gray-700' },
-    }
-    const cfg = map[tipo?.toLowerCase()] ?? { label: tipo, cls: 'bg-gray-100 text-gray-600' }
-    return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cfg.cls}`}>
-        {cfg.label}
-      </span>
-    )
-  }
-
   // ── Colunas ───────────────────────────────────────────────────────────────
   const colunas: Coluna[] = [
     { chave: 'vendidaEm', titulo: 'Data', render: (v: any) => fmtDateHora(v.vendidaEm) },
     {
-      chave: 'clienteNome', titulo: 'Cliente',
+      chave: 'clienteNome', titulo: 'Cliente', filtravel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (v: any) => v.clienteNome ?? 'Consumidor Final',
     },
     {
-      chave: 'tipoEntrega', titulo: 'Canal',
+      chave: 'tipoEntrega', titulo: 'Canal', filtravel: true,
       render: (v: any) => <CanalBadge tipo={v.tipoEntrega ?? 'retirada'} />,
     },
     {
@@ -513,6 +557,9 @@ export default function VendasView({ tenantSlug }: Props) {
         }
         meta={meta ?? null}
         onPageChange={setPageNum}
+        filtros={filtrosCol}
+        onFiltrar={aplicarFiltroCol}
+        opcoesFiltro={opcoesFiltroCol}
         acoes={(v: any) => (
           <>
             <BotaoIcone titulo="Ver detalhes" variante="info"

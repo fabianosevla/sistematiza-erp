@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Upload, Clock, Trash2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
@@ -132,10 +132,44 @@ export default function FornecedoresView({ tenantSlug }: Props) {
   const meta      = data?.data?.meta
   const isPending = createMutation.isPending || updateMutation.isPending
 
+  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
+  // A busca acima já filtra no SERVIDOR (nome/documento) e pagina; este
+  // filtro atua sobre a PÁGINA já carregada, por cima disso — as opções do
+  // funil só listam valores da página atual, não do cadastro inteiro. Mesma
+  // limitação aceita em ClientesView; não vale trocar a paginação do
+  // servidor só por causa do funil.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  function valorFiltravel(item: any, chave: string): string {
+    if (chave === 'nomeCompleto') return (item.nomeFantasia ?? '').trim() || item.nomeCompleto
+    return String(item?.[chave] ?? '')
+  }
+  const itemsFiltrados = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return items
+    return items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [items, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['nomeCompleto', 'tipoPessoa', 'cidade']) {
+      const set = new Set<string>()
+      for (const item of items) { const v = valorFiltravel(item, chave); if (v) set.add(v) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [items])
+
   // Colunas da listagem — mesma ordem e mesma responsividade de antes
   const colunas: Coluna[] = [
     {
-      chave: 'nomeCompleto', titulo: 'Nome', principal: true,
+      chave: 'nomeCompleto', titulo: 'Nome', principal: true, filtravel: true,
       render: (item: any) => (
         <>
           <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700"
@@ -149,7 +183,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', alinhamento: 'center',
+      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', alinhamento: 'center', filtravel: true,
       render: (item: any) => <Badge variant="secondary">{item.tipoPessoa}</Badge>,
     },
     {
@@ -157,7 +191,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       render: (item: any) => item.email ?? '—',
     },
     {
-      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg',
+      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg', filtravel: true,
       render: (item: any) => item.cidade ? `${item.cidade}/${item.uf ?? ''}` : '—',
     },
   ]
@@ -186,13 +220,16 @@ export default function FornecedoresView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={items}
+        itens={itemsFiltrados}
         chave={(item: any) => item.fornecedorId}
         carregando={isLoading}
         vazio="Nenhum fornecedor encontrado."
         meta={meta}
         onPageChange={setPage}
         onLimitChange={setLimit}
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         acoes={(item: any) => (
           <>
             <BotaoIcone titulo="Histórico" variante="destaque" onClick={() => setShowHistorico(item)}>

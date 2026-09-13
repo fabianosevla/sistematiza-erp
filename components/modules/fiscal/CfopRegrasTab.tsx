@@ -6,7 +6,7 @@
 // e de ativo. Venda tem tela própria (Perfis tributários), porque o CFOP de
 // venda depende do produto; aqui não depende, só do tipo de operação e de
 // mesmo-estado ou não.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -41,6 +41,39 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(api)).json(),
   })
   const regras: any[] = data?.data?.regras ?? []
+  // Rótulos legíveis pro filtro de coluna — filtrar por "entrada"/"interno"
+  // cru funcionaria, mas o dropdown do funil ficaria com o valor de banco em
+  // vez do texto que a coluna mostra.
+  const regrasComLabel = useMemo(() => regras.map(r => ({
+    ...r,
+    direcaoLabel:    r.direcao === 'entrada' ? 'Entrada' : 'Saída',
+    localizacaoLabel: r.localizacao === 'interestadual' ? 'Fora do estado' : 'Dentro do estado',
+  })), [regras])
+
+  // Mesmo padrão de filtro por coluna do resto do sistema.
+  const [filtros, setFiltros] = useState<Record<string, string>>({})
+  function aplicarFiltro(chave: string, valor: string) {
+    setFiltros(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+  }
+  const regrasFiltradas = useMemo(() => {
+    const chaves = Object.keys(filtros)
+    if (chaves.length === 0) return regrasComLabel
+    return regrasComLabel.filter(r => chaves.every(k => String(r?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+  }, [regrasComLabel, filtros])
+  const opcoesFiltro = useMemo(() => {
+    const mapa: Record<string, string[]> = {}
+    for (const chave of ['tipoOperacao', 'direcaoLabel', 'localizacaoLabel', 'cfop']) {
+      const set = new Set<string>()
+      for (const r of regrasComLabel) { const v = r?.[chave]; if (v) set.add(String(v)) }
+      if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    }
+    return mapa
+  }, [regrasComLabel])
 
   const inv = () => qc.invalidateQueries({ queryKey: ['cfop-regras', tenantSlug] })
 
@@ -80,19 +113,19 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
   }
 
   const colunas: Coluna[] = [
-    { chave: 'tipoOperacao', titulo: 'Tipo de operação', render: (r: any) => (
+    { chave: 'tipoOperacao', titulo: 'Tipo de operação', filtravel: true, render: (r: any) => (
       <div className="min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{r.tipoOperacao}</p>
         {r.observacao && <p className="text-xs text-gray-400 truncate">{r.observacao}</p>}
       </div>
     )},
-    { chave: 'direcao', titulo: 'Direção', render: (r: any) => (
-      <span className="text-sm text-gray-600">{r.direcao === 'entrada' ? 'Entrada' : 'Saída'}</span>
+    { chave: 'direcaoLabel', titulo: 'Direção', filtravel: true, render: (r: any) => (
+      <span className="text-sm text-gray-600">{r.direcaoLabel}</span>
     )},
-    { chave: 'localizacao', titulo: 'Destino', render: (r: any) => (
-      <span className="text-sm text-gray-600">{r.localizacao === 'interestadual' ? 'Fora do estado' : 'Dentro do estado'}</span>
+    { chave: 'localizacaoLabel', titulo: 'Destino', filtravel: true, render: (r: any) => (
+      <span className="text-sm text-gray-600">{r.localizacaoLabel}</span>
     )},
-    { chave: 'cfop', titulo: 'CFOP', render: (r: any) => (
+    { chave: 'cfop', titulo: 'CFOP', filtravel: true, render: (r: any) => (
       <span className="text-sm font-mono text-gray-900">{r.cfop}</span>
     )},
   ]
@@ -109,10 +142,13 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={regras}
+        itens={regrasFiltradas}
         chave={(r: any) => r.cfopRegraId}
         carregando={isLoading}
         vazio="Nenhuma regra cadastrada."
+        filtros={filtros}
+        onFiltrar={aplicarFiltro}
+        opcoesFiltro={opcoesFiltro}
         ferramentas={
           <>
             <Button size="sm" variant="outline" onClick={() => setShowOperacao(true)} disabled={regras.length === 0}>
