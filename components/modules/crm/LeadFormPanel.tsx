@@ -49,14 +49,14 @@ export default function LeadFormPanel({ tenantSlug, lead, onClose }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['crm-leads', tenantSlug] })
-      toast(lead ? 'Oportunidade atualizada.' : 'Oportunidade criada.')
+      toast(lead ? 'Lead atualizado.' : 'Lead criado.')
       onClose()
     },
     onError: (e: any) => toast(e?.message ?? 'Erro ao salvar', 'error'),
   })
 
   return (
-    <SidePanel titulo={lead ? 'Editar oportunidade' : 'Nova oportunidade'} subtitulo={lead ? lead.nomeEmpresa : 'Prospecção B2B'} onClose={onClose}
+    <SidePanel titulo={lead ? 'Editar lead' : 'Novo lead'} subtitulo={lead ? lead.nomeEmpresa : 'Prospecção B2B'} onClose={onClose}
       rodape={
         <>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
@@ -90,7 +90,7 @@ export default function LeadFormPanel({ tenantSlug, lead, onClose }: Props) {
         </div>
         <div>
           <Label>Responsável</Label>
-          <Input value={form.responsavel} onChange={e => setF('responsavel', e.target.value)} className="mt-1" placeholder="Quem está tocando essa oportunidade" />
+          <Input value={form.responsavel} onChange={e => setF('responsavel', e.target.value)} className="mt-1" placeholder="Quem está tocando esse lead" />
         </div>
         <div>
           <Label>Observação</Label>

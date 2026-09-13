@@ -14,10 +14,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     await exigirModulo(tenant.schemaName, 'crm')
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
+      // Sem termo (ou 1 letra só) já devolve uma lista — combobox de cliente
+      // precisa mostrar todo mundo ao abrir, não só depois de digitar.
       const termo = new URL(req.url).searchParams.get('termo') ?? ''
-      const resultados = termo.trim().length >= 2
-        ? await new Cliente360Service(db).buscar(termo.trim())
-        : []
+      const resultados = await new Cliente360Service(db).buscar(termo.trim())
       return ok({ resultados })
     } finally { release() }
   } catch (err) { return serverError(err) }

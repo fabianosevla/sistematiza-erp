@@ -1,59 +1,120 @@
 'use client'
 // components/modules/crm/Ficha360Busca.tsx
 //
-// Busca de cliente pra abrir a Ficha 360° (rota própria, /crm/clientes/[id])
-// — mesma lógica de busca por nome/documento que Cadastros → Clientes já usa.
-import { useState } from 'react'
+// Combobox de cliente (abre com a lista inteira ao clicar, filtra ao
+// digitar — não exige digitar nada antes de mostrar opção, diferente do
+// ClienteSelectBusca que já existe pra "Indicado por") + tabela de
+// histórico de venda do cliente escolhido, vazia até alguém ser
+// selecionado.
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import { fmtMoeda as fmt, fmtDataHoraLocal as fmtDataHora } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
 export default function Ficha360Busca({ tenantSlug }: Props) {
-  const [termo, setTermo] = useState('')
+  const [termo, setTermo]     = useState('')
+  const [aberto, setAberto]   = useState(false)
+  const [selecionado, setSelecionado] = useState<any | null>(null)
+  const caixaRef = useRef<HTMLDivElement>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['crm-busca-cliente', tenantSlug, termo],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/crm/clientes?termo=${encodeURIComponent(termo)}`)).json(),
-    enabled:  termo.trim().length >= 2,
   })
   const resultados: any[] = data?.data?.resultados ?? []
 
+  // Fecha ao clicar fora — mesma ideia do funil de coluna do DataTable, só
+  // que sem portal: o combobox aqui não vive dentro de área que rola.
+  useEffect(() => {
+    if (!aberto) return
+    function fora(e: MouseEvent) {
+      if (!caixaRef.current?.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener('mousedown', fora)
+    return () => document.removeEventListener('mousedown', fora)
+  }, [aberto])
+
+  const { data: fichaData, isLoading: loadingFicha } = useQuery({
+    queryKey: ['crm-ficha360-preview', tenantSlug, selecionado?.clienteId],
+    queryFn:  async () => (await fetch(`/api/${tenantSlug}/crm/clientes/${selecionado.clienteId}`)).json(),
+    enabled:  !!selecionado,
+  })
+  const ficha = fichaData?.data
+
+  const colunas: Coluna[] = [
+    { chave: 'vendaId', titulo: 'Venda', largura: 'w-20', render: (v: any) => <span className="font-mono text-xs text-gray-500">#{v.vendaId}</span> },
+    { chave: 'vendidaEm', titulo: 'Data', render: (v: any) => fmtDataHora(v.vendidaEm) },
+    { chave: 'origem', titulo: 'Origem', esconderAte: 'md', render: (v: any) => <Badge variant="outline">{v.origem}</Badge> },
+    { chave: 'status', titulo: 'Status', esconderAte: 'md' },
+    { chave: 'total', titulo: 'Total', alinhamento: 'right', render: (v: any) => <span className="font-semibold">{fmt(v.total)}</span> },
+  ]
+
+  function escolher(c: any) {
+    setSelecionado(c)
+    setTermo('')
+    setAberto(false)
+  }
+
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 inline-flex items-center gap-1">
-        Busque um cliente pra ver histórico de compra, cashback, pedidos e indicações num lugar só.
-      </p>
+      <p className="text-xs text-gray-500">Escolha um cliente pra ver o histórico de venda. Clique pra abrir a lista inteira, ou digite pra filtrar.</p>
 
-      <div className="relative max-w-md">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
-        <Input value={termo} onChange={e => setTermo(e.target.value)} className="pl-9 h-9"
-          placeholder="Nome, razão social ou documento..." />
+      <div ref={caixaRef} className="relative max-w-md">
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" />
+          <Input
+            value={aberto ? termo : (selecionado ? (selecionado.nomeFantasia || selecionado.nome) : '')}
+            onChange={e => { setTermo(e.target.value); setAberto(true) }}
+            onFocus={() => { setTermo(''); setAberto(true) }}
+            className="pl-9 pr-8 h-9"
+            placeholder="Selecionar cliente..."
+          />
+          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none" />
+        </div>
+
+        {aberto && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-72 overflow-y-auto">
+            {isLoading ? (
+              <p className="text-sm text-gray-400 text-center py-4">Carregando...</p>
+            ) : resultados.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">Nenhum cliente encontrado.</p>
+            ) : (
+              resultados.map(c => (
+                <button key={c.clienteId} type="button" onClick={() => escolher(c)}
+                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{c.nomeFantasia || c.nome}</p>
+                  <p className="text-xs text-gray-400 truncate">{c.documento || (c.tipoPessoa === 'PJ' ? 'PJ' : 'PF')}{c.cidade ? ` · ${c.cidade}/${c.uf}` : ''}</p>
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
-      {termo.trim().length >= 2 && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden max-w-2xl">
-          {isLoading ? (
-            <p className="text-sm text-gray-400 text-center py-8">Buscando...</p>
-          ) : resultados.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">Nenhum cliente encontrado.</p>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {resultados.map(c => (
-                <a key={c.clienteId} href={`/${tenantSlug}/crm/clientes/${c.clienteId}`}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-gray-50">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{c.nomeFantasia || c.nome}</p>
-                    <p className="text-xs text-gray-400">{c.documento || (c.tipoPessoa === 'PJ' ? 'PJ' : 'PF')}{c.cidade ? ` · ${c.cidade}/${c.uf}` : ''}</p>
-                  </div>
-                  <span className="text-xs text-green-600 font-medium">Ver ficha 360° →</span>
-                </a>
-              ))}
-            </div>
-          )}
+      {selecionado && ficha && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Saldo cashback: <span className="font-semibold text-gray-900">{fmt(ficha.resumo.saldoCashback)}</span>
+            {' · '}Total gasto: <span className="font-semibold text-gray-900">{fmt(ficha.resumo.totalGasto)}</span>
+          </p>
+          <a href={`/${tenantSlug}/crm/clientes/${selecionado.clienteId}`} className="text-xs text-green-600 hover:text-green-700 font-medium">
+            Ver ficha 360° completa →
+          </a>
         </div>
       )}
+
+      <DataTable
+        colunas={colunas}
+        itens={ficha?.vendas ?? []}
+        chave={(v: any) => v.vendaId}
+        carregando={!!selecionado && loadingFicha}
+        vazio={selecionado ? 'Esse cliente ainda não tem venda registrada.' : 'Selecione um cliente para ver o histórico.'}
+      />
     </div>
   )
 }
