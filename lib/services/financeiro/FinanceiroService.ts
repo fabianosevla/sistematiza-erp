@@ -167,9 +167,19 @@ export class FinanceiroService {
     const dt  = new Date(payload.dataDespesa)
     const dtPag = payload.dataPagamento ? new Date(payload.dataPagamento) : null
     // A competência segue o pagamento. Sem pagamento informado, a compra.
+    //
+    // getUTCMonth/getUTCFullYear, não getMonth/getFullYear: dataDespesa e
+    // dataPagamento chegam como "AAAA-MM-DD" puro (o formulário só tem
+    // <input type="date">, sem hora), e o JS sempre interpreta essa string
+    // como meia-noite UTC. Ler de volta com os getters LOCAIS depende do
+    // fuso onde o processo Node está rodando — na Vercel hoje coincide com
+    // UTC (dá certo por sorte), mas rodando local num fuso diferente
+    // (Brasil, UTC-3) "01/10" viraria competência de setembro. Os getters
+    // UTC sempre devolvem exatamente o dia que a pessoa escolheu, em
+    // qualquer fuso onde o servidor rodar. Bug encontrado em 13/09/2026.
     const base = dtPag ?? dt
-    const mes = base.getMonth() + 1
-    const ano = base.getFullYear()
+    const mes = base.getUTCMonth() + 1
+    const ano = base.getUTCFullYear()
 
     const [result] = await this.db.insert(dbDespesa).values({
       nome:               payload.nome,
@@ -245,7 +255,8 @@ export class FinanceiroService {
         ? (payload.dataPagamento ? new Date(payload.dataPagamento) : null)
         : (linha.dataPagamento ? new Date(linha.dataPagamento) : null)
       const base = dtPag ?? dtCompra
-      if (base) { mes = base.getMonth() + 1; ano = base.getFullYear() }
+      // getUTC*: mesmo motivo do criar() acima.
+      if (base) { mes = base.getUTCMonth() + 1; ano = base.getUTCFullYear() }
     }
     if (mes !== undefined && ano !== undefined) {
       await this.withSchema(async client => {

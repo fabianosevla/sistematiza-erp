@@ -472,8 +472,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
       ]
       : [
         ['Data', 'Despesa', 'Categoria', 'Recorrente', 'Observacao', 'Valor'],
+        // data_despesa é data pura (sem hora) — fmtDataSimples, não fmtDataHora.
         ...itens.map(i => [
-          fmtDataHora(i.data), i.nome, i.categoria,
+          fmtDataSimples(i.data), i.nome, i.categoria,
           i.recorrente ? 'sim' : 'nao', i.observacao, (i.valor / 100).toFixed(2),
         ]),
       ]
@@ -579,7 +580,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
   ]
 
   const colunasDespesas: Coluna[] = [
-    { chave: 'data', titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
+    // data_despesa é data pura (sem hora) — fmtDataSimples, não fmtDataHora
+    // (que converte fuso e "perdia" um dia — bug encontrado em 13/09/2026).
+    { chave: 'data', titulo: 'Data', render: (i: any) => fmtDataSimples(i.data) },
     {
       chave: 'nome', titulo: 'Despesa', filtravel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',

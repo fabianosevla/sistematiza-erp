@@ -17,7 +17,14 @@ import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import ContasPagarView   from './ContasPagarView'
 import ContasReceberView from './ContasReceberView'
 import HistoricoCaixaTab from '@/components/modules/caixa/HistoricoCaixaTab'
-import { fmtMoeda as fmt, fmtDataLocal as fmtData } from '@/lib/format'
+// data_despesa/data_pagamento são timestamptz no banco, mas na prática são
+// DATA PURA — o formulário só tem <input type="date">, sem hora nenhuma.
+// fmtDataLocal converte pro fuso do navegador e, como o valor é gravado à
+// meia-noite UTC (não América/São_Paulo), a data exibida virava um dia a
+// menos (ex.: pagamento 01/10 aparecia como 30/09). fmtData não converte
+// fuso — lê o dia/mês/ano direto da string, como as demais datas puras do
+// sistema (dataVencimento, dataAcao). Bug encontrado em 13/09/2026.
+import { fmtMoeda as fmt, fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
