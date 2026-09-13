@@ -13,7 +13,11 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import { Aviso } from '@/components/ui/Aviso'
 import { fmtMoeda as fmt, fmtDataHoraLocal as fmtData, fmtDataLocal as fmtDataCurta } from '@/lib/format'
 
-interface Props { tenantSlug: string }
+// `semTitulo`: quando a Fidelidade é renderizada como aba dentro do CRM
+// (ver CrmView.tsx), o título "Fidelidade" já vem da aba — repetir aqui
+// dentro ficava redundante. Sozinha (se algum dia voltar a abrir direto),
+// continua mostrando o título normalmente.
+interface Props { tenantSlug: string; semTitulo?: boolean }
 
 type Aba = 'visao' | 'clientes' | 'movimentacoes' | 'reativacao' | 'config'
 type Secao = 'cashback' | 'indicacao' | 'reativacao' | 'whatsapp' | 'geral'
@@ -33,7 +37,7 @@ const TIPO_CFG: Record<string, { label: string; cls: string; sinal: 1 | -1 }> = 
   expiracao:       { label: 'Expiração',           cls: 'bg-gray-100 text-gray-500',    sinal: -1 },
 }
 
-export default function FidelidadeView({ tenantSlug }: Props) {
+export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props) {
   const qc = useQueryClient()
   const [aba, setAba]     = useState<Aba>('visao')
   const [secao, setSecao] = useState<Secao | null>('cashback')
@@ -132,11 +136,13 @@ export default function FidelidadeView({ tenantSlug }: Props) {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
-          <Gift size={22} className="text-green-600" /> Fidelidade
-        </h1>
-      </div>
+      {!semTitulo && (
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
+            <Gift size={22} className="text-green-600" /> Fidelidade
+          </h1>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-100 mb-6 overflow-x-auto">

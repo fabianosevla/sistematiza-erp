@@ -10,7 +10,7 @@ import { pool } from '@/lib/db/connection'
 export type Modulo =
   | 'dashboard' | 'cadastros' | 'vendas' | 'financeiro' | 'estoque'
   | 'producao'  | 'pedidos'   | 'comandas' | 'consultas' | 'fiscal'
-  | 'planoAcao' | 'metas'     | 'fidelidade' | 'usuarios' | 'compras'
+  | 'planoAcao' | 'metas'     | 'fidelidade' | 'usuarios' | 'compras' | 'crm'
 
 const COLUNA_MODULO: Record<Modulo, string> = {
   dashboard:  'modulo_dashboard',
@@ -28,6 +28,7 @@ const COLUNA_MODULO: Record<Modulo, string> = {
   fidelidade: 'modulo_fidelidade',
   usuarios:   'modulo_usuarios',
   compras:    'modulo_compras',
+  crm:        'modulo_crm',
 }
 
 type LinhaAcesso = {
@@ -49,7 +50,7 @@ async function carregarAcesso(schemaName: string): Promise<LinhaAcesso | null> {
               p.modulo_dashboard, p.modulo_cadastros, p.modulo_vendas, p.modulo_financeiro,
               p.modulo_estoque, p.modulo_producao, p.modulo_pedidos, p.modulo_comandas,
               p.modulo_consultas, p.modulo_fiscal, p.modulo_plano_acao, p.modulo_metas,
-              p.modulo_fidelidade, p.modulo_usuarios, p.modulo_compras
+              p.modulo_fidelidade, p.modulo_usuarios, p.modulo_compras, p.modulo_crm
          FROM t_usuario u
          LEFT JOIN t_perfil_acesso p ON p.perfil_id = u.perfil_id AND p.active_flg = true
         WHERE u.clerk_id = $1 AND u.active_flg = true
@@ -76,16 +77,22 @@ export async function exigirAdmin(schemaName: string): Promise<void> {
 
 // Módulo desligado pelo tenant (Configurações > Habilitações) bloqueia todo
 // mundo, inclusive admin — é "este recurso não existe pra este cliente", não
-// uma questão de permissão de usuário. Hoje só fidelidade tem essa trava
-// reforçada aqui; os demais módulos ainda só escondem o menu (config.*Ativo),
-// sem bloquear a API se alguém acessar a rota direto.
+// uma questão de permissão de usuário. Hoje só fidelidade e crm têm essa
+// trava reforçada aqui (os dois são módulo pago/opcional, não incluído por
+// padrão); os demais módulos ainda só escondem o menu (config.*Ativo), sem
+// bloquear a API se alguém acessar a rota direto.
+const COLUNA_ATIVO_REFORCADA: Partial<Record<Modulo, string>> = {
+  fidelidade: 'fidelidade_ativo',
+  crm:        'crm_ativo',
+}
 async function moduloDesligadoNoTenant(schemaName: string, modulo: Modulo): Promise<boolean> {
-  if (modulo !== 'fidelidade') return false
+  const coluna = COLUNA_ATIVO_REFORCADA[modulo]
+  if (!coluna) return false
   const client = await pool.connect()
   try {
     await client.query(`SET search_path TO "${schemaName}", public`)
-    const r = await client.query(`SELECT fidelidade_ativo FROM t_configuracoes_tenant LIMIT 1`)
-    return r.rows[0]?.fidelidade_ativo === false
+    const r = await client.query(`SELECT ${coluna} FROM t_configuracoes_tenant LIMIT 1`)
+    return r.rows[0]?.[coluna] === false
   } finally {
     client.release()
   }

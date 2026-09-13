@@ -48,8 +48,12 @@ export async function GET(req: NextRequest, { params }: Params) {
         // Menus que antes não tinham chave
         vendasAtivo:     r.vendas_ativo     ?? true,
         financeiroAtivo: r.financeiro_ativo ?? true,
-        // Fidelidade (cashback)
+        // Fidelidade (cashback) — vive dentro do menu CRM, não é mais item
+        // de menu próprio, mas a flag continua independente: um tenant pode
+        // ter CRM sem fidelidade (não faz cashback) ou vice-versa.
         fidelidadeAtivo: r.fidelidade_ativo ?? true,
+        // CRM — módulo pago, começa desligado por padrão (ver crm_ativo).
+        crmAtivo: r.crm_ativo ?? false,
         // Financeiro Completo
         contasPagarAtivo:         r.contas_pagar_ativo         ?? false,
         contasReceberAtivo:       r.contas_receber_ativo       ?? false,
@@ -150,6 +154,8 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['financeiro_ativo',         body.financeiroAtivo],
         // Fidelidade
         ['fidelidade_ativo',         body.fidelidadeAtivo],
+        // CRM
+        ['crm_ativo',                body.crmAtivo],
         // Financeiro Completo
         ['contas_pagar_ativo',         body.contasPagarAtivo],
         ['contas_receber_ativo',       body.contasReceberAtivo],

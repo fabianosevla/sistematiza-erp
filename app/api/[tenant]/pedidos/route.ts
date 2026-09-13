@@ -40,6 +40,9 @@ const criarPedidoSchema = z.object({
   // entrega fica sem vínculo de cliente.
   nomeClienteAvulso: z.string().max(200).optional().nullable(),
   tipoVenda:        z.enum(['balcao', 'entrega']).default('entrega'),
+  // Direta (padrão) ou vinda do cardápio digital — ver CrmView > Cardápio
+  // Digital, que conta quantas venda de verdade tiveram essa origem.
+  origem:           z.string().max(20).optional(),
   dataPedido:       z.string(),
   previsaoProducao: z.string().optional(),
   previsaoEntrega:  z.string().optional(),

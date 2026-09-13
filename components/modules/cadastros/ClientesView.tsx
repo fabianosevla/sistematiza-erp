@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Upload, Clock, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Plus, Pencil, Upload, Clock, Trash2, Eye, EyeOff, Contact } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
@@ -247,6 +247,9 @@ export default function ClientesView({ tenantSlug }: Props) {
         classeLinha={(c: any) => c.activeFlag === false ? 'opacity-60' : ''}
         acoes={(c: any) => (
           <>
+            <BotaoIcone titulo="Ver Ficha 360°" variante="info" onClick={() => { window.location.href = `/${tenantSlug}/crm/clientes/${c.clienteId}` }}>
+              <Contact size={14} />
+            </BotaoIcone>
             <BotaoIcone titulo="Histórico" variante="destaque" onClick={() => setShowHistorico(c)}>
               <Clock size={14} />
             </BotaoIcone>

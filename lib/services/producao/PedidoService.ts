@@ -49,7 +49,7 @@ export class PedidoService {
   async list({ status, periodo }: { status?: string; periodo?: string } = {}) {
     const res = await this.db.execute(sql`
       SELECT
-        p.pedido_id, p.cliente_id, p.nome_cliente_avulso, p.tipo_venda, p.status,
+        p.pedido_id, p.cliente_id, p.nome_cliente_avulso, p.tipo_venda, p.origem, p.status,
         p.data_pedido, p.previsao_producao, p.previsao_entrega,
         p.valor_entrega, p.endereco_entrega, p.observacao, p.venda_id,
         p.documento_fiscal, p.imprimir_nota, p.nota_id,
@@ -82,6 +82,7 @@ export class PedidoService {
         // Marca quem não é cliente de verdade — a tela pode sinalizar.
         clienteAvulso:    !r.cliente_id && !!avulso,
         tipoVenda:        r.tipo_venda,
+        origem:           r.origem ?? 'direta',
         status:           r.status,
         dataPedido:       r.data_pedido,
         previsaoProducao: r.previsao_producao,
@@ -130,10 +131,13 @@ export class PedidoService {
     return { ...pedido, itens, clienteNome, clienteRazao }
   }
 
-  async criar({ clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, formaPagamentoId, itens, userId }: {
+  async criar({ clienteId, nomeClienteAvulso, tipoVenda, origem, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, formaPagamentoId, itens, userId }: {
     clienteId?:         number
     nomeClienteAvulso?: string
     tipoVenda:         string
+    // Direta (padrão) ou 'cardapio' — quem cria o pedido escolhe, o cardápio
+    // online sempre manda 'cardapio' (ver rota pública).
+    origem?:           string
     dataPedido:        string
     previsaoProducao?: string
     previsaoEntrega?:  string
@@ -155,6 +159,7 @@ export class PedidoService {
       // preenchidos, o cadastro manda e o texto solto viraria ruído.
       nomeClienteAvulso: clienteId ? null : (nomeClienteAvulso?.trim() || null),
       tipoVenda,
+      origem:           origem === 'cardapio' ? 'cardapio' : 'direta',
       status:           'pendente',
       dataPedido:       new Date(dataPedido),
       previsaoProducao: previsaoProducao ? new Date(previsaoProducao) : null,
@@ -198,10 +203,11 @@ export class PedidoService {
    * a rota só permite editar pedidos 'pendente'/'producao', onde o estoque
    * ainda não foi movimentado.
    */
-  async atualizar(id: number, { clienteId, nomeClienteAvulso, tipoVenda, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, itens, userId }: {
+  async atualizar(id: number, { clienteId, nomeClienteAvulso, tipoVenda, origem, dataPedido, previsaoProducao, previsaoEntrega, valorEntrega, enderecoEntrega, observacao, documentoFiscal, imprimirNota, itens, userId }: {
     clienteId?:         number
     nomeClienteAvulso?: string
     tipoVenda:         string
+    origem?:           string
     dataPedido:        string
     previsaoProducao?: string
     previsaoEntrega?:  string
@@ -219,6 +225,7 @@ export class PedidoService {
       clienteId:        clienteId ?? null,
       nomeClienteAvulso: clienteId ? null : (nomeClienteAvulso?.trim() || null),
       tipoVenda,
+      ...(origem !== undefined ? { origem: origem === 'cardapio' ? 'cardapio' : 'direta' } : {}),
       dataPedido:       new Date(dataPedido),
       previsaoProducao: previsaoProducao ? new Date(previsaoProducao) : null,
       previsaoEntrega:  previsaoEntrega  ? new Date(previsaoEntrega)  : null,

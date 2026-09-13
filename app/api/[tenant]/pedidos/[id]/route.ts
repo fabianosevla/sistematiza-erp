@@ -60,6 +60,7 @@ const atualizarPedidoSchema = z.object({
   // Cliente avulso: só um nome, para quem não vale cadastrar.
   nomeClienteAvulso: z.string().max(200).optional().nullable(),
   tipoVenda:        z.enum(['balcao', 'entrega']).default('entrega'),
+  origem:           z.string().max(20).optional(),
   dataPedido:       z.string(),
   previsaoProducao: z.string().optional(),
   previsaoEntrega:  z.string().optional(),

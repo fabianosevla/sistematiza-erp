@@ -91,6 +91,10 @@ export const dbPedido = pgTable('t_pedido', {
   // mesmo cadastro que o PDV usa (t_forma_pagamento). Pedido interno pode
   // ficar sem, por isso é nullable.
   formaPagamentoId:  integer('forma_pagamento_id'),
+  // Direta (padrão) ou vinda do cardápio digital — ver CrmView > Cardápio
+  // Digital, que conta quantas venda de verdade tiveram essa origem. Migração
+  // scripts/migrate-crm.js.
+  origem:            varchar('origem', { length: 20 }).notNull().default('direta'),
 })
 export type TpDbPedidoRow    = InferSelectModel<typeof dbPedido>
 export type TpDbPedidoInsert = InferInsertModel<typeof dbPedido>

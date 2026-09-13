@@ -31,6 +31,7 @@ const schema = z.object({
   moduloPlanoAcao:  z.boolean().optional(),
   moduloMetas:      z.boolean().optional(),
   moduloUsuarios:   z.boolean().optional(),
+  moduloCrm:        z.boolean().optional(),
   percDescontoMax:  z.number().min(0).max(100).optional(),
   valorDescontoMax: z.number().int().min(0).optional(),
   isAdmin:          z.boolean().optional(),

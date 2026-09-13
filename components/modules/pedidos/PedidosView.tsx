@@ -172,6 +172,10 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [buscaProduto, setBuscaProduto]   = useState('')
   const [itens, setItens]                 = useState<any[]>([])
   const [tipoVenda, setTipoVenda]         = useState('entrega')
+  // De onde veio o pedido. 'cardapio' é o que permite o CRM saber quantas
+  // visualizações do cardápio digital viraram venda de verdade — sem essa
+  // marcação na hora de lançar, esse pedido não entra nessa conta.
+  const [origem, setOrigem]               = useState('direta')
   const [dataPedido, setDataPedido]       = useState(new Date().toISOString().slice(0, 10))
   const [previsaoProducao, setPrevisaoProducao] = useState('')
   const [previsaoEntrega, setPrevisaoEntrega]   = useState('')
@@ -244,7 +248,7 @@ export default function PedidosView({ tenantSlug }: Props) {
         body: JSON.stringify({
           clienteId:        clienteSelecionado?.clienteId,
           nomeClienteAvulso: clienteSelecionado ? undefined : (nomeAvulso.trim() || undefined),
-          tipoVenda, dataPedido,
+          tipoVenda, dataPedido, origem,
           previsaoProducao: previsaoProducao || undefined,
           previsaoEntrega:  previsaoEntrega  || undefined,
           valorEntrega: 0,
@@ -276,7 +280,7 @@ export default function PedidosView({ tenantSlug }: Props) {
         body: JSON.stringify({
           clienteId:        clienteSelecionado?.clienteId,
           nomeClienteAvulso: clienteSelecionado ? undefined : (nomeAvulso.trim() || undefined),
-          tipoVenda, dataPedido,
+          tipoVenda, dataPedido, origem,
           previsaoProducao: previsaoProducao || undefined,
           previsaoEntrega:  previsaoEntrega  || undefined,
           valorEntrega:     valorEntregaEdit ?? 0,
@@ -356,7 +360,7 @@ export default function PedidosView({ tenantSlug }: Props) {
 
   function resetForm() {
     setClienteSelecionado(null); setBuscaCliente(''); setNomeAvulso(''); setItens([])
-    setBuscaProduto(''); setTipoVenda('entrega')
+    setBuscaProduto(''); setTipoVenda('entrega'); setOrigem('direta')
     setDataPedido(new Date().toISOString().slice(0, 10))
     setPrevisaoProducao(''); setPrevisaoEntrega('')
     setEnderecoEntrega(''); setEnderecoCadastro(''); setObservacao(''); setQtdProduto(1)
@@ -444,6 +448,7 @@ export default function PedidosView({ tenantSlug }: Props) {
       setTabelaPreco(clienteTabela)
       setBuscaCliente('')
       setTipoVenda(ped.tipoVenda ?? 'entrega')
+      setOrigem(ped.origem ?? 'direta')
       setDataPedido(toInputDate(ped.dataPedido) || new Date().toISOString().slice(0, 10))
       setPrevisaoProducao(toInputDate(ped.previsaoProducao))
       setPrevisaoEntrega(toInputDate(ped.previsaoEntrega))
@@ -668,7 +673,7 @@ export default function PedidosView({ tenantSlug }: Props) {
                 )}
               </div>
 
-              {/* Tipo + datas */}
+              {/* Tipo + origem + data */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label>Tipo</Label>
@@ -679,9 +684,24 @@ export default function PedidosView({ tenantSlug }: Props) {
                   </select>
                 </div>
                 <div>
-                  <Label>Data do pedido</Label>
-                  <Input type="date" value={dataPedido} onChange={e => setDataPedido(e.target.value)} className="mt-1" />
+                  <Label className="inline-flex items-center gap-1">
+                    Origem
+                    <InfoTip titulo="Pra que serve">
+                      Marcar "Cardápio digital" é o que permite o CRM contar quantas vendas de
+                      verdade vieram do link público — sem essa marcação, essa venda não entra
+                      nessa conta.
+                    </InfoTip>
+                  </Label>
+                  <select value={origem} onChange={e => setOrigem(e.target.value)}
+                    className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                    <option value="direta">Direta</option>
+                    <option value="cardapio">Cardápio digital</option>
+                  </select>
                 </div>
+              </div>
+              <div>
+                <Label>Data do pedido</Label>
+                <Input type="date" value={dataPedido} onChange={e => setDataPedido(e.target.value)} className="mt-1 max-w-[200px]" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

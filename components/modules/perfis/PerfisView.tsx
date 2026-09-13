@@ -42,6 +42,7 @@ const MODULOS = [
   { key: 'moduloMetas',      label: 'Metas' },
   { key: 'moduloFidelidade', label: 'Fidelidade' },
   { key: 'moduloUsuarios',   label: 'Usuários' },
+  { key: 'moduloCrm',        label: 'CRM' },
 ] as const
 
 // ── Estado inicial do form ────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ function estadoInicial() {
     moduloDashboard: true, moduloCadastros: true, moduloVendas: true,
     moduloFinanceiro: false, moduloEstoque: false, moduloCompras: false, moduloProducao: false,
     moduloPedidos: false, moduloComandas: false, moduloConsultas: false,
-    moduloFiscal: false, moduloPlanoAcao: false, moduloMetas: false, moduloFidelidade: false, moduloUsuarios: false,
+    moduloFiscal: false, moduloPlanoAcao: false, moduloMetas: false, moduloFidelidade: false, moduloUsuarios: false, moduloCrm: false,
     percDescontoMax: 0, valorDescontoMax: 0,
   }
 }
@@ -129,6 +130,7 @@ export default function PerfisView({ tenantSlug }: Props) {
         moduloPlanoAcao: item.moduloPlanoAcao, moduloMetas: item.moduloMetas,
         moduloFidelidade: item.moduloFidelidade,
         moduloUsuarios: item.moduloUsuarios,
+        moduloCrm: item.moduloCrm,
         percDescontoMax: parseFloat(item.percDescontoMax ?? '0'),
         valorDescontoMax: item.valorDescontoMax ?? 0,
       })
@@ -155,7 +157,7 @@ export default function PerfisView({ tenantSlug }: Props) {
         moduloDashboard: true, moduloCadastros: true, moduloVendas: true,
         moduloFinanceiro: true, moduloEstoque: true, moduloCompras: true, moduloProducao: true,
         moduloPedidos: true, moduloComandas: true, moduloConsultas: true,
-        moduloFiscal: true, moduloPlanoAcao: true, moduloMetas: true, moduloFidelidade: true, moduloUsuarios: true,
+        moduloFiscal: true, moduloPlanoAcao: true, moduloMetas: true, moduloFidelidade: true, moduloUsuarios: true, moduloCrm: true,
         percDescontoMax: 100,
       }))
     } else {

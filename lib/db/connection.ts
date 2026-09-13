@@ -15,6 +15,7 @@ import * as perfisSchema              from './schemas/perfis'
 import * as financeiroCompletoSchema  from './schemas/financeiro-completo'
 import * as comprasCompletoSchema     from './schemas/compras-completo'
 import * as estoqueAvancadoSchema     from './schemas/estoque-avancado'
+import * as crmSchema                 from './schemas/crm.schema'
 
 const pool = new Pool({
   host:     process.env.DB_HOST!,
@@ -46,6 +47,7 @@ export const allSchemas = {
   ...financeiroCompletoSchema,
   ...comprasCompletoSchema,
   ...estoqueAvancadoSchema,
+  ...crmSchema,
 }
 
 export type AppDB = ReturnType<typeof drizzle<typeof allSchemas>>

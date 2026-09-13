@@ -32,6 +32,7 @@ const MODULOS = [
   { key: 'consultasAtivo', label: 'Consultas',         group: 'Gerencial'   },
   { key: 'metasAtivo',     label: 'Metas & Simulador', group: 'Gerencial'   },
   { key: 'fidelidadeAtivo',label: 'Fidelidade',        group: 'Gerencial'   },
+  { key: 'crmAtivo',       label: 'CRM',               group: 'Gerencial'   },
   { key: 'planoAcaoAtivo', label: 'Plano de Ação',     group: 'Gerencial'   },
   { key: 'fiscalAtivo',    label: 'Fiscal (NFC-e)',    group: 'Gerencial'   },
   { key: 'turnoCaixaAtivo', label: 'Turno de caixa no PDV', group: 'Operacional' },

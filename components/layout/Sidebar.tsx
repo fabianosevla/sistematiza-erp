@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation'
 import {
   BarChart3, Users, Boxes, ShoppingCart, DollarSign, Store,
   ChevronDown, ClipboardList, Factory, CreditCard,
-  Search, ClipboardCheck, X, Target, Gift, ShoppingBag, BookOpen,
+  Search, ClipboardCheck, X, Target, ShoppingBag, BookOpen, Handshake,
   PanelLeftClose, PanelLeftOpen, QrCode, Settings, LogOut, Sun, Moon,
 } from 'lucide-react'
 import { useUser, useClerk } from '@clerk/nextjs'
@@ -137,7 +137,10 @@ export default function Sidebar({ tenantSlug, tenantName, config, open, onClose,
       label: 'Compras', href: '/compras', icon: ShoppingBag,
     }] : []),
     ...(config.fiscalAtivo     ? [{ label: 'Fiscal',      href: '/fiscal',     icon: CreditCard }] : []),
-    ...(config.fidelidadeAtivo ? [{ label: 'Fidelidade',  href: '/fidelidade', icon: Gift }]       : []),
+    // Fidelidade morou aqui sozinha até 13/09/2026 — agora vive dentro do
+    // CRM, como uma das abas (ver components/modules/crm/CrmView.tsx). O
+    // flag fidelidadeAtivo continua existindo — controla a aba, não o menu.
+    ...(config.crmAtivo ? [{ label: 'CRM',  href: '/crm', icon: Handshake }] : []),
   ]
 
   const finais: Item[] = [

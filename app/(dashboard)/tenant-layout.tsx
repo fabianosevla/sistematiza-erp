@@ -63,6 +63,9 @@ export default async function TenantLayout({ children, tenantSlug }: Props) {
     vendasAtivo:     cfg?.vendas_ativo     ?? true,
     financeiroAtivo: cfg?.financeiro_ativo ?? true,
     fidelidadeAtivo: cfg?.fidelidade_ativo ?? true,
+    // CRM — módulo pago novo, ao contrário dos demais o padrão é DESLIGADO
+    // (é o gate da mudança de preço, não um recurso que já vinha incluído).
+    crmAtivo:        cfg?.crm_ativo ?? false,
 
     entradaNfeAtivo:          cfg?.entrada_nfe_ativo          ?? true,
     perdaProdutoAtivo:        cfg?.perda_produto_ativo        ?? true,

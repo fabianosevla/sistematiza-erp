@@ -25,6 +25,7 @@ export interface Config {
   vendasAtivo:              boolean
   financeiroAtivo:          boolean
   fidelidadeAtivo:          boolean
+  crmAtivo:                 boolean
   entradaNfeAtivo:          boolean
   perdaProdutoAtivo:        boolean
   contagemInventarioAtivo:  boolean

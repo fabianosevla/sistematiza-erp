@@ -20,6 +20,7 @@ const isPublicRoute = createRouteMatcher([
   '/cardapio(.*)',
   '/api/:tenant/cardapio',
   '/api/:tenant/cardapio/mensagem',
+  '/api/:tenant/cardapio/evento',
 ])
 
 export default clerkMiddleware((auth, req) => {

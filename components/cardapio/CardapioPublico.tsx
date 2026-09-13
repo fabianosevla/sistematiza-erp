@@ -7,7 +7,7 @@
 // servidor e devolve uma mensagem pronta, que abre no WhatsApp da loja pro
 // cliente mandar. É a loja quem confirma e registra no sistema depois,
 // do jeito que fizer sentido (pedido, PDV, delivery).
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Plus, Minus, ShoppingCart, X, MessageCircle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -44,6 +44,17 @@ export default function CardapioPublico({ tenantSlug }: Props) {
     queryFn:  async () => (await fetch(api)).json(),
     retry: false,
   })
+
+  // Funil do cardápio (CRM → Cardápio Digital): uma ping de "abriu a
+  // página" por carregamento — fire-and-forget, silencioso se falhar (não é
+  // crítico pro cliente conseguir ver o cardápio e pedir).
+  useEffect(() => {
+    fetch(`${api}/evento`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo: 'visualizacao' }),
+    }).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [carrinho, setCarrinho]         = useState<ItemCarrinho[]>([])
   const [showCarrinho, setShowCarrinho] = useState(false)
@@ -120,7 +131,13 @@ export default function CardapioPublico({ tenantSlug }: Props) {
     },
     onSuccess: (d: any) => {
       const link = d?.data?.linkWhatsapp
-      if (link) window.location.href = link
+      if (link) {
+        fetch(`${api}/evento`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tipo: 'pedido_montado' }),
+        }).catch(() => {})
+        window.location.href = link
+      }
     },
     onError: (e: any) => toast(e?.message ?? 'Erro ao montar o pedido', 'error'),
   })
