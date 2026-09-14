@@ -6,10 +6,12 @@
 // pra caber num SidePanel, e merece URL própria (voltar, compartilhar).
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, Gift, ShoppingBag, Users2, Package } from 'lucide-react'
+import { ArrowLeft, Loader2, Gift, ShoppingBag, Users2, Eye } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Badge } from '@/components/ui/badge'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import VendaDetalheDrawer from '@/components/modules/vendas/VendaDetalheDrawer'
 import { fmtMoeda as fmt, fmtDataHoraLocal as fmtDataHora, fmtDataLocal as fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string; clienteId: number }
@@ -36,54 +38,71 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
   const vendas   = ficha?.vendas   ?? []
   const pedidos  = ficha?.pedidos  ?? []
 
-  // Mesmo padrão de filtro por coluna do resto do sistema (funil no
-  // cabeçalho, opções sempre do conjunto sem filtro) — uma chave de filtro
-  // por tabela, já que vendas e pedidos são listas independentes.
-  const [filtrosVendas, setFiltrosVendas] = useState<Record<string, string>>({})
-  const [filtrosPedidos, setFiltrosPedidos] = useState<Record<string, string>>({})
-  const [paginaVendas, setPaginaVendas]   = useState(1)
-  const [paginaPedidos, setPaginaPedidos] = useState(1)
-  function fazerAplicarFiltro(
-    setFiltros: (fn: (f: Record<string, string>) => Record<string, string>) => void,
-    setPagina:  (p: number) => void,
-  ) {
-    return (chave: string, valor: string) => {
-      setFiltros(f => {
-        const novo = { ...f }
-        if (valor) novo[chave] = valor
-        else delete novo[chave]
-        return novo
-      })
-      setPagina(1)
-    }
+  // VENDA E PEDIDO NUMA TABELA SÓ.
+  //
+  // Eram duas tabelas separadas — "Histórico de vendas" e "Pedidos" — e um
+  // pedido que já virou venda (toda entrega gera uma, ver
+  // app/api/[tenant]/pedidos/[id]/route.ts) aparecia NAS DUAS: uma vez como
+  // pedido, outra como a venda que ele mesmo gerou. Mesma operação, contada
+  // duas vezes pro usuário.
+  //
+  // Regra: um pedido só aparece aqui SE a venda dele não estiver mais ativa
+  // (nunca chegou a virar venda, ou virou e foi cancelada depois) — nesses
+  // casos ele é a única representação que sobrou do que aconteceu. Se a
+  // venda existe e está ativa, ela já representa a operação sozinha.
+  const vendaIdsAtivos = useMemo(() => new Set(vendas.map((v: any) => v.vendaId)), [vendas])
+  const pedidosSemVendaAtiva = useMemo(
+    () => pedidos.filter((p: any) => !p.vendaId || !vendaIdsAtivos.has(p.vendaId)),
+    [pedidos, vendaIdsAtivos],
+  )
+  const operacoes = useMemo(() => {
+    const linhas = [
+      ...vendas.map((v: any) => ({
+        tipoOperacao: 'Venda', id: v.vendaId, data: v.vendidaEm,
+        origem: v.origem, status: v.status, total: v.total,
+      })),
+      ...pedidosSemVendaAtiva.map((p: any) => ({
+        tipoOperacao: 'Pedido', id: p.pedidoId, data: p.dataPedido,
+        origem: null, status: p.status, total: p.total,
+      })),
+    ]
+    return linhas.sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
+  }, [vendas, pedidosSemVendaAtiva])
+
+  const [filtrosOp, setFiltrosOp] = useState<Record<string, string>>({})
+  const [paginaOp, setPaginaOp]   = useState(1)
+  function aplicarFiltroOp(chave: string, valor: string) {
+    setFiltrosOp(f => {
+      const novo = { ...f }
+      if (valor) novo[chave] = valor
+      else delete novo[chave]
+      return novo
+    })
+    setPaginaOp(1)
   }
-  function opcoesDe(itens: any[], chaves: string[]) {
+  const operacoesFiltradas = useMemo(() => {
+    const chaves = Object.keys(filtrosOp)
+    if (chaves.length === 0) return operacoes
+    return operacoes.filter(o => chaves.every(k => String((o as any)?.[k] ?? '').toLowerCase().includes(filtrosOp[k].toLowerCase())))
+  }, [operacoes, filtrosOp])
+  const opcoesFiltroOp = useMemo(() => {
     const mapa: Record<string, string[]> = {}
-    for (const chave of chaves) {
+    for (const chave of ['tipoOperacao', 'origem', 'status']) {
       const set = new Set<string>()
-      for (const item of itens) { const v = item?.[chave]; if (v) set.add(String(v)) }
+      for (const o of operacoes) { const v = (o as any)?.[chave]; if (v) set.add(String(v)) }
       if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     }
     return mapa
-  }
-  function filtrar(itens: any[], filtros: Record<string, string>) {
-    const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return itens
-    return itens.filter(item => chaves.every(k => String(item?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
-  }
+  }, [operacoes])
+  const totalPaginasOp = Math.max(1, Math.ceil(operacoesFiltradas.length / POR_PAGINA))
+  const paginaAtualOp  = Math.min(paginaOp, totalPaginasOp)
+  const operacoesPagina = operacoesFiltradas.slice((paginaAtualOp - 1) * POR_PAGINA, paginaAtualOp * POR_PAGINA)
 
-  const vendasFiltradas  = useMemo(() => filtrar(vendas, filtrosVendas), [vendas, filtrosVendas])
-  const opcoesVendas     = useMemo(() => opcoesDe(vendas, ['origem', 'status']), [vendas])
-  const pedidosFiltrados = useMemo(() => filtrar(pedidos, filtrosPedidos), [pedidos, filtrosPedidos])
-  const opcoesPedidos    = useMemo(() => opcoesDe(pedidos, ['status']), [pedidos])
-
-  const totalPaginasVendas = Math.max(1, Math.ceil(vendasFiltradas.length / POR_PAGINA))
-  const paginaAtualVendas  = Math.min(paginaVendas, totalPaginasVendas)
-  const vendasPagina       = vendasFiltradas.slice((paginaAtualVendas - 1) * POR_PAGINA, paginaAtualVendas * POR_PAGINA)
-
-  const totalPaginasPedidos = Math.max(1, Math.ceil(pedidosFiltrados.length / POR_PAGINA))
-  const paginaAtualPedidos  = Math.min(paginaPedidos, totalPaginasPedidos)
-  const pedidosPagina       = pedidosFiltrados.slice((paginaAtualPedidos - 1) * POR_PAGINA, paginaAtualPedidos * POR_PAGINA)
+  // Abre o detalhe da venda em painel lateral — mesmo padrão de
+  // ConsultasView (DetalheVenda): quem está olhando o histórico do cliente
+  // quer ver a venda e voltar pra cá, não navegar pra outra tela e perder o
+  // lugar. Pedido que ainda não virou venda não tem detalhe pra abrir aqui.
+  const [vendaAberta, setVendaAberta] = useState<number | null>(null)
 
   // SÓ AGORA, depois de todo hook já ter rodado, é que a tela pode sair mais
   // cedo pra carregando/erro.
@@ -103,19 +122,18 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
 
   const { cliente, resumo, indicacoes } = ficha
 
-  const colunasVendas: Coluna[] = [
-    { chave: 'vendaId', titulo: 'Venda', largura: 'w-20', render: (v: any) => <span className="font-mono text-xs text-gray-500">#{v.vendaId}</span> },
-    { chave: 'vendidaEm', titulo: 'Data', render: (v: any) => fmtDataHora(v.vendidaEm) },
-    { chave: 'origem', titulo: 'Origem', esconderAte: 'md', filtravel: true, render: (v: any) => <Badge variant="outline">{v.origem}</Badge> },
+  const colunasOperacoes: Coluna[] = [
+    { chave: 'tipoOperacao', titulo: 'Tipo', largura: 'w-24', filtravel: true,
+      render: (o: any) => (
+        <Badge variant={o.tipoOperacao === 'Venda' ? 'secondary' : 'outline'}>{o.tipoOperacao}</Badge>
+      ) },
+    { chave: 'id', titulo: '#', largura: 'w-16',
+      render: (o: any) => <span className="font-mono text-xs text-gray-500">#{o.id}</span> },
+    { chave: 'data', titulo: 'Data', render: (o: any) => fmtDataHora(o.data) },
+    { chave: 'origem', titulo: 'Origem', esconderAte: 'md', filtravel: true,
+      render: (o: any) => o.origem ? <Badge variant="outline">{o.origem}</Badge> : <span className="text-gray-300">—</span> },
     { chave: 'status', titulo: 'Status', esconderAte: 'md', filtravel: true },
-    { chave: 'total', titulo: 'Total', alinhamento: 'right', render: (v: any) => <span className="font-semibold">{fmt(v.total)}</span> },
-  ]
-
-  const colunasPedidos: Coluna[] = [
-    { chave: 'pedidoId', titulo: 'Pedido', largura: 'w-20', render: (p: any) => <span className="font-mono text-xs text-gray-500">#{p.pedidoId}</span> },
-    { chave: 'dataPedido', titulo: 'Data', render: (p: any) => fmtDataHora(p.dataPedido) },
-    { chave: 'previsaoEntrega', titulo: 'Previsão entrega', esconderAte: 'md', render: (p: any) => p.previsaoEntrega ? fmtDataHora(p.previsaoEntrega) : '—' },
-    { chave: 'status', titulo: 'Status', filtravel: true, render: (p: any) => <Badge variant="outline">{p.status}</Badge> },
+    { chave: 'total', titulo: 'Total', alinhamento: 'right', render: (o: any) => <span className="font-semibold">{fmt(o.total)}</span> },
   ]
 
   return (
@@ -162,22 +180,30 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
 
       <div className="space-y-6">
         <div>
-          <p className="text-sm font-semibold text-gray-700 mb-2 inline-flex items-center gap-1"><ShoppingBag size={14} /> Histórico de vendas</p>
-          <DataTable colunas={colunasVendas} itens={vendasPagina} chave={(v: any) => v.vendaId} vazio="Nenhuma venda ainda."
-            filtros={filtrosVendas} onFiltrar={fazerAplicarFiltro(setFiltrosVendas, setPaginaVendas)} opcoesFiltro={opcoesVendas}
-            meta={vendas.length > 0 ? { total: vendasFiltradas.length, page: paginaAtualVendas, limit: POR_PAGINA, totalPages: totalPaginasVendas } : null}
-            onPageChange={setPaginaVendas} />
+          <p className="text-sm font-semibold text-gray-700 mb-2 inline-flex items-center gap-1"><ShoppingBag size={14} /> Vendas e pedidos</p>
+          <DataTable
+            colunas={colunasOperacoes}
+            itens={operacoesPagina}
+            chave={(o: any) => `${o.tipoOperacao}-${o.id}`}
+            vazio="Nenhuma venda ou pedido ainda."
+            filtros={filtrosOp}
+            onFiltrar={aplicarFiltroOp}
+            opcoesFiltro={opcoesFiltroOp}
+            meta={operacoes.length > 0 ? { total: operacoesFiltradas.length, page: paginaAtualOp, limit: POR_PAGINA, totalPages: totalPaginasOp } : null}
+            onPageChange={setPaginaOp}
+            onLinhaClick={(o: any) => o.tipoOperacao === 'Venda' && setVendaAberta(o.id)}
+            acoes={(o: any) => o.tipoOperacao === 'Venda' ? (
+              // stopPropagation: sem isso, o clique no ícone borbulha pro
+              // <tr> e o onLinhaClick acima dispara também — abriria o
+              // mesmo drawer duas vezes (e empilharia rota se fosse navegação).
+              <span onClick={e => e.stopPropagation()}>
+                <BotaoIcone titulo="Ver itens da venda" variante="info" onClick={() => setVendaAberta(o.id)}>
+                  <Eye size={13} />
+                </BotaoIcone>
+              </span>
+            ) : null}
+          />
         </div>
-
-        {pedidos.length > 0 && (
-          <div>
-            <p className="text-sm font-semibold text-gray-700 mb-2 inline-flex items-center gap-1"><Package size={14} /> Pedidos</p>
-            <DataTable colunas={colunasPedidos} itens={pedidosPagina} chave={(p: any) => p.pedidoId} vazio="Nenhum pedido ainda."
-              filtros={filtrosPedidos} onFiltrar={fazerAplicarFiltro(setFiltrosPedidos, setPaginaPedidos)} opcoesFiltro={opcoesPedidos}
-              meta={pedidos.length > 0 ? { total: pedidosFiltrados.length, page: paginaAtualPedidos, limit: POR_PAGINA, totalPages: totalPaginasPedidos } : null}
-              onPageChange={setPaginaPedidos} />
-          </div>
-        )}
 
         {indicacoes.length > 0 && (
           <div>
@@ -193,6 +219,10 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
           </div>
         )}
       </div>
+
+      {vendaAberta !== null && (
+        <VendaDetalheDrawer tenantSlug={tenantSlug} vendaId={vendaAberta} onClose={() => setVendaAberta(null)} />
+      )}
     </div>
   )
 }

@@ -20,10 +20,13 @@
 // → Ficha360View.tsx.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, Loader2, Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronDown, Eye, Loader2, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { BotaoIcone } from '@/components/ui/BotaoIcone'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
+import VendaDetalheDrawer from '@/components/modules/vendas/VendaDetalheDrawer'
 import { fmtMoeda as fmt, fmtDataLocal as fmtData, fmtDataHoraLocal as fmtDataHora } from '@/lib/format'
 
 interface Props { tenantSlug: string }
@@ -48,6 +51,13 @@ function Card({ label, valor, sub }: { label: string; valor: string; sub?: strin
 }
 
 export default function ClientesTab({ tenantSlug }: Props) {
+  const router = useRouter()
+
+  // Detalhe de venda em painel lateral (mesmo padrão de ConsultasView) —
+  // usado tanto na prévia do cliente escolhido quanto, futuramente, em
+  // qualquer lugar desta tela que precise mostrar itens de uma venda.
+  const [vendaAberta, setVendaAberta] = useState<number | null>(null)
+
   // ── 1. Visão agregada — KPIs + funil B2B ─────────────────────────────────
   const { data: resumoData, isLoading: loadingResumo } = useQuery({
     queryKey: ['crm-resumo', tenantSlug],
@@ -94,12 +104,11 @@ export default function ClientesTab({ tenantSlug }: Props) {
   const itensPagina  = itens.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
 
   const colunasDiretorio: Coluna[] = [
+    // Texto simples, não <a>: a linha inteira já navega (onLinhaClick logo
+    // abaixo) — um link de verdade aqui dispararia navegação nativa por
+    // cima do router.push do clique na linha, competindo com ele.
     { chave: 'nome', titulo: 'Cliente', principal: true, filtravel: true,
-      render: (c: any) => (
-        <a href={`/${tenantSlug}/crm/clientes/${c.clienteId}`} className="hover:text-green-700">
-          {c.nomeFantasia || c.nome}
-        </a>
-      ) },
+      render: (c: any) => <span className="group-hover:text-green-700">{c.nomeFantasia || c.nome}</span> },
     { chave: 'tipoPessoa', titulo: 'Tipo', largura: 'w-16', esconderAte: 'md', filtravel: true },
     { chave: 'telefone', titulo: 'Telefone', esconderAte: 'lg', render: (c: any) => c.telefone || '—' },
     { chave: 'qtdCompras', titulo: 'Compras', alinhamento: 'right', esconderAte: 'md' },
@@ -181,6 +190,7 @@ export default function ClientesTab({ tenantSlug }: Props) {
     setAberto(false)
     setFiltrosVendasSel({})
     setPaginaVendasSel(1)
+    setVendaAberta(null)
   }
 
   if (loadingResumo) {
@@ -278,6 +288,17 @@ export default function ClientesTab({ tenantSlug }: Props) {
               opcoesFiltro={opcoesVendasSel}
               meta={vendasSel.length > 0 ? { total: vendasSelFiltradas.length, page: paginaAtualVendasSel, limit: POR_PAGINA, totalPages: totalPaginasVendasSel } : null}
               onPageChange={setPaginaVendasSel}
+              onLinhaClick={(v: any) => setVendaAberta(v.vendaId)}
+              acoes={(v: any) => (
+                // stopPropagation: sem isso, o clique no ícone borbulha pro
+                // <tr> e dispara onLinhaClick também — abriria o mesmo
+                // drawer duas vezes.
+                <span onClick={e => e.stopPropagation()}>
+                  <BotaoIcone titulo="Ver itens da venda" variante="info" onClick={() => setVendaAberta(v.vendaId)}>
+                    <Eye size={13} />
+                  </BotaoIcone>
+                </span>
+              )}
             />
           </div>
         )}
@@ -296,8 +317,23 @@ export default function ClientesTab({ tenantSlug }: Props) {
           opcoesFiltro={opcoesFiltro}
           meta={{ total: itens.length, page: paginaAtual, limit: POR_PAGINA, totalPages: totalPaginas }}
           onPageChange={setPagina}
+          onLinhaClick={(c: any) => router.push(`/${tenantSlug}/crm/clientes/${c.clienteId}`)}
+          acoes={(c: any) => (
+            // stopPropagation: sem isso, o clique no ícone borbulha pro
+            // <tr> e dispara onLinhaClick também — empilharia a mesma
+            // navegação duas vezes no histórico do navegador.
+            <span onClick={e => e.stopPropagation()}>
+              <BotaoIcone titulo="Ver ficha 360°" variante="info" onClick={() => router.push(`/${tenantSlug}/crm/clientes/${c.clienteId}`)}>
+                <Eye size={13} />
+              </BotaoIcone>
+            </span>
+          )}
         />
       </div>
+
+      {vendaAberta !== null && (
+        <VendaDetalheDrawer tenantSlug={tenantSlug} vendaId={vendaAberta} onClose={() => setVendaAberta(null)} />
+      )}
     </div>
   )
 }

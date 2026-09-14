@@ -92,10 +92,14 @@ export class Cliente360Service {
          LIMIT 20
       `),
       this.db.execute(sql`
-        SELECT pedido_id, status, data_pedido, previsao_entrega, valor_entrega
-          FROM t_pedido
-         WHERE cliente_id = ${clienteId} AND active_flg = true
-         ORDER BY data_pedido DESC
+        SELECT p.pedido_id, p.status, p.data_pedido, p.previsao_entrega, p.valor_entrega, p.venda_id,
+               (
+                 COALESCE((SELECT SUM(subtotal) FROM t_pedido_item WHERE pedido_id = p.pedido_id AND active_flg = true), 0)
+                 + p.valor_entrega
+               )::bigint AS total
+          FROM t_pedido p
+         WHERE p.cliente_id = ${clienteId} AND p.active_flg = true
+         ORDER BY p.data_pedido DESC
          LIMIT 20
       `),
       // Fidelidade não está em allSchemas (tabela fora do Drizzle tipado —
@@ -145,6 +149,13 @@ export class Cliente360Service {
       pedidos: (pedidosRes.rows as any[]).map(p => ({
         pedidoId: p.pedido_id, status: p.status, dataPedido: p.data_pedido,
         previsaoEntrega: p.previsao_entrega, valorEntrega: p.valor_entrega,
+        // Trava contra duplicar: pedido entregue já é venda (nasce na
+        // entrega — ver app/api/[tenant]/pedidos/[id]/route.ts). Com
+        // venda_id preenchido E essa venda ainda ativa na lista `vendas`
+        // acima, a tela mostra só a venda — mostrar os dois seria a mesma
+        // operação contada duas vezes.
+        vendaId: p.venda_id ?? null,
+        total: Number(p.total ?? 0),
       })),
       indicacoes: (indicacoesRes.rows as any[]).map(i => ({
         clienteId: i.cliente_id, nome: i.nome_completo, desde: i.created_dt,
