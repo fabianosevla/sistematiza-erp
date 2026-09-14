@@ -174,9 +174,10 @@ export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props)
       {/* Falha na config afeta a tela inteira — Visão Geral já usa
           `cfg?.programaAtivo`, e é a MESMA config que a aba Configuração
           tenta carregar. Um aviso só aqui, visível em qualquer aba, é mais
-          honesto que cada aba escondendo o problema à sua própria maneira. */}
+          honesto que cada aba escondendo o problema à sua própria maneira —
+          e evita repetir a mesma mensagem duas vezes na tela. */}
       {!isLoading && erroConfig && (
-        <Aviso tom="erro" className="mb-4">{erroConfig}</Aviso>
+        <Aviso tom="erro" className="mb-4" icone={<AlertTriangle size={15} />}>{erroConfig}</Aviso>
       )}
 
       {aba === 'visao'         && <VisaoTab tenantSlug={tenantSlug} programaAtivo={!!cfg?.programaAtivo} onIrConfig={() => setAba('config')} />}
@@ -190,11 +191,7 @@ export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props)
           <div className="flex items-center gap-2 text-sm text-gray-400 py-12 justify-center">
             <Loader2 size={16} className="animate-spin" /> Carregando configuração...
           </div>
-        ) : erroConfig ? (
-          <div className="py-12 text-center text-sm text-gray-400">
-            Não deu pra carregar — veja o aviso acima.
-          </div>
-        ) : !form ? (
+        ) : erroConfig ? null : !form ? (
           <div className="flex items-center gap-2 text-sm text-gray-400 py-12 justify-center">
             <Loader2 size={16} className="animate-spin" /> Carregando configuração...
           </div>
