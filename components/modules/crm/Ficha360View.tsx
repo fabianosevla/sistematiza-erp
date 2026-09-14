@@ -14,6 +14,10 @@ import { fmtMoeda as fmt, fmtDataHoraLocal as fmtDataHora, fmtDataLocal as fmtDa
 
 interface Props { tenantSlug: string; clienteId: number }
 
+// A ficha vem inteira numa resposta só; paginar aqui é o mesmo padrão do
+// resto do sistema quando isso acontece (ver VisaoGeralTab).
+const POR_PAGINA = 20
+
 const Anchor = 'a' as const
 
 export default function Ficha360View({ tenantSlug, clienteId }: Props) {
@@ -44,13 +48,21 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
   // por tabela, já que vendas e pedidos são listas independentes.
   const [filtrosVendas, setFiltrosVendas] = useState<Record<string, string>>({})
   const [filtrosPedidos, setFiltrosPedidos] = useState<Record<string, string>>({})
-  function fazerAplicarFiltro(setFiltros: (fn: (f: Record<string, string>) => Record<string, string>) => void) {
-    return (chave: string, valor: string) => setFiltros(f => {
-      const novo = { ...f }
-      if (valor) novo[chave] = valor
-      else delete novo[chave]
-      return novo
-    })
+  const [paginaVendas, setPaginaVendas]   = useState(1)
+  const [paginaPedidos, setPaginaPedidos] = useState(1)
+  function fazerAplicarFiltro(
+    setFiltros: (fn: (f: Record<string, string>) => Record<string, string>) => void,
+    setPagina:  (p: number) => void,
+  ) {
+    return (chave: string, valor: string) => {
+      setFiltros(f => {
+        const novo = { ...f }
+        if (valor) novo[chave] = valor
+        else delete novo[chave]
+        return novo
+      })
+      setPagina(1)
+    }
   }
   function opcoesDe(itens: any[], chaves: string[]) {
     const mapa: Record<string, string[]> = {}
@@ -71,6 +83,14 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
   const opcoesVendas     = useMemo(() => opcoesDe(vendas, ['origem', 'status']), [vendas])
   const pedidosFiltrados = useMemo(() => filtrar(pedidos, filtrosPedidos), [pedidos, filtrosPedidos])
   const opcoesPedidos    = useMemo(() => opcoesDe(pedidos, ['status']), [pedidos])
+
+  const totalPaginasVendas = Math.max(1, Math.ceil(vendasFiltradas.length / POR_PAGINA))
+  const paginaAtualVendas  = Math.min(paginaVendas, totalPaginasVendas)
+  const vendasPagina       = vendasFiltradas.slice((paginaAtualVendas - 1) * POR_PAGINA, paginaAtualVendas * POR_PAGINA)
+
+  const totalPaginasPedidos = Math.max(1, Math.ceil(pedidosFiltrados.length / POR_PAGINA))
+  const paginaAtualPedidos  = Math.min(paginaPedidos, totalPaginasPedidos)
+  const pedidosPagina       = pedidosFiltrados.slice((paginaAtualPedidos - 1) * POR_PAGINA, paginaAtualPedidos * POR_PAGINA)
 
   const colunasVendas: Coluna[] = [
     { chave: 'vendaId', titulo: 'Venda', largura: 'w-20', render: (v: any) => <span className="font-mono text-xs text-gray-500">#{v.vendaId}</span> },
@@ -132,15 +152,19 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
       <div className="space-y-6">
         <div>
           <p className="text-sm font-semibold text-gray-700 mb-2 inline-flex items-center gap-1"><ShoppingBag size={14} /> Histórico de vendas</p>
-          <DataTable colunas={colunasVendas} itens={vendasFiltradas} chave={(v: any) => v.vendaId} vazio="Nenhuma venda ainda."
-            filtros={filtrosVendas} onFiltrar={fazerAplicarFiltro(setFiltrosVendas)} opcoesFiltro={opcoesVendas} />
+          <DataTable colunas={colunasVendas} itens={vendasPagina} chave={(v: any) => v.vendaId} vazio="Nenhuma venda ainda."
+            filtros={filtrosVendas} onFiltrar={fazerAplicarFiltro(setFiltrosVendas, setPaginaVendas)} opcoesFiltro={opcoesVendas}
+            meta={vendas.length > 0 ? { total: vendasFiltradas.length, page: paginaAtualVendas, limit: POR_PAGINA, totalPages: totalPaginasVendas } : null}
+            onPageChange={setPaginaVendas} />
         </div>
 
         {pedidos.length > 0 && (
           <div>
             <p className="text-sm font-semibold text-gray-700 mb-2 inline-flex items-center gap-1"><Package size={14} /> Pedidos</p>
-            <DataTable colunas={colunasPedidos} itens={pedidosFiltrados} chave={(p: any) => p.pedidoId} vazio="Nenhum pedido ainda."
-              filtros={filtrosPedidos} onFiltrar={fazerAplicarFiltro(setFiltrosPedidos)} opcoesFiltro={opcoesPedidos} />
+            <DataTable colunas={colunasPedidos} itens={pedidosPagina} chave={(p: any) => p.pedidoId} vazio="Nenhum pedido ainda."
+              filtros={filtrosPedidos} onFiltrar={fazerAplicarFiltro(setFiltrosPedidos, setPaginaPedidos)} opcoesFiltro={opcoesPedidos}
+              meta={pedidos.length > 0 ? { total: pedidosFiltrados.length, page: paginaAtualPedidos, limit: POR_PAGINA, totalPages: totalPaginasPedidos } : null}
+              onPageChange={setPaginaPedidos} />
           </div>
         )}
 

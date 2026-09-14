@@ -9,6 +9,11 @@ import { fmtDataLocal as fmtData } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
+// Mesmo padrão de paginação do resto do sistema quando a lista inteira já
+// vem numa única resposta (ver VisaoGeralTab): fatia no cliente, mas o rodapé
+// de paginação é o mesmo componente e o mesmo comportamento de sempre.
+const POR_PAGINA = 20
+
 const BALDE_LABEL: Record<string, string> = {
   ativo: 'Ativo', novo: 'Novo', em_risco: 'Em risco', sumindo: 'Sumindo', inativo: 'Inativo', sem_compra: 'Sem compra',
 }
@@ -28,6 +33,7 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
   // Mesmo padrão de filtro por coluna do resto do sistema — o balde é só
   // mais uma coluna filtrável, não um controle à parte.
   const [filtros, setFiltros] = useState<Record<string, string>>({})
+  const [pagina, setPagina]   = useState(1)
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
       const novo = { ...f }
@@ -35,6 +41,7 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPagina(1)
   }
   const linhas = useMemo(() => {
     const chaves = Object.keys(filtros)
@@ -54,6 +61,10 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
     mapa.balde = Object.keys(contagem).filter(b => contagem[b] > 0).map(b => BALDE_LABEL[b] ?? b)
     return mapa
   }, [todos, contagem])
+
+  const totalPaginas = Math.max(1, Math.ceil(linhas.length / POR_PAGINA))
+  const paginaAtual  = Math.min(pagina, totalPaginas)
+  const linhasPagina = linhas.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
 
   const colunas: Coluna[] = [
     { chave: 'nome', titulo: 'Cliente', principal: true, filtravel: true },
@@ -80,12 +91,14 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={linhas}
+        itens={linhasPagina}
         chave={(l: any) => l.clienteId}
         vazio="Nenhum cliente nesse segmento."
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        meta={{ total: linhas.length, page: paginaAtual, limit: POR_PAGINA, totalPages: totalPaginas }}
+        onPageChange={setPagina}
       />
     </div>
   )

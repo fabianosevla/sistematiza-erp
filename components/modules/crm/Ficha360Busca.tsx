@@ -16,6 +16,10 @@ import { fmtMoeda as fmt, fmtDataHoraLocal as fmtDataHora } from '@/lib/format'
 
 interface Props { tenantSlug: string }
 
+// A ficha vem inteira numa resposta só; paginar aqui é o mesmo padrão do
+// resto do sistema quando isso acontece (ver VisaoGeralTab).
+const POR_PAGINA = 20
+
 export default function Ficha360Busca({ tenantSlug }: Props) {
   const [termo, setTermo]     = useState('')
   const [aberto, setAberto]   = useState(false)
@@ -48,6 +52,7 @@ export default function Ficha360Busca({ tenantSlug }: Props) {
   const vendas: any[] = ficha?.vendas ?? []
 
   const [filtros, setFiltros] = useState<Record<string, string>>({})
+  const [pagina, setPagina]   = useState(1)
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
       const novo = { ...f }
@@ -55,6 +60,7 @@ export default function Ficha360Busca({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPagina(1)
   }
   const vendasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
@@ -70,6 +76,9 @@ export default function Ficha360Busca({ tenantSlug }: Props) {
     }
     return mapa
   }, [vendas])
+  const totalPaginas = Math.max(1, Math.ceil(vendasFiltradas.length / POR_PAGINA))
+  const paginaAtual  = Math.min(pagina, totalPaginas)
+  const vendasPagina = vendasFiltradas.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
 
   const colunas: Coluna[] = [
     { chave: 'vendaId', titulo: 'Venda', largura: 'w-20', render: (v: any) => <span className="font-mono text-xs text-gray-500">#{v.vendaId}</span> },
@@ -83,6 +92,8 @@ export default function Ficha360Busca({ tenantSlug }: Props) {
     setSelecionado(c)
     setTermo('')
     setAberto(false)
+    setFiltros({})
+    setPagina(1)
   }
 
   return (
@@ -135,13 +146,15 @@ export default function Ficha360Busca({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={vendasFiltradas}
+        itens={vendasPagina}
         chave={(v: any) => v.vendaId}
         carregando={!!selecionado && loadingFicha}
         vazio={selecionado ? 'Esse cliente ainda não tem venda registrada.' : 'Selecione um cliente para ver o histórico.'}
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        meta={vendas.length > 0 ? { total: vendasFiltradas.length, page: paginaAtual, limit: POR_PAGINA, totalPages: totalPaginas } : null}
+        onPageChange={setPagina}
       />
     </div>
   )

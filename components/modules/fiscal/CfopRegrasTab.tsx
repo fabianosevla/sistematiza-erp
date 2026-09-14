@@ -24,6 +24,11 @@ interface Props { tenantSlug: string }
 
 const VAZIO = { tipoOperacao: '', direcao: 'saida', localizacao: 'interno', cfop: '', csosnSugerido: '', cstSugerido: '', observacao: '' }
 
+// A rota devolve a lista inteira numa resposta só (sem paginar no servidor);
+// paginar aqui no cliente é o mesmo padrão do resto do sistema quando isso
+// acontece (ver VisaoGeralTab, SegmentacaoTab).
+const POR_PAGINA = 20
+
 export default function CfopRegrasTab({ tenantSlug }: Props) {
   const { toast } = useToast()
   const qc  = useQueryClient()
@@ -52,6 +57,7 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
 
   // Mesmo padrão de filtro por coluna do resto do sistema.
   const [filtros, setFiltros] = useState<Record<string, string>>({})
+  const [pagina, setPagina]   = useState(1)
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
       const novo = { ...f }
@@ -59,6 +65,7 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPagina(1)
   }
   const regrasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
@@ -74,6 +81,9 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
     }
     return mapa
   }, [regrasComLabel])
+  const totalPaginas = Math.max(1, Math.ceil(regrasFiltradas.length / POR_PAGINA))
+  const paginaAtual  = Math.min(pagina, totalPaginas)
+  const regrasPagina = regrasFiltradas.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
 
   const inv = () => qc.invalidateQueries({ queryKey: ['cfop-regras', tenantSlug] })
 
@@ -142,13 +152,15 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={regrasFiltradas}
+        itens={regrasPagina}
         chave={(r: any) => r.cfopRegraId}
         carregando={isLoading}
         vazio="Nenhuma regra cadastrada."
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        meta={{ total: regrasFiltradas.length, page: paginaAtual, limit: POR_PAGINA, totalPages: totalPaginas }}
+        onPageChange={setPagina}
         ferramentas={
           <>
             <Button size="sm" variant="outline" onClick={() => setShowOperacao(true)} disabled={regras.length === 0}>
