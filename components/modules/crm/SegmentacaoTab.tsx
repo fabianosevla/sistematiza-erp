@@ -10,7 +10,7 @@ import { fmtDataLocal as fmtData } from '@/lib/format'
 interface Props { tenantSlug: string }
 
 // Mesmo padrão de paginação do resto do sistema quando a lista inteira já
-// vem numa única resposta (ver VisaoGeralTab): fatia no cliente, mas o rodapé
+// vem numa única resposta (ver ClientesTab): fatia no cliente, mas o rodapé
 // de paginação é o mesmo componente e o mesmo comportamento de sempre.
 const POR_PAGINA = 20
 

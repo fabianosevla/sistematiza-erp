@@ -5,11 +5,10 @@
 // ganhe/reativação), que passa a ser uma aba aqui em vez de item de menu
 // próprio — zero mudança na lógica dela, só de endereço.
 import { useState } from 'react'
-import { Handshake, Users, TrendingUp, Gift, Radar, Megaphone, QrCode } from 'lucide-react'
+import { Handshake, Users, Gift, Radar, Megaphone, QrCode } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import FidelidadeView from '@/components/modules/fidelidade/FidelidadeView'
-import VisaoGeralTab from './VisaoGeralTab'
-import Ficha360Busca from './Ficha360Busca'
+import ClientesTab from './ClientesTab'
 import SegmentacaoTab from './SegmentacaoTab'
 import FunilB2bTab from './FunilB2bTab'
 import CampanhasTab from './CampanhasTab'
@@ -17,11 +16,12 @@ import CardapioAnaliseTab from './CardapioAnaliseTab'
 
 interface Props { tenantSlug: string }
 
-type Aba = 'visao' | 'ficha360' | 'fidelidade' | 'segmentacao' | 'funil' | 'campanhas' | 'cardapio'
+// "Visão Geral" e "Clientes" eram duas abas separadas e viraram uma só
+// (13/09/2026) — ver comentário no topo de ClientesTab.tsx.
+type Aba = 'clientes' | 'fidelidade' | 'segmentacao' | 'funil' | 'campanhas' | 'cardapio'
 
 const ABAS: { key: Aba; label: string; icon: any }[] = [
-  { key: 'visao',        label: 'Visão Geral',  icon: TrendingUp },
-  { key: 'ficha360',     label: 'Clientes',     icon: Users },
+  { key: 'clientes',     label: 'Clientes',     icon: Users },
   { key: 'fidelidade',   label: 'Fidelidade',   icon: Gift },
   { key: 'segmentacao',  label: 'Segmentação',  icon: Radar },
   { key: 'funil',        label: 'Funil B2B',    icon: Handshake },
@@ -30,7 +30,7 @@ const ABAS: { key: Aba; label: string; icon: any }[] = [
 ]
 
 export default function CrmView({ tenantSlug }: Props) {
-  const [aba, setAba] = useState<Aba>('visao')
+  const [aba, setAba] = useState<Aba>('clientes')
 
   return (
     <div>
@@ -49,8 +49,7 @@ export default function CrmView({ tenantSlug }: Props) {
         </div>
       </div>
 
-      {aba === 'visao'       && <VisaoGeralTab tenantSlug={tenantSlug} />}
-      {aba === 'ficha360'    && <Ficha360Busca tenantSlug={tenantSlug} />}
+      {aba === 'clientes'    && <ClientesTab tenantSlug={tenantSlug} />}
       {aba === 'fidelidade'  && <FidelidadeView tenantSlug={tenantSlug} semTitulo />}
       {aba === 'segmentacao' && <SegmentacaoTab tenantSlug={tenantSlug} />}
       {aba === 'funil'       && <FunilB2bTab tenantSlug={tenantSlug} />}

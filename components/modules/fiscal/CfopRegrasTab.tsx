@@ -26,7 +26,7 @@ const VAZIO = { tipoOperacao: '', direcao: 'saida', localizacao: 'interno', cfop
 
 // A rota devolve a lista inteira numa resposta só (sem paginar no servidor);
 // paginar aqui no cliente é o mesmo padrão do resto do sistema quando isso
-// acontece (ver VisaoGeralTab, SegmentacaoTab).
+// acontece (ver ClientesTab, SegmentacaoTab).
 const POR_PAGINA = 20
 
 export default function CfopRegrasTab({ tenantSlug }: Props) {

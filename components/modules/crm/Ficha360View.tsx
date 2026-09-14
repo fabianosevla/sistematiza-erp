@@ -15,7 +15,7 @@ import { fmtMoeda as fmt, fmtDataHoraLocal as fmtDataHora, fmtDataLocal as fmtDa
 interface Props { tenantSlug: string; clienteId: number }
 
 // A ficha vem inteira numa resposta só; paginar aqui é o mesmo padrão do
-// resto do sistema quando isso acontece (ver VisaoGeralTab).
+// resto do sistema quando isso acontece (ver ClientesTab).
 const POR_PAGINA = 20
 
 const Anchor = 'a' as const
@@ -25,23 +25,16 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
     queryKey: ['crm-ficha360', tenantSlug, clienteId],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/crm/clientes/${clienteId}`)).json(),
   })
-  const ficha = data?.data
-
-  if (isLoading) {
-    return <div className="flex justify-center py-16"><Loader2 size={20} className="text-gray-300 animate-spin" /></div>
-  }
-  if (isError || !ficha) {
-    return (
-      <div>
-        <Anchor href={`/${tenantSlug}/crm`} className="text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1 mb-4">
-          <ArrowLeft size={14} /> Voltar pro CRM
-        </Anchor>
-        <p className="text-sm text-gray-400">Cliente não encontrado.</p>
-      </div>
-    )
-  }
-
-  const { cliente, resumo, vendas, pedidos, indicacoes } = ficha
+  const ficha    = data?.data
+  // Arrays vazios enquanto carrega/erro — os hooks abaixo (useState, useMemo)
+  // têm que rodar em TODO render, na mesma quantidade e ordem. Antes eles
+  // vinham depois do "if (isLoading) return" / "if (!ficha) return", e o
+  // primeiro render (carregando) chamava menos hooks que o segundo (carregado)
+  // — React trava com "Rendered more hooks than during the previous render"
+  // (erro #310) e a tela quebra em branco. Por isso as duas listas usam
+  // `?? []` aqui, ANTES de qualquer return condicional.
+  const vendas   = ficha?.vendas   ?? []
+  const pedidos  = ficha?.pedidos  ?? []
 
   // Mesmo padrão de filtro por coluna do resto do sistema (funil no
   // cabeçalho, opções sempre do conjunto sem filtro) — uma chave de filtro
@@ -91,6 +84,24 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
   const totalPaginasPedidos = Math.max(1, Math.ceil(pedidosFiltrados.length / POR_PAGINA))
   const paginaAtualPedidos  = Math.min(paginaPedidos, totalPaginasPedidos)
   const pedidosPagina       = pedidosFiltrados.slice((paginaAtualPedidos - 1) * POR_PAGINA, paginaAtualPedidos * POR_PAGINA)
+
+  // SÓ AGORA, depois de todo hook já ter rodado, é que a tela pode sair mais
+  // cedo pra carregando/erro.
+  if (isLoading) {
+    return <div className="flex justify-center py-16"><Loader2 size={20} className="text-gray-300 animate-spin" /></div>
+  }
+  if (isError || !ficha) {
+    return (
+      <div>
+        <Anchor href={`/${tenantSlug}/crm`} className="text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1 mb-4">
+          <ArrowLeft size={14} /> Voltar pro CRM
+        </Anchor>
+        <p className="text-sm text-gray-400">Cliente não encontrado.</p>
+      </div>
+    )
+  }
+
+  const { cliente, resumo, indicacoes } = ficha
 
   const colunasVendas: Coluna[] = [
     { chave: 'vendaId', titulo: 'Venda', largura: 'w-20', render: (v: any) => <span className="font-mono text-xs text-gray-500">#{v.vendaId}</span> },
