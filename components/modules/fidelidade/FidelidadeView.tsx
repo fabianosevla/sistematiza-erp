@@ -51,6 +51,19 @@ export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props)
   })
   const cfg = raw?.data
 
+  // BUG REAL ENCONTRADO (13/09/2026): `fetch` não rejeita em 403/500 — só
+  // rejeita se a rede cair. Uma resposta de erro (ex.: módulo desligado pro
+  // tenant, `exigirModulo` bloqueando até admin) chegava aqui, `raw.data`
+  // ficava undefined, o useEffect abaixo (que só roda com `cfg` preenchido)
+  // nunca chamava `setForm`, e a aba Configuração ficava presa em
+  // "Carregando configuração..." pra sempre — sem nenhum aviso do motivo.
+  // Isso também bloqueava tudo que dependia da MESMA config (Visão Geral
+  // usa `cfg?.programaAtivo`), então "ativar" e qualquer outra ação
+  // pareciam simplesmente não fazer nada.
+  const erroConfig: string | null = raw && raw.status === 'error'
+    ? (raw.message || 'Não foi possível carregar a configuração da Fidelidade.')
+    : null
+
   useEffect(() => {
     if (!cfg) return
     setForm({
@@ -158,6 +171,14 @@ export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props)
         </div>
       </div>
 
+      {/* Falha na config afeta a tela inteira — Visão Geral já usa
+          `cfg?.programaAtivo`, e é a MESMA config que a aba Configuração
+          tenta carregar. Um aviso só aqui, visível em qualquer aba, é mais
+          honesto que cada aba escondendo o problema à sua própria maneira. */}
+      {!isLoading && erroConfig && (
+        <Aviso tom="erro" className="mb-4">{erroConfig}</Aviso>
+      )}
+
       {aba === 'visao'         && <VisaoTab tenantSlug={tenantSlug} programaAtivo={!!cfg?.programaAtivo} onIrConfig={() => setAba('config')} />}
       {aba === 'clientes'      && <ClientesTab tenantSlug={tenantSlug} />}
       {aba === 'movimentacoes' && <MovimentosTab tenantSlug={tenantSlug} />}
@@ -165,7 +186,15 @@ export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props)
 
       {/* ── Configuração ─────────────────────────────────────────────────── */}
       {aba === 'config' && (
-        isLoading || !form ? (
+        isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-gray-400 py-12 justify-center">
+            <Loader2 size={16} className="animate-spin" /> Carregando configuração...
+          </div>
+        ) : erroConfig ? (
+          <div className="py-12 text-center text-sm text-gray-400">
+            Não deu pra carregar — veja o aviso acima.
+          </div>
+        ) : !form ? (
           <div className="flex items-center gap-2 text-sm text-gray-400 py-12 justify-center">
             <Loader2 size={16} className="animate-spin" /> Carregando configuração...
           </div>
