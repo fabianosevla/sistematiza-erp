@@ -67,11 +67,25 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
     })
     setPagina(1)
   }
+  // Ordenação por coluna — lista inteira já carregada, ordena em memória,
+  // antes de fatiar pra paginação (senão a página 2 mostraria uma ordem
+  // diferente da página 1 a cada troca de página).
+  const [sortKey, setSortKey] = useState('tipoOperacao')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+    setPagina(1)
+  }
   const regrasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return regrasComLabel
-    return regrasComLabel.filter(r => chaves.every(k => String(r?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
-  }, [regrasComLabel, filtros])
+    const base = chaves.length === 0 ? regrasComLabel
+      : regrasComLabel.filter(r => chaves.every(k => String(r?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    return [...base].sort((a: any, b: any) => {
+      const cmp = String(a?.[sortKey] ?? '').localeCompare(String(b?.[sortKey] ?? ''), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [regrasComLabel, filtros, sortKey, sortDir])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['tipoOperacao', 'direcaoLabel', 'localizacaoLabel', 'cfop']) {
@@ -123,19 +137,19 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
   }
 
   const colunas: Coluna[] = [
-    { chave: 'tipoOperacao', titulo: 'Tipo de operação', filtravel: true, render: (r: any) => (
+    { chave: 'tipoOperacao', titulo: 'Tipo de operação', filtravel: true, ordenavel: true, render: (r: any) => (
       <div className="min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{r.tipoOperacao}</p>
         {r.observacao && <p className="text-xs text-gray-400 truncate">{r.observacao}</p>}
       </div>
     )},
-    { chave: 'direcaoLabel', titulo: 'Direção', filtravel: true, render: (r: any) => (
+    { chave: 'direcaoLabel', titulo: 'Direção', filtravel: true, ordenavel: true, render: (r: any) => (
       <span className="text-sm text-gray-600">{r.direcaoLabel}</span>
     )},
-    { chave: 'localizacaoLabel', titulo: 'Destino', filtravel: true, render: (r: any) => (
+    { chave: 'localizacaoLabel', titulo: 'Destino', filtravel: true, ordenavel: true, render: (r: any) => (
       <span className="text-sm text-gray-600">{r.localizacaoLabel}</span>
     )},
-    { chave: 'cfop', titulo: 'CFOP', filtravel: true, render: (r: any) => (
+    { chave: 'cfop', titulo: 'CFOP', filtravel: true, ordenavel: true, render: (r: any) => (
       <span className="text-sm font-mono text-gray-900">{r.cfop}</span>
     )},
   ]
@@ -159,6 +173,8 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         meta={{ total: regrasFiltradas.length, page: paginaAtual, limit: POR_PAGINA, totalPages: totalPaginas }}
         onPageChange={setPagina}
         ferramentas={

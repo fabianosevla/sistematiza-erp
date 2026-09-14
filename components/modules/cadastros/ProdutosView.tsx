@@ -429,14 +429,14 @@ export default function ProdutosView({ tenantSlug }: Props) {
       chave: 'tipo', titulo: 'Tipo', ordenavel: true, alinhamento: 'center', filtravel: true,
       render: (p: any) => <Badge variant="secondary">{p.tipo ?? '—'}</Badge>,
     },
-    { chave: 'unidade', titulo: 'Unidade', alinhamento: 'center', filtravel: true, render: (p: any) => p.unidade ?? '—' },
+    { chave: 'unidade', titulo: 'Unidade', ordenavel: true, alinhamento: 'center', filtravel: true, render: (p: any) => p.unidade ?? '—' },
     {
       chave: 'precoVarejo', titulo: 'Varejo', ordenavel: true, alinhamento: 'center',
       classeCelula: 'px-4 py-3 text-center text-sm font-medium',
       render: (p: any) => p.precoVarejo ? fmt(p.precoVarejo) : '—',
     },
     {
-      chave: 'precoAtacadoA', titulo: 'Atacado A', alinhamento: 'center',
+      chave: 'precoAtacadoA', titulo: 'Atacado A', ordenavel: true, alinhamento: 'center',
       render: (p: any) => (p.precoAtacadoA ?? p.precoAtacado) ? fmt(p.precoAtacadoA ?? p.precoAtacado) : '—',
     },
     {
@@ -451,7 +451,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'activeFlag', titulo: 'Status', alinhamento: 'center', filtravel: true,
+      chave: 'activeFlag', titulo: 'Status', ordenavel: true, alinhamento: 'center', filtravel: true,
       render: (p: any) => {
         const inativo = p.activeFlag === false
         return <Badge variant={inativo ? 'secondary' : 'default'}>{inativo ? 'Inativo' : 'Ativo'}</Badge>

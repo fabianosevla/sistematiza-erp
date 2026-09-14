@@ -24,8 +24,10 @@ export async function GET(req: NextRequest, { params }: Params) {
       const periodo = searchParams.get('periodo') ?? undefined
       const page    = Math.max(1, Number(searchParams.get('page')) || 1)
       const limit   = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 20))
+      const sort    = searchParams.get('sort') ?? undefined
+      const dir     = searchParams.get('dir') === 'asc' ? 'asc' : searchParams.get('dir') === 'desc' ? 'desc' : undefined
       const service = new PedidoService(db)
-      const result  = await service.list({ status, periodo, page, limit })
+      const result  = await service.list({ status, periodo, page, limit, sort, dir })
       return ok(result)
     } finally {
       release()

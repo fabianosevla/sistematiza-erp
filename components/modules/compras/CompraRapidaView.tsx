@@ -67,6 +67,14 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   const [pagina, setPagina]   = useState(1)
+  // Ordenação por coluna, no cliente — o período já carrega a lista inteira.
+  const [sortKey, setSortKey] = useState('data')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+    setPagina(1)
+  }
   const [painel, setPainel]   = useState(false)
   const [confirmCancelar, setConfirmCancelar] = useState<any>(null)
 
@@ -137,11 +145,17 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return todos
-    return todos.filter(i => chaves.every(k =>
+    const base = chaves.length === 0 ? todos : todos.filter(i => chaves.every(k =>
       String(i[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())
     ))
-  }, [todos, filtros])
+    return [...base].sort((a: any, b: any) => {
+      const av = a?.[sortKey], bv = b?.[sortKey]
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [todos, filtros, sortKey, sortDir])
 
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
@@ -247,9 +261,9 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
   // ── Colunas do histórico ─────────────────────────────────────────────────
   const colunas: Coluna[] = [
-    { chave: 'data', titulo: 'Data', render: (i: any) => fmtData(i.data) },
+    { chave: 'data', titulo: 'Data', ordenavel: true, render: (i: any) => fmtData(i.data) },
     {
-      chave: 'fornecedor', titulo: 'Fornecedor', filtravel: true,
+      chave: 'fornecedor', titulo: 'Fornecedor', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (i: any) => i.fornecedor,
     },
@@ -260,6 +274,8 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       // "1 item" não responde nada: para saber o que foi comprado era preciso
       // abrir a compra ou parar o mouse em cima. Quem olha o histórico está
       // procurando o que entrou, e a contagem só ajuda quando são muitos.
+      // Não ordenavel: é texto livre concatenado (lista de nomes), não um
+      // valor único comparável linha a linha.
       chave: 'itensTexto', titulo: 'Itens', filtravel: true, esconderAte: 'lg',
       render: (i: any) => {
         const nomes = String(i.itensTexto ?? '').trim()
@@ -275,13 +291,13 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       },
     },
     {
-      chave: 'condicao', titulo: 'Condição', filtravel: true,
+      chave: 'condicao', titulo: 'Condição', filtravel: true, ordenavel: true,
       render: (i: any) => i.condicao === 'a_prazo'
         ? <Badge variant="secondary">a prazo · vence {fmtData(i.vencimento)}</Badge>
         : <Badge variant="secondary">à vista</Badge>,
     },
-    { chave: 'formaPagamento', titulo: 'Pagamento', filtravel: true, esconderAte: 'xl', render: (i: any) => i.formaPagamento || <span className="text-gray-300">—</span> },
-    { chave: 'valorTotal', titulo: 'Total', alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valorTotal)}</span> },
+    { chave: 'formaPagamento', titulo: 'Pagamento', filtravel: true, ordenavel: true, esconderAte: 'xl', render: (i: any) => i.formaPagamento || <span className="text-gray-300">—</span> },
+    { chave: 'valorTotal', titulo: 'Total', ordenavel: true, alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valorTotal)}</span> },
   ]
 
   return (
@@ -434,6 +450,8 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
         opcoesFiltro={opcoesFiltro}
         meta={{ page: paginaAtual, totalPages: totalPaginas, total: itens.length, limit: POR_PAGINA }}
         onPageChange={setPagina}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(i: any) => (
           <button
             onClick={() => setConfirmCancelar(i)}

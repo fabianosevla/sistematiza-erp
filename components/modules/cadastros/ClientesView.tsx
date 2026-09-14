@@ -175,14 +175,31 @@ export default function ClientesView({ tenantSlug }: Props) {
       return novo
     })
   }
+  // Ordenação por coluna — mesma limitação já aceita no filtro logo acima:
+  // atua só sobre a PÁGINA carregada (a busca pagina no servidor), não sobre
+  // o cadastro inteiro. Trocar a paginação do servidor só por causa disto
+  // não vale a pena aqui.
+  const [sortKey, setSortKey] = useState('nomeCompleto')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
   const clientesFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return clientes
-    return clientes.filter((c: any) => chaves.every(k => {
+    const base = chaves.length === 0 ? clientes : clientes.filter((c: any) => chaves.every(k => {
       const v = k === 'nomeCompleto' ? ((c.nomeFantasia ?? '').trim() || c.nomeCompleto) : c?.[k]
       return String(v ?? '').toLowerCase().includes(filtros[k].toLowerCase())
     }))
-  }, [clientes, filtros])
+    return [...base].sort((a: any, b: any) => {
+      const av = sortKey === 'nomeCompleto' ? ((a.nomeFantasia ?? '').trim() || a.nomeCompleto) : a?.[sortKey]
+      const bv = sortKey === 'nomeCompleto' ? ((b.nomeFantasia ?? '').trim() || b.nomeCompleto) : b?.[sortKey]
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [clientes, filtros, sortKey, sortDir])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nomeCompleto', 'tipoPessoa', 'tabelaPreco', 'cidade']) {
@@ -201,7 +218,7 @@ export default function ClientesView({ tenantSlug }: Props) {
       // Mostra o nome fantasia quando existe — é como o cliente é conhecido no
       // dia a dia. A razão social fica embaixo, menor, porque ainda é
       // necessária para nota fiscal e conferência de cadastro.
-      chave: 'nomeCompleto', titulo: 'Nome', principal: true, filtravel: true,
+      chave: 'nomeCompleto', titulo: 'Nome', principal: true, filtravel: true, ordenavel: true,
       render: (c: any) => {
         const fantasia = (c.nomeFantasia ?? '').trim()
         const razao    = (c.nomeCompleto ?? '').trim()
@@ -220,12 +237,12 @@ export default function ClientesView({ tenantSlug }: Props) {
       },
     },
     {
-      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', filtravel: true,
+      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', filtravel: true, ordenavel: true,
       render: (c: any) => <Badge variant={c.tipoPessoa === 'PJ' ? 'secondary' : 'outline'}>{c.tipoPessoa}</Badge>,
     },
     { chave: 'email', titulo: 'E-mail', esconderAte: 'lg', render: (c: any) => c.email ?? '—' },
     {
-      chave: 'tabelaPreco', titulo: 'Tabela', esconderAte: 'md', alinhamento: 'center', filtravel: true,
+      chave: 'tabelaPreco', titulo: 'Tabela', esconderAte: 'md', alinhamento: 'center', filtravel: true, ordenavel: true,
       // Todo cliente tem tabela — quem não escolheu está em varejo. Mostrar
       // travessão dava a impressão de campo vazio. Varejo usa o estilo neutro
       // e atacado o de destaque, então dá para separar os dois de relance.
@@ -239,7 +256,7 @@ export default function ClientesView({ tenantSlug }: Props) {
       },
     },
     {
-      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg', filtravel: true,
+      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg', filtravel: true, ordenavel: true,
       render: (c: any) => c.cidade ? `${c.cidade}/${c.uf ?? ''}` : '—',
     },
   ]
@@ -281,6 +298,8 @@ export default function ClientesView({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         meta={meta}
         onPageChange={setPage}
         onLimitChange={setLimit}

@@ -208,11 +208,21 @@ export default function UsuariosView({ tenantSlug }: Props) {
     if (chave === 'clerkId') return String(item.clerkId ?? '').startsWith('pending') ? 'convite pendente' : 'ativo'
     return String(item?.[chave] ?? '')
   }
+  // Ordenação por coluna — lista inteira já carregada, ordena em memória.
+  const [sortKey, setSortKey] = useState('nome')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
   const itemsFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return items
-    return items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
-  }, [items, filtros])
+    const base = chaves.length === 0 ? items : items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
+    return [...base].sort((a: any, b: any) => {
+      const cmp = valorFiltravel(a, sortKey).localeCompare(valorFiltravel(b, sortKey), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [items, filtros, sortKey, sortDir])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nome', 'perfil', 'clerkId']) {
@@ -225,7 +235,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
 
   const colunas: Coluna[] = [
     {
-      chave: 'nome', titulo: 'Nome', filtravel: true,
+      chave: 'nome', titulo: 'Nome', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3',
       render: (item: any) => (
         <div className="flex items-center gap-2">
@@ -242,11 +252,11 @@ export default function UsuariosView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'email', titulo: 'E-mail', esconderAte: 'md',
+      chave: 'email', titulo: 'E-mail', esconderAte: 'md', ordenavel: true,
       render: (item: any) => item.email || '—',
     },
     {
-      chave: 'perfil', titulo: 'Perfil', filtravel: true,
+      chave: 'perfil', titulo: 'Perfil', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3',
       render: (item: any) => (
         <Badge variant={item.perfil === 'admin' ? 'default' : 'secondary'}>
@@ -255,7 +265,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'clerkId', titulo: 'Acesso', alinhamento: 'center', filtravel: true,
+      chave: 'clerkId', titulo: 'Acesso', alinhamento: 'center', filtravel: true, ordenavel: true,
       // Vínculo pendente = convite não aceito. Antes isso era invisível, e um
       // usuário nesse estado loga e não vê nada — foi o caso da Maria Julia.
       render: (item: any) => String(item.clerkId ?? '').startsWith('pending')
@@ -290,6 +300,8 @@ export default function UsuariosView({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(item: any) => (
           <>
             <BotaoIcone titulo="Editar" variante="info" tamanho="md" onClick={() => abrirEdicao(item)}>

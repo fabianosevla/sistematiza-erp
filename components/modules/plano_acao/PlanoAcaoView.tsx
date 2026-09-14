@@ -62,6 +62,14 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
   const [statusAba, setStatusAba] = useState<'pendente' | 'concluida' | 'todas'>('pendente')
   const [filtros, setFiltros]     = useState<Record<string, string>>({})
   const [pagina, setPagina]       = useState(1)
+  // Ordenação por coluna, no cliente — o período já carrega a lista inteira.
+  const [sortKey, setSortKey]     = useState('dataAcao')
+  const [sortDir, setSortDir]     = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+    setPagina(1)
+  }
 
   // ── Formulário ───────────────────────────────────────────────────────────
   const [showPainel, setShowPainel]   = useState(false)
@@ -98,11 +106,17 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
 
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return daAba
-    return daAba.filter(a => chaves.every(k =>
+    const base = chaves.length === 0 ? daAba : daAba.filter(a => chaves.every(k =>
       String(a[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())
     ))
-  }, [daAba, filtros])
+    return [...base].sort((a: any, b: any) => {
+      const av = a?.[sortKey], bv = b?.[sortKey]
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [daAba, filtros, sortKey, sortDir])
 
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
@@ -230,7 +244,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
   // ── Colunas ──────────────────────────────────────────────────────────────
   const colunas: Coluna[] = [
     {
-      chave: 'dataAcao', titulo: 'Data',
+      chave: 'dataAcao', titulo: 'Data', ordenavel: true,
       render: (a: any) => {
         const atrasada = (a.status ?? 'pendente') === 'pendente' && String(a.dataAcao ?? '').slice(0, 10) < hojeISO()
         return (
@@ -242,22 +256,24 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
       },
     },
     {
-      chave: 'identificacao', titulo: 'Identificação', filtravel: true,
+      chave: 'identificacao', titulo: 'Identificação', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (a: any) => a.identificacao,
     },
     {
+      // Não ordenavel: texto livre e longo (a descrição da ação em si) —
+      // ordem alfabética de uma frase inteira não ajuda ninguém a achar nada.
       chave: 'acao', titulo: 'Ação',
       render: (a: any) => (
         <span className="text-sm text-gray-600 line-clamp-2" title={a.acao}>{a.acao}</span>
       ),
     },
     {
-      chave: 'responsavel', titulo: 'Responsável', filtravel: true, esconderAte: 'md',
+      chave: 'responsavel', titulo: 'Responsável', filtravel: true, ordenavel: true, esconderAte: 'md',
       render: (a: any) => a.responsavel || <span className="text-gray-300">—</span>,
     },
     {
-      chave: 'status', titulo: 'Status',
+      chave: 'status', titulo: 'Status', ordenavel: true,
       render: (a: any) => a.status === 'concluida'
         ? <Badge variant="secondary">Concluída {a.concluidoEm ? `· ${fmtConcluidoEm(a.concluidoEm)}` : ''}</Badge>
         : <Badge variant="default">Pendente</Badge>,
@@ -367,6 +383,8 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
         opcoesFiltro={opcoesFiltro}
         meta={{ page: paginaAtual, totalPages: totalPaginas, total: itens.length, limit: POR_PAGINA }}
         onPageChange={setPagina}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(a: any) => (
           <>
             {a.status === 'concluida' ? (

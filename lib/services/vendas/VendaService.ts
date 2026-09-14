@@ -1,5 +1,5 @@
 // ESTE ARQUIVO VAI EM: lib/services/vendas/VendaService.ts
-import { and, eq, gte, lte, desc, count, sql } from 'drizzle-orm'
+import { and, eq, gte, lte, count, sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { dbVenda, dbVendaItem, dbVendaPagamento } from '@/lib/db/schemas/vendas'
@@ -32,8 +32,24 @@ function resolverPreco(produto: any, tipoPrecao: string): number {
 export class VendaService {
   constructor(private db: AppDB, private schemaName: string = '') {}
 
-  async list({ page, limit, dataInicio, dataFim, origem, tipoEntrega, busca }: {
+  // Colunas que a listagem aceita ordenar — allowlist, nunca interpola o
+  // parâmetro de ordenação direto na query (injeção de SQL via ?sort=).
+  // Mesmo padrão de ContasReceberService.ORDENAVEIS. clienteNome não é coluna
+  // de t_venda (só clienteId) — por isso é uma subquery, igual ao JOIN que
+  // list() já faz em JS pra montar o nome exibido.
+  private static ORDENAVEIS: Record<string, any> = {
+    vendidaEm:   dbVenda.vendidaEm,
+    total:       dbVenda.total,
+    tipoEntrega: dbVenda.tipoEntrega,
+    clienteNome: sql`COALESCE(
+      (SELECT COALESCE(c.nome_fantasia, c.nome_completo) FROM t_cliente c WHERE c.cliente_id = ${dbVenda.clienteId}),
+      ${dbVenda.nomeClienteAvulso}, 'Consumidor Final'
+    )`,
+  }
+
+  async list({ page, limit, dataInicio, dataFim, origem, tipoEntrega, busca, sort = 'vendidaEm', dir = 'desc' }: {
     page: number; limit: number; dataInicio?: string; dataFim?: string; origem?: string; tipoEntrega?: string; busca?: string
+    sort?: string; dir?: 'asc' | 'desc'
   }) {
     const offset = (page - 1) * limit
     const conditions = [eq(dbVenda.activeFlag, true)]
@@ -59,9 +75,11 @@ export class VendaService {
       )`)
     }
     const whereClause = and(...conditions)
+    const colunaOrdem = VendaService.ORDENAVEIS[sort] ?? VendaService.ORDENAVEIS.vendidaEm
+    const orderBy = dir === 'asc' ? sql`${colunaOrdem} ASC NULLS LAST` : sql`${colunaOrdem} DESC NULLS LAST`
 
     const [vendas, totals] = await Promise.all([
-      this.db.select().from(dbVenda).where(whereClause).orderBy(desc(dbVenda.vendidaEm)).limit(limit).offset(offset),
+      this.db.select().from(dbVenda).where(whereClause).orderBy(orderBy).limit(limit).offset(offset),
       this.db.select({ total: count() }).from(dbVenda).where(whereClause),
     ])
 

@@ -5,7 +5,7 @@
 // calculado a partir de regras — é característica da mercadoria. Isso aqui
 // ajuda a achar candidato numa lista curada (cresce por cadastro), não
 // classifica produto sozinho.
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Search, Plus, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -38,7 +38,22 @@ export default function NcmSimuladorTab({ tenantSlug }: Props) {
     queryKey: ['ncm-referencia', tenantSlug, termo],
     queryFn:  async () => (await fetch(`${api}?termo=${encodeURIComponent(termo)}`)).json(),
   })
-  const resultados: any[] = data?.data?.resultados ?? []
+  const resultadosBrutos: any[] = data?.data?.resultados ?? []
+
+  // Ordenação por coluna, SOBRE OS RESULTADOS DA BUSCA — diferente do funil
+  // de filtro (não faz sentido aqui: ver comentário mais abaixo, no
+  // DataTable), ordenar continua útil mesmo com valor quase único por linha
+  // (ex.: ordenar por NCM pra comparar códigos próximos na mesma família).
+  const [sortKey, setSortKey] = useState('ncm')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
+  const resultados = useMemo(() => [...resultadosBrutos].sort((a: any, b: any) => {
+    const cmp = String(a?.[sortKey] ?? '').localeCompare(String(b?.[sortKey] ?? ''), 'pt-BR')
+    return sortDir === 'asc' ? cmp : -cmp
+  }), [resultadosBrutos, sortKey, sortDir])
 
   const inv = () => qc.invalidateQueries({ queryKey: ['ncm-referencia', tenantSlug] })
 
@@ -74,14 +89,14 @@ export default function NcmSimuladorTab({ tenantSlug }: Props) {
   }
 
   const colunas: Coluna[] = [
-    { chave: 'ncm', titulo: 'NCM', largura: 'w-28', render: (r: any) => (
+    { chave: 'ncm', titulo: 'NCM', largura: 'w-28', ordenavel: true, render: (r: any) => (
       <span className="text-sm font-mono font-semibold text-green-700">{r.ncm}</span>
     )},
-    { chave: 'descricao', titulo: 'Descrição', principal: true },
-    { chave: 'cestSugerido', titulo: 'CEST sugerido', esconderAte: 'md', render: (r: any) => (
+    { chave: 'descricao', titulo: 'Descrição', principal: true, ordenavel: true },
+    { chave: 'cestSugerido', titulo: 'CEST sugerido', esconderAte: 'md', ordenavel: true, render: (r: any) => (
       <span className="text-sm font-mono">{r.cestSugerido || '—'}</span>
     )},
-    { chave: 'fonte', titulo: 'Fonte', esconderAte: 'lg' },
+    { chave: 'fonte', titulo: 'Fonte', esconderAte: 'lg', ordenavel: true },
   ]
 
   return (
@@ -106,13 +121,17 @@ export default function NcmSimuladorTab({ tenantSlug }: Props) {
       {/* Sem filtro de coluna aqui: NCM, descrição e fonte são ~únicos por linha
           (não têm um conjunto pequeno de valores repetidos pra um funil fazer
           sentido) e a busca acima já cobre código/palavra sobre a lista toda,
-          não só a página carregada — filtro de coluna seria redundante. */}
+          não só a página carregada — filtro de coluna seria redundante.
+          Ordenação é outra coisa e continua útil mesmo com valor único por
+          linha (ex.: por NCM, pra comparar códigos vizinhos da mesma família). */}
       <DataTable
         colunas={colunas}
         itens={resultados}
         chave={(r: any) => r.ncmRefId}
         carregando={isLoading}
         vazio={termo ? 'Nenhum NCM encontrado pra essa busca.' : 'Nenhum NCM cadastrado ainda.'}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(r: any) => (
           <>
             <BotaoIcone titulo="Editar" onClick={() => abrirEditar(r)}><Pencil size={13} /></BotaoIcone>

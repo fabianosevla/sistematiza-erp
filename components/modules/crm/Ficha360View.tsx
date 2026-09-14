@@ -80,14 +80,36 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
     })
     setPaginaOp(1)
   }
+  // Ordenação por coluna — padrão inicial é data decrescente (mais recente
+  // primeiro), que já era o comportamento fixo de antes; agora é só o
+  // estado inicial, o operador pode trocar clicando no cabeçalho.
+  const [sortKeyOp, setSortKeyOp] = useState('data')
+  const [sortDirOp, setSortDirOp] = useState<'asc' | 'desc'>('desc')
+  function toggleSortOp(chave: string) {
+    if (sortKeyOp === chave) setSortDirOp(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKeyOp(chave); setSortDirOp('asc') }
+    setPaginaOp(1)
+  }
   const operacoesFiltradas = useMemo(() => {
     const chaves = Object.keys(filtrosOp)
-    if (chaves.length === 0) return operacoes
-    return operacoes.filter(o => chaves.every(k => String((o as any)?.[k] ?? '').toLowerCase().includes(filtrosOp[k].toLowerCase())))
-  }, [operacoes, filtrosOp])
+    const base = chaves.length === 0 ? operacoes
+      : operacoes.filter(o => chaves.every(k => String((o as any)?.[k] ?? '').toLowerCase().includes(filtrosOp[k].toLowerCase())))
+    return [...base].sort((a: any, b: any) => {
+      if (sortKeyOp === 'data') {
+        const cmp = new Date(a.data).getTime() - new Date(b.data).getTime()
+        return sortDirOp === 'asc' ? cmp : -cmp
+      }
+      if (sortKeyOp === 'total') {
+        const cmp = Number(a.total ?? 0) - Number(b.total ?? 0)
+        return sortDirOp === 'asc' ? cmp : -cmp
+      }
+      const cmp = String(a?.[sortKeyOp] ?? '').localeCompare(String(b?.[sortKeyOp] ?? ''), 'pt-BR')
+      return sortDirOp === 'asc' ? cmp : -cmp
+    })
+  }, [operacoes, filtrosOp, sortKeyOp, sortDirOp])
   const opcoesFiltroOp = useMemo(() => {
     const mapa: Record<string, string[]> = {}
-    for (const chave of ['tipoOperacao', 'origem', 'status']) {
+    for (const chave of ['origem', 'status']) {
       const set = new Set<string>()
       for (const o of operacoes) { const v = (o as any)?.[chave]; if (v) set.add(String(v)) }
       if (set.size > 0) mapa[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
@@ -122,18 +144,30 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
 
   const { cliente, resumo, indicacoes } = ficha
 
+  // SEM COLUNA "TIPO OPERAÇÃO".
+  //
+  // Existia antes e foi tirada: pra pedido que já virou venda (o caso mais
+  // comum, já que a entrega gera a venda), "Tipo: Venda" ao lado de
+  // "Origem: pedido" dizia a mesma coisa duas vezes — a coluna não
+  // acrescentava nada que Origem já não contasse. E pro pedido que AINDA
+  // não é venda, o Status já entrega isso sozinho: pendente/produção/pronto
+  // só existe em pedido, concluída/cancelada só existe em venda — os dois
+  // vocabulários não se cruzam, então não precisa de rótulo extra pra saber
+  // qual é qual. "Venda"/"Pedido" continua identificando a linha, só que
+  // dentro da própria célula do #, sem virar coluna (e sem entrar no funil
+  // de filtro, que já teria Origem e Status fazendo esse papel).
   const colunasOperacoes: Coluna[] = [
-    { chave: 'tipoOperacao', titulo: 'Tipo', largura: 'w-24', filtravel: true,
+    { chave: 'id', titulo: '#', largura: 'w-28', ordenavel: true,
       render: (o: any) => (
-        <Badge variant={o.tipoOperacao === 'Venda' ? 'secondary' : 'outline'}>{o.tipoOperacao}</Badge>
+        <span className="text-xs text-gray-500">
+          {o.tipoOperacao} <span className="font-mono">#{o.id}</span>
+        </span>
       ) },
-    { chave: 'id', titulo: '#', largura: 'w-16',
-      render: (o: any) => <span className="font-mono text-xs text-gray-500">#{o.id}</span> },
-    { chave: 'data', titulo: 'Data', render: (o: any) => fmtDataHora(o.data) },
-    { chave: 'origem', titulo: 'Origem', esconderAte: 'md', filtravel: true,
+    { chave: 'data', titulo: 'Data', ordenavel: true, render: (o: any) => fmtDataHora(o.data) },
+    { chave: 'origem', titulo: 'Origem', esconderAte: 'md', filtravel: true, ordenavel: true,
       render: (o: any) => o.origem ? <Badge variant="outline">{o.origem}</Badge> : <span className="text-gray-300">—</span> },
-    { chave: 'status', titulo: 'Status', esconderAte: 'md', filtravel: true },
-    { chave: 'total', titulo: 'Total', alinhamento: 'right', render: (o: any) => <span className="font-semibold">{fmt(o.total)}</span> },
+    { chave: 'status', titulo: 'Status', esconderAte: 'md', filtravel: true, ordenavel: true },
+    { chave: 'total', titulo: 'Total', alinhamento: 'right', ordenavel: true, render: (o: any) => <span className="font-semibold">{fmt(o.total)}</span> },
   ]
 
   return (
@@ -189,6 +223,8 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
             filtros={filtrosOp}
             onFiltrar={aplicarFiltroOp}
             opcoesFiltro={opcoesFiltroOp}
+            ordem={{ chave: sortKeyOp, dir: sortDirOp }}
+            onOrdenar={toggleSortOp}
             meta={operacoes.length > 0 ? { total: operacoesFiltradas.length, page: paginaAtualOp, limit: POR_PAGINA, totalPages: totalPaginasOp } : null}
             onPageChange={setPaginaOp}
             onLinhaClick={(o: any) => o.tipoOperacao === 'Venda' && setVendaAberta(o.id)}

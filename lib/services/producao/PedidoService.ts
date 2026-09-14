@@ -46,13 +46,36 @@ export class PedidoService {
     }
   }
 
-  async list({ status, periodo, page = 1, limit = 20 }: { status?: string; periodo?: string; page?: number; limit?: number } = {}) {
+  // Colunas que a listagem aceita ordenar — allowlist, nunca interpola o
+  // parâmetro de ordenação direto na query (injeção de SQL via ?sort=).
+  // Mesmo padrão de ContasReceberService/VendaService.ORDENAVEIS. clienteNome
+  // usa a mesma cascata de nome-exibido que o SELECT já monta em JS (fantasia
+  // → razão social → avulso) — só que em SQL, pra poder ordenar por ela.
+  private static ORDENAVEIS: Record<string, any> = {
+    clienteNome:     sql`COALESCE(NULLIF(cl.nome_fantasia, ''), NULLIF(cl.nome_completo, ''), NULLIF(p.nome_cliente_avulso, ''))`,
+    status:          sql`p.status`,
+    tipoVenda:       sql`p.tipo_venda`,
+    origem:          sql`p.origem`,
+    dataPedido:      sql`p.data_pedido`,
+    previsaoEntrega: sql`p.previsao_entrega`,
+  }
+
+  async list({ status, periodo, page = 1, limit = 20, sort = 'dataPedido', dir = 'desc' }: {
+    status?: string; periodo?: string; page?: number; limit?: number; sort?: string; dir?: 'asc' | 'desc'
+  } = {}) {
     const offset = (Math.max(1, page) - 1) * limit
     const where = sql`
       WHERE p.active_flg = true
         ${status ? sql`AND p.status = ${status}` : sql``}
         ${this.recorteDePeriodo(periodo)}
     `
+    const colunaOrdem = PedidoService.ORDENAVEIS[sort] ?? PedidoService.ORDENAVEIS.dataPedido
+    // Desempate sempre por pedido_id DESC (mais recente primeiro entre iguais)
+    // — mesmo critério de sempre, só que agora atrás de uma ordenação que pode
+    // não ser mais data.
+    const ordem = dir === 'asc'
+      ? sql`${colunaOrdem} ASC NULLS LAST, p.pedido_id DESC`
+      : sql`${colunaOrdem} DESC NULLS LAST, p.pedido_id DESC`
 
     const [res, totalRes] = await Promise.all([
       this.db.execute(sql`
@@ -68,7 +91,7 @@ export class PedidoService {
         FROM t_pedido p
         LEFT JOIN t_cliente cl ON cl.cliente_id = p.cliente_id
         ${where}
-        ORDER BY p.data_pedido DESC, p.pedido_id DESC
+        ORDER BY ${ordem}
         LIMIT ${limit} OFFSET ${offset}
       `),
       this.db.execute(sql`

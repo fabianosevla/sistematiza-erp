@@ -97,11 +97,23 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
       return novo
     })
   }
+  // Ordenação por coluna — lista inteira já carregada, ordena em memória.
+  const [sortKey, setSortKey] = useState('nome')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
   const formasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return formas
-    return formas.filter((f: any) => chaves.every(k => String(f?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
-  }, [formas, filtros])
+    const base = chaves.length === 0 ? formas : formas.filter((f: any) => chaves.every(k => String(f?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    return [...base].sort((a: any, b: any) => {
+      const av: any = sortKey === 'taxa' ? parseFloat(a.taxa) || 0 : String(a?.[sortKey] ?? '')
+      const bv: any = sortKey === 'taxa' ? parseFloat(b.taxa) || 0 : String(b?.[sortKey] ?? '')
+      const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [formas, filtros, sortKey, sortDir])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     const set = new Set<string>()
@@ -112,12 +124,12 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
 
   const colunas: Coluna[] = [
     {
-      chave: 'nome', titulo: 'Nome', filtravel: true,
+      chave: 'nome', titulo: 'Nome', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700',
       render: (f: any) => <span onClick={() => abrirEdicao(f)}>{f.nome}</span>,
     },
     {
-      chave: 'taxa', titulo: 'Taxa (%)',
+      chave: 'taxa', titulo: 'Taxa (%)', ordenavel: true,
       render: (f: any) => parseFloat(f.taxa) > 0 ? `${parseFloat(f.taxa).toFixed(2)}%` : '—',
     },
   ]
@@ -142,6 +154,8 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(f: any) => (
           <>
             <BotaoIcone titulo="Editar" onClick={() => abrirEdicao(f)}>

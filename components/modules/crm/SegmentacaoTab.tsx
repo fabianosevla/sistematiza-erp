@@ -43,14 +43,30 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
     })
     setPagina(1)
   }
+  // Ordenação por coluna — lista inteira já carregada, ordena em memória,
+  // antes de fatiar pra paginação.
+  const [sortKey, setSortKey] = useState('nome')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+    setPagina(1)
+  }
+  function valorDe(l: any, chave: string) {
+    return chave === 'balde' ? (BALDE_LABEL[l.balde] ?? l.balde) : l?.[chave]
+  }
   const linhas = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return todos
-    return todos.filter(l => chaves.every(k => {
-      const v = k === 'balde' ? (BALDE_LABEL[l.balde] ?? l.balde) : l?.[k]
-      return String(v ?? '').toLowerCase().includes(filtros[k].toLowerCase())
-    }))
-  }, [todos, filtros])
+    const base = chaves.length === 0 ? todos
+      : todos.filter(l => chaves.every(k => String(valorDe(l, k) ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    return [...base].sort((a, b) => {
+      const av = valorDe(a, sortKey), bv = valorDe(b, sortKey)
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [todos, filtros, sortKey, sortDir])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nome', 'tipoPessoa']) {
@@ -67,11 +83,11 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
   const linhasPagina = linhas.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA)
 
   const colunas: Coluna[] = [
-    { chave: 'nome', titulo: 'Cliente', principal: true, filtravel: true },
-    { chave: 'tipoPessoa', titulo: 'Tipo', largura: 'w-16', esconderAte: 'md', filtravel: true },
-    { chave: 'qtdCompras', titulo: 'Compras', alinhamento: 'right', esconderAte: 'md' },
-    { chave: 'ultimaCompra', titulo: 'Última compra', render: (l: any) => l.ultimaCompra ? fmtData(l.ultimaCompra) : '—' },
-    { chave: 'balde', titulo: 'Segmento', filtravel: true, render: (l: any) => (
+    { chave: 'nome', titulo: 'Cliente', principal: true, filtravel: true, ordenavel: true },
+    { chave: 'tipoPessoa', titulo: 'Tipo', largura: 'w-16', esconderAte: 'md', filtravel: true, ordenavel: true },
+    { chave: 'qtdCompras', titulo: 'Compras', alinhamento: 'right', esconderAte: 'md', ordenavel: true },
+    { chave: 'ultimaCompra', titulo: 'Última compra', ordenavel: true, render: (l: any) => l.ultimaCompra ? fmtData(l.ultimaCompra) : '—' },
+    { chave: 'balde', titulo: 'Segmento', filtravel: true, ordenavel: true, render: (l: any) => (
       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${BALDE_COR[l.balde] ?? ''}`}>{BALDE_LABEL[l.balde] ?? l.balde}</span>
     )},
   ]
@@ -97,6 +113,8 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         meta={{ total: linhas.length, page: paginaAtual, limit: POR_PAGINA, totalPages: totalPaginas }}
         onPageChange={setPagina}
       />

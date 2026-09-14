@@ -28,12 +28,14 @@ export async function GET(req: NextRequest, { params }: Params) {
       const origem     = searchParams.get('origem') ?? undefined
       const tipo       = searchParams.get('tipo') ?? undefined
       const busca      = searchParams.get('busca') ?? undefined
+      const sort       = searchParams.get('sort') ?? undefined
+      const dir        = searchParams.get('dir') === 'asc' ? 'asc' : searchParams.get('dir') === 'desc' ? 'desc' : undefined
 
       const service = new VendaService(db, tenant.schemaName)
 
       if (tipo === 'kpis') return ok(await service.kpis())
 
-      const result = await service.list({ page, limit, dataInicio, dataFim, origem, busca })
+      const result = await service.list({ page, limit, dataInicio, dataFim, origem, busca, sort, dir })
       return ok(result)
     } finally {
       release()

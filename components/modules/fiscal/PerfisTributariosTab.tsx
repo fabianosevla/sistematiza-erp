@@ -68,11 +68,26 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
       return novo
     })
   }
+  // Ordenação por coluna — lista inteira já carregada, ordena em memória.
+  const [sortKey, setSortKey] = useState('nome')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
   const perfisFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return perfis
-    return perfis.filter(p => chaves.every(k => String(p?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
-  }, [perfis, filtros])
+    const base = chaves.length === 0 ? perfis
+      : perfis.filter(p => chaves.every(k => String(p?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    return [...base].sort((a: any, b: any) => {
+      const av = sortKey === 'produtos' ? (uso[a.perfilTribId] ?? 0) : a?.[sortKey]
+      const bv = sortKey === 'produtos' ? (uso[b.perfilTribId] ?? 0) : b?.[sortKey]
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [perfis, filtros, sortKey, sortDir, uso])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nome', 'cfopInterno', 'csosn', 'cstPis']) {
@@ -140,32 +155,32 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
   })
 
   const colunas: Coluna[] = [
-    { chave: 'nome', titulo: 'Perfil', filtravel: true, render: (p: any) => (
+    { chave: 'nome', titulo: 'Perfil', filtravel: true, ordenavel: true, render: (p: any) => (
       <div className="min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">{p.nome}</p>
         {p.descricao && <p className="text-xs text-gray-400 truncate">{p.descricao}</p>}
       </div>
     )},
-    { chave: 'cfopInterno', titulo: 'CFOP', filtravel: true, render: (p: any) => (
+    { chave: 'cfopInterno', titulo: 'CFOP', filtravel: true, ordenavel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">
         {p.cfopInterno || <span className="text-red-500">—</span>}
         {p.cfopInterestadual ? ` / ${p.cfopInterestadual}` : ''}
       </span>
     )},
-    { chave: 'csosn', titulo: 'CSOSN / CST', filtravel: true, render: (p: any) => (
+    { chave: 'csosn', titulo: 'CSOSN / CST', filtravel: true, ordenavel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">
         {p.csosn || p.cstIcms || <span className="text-red-500">—</span>}
       </span>
     )},
-    { chave: 'cstPis', titulo: 'PIS / COFINS', esconderAte: 'lg', filtravel: true, render: (p: any) => (
+    { chave: 'cstPis', titulo: 'PIS / COFINS', esconderAte: 'lg', filtravel: true, ordenavel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">
         {p.cstPis || '—'} / {p.cstCofins || '—'}
       </span>
     )},
-    { chave: 'temSt', titulo: 'ST', esconderAte: 'lg', render: (p: any) => (
+    { chave: 'temSt', titulo: 'ST', esconderAte: 'lg', ordenavel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">{p.temSt ? `${p.mva}%` : '—'}</span>
     )},
-    { chave: 'produtos', titulo: 'Produtos', render: (p: any) => (
+    { chave: 'produtos', titulo: 'Produtos', ordenavel: true, render: (p: any) => (
       <span className="text-sm text-gray-600">{uso[p.perfilTribId] ?? 0}</span>
     )},
   ]
@@ -183,6 +198,8 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         ferramentas={
           <Button size="sm" onClick={abrirNovo}>
             <Plus size={14} className="mr-1" /> Novo perfil

@@ -223,7 +223,7 @@ export default function InsumosView({ tenantSlug }: Props) {
       render: (ins: any) => <Badge variant="secondary">{ins.tipo ?? '—'}</Badge>,
     },
     {
-      chave: 'unidade', titulo: 'Unidade', alinhamento: 'center', filtravel: true,
+      chave: 'unidade', titulo: 'Unidade', ordenavel: true, alinhamento: 'center', filtravel: true,
       render: (ins: any) => ins.unidade ?? '—',
     },
     {
@@ -235,7 +235,7 @@ export default function InsumosView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'estoqueMinimo', titulo: 'Est. Mínimo', alinhamento: 'center',
+      chave: 'estoqueMinimo', titulo: 'Est. Mínimo', ordenavel: true, alinhamento: 'center',
       render: (ins: any) => fmtEstoque(ins.estoqueMinimo),
     },
     {

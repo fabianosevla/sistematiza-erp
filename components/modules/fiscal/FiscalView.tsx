@@ -327,7 +327,7 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
     return n?.[chave]
   }
   const chaves = Object.keys(filtros)
-  const notasFiltradas = chaves.length === 0 ? notas
+  const notasBase = chaves.length === 0 ? notas
     : notas.filter(n => chaves.every(k => String(valorFiltravel(n, k) ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
   const opcoesFiltro: Record<string, string[]> = {}
   for (const chave of ['razaoSocial', 'status']) {
@@ -336,20 +336,37 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
     if (set.size > 0) opcoesFiltro[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }
 
+  // Ordenação por coluna — mesma limitação do filtro logo acima: atua só
+  // sobre a página carregada (esta lista é paginada no servidor).
+  const [sortKey, setSortKey] = useState('dataEmissao')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
+  const notasFiltradas = [...notasBase].sort((a: any, b: any) => {
+    const av = valorFiltravel(a, sortKey)
+    const bv = valorFiltravel(b, sortKey)
+    const cmp = typeof av === 'number' && typeof bv === 'number'
+      ? av - bv
+      : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+
   const colunas: Coluna[] = [
-    { chave: 'tipo', titulo: 'Tipo', largura: 'w-24', render: (n: any) => <Badge variant="outline">{n.tipo}</Badge> },
-    { chave: 'numero', titulo: 'Número', principal: true, render: (n: any) => (
+    { chave: 'tipo', titulo: 'Tipo', largura: 'w-24', ordenavel: true, render: (n: any) => <Badge variant="outline">{n.tipo}</Badge> },
+    { chave: 'numero', titulo: 'Número', principal: true, ordenavel: true, render: (n: any) => (
       <span className="font-mono">{n.numero ?? '—'}</span>
     )},
-    { chave: 'dataEmissao', titulo: 'Data', render: (n: any) => (
+    { chave: 'dataEmissao', titulo: 'Data', ordenavel: true, render: (n: any) => (
       <span className="text-gray-500">{fmtDataHoraLocal(n.dataEmissao)}</span>
     )},
-    { chave: 'razaoSocial', titulo: 'Destinatário', esconderAte: 'md', filtravel: true, render: (n: any) => n.razaoSocial ?? 'Consumidor Final' },
-    { chave: 'status', titulo: 'Status', filtravel: true, render: (n: any) => {
+    { chave: 'razaoSocial', titulo: 'Destinatário', esconderAte: 'md', filtravel: true, ordenavel: true, render: (n: any) => n.razaoSocial ?? 'Consumidor Final' },
+    { chave: 'status', titulo: 'Status', filtravel: true, ordenavel: true, render: (n: any) => {
       const s = STATUS_MAP[n.status] ?? STATUS_MAP.pendente
       return <Badge variant={s.color as any}>{s.label}</Badge>
     }},
-    { chave: 'valorTotal', titulo: 'Total', alinhamento: 'right', render: (n: any) => (
+    { chave: 'valorTotal', titulo: 'Total', alinhamento: 'right', ordenavel: true, render: (n: any) => (
       <span className="font-semibold">{fmt(n.valorTotal)}</span>
     )},
   ]
@@ -364,6 +381,8 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
       filtros={filtros}
       onFiltrar={aplicarFiltro}
       opcoesFiltro={opcoesFiltro}
+      ordem={{ chave: sortKey, dir: sortDir }}
+      onOrdenar={toggleSort}
       meta={meta}
       onPageChange={onPageChange}
       acoes={(n: any) => (

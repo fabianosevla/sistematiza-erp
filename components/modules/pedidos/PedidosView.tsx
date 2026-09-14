@@ -169,6 +169,25 @@ export default function PedidosView({ tenantSlug }: Props) {
   const [filtroStatus, setFiltroStatus]   = useState('pendente')
   const [periodo, setPeriodo]             = useState('mes')
   const [pageNum, setPageNum]             = useState(1)
+  // Ordenação no SERVIDOR — a listagem pagina de verdade (20 por vez), então
+  // ordenar só a página carregada mentiria (o pedido mais antigo do filtro
+  // pode estar numa página ainda não buscada). Mesmo padrão de VendasView +
+  // allowlist ORDENAVEIS em PedidoService.list().
+  const [sortKey, setSortKey]             = useState('dataPedido')
+  const [sortDir, setSortDir]             = useState<'asc' | 'desc'>('desc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('desc') }
+    setPageNum(1)
+  }
+  // A tabela usa chaves derivadas pro filtro de coluna (statusLabel, tipoLabel,
+  // origemLabel — texto legível, não o valor cru do banco). O back-end não
+  // conhece esses nomes; só a coluna real (status, tipoVenda, origem). Esta
+  // tradução mora só na hora de montar a query — `sortKey` continua guardando
+  // a chave da COLUNA, pra a setinha ativa apontar pra header certo.
+  const SORT_KEY_BACKEND: Record<string, string> = {
+    statusLabel: 'status', tipoLabel: 'tipoVenda', origemLabel: 'origem',
+  }
   // Filtro por coluna (funil no cabeçalho) sobre a página já carregada —
   // mesmo padrão do resto do sistema (ConsultasView, VendasView): os pills de
   // status e o período acima já filtram no servidor, isto aqui é uma camada
@@ -232,12 +251,14 @@ export default function PedidosView({ tenantSlug }: Props) {
   const ehAtacado    = tabelaPreco !== 'varejo'
 
   const { data: listData, isLoading } = useQuery({
-    queryKey: ['pedidos', tenantSlug, filtroStatus, periodo, pageNum],
+    queryKey: ['pedidos', tenantSlug, filtroStatus, periodo, pageNum, sortKey, sortDir],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (filtroStatus) params.set('status', filtroStatus)
       if (periodo) params.set('periodo', periodo)
       params.set('page', String(pageNum))
+      params.set('sort', SORT_KEY_BACKEND[sortKey] ?? sortKey)
+      params.set('dir', sortDir)
       return (await fetch(`${apiBase}?${params}`)).json()
     },
   })
@@ -555,7 +576,7 @@ export default function PedidosView({ tenantSlug }: Props) {
   const colunas: Coluna[] = [
     { chave: 'pedidoId', titulo: '#', largura: 'w-14',
       render: (p: any) => <span className="text-xs font-mono text-gray-400">#{p.pedidoId}</span> },
-    { chave: 'clienteNome', titulo: 'Cliente', principal: true, filtravel: true,
+    { chave: 'clienteNome', titulo: 'Cliente', principal: true, filtravel: true, ordenavel: true,
       render: (p: any) => (
         <span>
           {p.clienteNome ?? 'Consumidor Final'}
@@ -566,18 +587,18 @@ export default function PedidosView({ tenantSlug }: Props) {
           )}
         </span>
       ) },
-    { chave: 'statusLabel', titulo: 'Status', filtravel: true,
+    { chave: 'statusLabel', titulo: 'Status', filtravel: true, ordenavel: true,
       render: (p: any) => {
         const cfg = FLUXO[p.status] ?? FLUXO.pendente
         return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.color}`}>{cfg.label}</span>
       } },
-    { chave: 'tipoLabel', titulo: 'Tipo', filtravel: true, esconderAte: 'md',
+    { chave: 'tipoLabel', titulo: 'Tipo', filtravel: true, ordenavel: true, esconderAte: 'md',
       render: (p: any) => <Badge variant="outline" className="text-xs">{tipoLabel(p.tipoVenda)}</Badge> },
-    { chave: 'origemLabel', titulo: 'Origem', filtravel: true, esconderAte: 'lg',
+    { chave: 'origemLabel', titulo: 'Origem', filtravel: true, ordenavel: true, esconderAte: 'lg',
       render: (p: any) => origemLabel(p.origem) },
-    { chave: 'dataPedido', titulo: 'Pedido', esconderAte: 'md',
+    { chave: 'dataPedido', titulo: 'Pedido', ordenavel: true, esconderAte: 'md',
       render: (p: any) => fmtDate(p.dataPedido) },
-    { chave: 'previsaoEntrega', titulo: 'Previsão entrega', esconderAte: 'lg',
+    { chave: 'previsaoEntrega', titulo: 'Previsão entrega', ordenavel: true, esconderAte: 'lg',
       render: (p: any) => p.previsaoEntrega ? fmtDate(p.previsaoEntrega) : '—' },
   ]
 
@@ -641,6 +662,8 @@ export default function PedidosView({ tenantSlug }: Props) {
         opcoesFiltro={opcoesFiltroCol}
         meta={meta}
         onPageChange={setPageNum}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(p: any) => {
           const cfg = FLUXO[p.status] ?? FLUXO.pendente
           return (

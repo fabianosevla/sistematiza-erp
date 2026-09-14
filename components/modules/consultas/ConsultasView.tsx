@@ -281,6 +281,19 @@ export default function ConsultasView({ tenantSlug }: Props) {
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   const [pagina, setPagina]   = useState(1)
 
+  // Ordenação por coluna, no cliente — a lista inteira do período já está em
+  // memória (mesmo raciocínio do filtro logo acima). `sortKey` é null até
+  // alguém clicar um cabeçalho: sem ordem escolhida, cada aba usa a ordem que
+  // a própria API já devolve (extrato, por exemplo, já vem cronológico — não
+  // force ordem nenhuma até o usuário pedir).
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+    setPagina(1)
+  }
+
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
       const novo = { ...f }
@@ -292,7 +305,10 @@ export default function ConsultasView({ tenantSlug }: Props) {
   }
 
   function trocarAba(nova: Aba) {
-    setAba(nova); setFiltros({}); setPagina(1)
+    // Ordenação some ao trocar de aba: cada aba tem suas próprias colunas, e
+    // uma chave que fazia sentido em "Vendas" (ex.: "total") pode não existir
+    // em "Despesas" — manter geraria um sort silenciosamente sem efeito.
+    setAba(nova); setFiltros({}); setPagina(1); setSortKey(null)
   }
 
   // Trocar o período mantém os filtros mas volta para a primeira página —
@@ -310,14 +326,22 @@ export default function ConsultasView({ tenantSlug }: Props) {
 
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return todos
-    return todos.filter(item =>
+    const filtrados = chaves.length === 0 ? todos : todos.filter(item =>
       chaves.every(k => {
         const alvo = filtros[k].toLowerCase()
         return valorFiltravel(item, k).some(v => v.toLowerCase().includes(alvo))
       })
     )
-  }, [todos, filtros])
+    if (!sortKey) return filtrados
+    return [...filtrados].sort((a: any, b: any) => {
+      const av = a?.[sortKey]
+      const bv = b?.[sortKey]
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [todos, filtros, sortKey, sortDir])
 
   const temFiltro = Object.keys(filtros).length > 0
 
@@ -489,9 +513,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
   // ── Colunas ───────────────────────────────────────────────────────────────
   const colunasVendas: Coluna[] = [
     { chave: 'vendaId', titulo: 'Venda', render: (i: any) => <span className="font-mono text-xs text-gray-500">#{String(i.vendaId).padStart(5, '0')}</span> },
-    { chave: 'data',    titulo: 'Data',  render: (i: any) => fmtDataHora(i.data) },
+    { chave: 'data',    titulo: 'Data', ordenavel: true, render: (i: any) => fmtDataHora(i.data) },
     {
-      chave: 'clienteNome', titulo: 'Cliente', filtravel: true,
+      chave: 'clienteNome', titulo: 'Cliente', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (i: any) => (
         <span className="inline-flex items-center gap-1.5">
@@ -501,6 +525,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
       ),
     },
     {
+      // Não ordenavel: `produtos` é uma lista (nomes concatenados pra
+      // exibição), não um valor único — não tem "menor"/"maior" que faça
+      // sentido comparar linha a linha.
       chave: 'produtos', titulo: 'Produtos', filtravel: true, esconderAte: 'lg',
       render: (i: any) => {
         const lista = Array.isArray(i.produtos) ? i.produtos : []
@@ -512,66 +539,66 @@ export default function ConsultasView({ tenantSlug }: Props) {
         )
       },
     },
-    { chave: 'origem',   titulo: 'Origem',    esconderAte: 'md', render: (i: any) => i.origem },
-    { chave: 'qtdItens', titulo: 'Itens',     alinhamento: 'right', esconderAte: 'md', render: (i: any) => fmtQtd(i.qtdItens) },
-    { chave: 'formas',   titulo: 'Pagamento', filtravel: true, esconderAte: 'lg', render: (i: any) => i.formas },
+    { chave: 'origem',   titulo: 'Origem',    ordenavel: true, esconderAte: 'md', render: (i: any) => i.origem },
+    { chave: 'qtdItens', titulo: 'Itens',     ordenavel: true, alinhamento: 'right', esconderAte: 'md', render: (i: any) => fmtQtd(i.qtdItens) },
+    { chave: 'formas',   titulo: 'Pagamento', filtravel: true, ordenavel: true, esconderAte: 'lg', render: (i: any) => i.formas },
     {
-      chave: 'nota', titulo: 'Nota', filtravel: true, esconderAte: 'lg',
+      chave: 'nota', titulo: 'Nota', filtravel: true, ordenavel: true, esconderAte: 'lg',
       cabecalho: <InfoTip titulo="Nota">Separa o que saiu faturado do que saiu sem documento fiscal.</InfoTip>,
       render: (i: any) => (
         <span className={i.nota === 'Com nota' ? 'text-gray-700' : 'text-gray-400'}>{i.nota}</span>
       ),
     },
-    { chave: 'desconto', titulo: 'Desconto',  alinhamento: 'right', render: (i: any) => i.desconto > 0 ? <span className="text-red-600">-{fmt(i.desconto)}</span> : <span className="text-gray-300">—</span> },
-    { chave: 'total',    titulo: 'Total',     alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
+    { chave: 'desconto', titulo: 'Desconto',  ordenavel: true, alinhamento: 'right', render: (i: any) => i.desconto > 0 ? <span className="text-red-600">-{fmt(i.desconto)}</span> : <span className="text-gray-300">—</span> },
+    { chave: 'total',    titulo: 'Total',     ordenavel: true, alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
   ]
 
   const colunasVendasProduto: Coluna[] = [
-    { chave: 'data', titulo: 'Dia', render: (i: any) => fmtDataSimples(i.data) },
+    { chave: 'data', titulo: 'Dia', ordenavel: true, render: (i: any) => fmtDataSimples(i.data) },
     {
-      chave: 'nome', titulo: 'Produto', filtravel: true,
+      chave: 'nome', titulo: 'Produto', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (i: any) => i.nome,
     },
     {
-      chave: 'quantidade', titulo: 'Quantidade', alinhamento: 'right',
+      chave: 'quantidade', titulo: 'Quantidade', ordenavel: true, alinhamento: 'right',
       render: (i: any) => <>{fmtQtd(i.quantidade)} <span className="text-gray-400">{i.unidade}</span></>,
     },
-    { chave: 'qtdVendas', titulo: 'Vendas', alinhamento: 'right', esconderAte: 'md', render: (i: any) => i.qtdVendas },
+    { chave: 'qtdVendas', titulo: 'Vendas', ordenavel: true, alinhamento: 'right', esconderAte: 'md', render: (i: any) => i.qtdVendas },
     {
-      chave: 'precoMedio', titulo: 'Preço médio', alinhamento: 'right', esconderAte: 'md',
+      chave: 'precoMedio', titulo: 'Preço médio', ordenavel: true, alinhamento: 'right', esconderAte: 'md',
       cabecalho: <InfoTip titulo="Preço médio">Total dividido pela quantidade — revela desconto que o total sozinho esconde.</InfoTip>,
       render: (i: any) => fmt(i.precoMedio),
     },
     {
-      chave: 'desconto', titulo: 'Desconto', alinhamento: 'right', esconderAte: 'lg',
+      chave: 'desconto', titulo: 'Desconto', ordenavel: true, alinhamento: 'right', esconderAte: 'lg',
       render: (i: any) => i.desconto > 0 ? <span className="text-red-600">-{fmt(i.desconto)}</span> : <span className="text-gray-300">—</span>,
     },
-    { chave: 'total', titulo: 'Total', alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
+    { chave: 'total', titulo: 'Total', ordenavel: true, alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
   ]
 
   const colunasEntradas: Coluna[] = [
-    { chave: 'data',     titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
+    { chave: 'data',     titulo: 'Data', ordenavel: true, render: (i: any) => fmtDataHora(i.data) },
     {
-      chave: 'nome', titulo: 'Item', filtravel: true,
+      chave: 'nome', titulo: 'Item', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (i: any) => i.nome,
     },
-    { chave: 'quantidade', titulo: 'Quantidade', alinhamento: 'right', render: (i: any) => <>{fmtQtd(i.quantidade)} <span className="text-gray-400">{i.unidade}</span></> },
+    { chave: 'quantidade', titulo: 'Quantidade', ordenavel: true, alinhamento: 'right', render: (i: any) => <>{fmtQtd(i.quantidade)} <span className="text-gray-400">{i.unidade}</span></> },
     {
-      chave: 'custoUnitario', titulo: 'Custo unit.', alinhamento: 'right', esconderAte: 'md',
+      chave: 'custoUnitario', titulo: 'Custo unit.', ordenavel: true, alinhamento: 'right', esconderAte: 'md',
       cabecalho: <InfoTip titulo="Custo unitário">Preço pago na compra — vale para insumo e produto de revenda.</InfoTip>,
       render: (i: any) => i.custoUnitario > 0 ? fmt(i.custoUnitario) : <span className="text-gray-300">—</span>,
     },
     {
-      chave: 'custoEstimadoUnit', titulo: 'Custo estimado', alinhamento: 'right', esconderAte: 'lg',
+      chave: 'custoEstimadoUnit', titulo: 'Custo estimado', ordenavel: true, alinhamento: 'right', esconderAte: 'lg',
       cabecalho: <InfoTip titulo="Custo estimado">Produto fabricado não tem preço de compra; o valor vem da ficha técnica.</InfoTip>,
       render: (i: any) => i.custoEstimadoUnit > 0
         ? <span className="text-gray-500">{fmt(i.custoEstimadoUnit)}</span>
         : <span className="text-gray-300">—</span>,
     },
     {
-      chave: 'valorTotal', titulo: 'Valor total', alinhamento: 'right',
+      chave: 'valorTotal', titulo: 'Valor total', ordenavel: true, alinhamento: 'right',
       render: (i: any) => i.valorTotal > 0
         ? <span className={i.custoEstimado ? 'text-gray-500' : 'font-semibold text-gray-900'}>{fmt(i.valorTotal)}</span>
         : <span className="text-gray-300">—</span>,
@@ -582,9 +609,9 @@ export default function ConsultasView({ tenantSlug }: Props) {
   const colunasDespesas: Coluna[] = [
     // data_despesa é data pura (sem hora) — fmtDataSimples, não fmtDataHora
     // (que converte fuso e "perdia" um dia — bug encontrado em 13/09/2026).
-    { chave: 'data', titulo: 'Data', render: (i: any) => fmtDataSimples(i.data) },
+    { chave: 'data', titulo: 'Data', ordenavel: true, render: (i: any) => fmtDataSimples(i.data) },
     {
-      chave: 'nome', titulo: 'Despesa', filtravel: true,
+      chave: 'nome', titulo: 'Despesa', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (i: any) => (
         <span className="inline-flex items-center gap-1.5">
@@ -593,13 +620,13 @@ export default function ConsultasView({ tenantSlug }: Props) {
         </span>
       ),
     },
-    { chave: 'categoria',  titulo: 'Categoria', filtravel: true, render: (i: any) => i.categoria },
+    { chave: 'categoria',  titulo: 'Categoria', filtravel: true, ordenavel: true, render: (i: any) => i.categoria },
     {
-      chave: 'origem', titulo: 'Origem', filtravel: true,
+      chave: 'origem', titulo: 'Origem', filtravel: true, ordenavel: true,
       render: (i: any) => <Badge variant="secondary">{i.origem}</Badge>,
     },
     { chave: 'observacao', titulo: 'Observação', esconderAte: 'xl', render: (i: any) => i.observacao || <span className="text-gray-300">—</span> },
-    { chave: 'valor',      titulo: 'Valor', alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valor)}</span> },
+    { chave: 'valor',      titulo: 'Valor', ordenavel: true, alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valor)}</span> },
   ]
 
 
@@ -611,8 +638,14 @@ export default function ConsultasView({ tenantSlug }: Props) {
   //
   // O saldo só aparece quando há UM item filtrado: numa lista de vários
   // produtos misturados, acumular tudo daria um número sem significado.
+  // Só "Data" é ordenavel aqui — as outras colunas ficam de fora de propósito.
+  // "Saldo" é acumulado NA ORDEM CRONOLÓGICA (comentário acima, "uma linha por
+  // movimento, em ordem cronológica"); ordenar por Entrada/Saída/Item
+  // embaralharia essa sequência e o Saldo de cada linha deixaria de bater
+  // com a leitura de cima pra baixo. Ordenar por Data preserva a leitura
+  // cronológica (só inverte a direção), então é seguro.
   const colunasExtrato: Coluna[] = [
-    { chave: 'data', titulo: 'Data', render: (i: any) => fmtDataHora(i.data) },
+    { chave: 'data', titulo: 'Data', ordenavel: true, render: (i: any) => fmtDataHora(i.data) },
     {
       chave: 'nome', titulo: 'Item', filtravel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
@@ -910,6 +943,8 @@ export default function ConsultasView({ tenantSlug }: Props) {
           opcoesFiltro={opcoesFiltro}
           meta={{ page: paginaAtual, totalPages: totalPaginas, total: itens.length, limit: POR_PAGINA }}
           onPageChange={setPagina}
+          ordem={sortKey ? { chave: sortKey, dir: sortDir } : undefined}
+          onOrdenar={toggleSort}
           onLinhaClick={aba === 'vendas' ? (v: any) => setVendaAberta(v.vendaId) : undefined}
         />
 

@@ -123,6 +123,17 @@ export default function VendasView({ tenantSlug }: Props) {
   const [cupomVenda, setCupomVenda]       = useState<any>(null)
   const [busca, setBusca]                 = useState('')
   const [pageNum, setPageNum]             = useState(1)
+  // Ordenação no SERVIDOR — a tela pagina de verdade (20 por vez), então
+  // ordenar só a página carregada estaria mentindo (a venda mais cara do
+  // mês pode estar numa página que não foi buscada ainda). Mesmo padrão de
+  // ContasReceberView + allowlist ORDENAVEIS em VendaService.list().
+  const [sortKey, setSortKey]             = useState('vendidaEm')
+  const [sortDir, setSortDir]             = useState<'asc' | 'desc'>('desc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('desc') }
+    setPageNum(1)
+  }
   // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
   // A caixa "Buscar por cliente ou vendedor" continua existindo à parte: ela
   // busca no SERVIDOR, no histórico inteiro de vendas; este filtro aqui é
@@ -167,9 +178,9 @@ export default function VendasView({ tenantSlug }: Props) {
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: vendasData, isLoading } = useQuery({
-    queryKey: ['vendas', tenantSlug, pageNum, busca],
+    queryKey: ['vendas', tenantSlug, pageNum, busca, sortKey, sortDir],
     queryFn:  async () => {
-      const p = new URLSearchParams({ page: String(pageNum), limit: '20' })
+      const p = new URLSearchParams({ page: String(pageNum), limit: '20', sort: sortKey, dir: sortDir })
       if (busca) p.set('busca', busca)
       return (await fetch(`${api}?${p}`)).json()
     },
@@ -489,18 +500,18 @@ export default function VendasView({ tenantSlug }: Props) {
 
   // ── Colunas ───────────────────────────────────────────────────────────────
   const colunas: Coluna[] = [
-    { chave: 'vendidaEm', titulo: 'Data', render: (v: any) => fmtDateHora(v.vendidaEm) },
+    { chave: 'vendidaEm', titulo: 'Data', ordenavel: true, render: (v: any) => fmtDateHora(v.vendidaEm) },
     {
-      chave: 'clienteNome', titulo: 'Cliente', filtravel: true,
+      chave: 'clienteNome', titulo: 'Cliente', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
       render: (v: any) => v.clienteNome ?? 'Consumidor Final',
     },
     {
-      chave: 'tipoEntrega', titulo: 'Canal', filtravel: true,
+      chave: 'tipoEntrega', titulo: 'Canal', filtravel: true, ordenavel: true,
       render: (v: any) => <CanalBadge tipo={v.tipoEntrega ?? 'retirada'} />,
     },
     {
-      chave: 'total', titulo: 'Total', alinhamento: 'right',
+      chave: 'total', titulo: 'Total', alinhamento: 'right', ordenavel: true,
       render: (v: any) => <span className="font-semibold text-gray-900">{fmt(v.total)}</span>,
     },
   ]
@@ -560,6 +571,8 @@ export default function VendasView({ tenantSlug }: Props) {
         filtros={filtrosCol}
         onFiltrar={aplicarFiltroCol}
         opcoesFiltro={opcoesFiltroCol}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(v: any) => (
           <>
             <BotaoIcone titulo="Ver detalhes" variante="info"

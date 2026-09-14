@@ -66,11 +66,26 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
       return novo
     })
   }
+  // Ordenação por coluna — lista inteira já carregada, ordena em memória.
+  const [sortKey, setSortKey] = useState('perfilNome')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
   const linhasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return linhasComNome
-    return linhasComNome.filter(l => chaves.every(k => String(l?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
-  }, [linhasComNome, filtros])
+    const base = chaves.length === 0 ? linhasComNome
+      : linhasComNome.filter(l => chaves.every(k => String(l?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    return [...base].sort((a: any, b: any) => {
+      const av = sortKey === 'mva' || sortKey === 'aliqIcmsSt' ? Number(a?.[sortKey] ?? 0) : String(a?.[sortKey] ?? '')
+      const bv = sortKey === 'mva' || sortKey === 'aliqIcmsSt' ? Number(b?.[sortKey] ?? 0) : String(b?.[sortKey] ?? '')
+      const cmp = typeof av === 'number' && typeof bv === 'number'
+        ? av - bv
+        : String(av).localeCompare(String(bv), 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [linhasComNome, filtros, sortKey, sortDir])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['perfilNome', 'ufDestino']) {
@@ -120,21 +135,21 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
   }
 
   const colunas: Coluna[] = [
-    { chave: 'perfilNome', titulo: 'Perfil', filtravel: true, render: (l: any) => (
+    { chave: 'perfilNome', titulo: 'Perfil', filtravel: true, ordenavel: true, render: (l: any) => (
       <span className="text-sm font-medium text-gray-900">{nomePerfil(l.perfilTribId)}</span>
     )},
-    { chave: 'ufDestino', titulo: 'Estado', filtravel: true, render: (l: any) => (
+    { chave: 'ufDestino', titulo: 'Estado', filtravel: true, ordenavel: true, render: (l: any) => (
       <span className="text-sm font-mono text-gray-900">{l.ufDestino}</span>
     )},
-    { chave: 'temSt', titulo: 'Tem ST', render: (l: any) => (
+    { chave: 'temSt', titulo: 'Tem ST', ordenavel: true, render: (l: any) => (
       l.temSt === true ? <span className="text-sm text-green-700">Sim</span>
       : l.temSt === false ? <span className="text-sm text-red-600">Não</span>
       : <span className="text-sm text-gray-400">Herda do perfil</span>
     )},
-    { chave: 'mva', titulo: 'MVA', alinhamento: 'right', render: (l: any) => (
+    { chave: 'mva', titulo: 'MVA', alinhamento: 'right', ordenavel: true, render: (l: any) => (
       <span className="text-sm text-gray-600">{l.mva}%</span>
     )},
-    { chave: 'aliqIcmsSt', titulo: 'Alíquota ICMS-ST', alinhamento: 'right', render: (l: any) => (
+    { chave: 'aliqIcmsSt', titulo: 'Alíquota ICMS-ST', alinhamento: 'right', ordenavel: true, render: (l: any) => (
       <span className="text-sm text-gray-600">{l.aliqIcmsSt}%</span>
     )},
     { chave: 'fonte', titulo: 'Fonte', esconderAte: 'lg', render: (l: any) => (
@@ -161,6 +176,8 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         ferramentas={
           <Button size="sm" onClick={abrirNovo} disabled={perfis.length === 0}>
             <Plus size={14} className="mr-1" /> Novo valor por estado

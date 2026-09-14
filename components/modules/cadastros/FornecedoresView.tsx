@@ -151,11 +151,24 @@ export default function FornecedoresView({ tenantSlug }: Props) {
     if (chave === 'nomeCompleto') return (item.nomeFantasia ?? '').trim() || item.nomeCompleto
     return String(item?.[chave] ?? '')
   }
+  // Ordenação por coluna — mesma limitação do filtro logo acima: atua só
+  // sobre a página carregada.
+  const [sortKey, setSortKey] = useState('nomeCompleto')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  function toggleSort(chave: string) {
+    if (sortKey === chave) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(chave); setSortDir('asc') }
+  }
   const itemsFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return items
-    return items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
-  }, [items, filtros])
+    const base = chaves.length === 0 ? items : items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
+    return [...base].sort((a: any, b: any) => {
+      const av = valorFiltravel(a, sortKey)
+      const bv = valorFiltravel(b, sortKey)
+      const cmp = av.localeCompare(bv, 'pt-BR')
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }, [items, filtros, sortKey, sortDir])
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nomeCompleto', 'tipoPessoa', 'cidade']) {
@@ -169,7 +182,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
   // Colunas da listagem — mesma ordem e mesma responsividade de antes
   const colunas: Coluna[] = [
     {
-      chave: 'nomeCompleto', titulo: 'Nome', principal: true, filtravel: true,
+      chave: 'nomeCompleto', titulo: 'Nome', principal: true, filtravel: true, ordenavel: true,
       render: (item: any) => (
         <>
           <span className="text-sm font-medium text-gray-900 cursor-pointer hover:text-green-700"
@@ -183,7 +196,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       ),
     },
     {
-      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', alinhamento: 'center', filtravel: true,
+      chave: 'tipoPessoa', titulo: 'Tipo', esconderAte: 'md', alinhamento: 'center', filtravel: true, ordenavel: true,
       render: (item: any) => <Badge variant="secondary">{item.tipoPessoa}</Badge>,
     },
     {
@@ -191,7 +204,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       render: (item: any) => item.email ?? '—',
     },
     {
-      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg', filtravel: true,
+      chave: 'cidade', titulo: 'Cidade', esconderAte: 'lg', filtravel: true, ordenavel: true,
       render: (item: any) => item.cidade ? `${item.cidade}/${item.uf ?? ''}` : '—',
     },
   ]
@@ -230,6 +243,8 @@ export default function FornecedoresView({ tenantSlug }: Props) {
         filtros={filtros}
         onFiltrar={aplicarFiltro}
         opcoesFiltro={opcoesFiltro}
+        ordem={{ chave: sortKey, dir: sortDir }}
+        onOrdenar={toggleSort}
         acoes={(item: any) => (
           <>
             <BotaoIcone titulo="Histórico" variante="destaque" onClick={() => setShowHistorico(item)}>
