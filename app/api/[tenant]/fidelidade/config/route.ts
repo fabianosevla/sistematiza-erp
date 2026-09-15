@@ -68,7 +68,14 @@ export async function GET(_req: NextRequest, { params }: Params) {
         waTokenSet:              !!r.wa_token_cipher,
         encKeyConfigurada:       isEncKeyConfigured(),
       }
-      return ok({ data })
+      // ok() já embrulha em { status, data: ... } — mandar ok({ data }) aqui
+      // embrulhava DUAS vezes ({ data: { data: {...} } }), e cfg = raw?.data
+      // (uma casca só, igual todo outro fetch de config do sistema) ficava
+      // sempre um objeto com um único campo "data" dentro — todo cfg.programaAtivo,
+      // cfg.cashbackPctBp etc. lia undefined. Foi por isso que "Programa
+      // ativo" aparecia desligado e a configuração toda zerada mesmo com os
+      // valores certos gravados no banco.
+      return ok(data)
     } finally { client.release() }
   } catch (err) { return serverError(err) }
 }
