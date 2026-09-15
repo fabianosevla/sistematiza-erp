@@ -38,10 +38,19 @@ export class CardapioAnaliticaService {
     //    `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date`: NOW() já é um
     //    instante de verdade (timestamptz), `AT TIME ZONE` mostra a que horas
     //    isso corresponde em SP, e só então extrai a data.
+    // BUG #3 ENCONTRADO (15/09/2026): a rota inteira quebrava com "Erro
+    // interno do servidor" — sem `::int` no parâmetro, o Postgres não
+    // conseguia adivinhar se "date - $1" era subtração de dias (integer)
+    // ou de outra data (date), e escolhia errado: tentava interpretar o
+    // NÚMERO de dias como se fosse uma DATA ("date/time field value out of
+    // range"). A tela caía pro estado vazio/zerado por causa disso — não é
+    // coincidência que "Visão Geral" (outra rota, cardapioHoje) mostrasse 6
+    // enquanto esta aba mostrava 0: eram DUAS consultas diferentes, e só
+    // esta quebrava. Corrigido fixando o tipo do parâmetro explicitamente.
     const res = await this.db.execute(sql`
       WITH baldes AS (
         SELECT generate_series(
-          (((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - ${dias - 1}))::timestamp,
+          (((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - ${dias - 1}::int))::timestamp,
           ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date)::timestamp,
           INTERVAL '1 day'
         )::date AS dia

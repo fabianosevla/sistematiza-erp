@@ -40,7 +40,10 @@ const TIPO_CFG: Record<string, { label: string; cls: string; sinal: 1 | -1 }> = 
 export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props) {
   const qc = useQueryClient()
   const [aba, setAba]     = useState<Aba>('visao')
-  const [secao, setSecao] = useState<Secao | null>('cashback')
+  // Nenhuma seção pré-aberta — Cashback vinha expandida sozinha, sem
+  // motivo, enquanto Indique e ganhe e Reativação nasciam fechadas. As 5
+  // seções tratam igual agora: todas fechadas até alguém clicar.
+  const [secao, setSecao] = useState<Secao | null>(null)
   const [form, setForm]   = useState<any>(null)
   const [novoToken, setNovoToken] = useState('')
   const [salvo, setSalvo] = useState(false)
@@ -197,30 +200,27 @@ export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props)
           </div>
         ) : (
           <div className="max-w-3xl space-y-3">
-            {/* NÃO É UM INTERRUPTOR MESTRE DE "A FIDELIDADE".
-                Fidelidade tem 3 programas independentes, cada um com o
-                próprio liga/desliga: Cashback (este aqui), Indique e ganhe
-                (dentro do acordeão abaixo) e Reativação (idem). Desligar
-                este não desliga os outros dois — e o rótulo precisa deixar
-                isso óbvio, porque "Programa ativo" sozinho parecia controlar
-                tudo. */}
-            <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl p-4">
-              <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1">
-                Cashback por venda ativo
-                <InfoTip titulo="Só o cashback por venda">
-                  Liga e desliga o crédito automático de cashback a cada venda, sem apagar
-                  nenhum dado — desligado, nenhuma venda nova gera crédito, mas os saldos já
-                  existentes continuam guardados e utilizáveis. Indique e ganhe e Reativação
-                  são programas à parte, cada um com o próprio liga/desliga logo abaixo — este
-                  interruptor não afeta os outros dois.
-                </InfoTip>
-              </p>
-              <Toggle on={form.programaAtivo} onChange={v => set('programaAtivo', v)} />
-            </div>
-
-            {/* Regras de Cashback */}
+            {/* Regras de Cashback — mesmo padrão de Indique e ganhe e
+                Reativação logo abaixo: UM acordeão por programa, com o
+                próprio liga/desliga dentro dele, não um interruptor solto
+                fora flutuando acima de todos. Eram 3 programas
+                independentes tratados de 2 jeitos diferentes — agora é 1
+                jeito só, repetido 3 vezes. */}
             <Accordion aberto={secao === 'cashback'} onClick={() => setSecao(secao === 'cashback' ? null : 'cashback')}
               icon={Percent} titulo="Regras de Cashback">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-600 inline-flex items-center gap-1">
+                  Cashback por venda ativo
+                  <InfoTip titulo="Só o cashback por venda">
+                    Liga e desliga o crédito automático de cashback a cada venda, sem apagar
+                    nenhum dado — desligado, nenhuma venda nova gera crédito, mas os saldos já
+                    existentes continuam guardados e utilizáveis. Indique e ganhe e Reativação
+                    são programas à parte, cada um com o próprio liga/desliga na sua seção —
+                    este interruptor não afeta os outros dois.
+                  </InfoTip>
+                </p>
+                <Toggle on={form.programaAtivo} onChange={v => set('programaAtivo', v)} />
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <Campo label="Cashback por venda (%)"><Input value={form.cashbackPct} onChange={e => set('cashbackPct', e.target.value)} inputMode="decimal" /></Campo>
                 <Campo label="Compra mínima p/ gerar (R$)"><Input value={form.compraMinima} onChange={e => set('compraMinima', e.target.value)} inputMode="decimal" /></Campo>
