@@ -32,6 +32,10 @@ export async function GET(req: NextRequest, { params }: Params) {
         bannerUrl:                r.cardapio_banner_url       ?? null,
         taxaEntrega:              r.cardapio_taxa_entrega     ?? 0,
         horario:                  r.cardapio_horario          ?? null,
+        // Redes e avaliação — tudo opcional, some da tela pública se vazio.
+        instagram:                r.cardapio_instagram        ?? '',
+        facebook:                 r.cardapio_facebook         ?? '',
+        googleReviewUrl:          r.cardapio_google_review_url ?? '',
       })
     } finally { client.release() }
   } catch (err) { return serverError(err) }
@@ -55,6 +59,9 @@ export async function PUT(req: NextRequest, { params }: Params) {
         ['cardapio_permite_balcao',        body.permiteBalcao],
         ['cardapio_layout',                body.layout],
         ['cardapio_taxa_entrega',          body.taxaEntrega],
+        ['cardapio_instagram',             body.instagram],
+        ['cardapio_facebook',              body.facebook],
+        ['cardapio_google_review_url',     body.googleReviewUrl],
       ]
 
       for (const [col, val] of updates) {

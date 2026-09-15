@@ -31,7 +31,8 @@ export async function GET(req: NextRequest, { params }: Params) {
         SELECT nome_fantasia, nome_empresa, logo_base64, telefone, endereco,
                cardapio_mensagem_boas_vindas, cardapio_cor_destaque,
                cardapio_permite_entrega, cardapio_permite_balcao,
-               cardapio_layout, cardapio_banner_url, cardapio_taxa_entrega, cardapio_horario
+               cardapio_layout, cardapio_banner_url, cardapio_taxa_entrega, cardapio_horario,
+               cardapio_instagram, cardapio_facebook, cardapio_google_review_url
         FROM t_configuracoes_tenant LIMIT 1
       `)
       const c = cfg.rows[0] ?? {}
@@ -57,6 +58,11 @@ export async function GET(req: NextRequest, { params }: Params) {
           logoUrl:   c.logo_base64 || null,
           telefone:  c.telefone || null,
           endereco:  c.endereco || null,
+          // Redes e avaliação — opcionais, o cardápio só mostra o que
+          // estiver preenchido (ver Cardápio Digital → Configurações).
+          instagram:       c.cardapio_instagram || null,
+          facebook:        c.cardapio_facebook || null,
+          googleReviewUrl: c.cardapio_google_review_url || null,
         },
         layout: {
           mensagemBoasVindas: c.cardapio_mensagem_boas_vindas || null,

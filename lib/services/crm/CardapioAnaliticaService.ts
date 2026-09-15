@@ -18,8 +18,35 @@ export class CardapioAnaliticaService {
   constructor(private db: AppDB) {}
 
   async funilDiario(dias = 14) {
-    const [eventosRes, vendasRes] = await Promise.all([
-      this.db.execute(sql`
+    // BUG CORRIGIDO (15/09/2026), em duas camadas:
+    //
+    // 1. O resultado vinha de um .map() em cima das linhas de
+    //    t_cardapio_evento — só aparecia dia com pelo menos 1 evento. Hoje,
+    //    sem nenhuma visualização ainda registrada, sumia da lista. Mesma
+    //    classe de bug já corrigida em
+    //    app/api/[tenant]/dashboard/vendas-serie/route.ts (gráfico
+    //    "Diário"): gera a base de dias com generate_series e LEFT JOIN por
+    //    cima, garantindo uma linha por dia do intervalo, hoje incluso, com
+    //    zero onde não tem movimento.
+    //
+    // 2. A primeira tentativa de corrigir usou `CURRENT_DATE AT TIME ZONE
+    //    'America/Sao_Paulo'` pra achar "hoje" — testado direto contra o
+    //    banco, essa expressão erra o dia (devolve 14/09 21h em vez de
+    //    15/09, porque `CURRENT_DATE` primeiro vira timestamptz na meia-noite
+    //    UTC da sessão, e SÓ DEPOIS `AT TIME ZONE` desloca esse instante pra
+    //    São Paulo — a direção errada). A forma certa de achar "hoje em SP" é
+    //    `(NOW() AT TIME ZONE 'America/Sao_Paulo')::date`: NOW() já é um
+    //    instante de verdade (timestamptz), `AT TIME ZONE` mostra a que horas
+    //    isso corresponde em SP, e só então extrai a data.
+    const res = await this.db.execute(sql`
+      WITH baldes AS (
+        SELECT generate_series(
+          (((NOW() AT TIME ZONE 'America/Sao_Paulo')::date - ${dias - 1}))::timestamp,
+          ((NOW() AT TIME ZONE 'America/Sao_Paulo')::date)::timestamp,
+          INTERVAL '1 day'
+        )::date AS dia
+      ),
+      eventos AS (
         SELECT DATE(ocorrido_em AT TIME ZONE 'America/Sao_Paulo') AS dia,
                COUNT(*) FILTER (WHERE tipo = 'visualizacao')::int   AS visualizacoes,
                COUNT(*) FILTER (WHERE tipo = 'pedido_montado')::int AS pedidos_montados
@@ -27,9 +54,8 @@ export class CardapioAnaliticaService {
          WHERE active_flg = true
            AND ocorrido_em >= NOW() - (${dias} * INTERVAL '1 day')
          GROUP BY DATE(ocorrido_em AT TIME ZONE 'America/Sao_Paulo')
-         ORDER BY dia
-      `),
-      this.db.execute(sql`
+      ),
+      vendas AS (
         SELECT DATE(v.vendida_em AT TIME ZONE 'America/Sao_Paulo') AS dia,
                COUNT(DISTINCT v.venda_id)::int AS vendas_confirmadas
           FROM t_venda v
@@ -38,16 +64,22 @@ export class CardapioAnaliticaService {
            AND (v.origem_cardapio = true OR p.origem = 'cardapio')
            AND v.vendida_em >= NOW() - (${dias} * INTERVAL '1 day')
          GROUP BY DATE(v.vendida_em AT TIME ZONE 'America/Sao_Paulo')
-      `),
-    ])
+      )
+      SELECT b.dia,
+             COALESCE(e.visualizacoes, 0)::int    AS visualizacoes,
+             COALESCE(e.pedidos_montados, 0)::int AS pedidos_montados,
+             COALESCE(v.vendas_confirmadas, 0)::int AS vendas_confirmadas
+        FROM baldes b
+        LEFT JOIN eventos e ON e.dia = b.dia
+        LEFT JOIN vendas  v ON v.dia = b.dia
+       ORDER BY b.dia
+    `)
 
-    const vendasPorDia = new Map((vendasRes.rows as any[]).map(r => [String(r.dia), r.vendas_confirmadas]))
-
-    return (eventosRes.rows as any[]).map(r => ({
+    return (res.rows as any[]).map(r => ({
       dia: r.dia,
-      visualizacoes:    r.visualizacoes,
-      pedidosMontados:  r.pedidos_montados,
-      vendasConfirmadas: vendasPorDia.get(String(r.dia)) ?? 0,
+      visualizacoes:     r.visualizacoes,
+      pedidosMontados:   r.pedidos_montados,
+      vendasConfirmadas: r.vendas_confirmadas,
     }))
   }
 }

@@ -197,13 +197,22 @@ export default function FidelidadeView({ tenantSlug, semTitulo = false }: Props)
           </div>
         ) : (
           <div className="max-w-3xl space-y-3">
-            {/* Master toggle */}
+            {/* NÃO É UM INTERRUPTOR MESTRE DE "A FIDELIDADE".
+                Fidelidade tem 3 programas independentes, cada um com o
+                próprio liga/desliga: Cashback (este aqui), Indique e ganhe
+                (dentro do acordeão abaixo) e Reativação (idem). Desligar
+                este não desliga os outros dois — e o rótulo precisa deixar
+                isso óbvio, porque "Programa ativo" sozinho parecia controlar
+                tudo. */}
             <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl p-4">
               <p className="text-sm font-semibold text-gray-900 inline-flex items-center gap-1">
-                Programa ativo
-                <InfoTip titulo="Programa ativo">
-                  Liga e desliga o cashback sem apagar nenhum dado. Desligado, nenhuma venda
-                  gera crédito — os saldos existentes continuam guardados.
+                Cashback por venda ativo
+                <InfoTip titulo="Só o cashback por venda">
+                  Liga e desliga o crédito automático de cashback a cada venda, sem apagar
+                  nenhum dado — desligado, nenhuma venda nova gera crédito, mas os saldos já
+                  existentes continuam guardados e utilizáveis. Indique e ganhe e Reativação
+                  são programas à parte, cada um com o próprio liga/desliga logo abaixo — este
+                  interruptor não afeta os outros dois.
                 </InfoTip>
               </p>
               <Toggle on={form.programaAtivo} onChange={v => set('programaAtivo', v)} />
@@ -628,7 +637,7 @@ function ReativacaoTab({ tenantSlug, onIrConfig }: { tenantSlug: string; onIrCon
     <div className="space-y-4">
       {/* Status da config */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <StatusCard ok={conf?.programaAtivo} label="Programa" texto={conf?.programaAtivo ? 'Ativo' : 'Desativado'} onFix={!conf?.programaAtivo ? onIrConfig : undefined} />
+        <StatusCard ok={conf?.programaAtivo} label="Cashback por venda" texto={conf?.programaAtivo ? 'Ativo' : 'Desativado'} onFix={!conf?.programaAtivo ? onIrConfig : undefined} />
         <StatusCard ok={conf?.reativacaoAtiva} label="Reativação automática" texto={conf?.reativacaoAtiva ? 'Ativa (cron diário)' : 'Desativada'} onFix={!conf?.reativacaoAtiva ? onIrConfig : undefined} />
         <StatusCard ok={conf?.waConfigurado} label="WhatsApp (Meta)" texto={conf?.waConfigurado ? 'Configurado' : 'Falta configurar'} onFix={!conf?.waConfigurado ? onIrConfig : undefined} />
       </div>

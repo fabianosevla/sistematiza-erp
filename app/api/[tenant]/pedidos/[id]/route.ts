@@ -35,6 +35,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { z } from 'zod'
+import { sql } from 'drizzle-orm'
 import { resolveTenant } from '@/lib/auth/tenant'
 import { exigirModulo } from '@/lib/auth/permissoes'
 import { getDbForTenant } from '@/lib/db/connection'
@@ -42,6 +43,7 @@ import { pool } from '@/lib/db/connection'
 import { PedidoService } from '@/lib/services/producao/PedidoService'
 import { FiscalService } from '@/lib/services/fiscal/FiscalService'
 import { ConfiguracoesService } from '@/lib/services/configuracoes/ConfiguracoesService'
+import { CashbackService } from '@/lib/services/fidelidade/CashbackService'
 import { ok, serverError, notFound, badRequest } from '@/lib/api/responses'
 
 type Params = { params: { tenant: string; id: string } }
@@ -511,6 +513,47 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           } catch (_) {
             // Nota não criada: a entrega continua válida. O módulo Fiscal
             // mostra o pedido sem nota, e dá para gerar de lá.
+          }
+        }
+
+        // ── CASHBACK — FORA DA TRANSAÇÃO, DEPOIS DO COMMIT ──────────────────
+        //
+        // GAP ENCONTRADO (15/09/2026): pedido entregue vira venda desde
+        // 13/09, mas só a venda direta do PDV (VendaService.criarDireta)
+        // avisava a Fidelidade — pedido nunca gerou cashback nem contava
+        // pra indique-e-ganhe, mesmo com o programa ativo. Mesma regra do
+        // PDV agora: credita cashback sobre o valor da venda e, se for a
+        // primeira compra de um cliente indicado por outro, credita o bônus
+        // de indicação dos dois lados. CashbackService decide sozinho se
+        // credita ou não (programa desativado = nada acontece, sem sujeira).
+        // Fora da transação, mesmo motivo da nota: uma falha aqui não pode
+        // desfazer a entrega já gravada.
+        if (vendaId && pedido.cliente_id) {
+          try {
+            const { db, release } = await getDbForTenant(tenant.schemaName)
+            try {
+              const cash = new CashbackService(db)
+              await cash.creditar({
+                clienteId: pedido.cliente_id, vendaId, subtotal, total, cashbackUsado: 0, userId: 1,
+              })
+              const [clienteRow] = (await db.execute(sql`
+                SELECT indicado_por_cliente_id FROM t_cliente WHERE cliente_id = ${pedido.cliente_id}
+              `)).rows as any[]
+              const indicadoPorClienteId = clienteRow?.indicado_por_cliente_id
+              if (indicadoPorClienteId) {
+                const [{ total_vendas }] = (await db.execute(sql`
+                  SELECT COUNT(*)::int AS total_vendas FROM t_venda WHERE cliente_id = ${pedido.cliente_id} AND active_flg = true
+                `)).rows as any[]
+                if (Number(total_vendas) === 1) {
+                  await cash.creditarIndicacao({
+                    clienteId: pedido.cliente_id, indicadoPorClienteId: Number(indicadoPorClienteId),
+                    vendaId, valorBase: total, userId: 1,
+                  })
+                }
+              }
+            } finally { release() }
+          } catch (_) {
+            // Fidelidade indisponível/não configurada: a entrega continua válida.
           }
         }
 

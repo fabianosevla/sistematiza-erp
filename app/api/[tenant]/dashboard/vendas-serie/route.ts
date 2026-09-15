@@ -74,11 +74,22 @@ export async function GET(req: NextRequest, { params }: Params) {
         // mais janela rolante de 14 dias. Pedido do Fabiano (13/09/2026):
         // "Diário" deve mostrar só o mês em que se está, igual olhando um
         // calendário — não um recorte que emenda com o fim do mês anterior.
+        //
+        // BUG ENCONTRADO (15/09/2026, por um agente investigando o mesmo
+        // problema no funil do Cardápio Digital): "CURRENT_DATE AT TIME ZONE"
+        // erra o dia. CURRENT_DATE já nasce como data no fuso da SESSÃO do
+        // Postgres (aqui, UTC) — daí "AT TIME ZONE" trata essa meia-noite UTC
+        // como se já fosse meia-noite em SP e desloca de novo, aterrissando
+        // no dia anterior às ~21h. Testado direto no banco: às 19h de SP
+        // (22h UTC) do dia 15/09, essa expressão devolvia 14/09 21h — "hoje"
+        // ficava de fora da série. A forma certa é converter NOW() (esse sim
+        // um instante de verdade, com fuso) pra SP e SÓ DEPOIS extrair a
+        // data — nunca partir de CURRENT_DATE quando o fuso importa.
         sql = `
           WITH baldes AS (
             SELECT generate_series(
-              DATE_TRUNC('month', CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'),
-              (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo'), INTERVAL '1 day'
+              DATE_TRUNC('month', (NOW() AT TIME ZONE 'America/Sao_Paulo')::date),
+              (NOW() AT TIME ZONE 'America/Sao_Paulo')::date, INTERVAL '1 day'
             ) AS balde
           )
           SELECT b.balde,

@@ -9,7 +9,7 @@
 // do jeito que fizer sentido (pedido, PDV, delivery).
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { Plus, Minus, ShoppingCart, X, MessageCircle, Clock } from 'lucide-react'
+import { Plus, Minus, ShoppingCart, X, MessageCircle, Clock, MapPin, Instagram, Facebook, Star, Share2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -101,6 +101,23 @@ export default function CardapioPublico({ tenantSlug }: Props) {
     setCarrinho(prev => prev
       .map(i => i.produtoId === produtoId ? { ...i, quantidade: i.quantidade - 1 } : i)
       .filter(i => i.quantidade > 0))
+  }
+
+  // Compartilhar o cardápio — nativo no celular (abre o menu de compartilhar
+  // do sistema); no desktop (sem navigator.share), cai pra copiar o link.
+  async function compartilhar() {
+    const url = typeof window !== 'undefined' ? window.location.href : ''
+    const title = empresa.nome ? `Cardápio ${empresa.nome}` : 'Cardápio digital'
+    if (typeof navigator !== 'undefined' && (navigator as any).share) {
+      try { await (navigator as any).share({ title, url }) } catch { /* usuário cancelou — tudo bem */ }
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(url)
+      toast('Link copiado!')
+    } catch {
+      toast('Não foi possível copiar o link.', 'error')
+    }
   }
 
   const totalItens = carrinho.reduce((a, i) => a + i.quantidade, 0)
@@ -200,6 +217,41 @@ export default function CardapioPublico({ tenantSlug }: Props) {
           {empresa.telefone && <p className="text-xs text-gray-400 mt-1">{empresa.telefone}</p>}
         </header>
       )}
+
+      {/* Ações da loja — cada uma some sozinha se não tiver o dado
+          preenchido em Cardápio Digital → Configurações; Compartilhar é a
+          única que aparece sempre, não depende de nada estar preenchido. */}
+      <div className="max-w-2xl mx-auto px-4 pt-3 flex flex-wrap gap-2">
+        {empresa.endereco && (
+          <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(empresa.endereco)}`}
+            target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:border-gray-300">
+            <MapPin size={13} /> Como chegar
+          </a>
+        )}
+        {empresa.instagram && (
+          <a href={empresa.instagram} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:border-gray-300">
+            <Instagram size={13} /> Instagram
+          </a>
+        )}
+        {empresa.facebook && (
+          <a href={empresa.facebook} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:border-gray-300">
+            <Facebook size={13} /> Facebook
+          </a>
+        )}
+        {empresa.googleReviewUrl && (
+          <a href={empresa.googleReviewUrl} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:border-gray-300">
+            <Star size={13} /> Avaliar
+          </a>
+        )}
+        <button onClick={compartilhar}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full border border-gray-200 bg-white text-xs font-medium text-gray-600 hover:border-gray-300">
+          <Share2 size={13} /> Compartilhar
+        </button>
+      </div>
 
       {horario && (
         <button

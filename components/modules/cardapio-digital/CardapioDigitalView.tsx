@@ -279,6 +279,43 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
                 <Input value={local.corDestaque ?? '#2ecc71'} onChange={e => set('corDestaque', e.target.value)} className="flex-1" />
               </div>
             </div>
+
+            {/* Redes e avaliação — tudo opcional. Vazio, o botão some da
+                tela pública em vez de aparecer quebrado ou apontar pra
+                lugar nenhum (ver CardapioPublico.tsx). */}
+            <div className="pt-2 border-t border-gray-100">
+              <p className="text-sm font-medium text-gray-700 mb-3">Redes e avaliação</p>
+              <div className="space-y-3">
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    Instagram
+                    <InfoTip titulo="Onde aparece">Link do perfil. Deixe em branco pra não mostrar o ícone no cardápio.</InfoTip>
+                  </Label>
+                  <Input value={local.instagram ?? ''} onChange={e => set('instagram', e.target.value)}
+                    className="mt-1" placeholder="https://instagram.com/seu-perfil" />
+                </div>
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    Facebook
+                    <InfoTip titulo="Onde aparece">Link da página. Deixe em branco pra não mostrar o ícone no cardápio.</InfoTip>
+                  </Label>
+                  <Input value={local.facebook ?? ''} onChange={e => set('facebook', e.target.value)}
+                    className="mt-1" placeholder="https://facebook.com/sua-pagina" />
+                </div>
+                <div>
+                  <Label className="inline-flex items-center gap-1">
+                    Link de avaliação no Google
+                    <InfoTip titulo="Onde conseguir esse link">
+                      No perfil da sua empresa no Google (o mesmo que aparece na busca/Maps), procure a opção
+                      "Peça avaliações" — o Google gera um link curto pra colar aqui.
+                    </InfoTip>
+                  </Label>
+                  <Input value={local.googleReviewUrl ?? ''} onChange={e => set('googleReviewUrl', e.target.value)}
+                    className="mt-1" placeholder="https://g.page/r/.../review" />
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end pt-2 border-t border-gray-100">
               <Button onClick={() => salvarMut.mutate()} disabled={salvarMut.isPending}>{salvarMut.isPending ? 'Salvando...' : 'Salvar'}</Button>
             </div>
