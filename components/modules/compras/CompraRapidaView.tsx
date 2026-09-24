@@ -51,6 +51,10 @@ const hojeISO = () => new Date().toISOString().slice(0, 10)
 const fmtData = (d: any) =>
   d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
+// Filtro ignora acento e cedilha: "mucarela de bufala" acha "Muçarela de búfala".
+const semAcento = (v: any) =>
+  String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
 export default function CompraRapidaView({ tenantSlug }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
@@ -146,7 +150,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? todos : todos.filter(i => chaves.every(k =>
-      String(i[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())
+      semAcento(i[k]).includes(semAcento(filtros[k]))
     ))
     return [...base].sort((a: any, b: any) => {
       const av = a?.[sortKey], bv = b?.[sortKey]
@@ -278,7 +282,10 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       // valor único comparável linha a linha.
       chave: 'itensTexto', titulo: 'Itens', filtravel: true, esconderAte: 'lg',
       render: (i: any) => {
-        const nomes = String(i.itensTexto ?? '').trim()
+        const detalhe: any[] = Array.isArray(i.itensDetalhe) ? i.itensDetalhe : []
+        const nomes = detalhe.length > 0
+          ? detalhe.map(d => `${d.nome} (${fmtQtd(d.quantidade)}${d.unidade ? ` ${d.unidade}` : ''})`).join(', ')
+          : String(i.itensTexto ?? '').trim()
         if (!nomes) return <span className="text-gray-300">—</span>
         return (
           <span className="text-sm text-gray-600" title={nomes}>
