@@ -130,6 +130,13 @@ export class ComprasService {
                WHERE ci.compra_id = c.compra_id AND ci.active_flg = true
              ), '') AS itens_texto,
              COALESCE((
+               SELECT JSON_AGG(JSON_BUILD_OBJECT(
+                        'nome', ci.nome_insumo, 'quantidade', ci.quantidade, 'unidade', ci.unidade
+                      ) ORDER BY ci.item_id)
+               FROM t_compra_item ci
+               WHERE ci.compra_id = c.compra_id AND ci.active_flg = true
+             ), '[]'::json) AS itens_detalhe,
+             COALESCE((
                SELECT COUNT(*) FROM t_compra_item ci
                WHERE ci.compra_id = c.compra_id AND ci.active_flg = true
              ), 0)::int AS qtd_itens
@@ -153,6 +160,11 @@ export class ComprasService {
       status:         r.status,
       qtdItens:       Number(r.qtd_itens ?? 0),
       itensTexto:     r.itens_texto ?? '',
+      itensDetalhe:   (Array.isArray(r.itens_detalhe) ? r.itens_detalhe : []).map((d: any) => ({
+        nome:       String(d.nome ?? ''),
+        quantidade: Number(d.quantidade ?? 0),
+        unidade:    d.unidade ?? '',
+      })),
       observacao:     r.observacao ?? '',
     }))
 
