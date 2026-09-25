@@ -122,6 +122,13 @@ export class ContasPagarService {
       }).returning({ id: dbContaPagar.contaPagarId })
       ids.push(result.id)
     }
+
+    // DRE pela data da compra (QA #107): cada parcela já entra como despesa na
+    // competência da emissão, ainda sem data de pagamento.
+    for (const contaId of ids) {
+      const [conta] = await this.db.select().from(dbContaPagar).where(eq(dbContaPagar.contaPagarId, contaId))
+      if (conta) await this.lancarDespesaDaConta(conta, null, userId)
+    }
     return { contaPagarId: ids[0], totalParcelas }
   }
 
@@ -130,6 +137,27 @@ export class ContasPagarService {
       .set({ ...payload, updatedDt: new Date(), updatedBy: userId })
       .where(and(eq(dbContaPagar.contaPagarId, id), eq(dbContaPagar.activeFlag, true)))
       .returning({ id: dbContaPagar.contaPagarId })
+
+    // A despesa ligada acompanha o que mudou na conta — senão o DRE ficaria
+    // com valor, nome ou mês antigos.
+    if (result && (payload.descricao !== undefined || payload.categoria !== undefined
+        || payload.valorOriginal !== undefined || payload.dataEmissao !== undefined)) {
+      const [conta] = await this.db.select().from(dbContaPagar).where(eq(dbContaPagar.contaPagarId, id))
+      if (conta) {
+        const emissao = String(conta.dataEmissao ?? '').slice(0, 10)
+        const dt = emissao ? new Date(`${emissao}T12:00:00`) : null
+        await this.db.execute(sql`
+          UPDATE t_despesa
+             SET nome = ${conta.descricao}, categoria = ${conta.categoria ?? 'Outros'},
+                 valor = ${conta.valorOriginal},
+                 data_despesa    = COALESCE(${emissao || null}::date, data_despesa),
+                 mes_competencia = COALESCE(${dt ? dt.getMonth() + 1 : null}::int, mes_competencia),
+                 ano_competencia = COALESCE(${dt ? dt.getFullYear() : null}::int, ano_competencia),
+                 updated_dt = NOW(), updated_by = ${userId}
+           WHERE conta_pagar_id = ${id} AND active_flg = true
+        `)
+      }
+    }
     return result ?? null
   }
 
@@ -154,35 +182,30 @@ export class ContasPagarService {
     }).where(eq(dbContaPagar.contaPagarId, id))
       .returning({ id: dbContaPagar.contaPagarId, status: dbContaPagar.status })
 
-    // A DESPESA NASCE AQUI, quando o dinheiro sai.
+    // DRE PELA DATA DA COMPRA, CAIXA PELA DATA DO PAGAMENTO (QA #107).
     //
-    // Antes, compra a prazo abria conta a pagar e mais nada. O DRE e a consulta
-    // de Despesas leem só t_despesa, por data_despesa — então a compra a prazo
-    // não aparecia no resultado nem no mês da compra, nem no mês do pagamento.
-    // Simplesmente sumia do custo, e o lucro saía maior do que era.
-    //
-    // É o espelho da venda, que nasce na baixa do recebimento: dinheiro entrou,
-    // receita; dinheiro saiu, despesa. E resolve o caso do cartão — comprou em
-    // agosto, vence em setembro, o custo cai em setembro.
+    // A despesa já nasceu com a conta (compra a prazo ou conta lançada à mão),
+    // na competência da emissão. A quitação só preenche data_pagamento — o
+    // mês do DRE não muda. Conta antiga, de antes dessa regra, sem despesa
+    // ligada: a despesa é criada aqui, ainda na competência da emissão.
     //
     // Só na quitação total: pagamento parcial soma em valor_pago e a conta
     // segue aberta.
     let despesaId: number | null = null
-    if (pago) despesaId = await this.gerarDespesaDoPagamento(conta, dataPagamento, userId)
+    if (pago) despesaId = await this.lancarDespesaDaConta(conta, dataPagamento, userId)
 
     return { ...result, despesaId }
   }
 
   /**
-   * Lança em t_despesa o valor de uma conta a pagar quitada.
+   * Garante a despesa de uma conta a pagar em t_despesa.
    *
    * `conta_pagar_id` é a trava: preenchida, a despesa daquela conta já existe e
-   * uma segunda chamada não duplica. Isso importa porque uma conta pode receber
-   * baixas parciais e chegar ao total mais de uma vez em cenários de correção.
+   * uma segunda chamada não duplica — só atualiza data_pagamento quando ele vem.
    */
-  private async gerarDespesaDoPagamento(
+  private async lancarDespesaDaConta(
     conta: any,
-    dataPagamento: string,
+    dataPagamento: string | null,
     userId: number,
   ): Promise<number | null> {
     const jaExiste = await this.db.execute(sql`
@@ -190,11 +213,23 @@ export class ContasPagarService {
        WHERE conta_pagar_id = ${conta.contaPagarId} AND active_flg = true
        LIMIT 1
     `)
-    if ((jaExiste.rows as any[]).length > 0) return null
+    const existente = (jaExiste.rows as any[])[0]
+    if (existente) {
+      if (dataPagamento) {
+        await this.db.execute(sql`
+          UPDATE t_despesa SET data_pagamento = ${dataPagamento}::date,
+                 updated_dt = NOW(), updated_by = ${userId}
+           WHERE despesa_id = ${existente.despesa_id}
+        `)
+      }
+      return Number(existente.despesa_id)
+    }
 
     // DUAS DATAS: a compra é a emissão do título; o pagamento é a baixa.
-    // A competência acompanha o pagamento — é o mês em que o dinheiro saiu.
-    const dt = new Date(`${dataPagamento}T12:00:00`)
+    // A competência acompanha a EMISSÃO — o mês da compra (QA #107).
+    const emissao = String(conta.dataEmissao ?? '').slice(0, 10) || dataPagamento
+    if (!emissao) return null
+    const dt = new Date(`${emissao}T12:00:00`)
 
     // mes_competencia e ano_competencia existem na tabela mas não estão
     // declaradas no schema do Drizzle — entraram por script de migração. O
@@ -206,9 +241,9 @@ export class ContasPagarService {
          created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
       VALUES
         (${conta.descricao}, ${conta.categoria ?? 'Outros'}, ${conta.valorOriginal},
-         ${conta.dataEmissao ?? dataPagamento}::date, ${dataPagamento}::date, false,
+         ${emissao}::date, ${dataPagamento}::date, false,
          ${dt.getMonth() + 1}, ${dt.getFullYear()},
-         ${`Pagamento da conta a pagar #${conta.contaPagarId}`}, ${conta.contaPagarId},
+         ${`Conta a pagar #${conta.contaPagarId}`}, ${conta.contaPagarId},
          ${userId}, ${userId}, NOW(), NOW(), true, 0)
       RETURNING despesa_id
     `)
@@ -218,6 +253,11 @@ export class ContasPagarService {
   async excluir(id: number, userId: number) {
     await this.db.update(dbContaPagar).set({ activeFlag: false, updatedDt: new Date(), updatedBy: userId })
       .where(eq(dbContaPagar.contaPagarId, id))
+    // Conta excluída não pode continuar pesando no DRE.
+    await this.db.execute(sql`
+      UPDATE t_despesa SET active_flg = false, updated_dt = NOW(), updated_by = ${userId}
+       WHERE conta_pagar_id = ${id} AND active_flg = true
+    `)
     return { ok: true }
   }
 }

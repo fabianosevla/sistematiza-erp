@@ -197,12 +197,27 @@ function DetalheVenda({
                 <span className="text-gray-500">Subtotal</span>
                 <span className="text-gray-900">{fmt(venda.subtotal)}</span>
               </div>
-              {venda.desconto > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Desconto</span>
-                  <span className="text-red-600">-{fmt(venda.desconto)}</span>
-                </div>
-              )}
+              {/* desconto gravado e liquido do acrescimo; os dois aparecem separados.
+                  Resto negativo (taxa de entrega do Pedido) conta como acrescimo. */}
+              {(() => {
+                const bruto = Number(venda.desconto ?? 0) + Number(venda.acrescimo ?? 0)
+                const desc  = Math.max(0, bruto)
+                const acr   = Number(venda.acrescimo ?? 0) + Math.max(0, -bruto)
+                return (<>
+                  {desc > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Desconto</span>
+                      <span className="text-red-600">-{fmt(desc)}</span>
+                    </div>
+                  )}
+                  {acr > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Acréscimo</span>
+                      <span className="text-gray-900">+{fmt(acr)}</span>
+                    </div>
+                  )}
+                </>)
+              })()}
               <div className="flex justify-between items-baseline border-t border-gray-100 pt-2">
                 <span className="text-sm font-semibold text-gray-900">Total</span>
                 <span className="text-xl font-semibold" style={{ color: '#2ecc71' }}>{fmt(venda.total)}</span>
@@ -471,12 +486,12 @@ export default function ConsultasView({ tenantSlug }: Props) {
 
     const linhas =
       aba === 'vendas' ? [
-        ['Venda', 'Data', 'Cliente', 'Produtos', 'Origem', 'Itens', 'Pagamento', 'Desconto', 'Total'],
+        ['Venda', 'Data', 'Cliente', 'Produtos', 'Origem', 'Itens', 'Pagamento', 'Desconto', 'Acrescimo', 'Total'],
         ...itens.map(i => [
           String(i.vendaId), fmtDataHora(i.data), i.clienteNome,
           (i.produtos ?? []).join(' | '), i.origem,
           String(i.qtdItens), i.formas,
-          (i.desconto / 100).toFixed(2), (i.total / 100).toFixed(2),
+          (i.desconto / 100).toFixed(2), ((i.acrescimo ?? 0) / 100).toFixed(2), (i.total / 100).toFixed(2),
         ]),
       ]
       : aba === 'vendas-produto' ? [
@@ -550,6 +565,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
       ),
     },
     { chave: 'desconto', titulo: 'Desconto',  ordenavel: true, alinhamento: 'right', render: (i: any) => i.desconto > 0 ? <span className="text-red-600">-{fmt(i.desconto)}</span> : <span className="text-gray-300">—</span> },
+    { chave: 'acrescimo', titulo: 'Acréscimo', ordenavel: true, alinhamento: 'right', esconderAte: 'xl', render: (i: any) => i.acrescimo > 0 ? <span className="text-gray-700">+{fmt(i.acrescimo)}</span> : <span className="text-gray-300">—</span> },
     { chave: 'total',    titulo: 'Total',     ordenavel: true, alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.total)}</span> },
   ]
 
@@ -729,6 +745,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
         { rotulo: 'Total vendido', valor: fmt(kpis.totalVendido ?? 0) },
         { rotulo: 'Ticket médio',  valor: fmt(kpis.ticketMedio ?? 0) },
         { rotulo: 'Descontos',     valor: fmt(kpis.totalDesconto ?? 0) },
+        { rotulo: 'Acréscimos',    valor: fmt(kpis.totalAcrescimo ?? 0) },
       ]
     : aba === 'vendas-produto'
     ? [

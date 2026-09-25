@@ -26,7 +26,12 @@ import HistoricoCaixaTab from '@/components/modules/caixa/HistoricoCaixaTab'
 // sistema (dataVencimento, dataAcao). Bug encontrado em 13/09/2026.
 import { fmtMoeda as fmt, fmtData } from '@/lib/format'
 
-interface Props { tenantSlug: string }
+interface Props {
+  tenantSlug: string
+  // Só a aba Despesas, sem KPIs nem abas — é como ela aparece dentro de
+  // Compras (QA #123). Fora disso o Financeiro não mostra mais Despesas.
+  somenteDespesas?: boolean
+}
 
 type OrdemLocal = { chave: string; dir: 'asc' | 'desc' } | null
 
@@ -58,7 +63,7 @@ const CATEGORIAS_DESPESA = [
 // escritório contábil que ninguém usava aqui.
 type Aba = 'despesas' | 'dre' | 'gastos-fixos' | 'demonstrativo' | 'a-pagar' | 'a-receber' | 'caixa'
 
-export default function FinanceiroView({ tenantSlug }: Props) {
+export default function FinanceiroView({ tenantSlug, somenteDespesas = false }: Props) {
   const qc        = useQueryClient()
   const { toast } = useToast()
   const api       = `/api/${tenantSlug}/financeiro`
@@ -67,7 +72,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   const now = new Date()
   const [mes, setMes] = useState(now.getMonth() + 1)
   const [ano, setAno] = useState(now.getFullYear())
-  const [aba, setAba] = useState<Aba>('despesas')
+  const [aba, setAba] = useState<Aba>(somenteDespesas ? 'despesas' : 'dre')
 
   // ── Editar / salvar — Gastos Fixos ────────────────────────────────────────
   // A grade salvava célula por célula, direto no servidor, a cada clique fora
@@ -252,7 +257,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           categoria:  despForm.categoria,
           valor:      Math.round(parseFloat(despForm.valor.replace(',', '.') || '0') * 100),
           dataDespesa: despForm.dataDespesa,
-          // Vazio vira null: a vista, e a competencia cai na data da compra.
+          // Vazio vira null: a vista. A competencia e sempre a data da compra (QA #107).
           dataPagamento: despForm.dataPagamento || null,
           recorrente: despForm.recorrente,
           // NAO mandar mes/ano daqui. Eram o mes do FILTRO DE PERIODO, e o
@@ -380,7 +385,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
   // e esconder "A Receber" fazia a conta gerada pela entrega de um pedido
   // existir sem lugar para ser vista.
   const ABAS_BASE: { key: Aba; label: string }[] = [
-    { key: 'despesas',      label: 'Despesas'      },
+    // 'despesas' foi para Compras → Compras de despesas (QA #123).
     { key: 'dre',           label: 'DRE'           },
     { key: 'gastos-fixos',  label: 'Gastos Fixos'  },
     { key: 'demonstrativo', label: 'Demonstrativo' },
@@ -408,8 +413,8 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Financeiro</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Controle financeiro completo</p>
+          <h1 className="text-2xl font-semibold text-gray-900">{somenteDespesas ? 'Compras de despesas' : 'Financeiro'}</h1>
+          {!somenteDespesas && <p className="text-sm text-gray-400 mt-0.5">Controle financeiro completo</p>}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => navMes(-1)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
@@ -425,6 +430,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
       </div>
 
       {/* KPIs */}
+      {!somenteDespesas && (
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         {[
           { label: 'Receita',   value: fmt(receitaMes),  color: 'text-green-600' },
@@ -439,8 +445,10 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           </div>
         ))}
       </div>
+      )}
 
       {/* Tabs */}
+      {!somenteDespesas && (
       <div className="border-b border-gray-100 mb-6 overflow-x-auto">
         <div className="flex gap-0 min-w-max">
           {ABAS_BASE.map(a => (
@@ -453,6 +461,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           ))}
         </div>
       </div>
+      )}
 
       {/* ABA: DESPESAS */}
       {aba === 'despesas' && (() => {
@@ -490,7 +499,9 @@ export default function FinanceiroView({ tenantSlug }: Props) {
             chave: 'data_pagamento', titulo: 'Pagamento', ordenavel: true,
             render: d => (d.data_pagamento ?? d.dataPagamento)
               ? fmtData(d.data_pagamento ?? d.dataPagamento)
-              : <span className="text-gray-300">à vista</span>,
+              : (d.conta_pagar_id ?? d.contaPagarId)
+                ? <span className="text-amber-600">a pagar</span>
+                : <span className="text-gray-300">à vista</span>,
           },
           { chave: 'recorrente', titulo: 'Recorrente', ordenavel: true, render: d => d.recorrente ? '✓' : '—' },
           {
@@ -978,7 +989,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 <Label className="inline-flex items-center gap-1">
                   Data do pagamento
                   <InfoTip titulo="Quando o dinheiro sai">
-                    É esta data que decide em que mês a despesa entra no DRE. Deixe vazia para compra à vista.
+                    O DRE usa a data da compra; esta data marca quando o dinheiro sai do caixa.
                   </InfoTip>
                 </Label>
                 <Input type="date" value={despForm.dataPagamento} onChange={e => setDF('dataPagamento', e.target.value)} className="mt-1" />

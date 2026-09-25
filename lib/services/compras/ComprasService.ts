@@ -290,6 +290,25 @@ export class ComprasService {
           RETURNING conta_pagar_id
         `)
         contaPagarId = Number((cp.rows[0] as any).conta_pagar_id)
+
+        // DRE PELA DATA DA COMPRA (QA #107). A despesa nasce agora, na
+        // competência da compra e sem data de pagamento; o dinheiro sai no
+        // vencimento, pela conta a pagar acima, e a baixa dela só preenche
+        // data_pagamento (ContasPagarService.baixar). conta_pagar_id liga as
+        // duas e impede a baixa de lançar uma segunda despesa.
+        const dtC = new Date(`${payload.dataCompra}T12:00:00`)
+        const dspP = await this.db.execute(sql`
+          INSERT INTO t_despesa
+            (nome, categoria, valor, data_despesa, data_pagamento, recorrente,
+             mes_competencia, ano_competencia, observacao, conta_pagar_id,
+             created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
+          VALUES
+            (${descricao}, 'Insumos', ${valorTotal}, ${payload.dataCompra}::date, NULL, false,
+             ${dtC.getMonth() + 1}, ${dtC.getFullYear()}, ${payload.observacao ?? null}, ${contaPagarId},
+             ${uid}, ${uid}, NOW(), NOW(), true, 0)
+          RETURNING despesa_id
+        `)
+        despesaId = Number((dspP.rows[0] as any).despesa_id)
       } else {
         const dt  = new Date(`${payload.dataCompra}T12:00:00`)
         const dsp = await this.db.execute(sql`
@@ -356,6 +375,12 @@ export class ComprasService {
         await this.db.execute(sql`
           UPDATE t_conta_pagar SET active_flg = false, updated_dt = NOW(), updated_by = ${userId}
            WHERE conta_pagar_id = ${row.conta_pagar_id}
+        `)
+        // A despesa da compra a prazo pode estar ligada só pela conta (as
+        // lançadas na baixa, antes do QA #107) — sai do DRE junto.
+        await this.db.execute(sql`
+          UPDATE t_despesa SET active_flg = false, updated_dt = NOW(), updated_by = ${userId}
+           WHERE conta_pagar_id = ${row.conta_pagar_id} AND active_flg = true
         `)
       }
       await this.db.execute(sql`COMMIT`)

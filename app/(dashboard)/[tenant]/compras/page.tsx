@@ -5,15 +5,16 @@
 // indústria com departamento de suprimentos, e aqui ninguém preenchia.
 // A sugestão de compra, que era a parte útil do MRP, foi para dentro desta
 // tela como o bloco "Precisa comprar".
+// Duas frentes: compras de insumos e compras de despesas (QA #123).
 import TenantLayout from '@/app/(dashboard)/tenant-layout'
-import CompraRapidaView from '@/components/modules/compras/CompraRapidaView'
+import ComprasView from '@/components/modules/compras/ComprasView'
 
 interface Props { params: { tenant: string } }
 
 export default async function ComprasPage({ params }: Props) {
   return (
     <TenantLayout tenantSlug={params.tenant}>
-      <CompraRapidaView tenantSlug={params.tenant} />
+      <ComprasView tenantSlug={params.tenant} />
     </TenantLayout>
   )
 }
