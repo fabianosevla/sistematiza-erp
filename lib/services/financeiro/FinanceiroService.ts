@@ -146,12 +146,14 @@ export class FinanceiroService {
   }
 
   /**
-   * DUAS DATAS, E A COMPETÊNCIA VEM DA SEGUNDA.
+   * DUAS DATAS, E A COMPETÊNCIA VEM DA PRIMEIRA.
    *
    * `dataDespesa` é quando a compra aconteceu; `dataPagamento`, quando o
-   * dinheiro sai. O DRE agrupa por competência, e competência é o mês do
-   * PAGAMENTO — compra no cartão em agosto com fatura em setembro pesa em
-   * setembro. Sem data de pagamento, é à vista e as duas coincidem.
+   * dinheiro sai. O DRE agrupa por competência, e competência é o mês da
+   * COMPRA — compra no cartão em agosto com fatura em setembro pesa no DRE de
+   * agosto; setembro é quando o dinheiro sai (fluxo de caixa / contas a
+   * pagar). Era o contrário até o cartão QA #107, que definiu o conceito:
+   * DRE pela data da compra, financeiro pela data do pagamento.
    *
    * O QUE SAIU DAQUI: `payload.mes ?? ...`. A tela mandava o mês do FILTRO DE
    * PERÍODO junto com o cadastro, e ele tinha prioridade sobre a data. Quem
@@ -166,7 +168,7 @@ export class FinanceiroService {
     const now = new Date()
     const dt  = new Date(payload.dataDespesa)
     const dtPag = payload.dataPagamento ? new Date(payload.dataPagamento) : null
-    // A competência segue o pagamento. Sem pagamento informado, a compra.
+    // A competência segue a data da despesa (compra), nunca o pagamento.
     //
     // getUTCMonth/getUTCFullYear, não getMonth/getFullYear: dataDespesa e
     // dataPagamento chegam como "AAAA-MM-DD" puro (o formulário só tem
@@ -177,7 +179,7 @@ export class FinanceiroService {
     // (Brasil, UTC-3) "01/10" viraria competência de setembro. Os getters
     // UTC sempre devolvem exatamente o dia que a pessoa escolheu, em
     // qualquer fuso onde o servidor rodar. Bug encontrado em 13/09/2026.
-    const base = dtPag ?? dt
+    const base = dt
     const mes = base.getUTCMonth() + 1
     const ano = base.getUTCFullYear()
 
@@ -254,7 +256,9 @@ export class FinanceiroService {
       const dtPag = payload.dataPagamento !== undefined
         ? (payload.dataPagamento ? new Date(payload.dataPagamento) : null)
         : (linha.dataPagamento ? new Date(linha.dataPagamento) : null)
-      const base = dtPag ?? dtCompra
+      // Competência = data da compra (QA #107). O pagamento só entra se a
+      // despesa não tiver data de compra, o que não deveria acontecer.
+      const base = dtCompra ?? dtPag
       // getUTC*: mesmo motivo do criar() acima.
       if (base) { mes = base.getUTCMonth() + 1; ano = base.getUTCFullYear() }
     }

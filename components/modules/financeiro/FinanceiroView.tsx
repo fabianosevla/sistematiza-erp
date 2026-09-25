@@ -252,7 +252,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
           categoria:  despForm.categoria,
           valor:      Math.round(parseFloat(despForm.valor.replace(',', '.') || '0') * 100),
           dataDespesa: despForm.dataDespesa,
-          // Vazio vira null: a vista, e a competencia cai na data da compra.
+          // Vazio vira null: a vista. A competencia e sempre a data da compra (QA #107).
           dataPagamento: despForm.dataPagamento || null,
           recorrente: despForm.recorrente,
           // NAO mandar mes/ano daqui. Eram o mes do FILTRO DE PERIODO, e o
@@ -978,7 +978,7 @@ export default function FinanceiroView({ tenantSlug }: Props) {
                 <Label className="inline-flex items-center gap-1">
                   Data do pagamento
                   <InfoTip titulo="Quando o dinheiro sai">
-                    É esta data que decide em que mês a despesa entra no DRE. Deixe vazia para compra à vista.
+                    O DRE usa a data da compra; esta data marca quando o dinheiro sai do caixa.
                   </InfoTip>
                 </Label>
                 <Input type="date" value={despForm.dataPagamento} onChange={e => setDF('dataPagamento', e.target.value)} className="mt-1" />
