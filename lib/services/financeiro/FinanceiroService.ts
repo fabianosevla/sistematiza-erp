@@ -2,8 +2,8 @@ import { and, eq, gte, lte, desc, count, sql, asc } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
 import { pool } from '@/lib/db/connection'
 import { dbDespesa } from '@/lib/db/schemas/financeiro'
-import { dbGastoFixoValor } from '@/lib/db/schemas/financeiro'
 import { dbVenda } from '@/lib/db/schemas/vendas'
+import { sqlGastosFixosVigentes, mesUnico } from '@/lib/services/financeiro/gastosFixosVigentes'
 
 export class FinanceiroService {
   constructor(private db: AppDB, private schemaName: string = '') {}
@@ -301,13 +301,10 @@ export class FinanceiroService {
         `SELECT COALESCE(SUM(valor), 0) as total FROM t_despesa WHERE active_flg = true AND mes_competencia = $1 AND ano_competencia = $2`,
         [mes, ano]
       )
-      const fixos = await client.query(
-        `SELECT COALESCE(SUM(gv.valor), 0) as total
-           FROM t_gasto_fixo_valor gv
-           JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
-          WHERE gv.active_flg = true AND gv.mes = $1 AND gv.ano = $2`,
-        [mes, ano]
-      ).catch(() => ({ rows: [{ total: 0 }] }))
+      // Valor vigente no mês (herdado do último lançamento) — gastosFixosVigentes.ts
+      const fixos: any = await this.db.execute(sql`
+        SELECT COALESCE(SUM(f.valor), 0) as total FROM (${sqlGastosFixosVigentes(mesUnico(mes, ano))}) f
+      `).catch(() => ({ rows: [{ total: 0 }] }))
       return Number(avulsas.rows[0]?.total ?? 0) + Number(fixos.rows[0]?.total ?? 0)
     })
 
@@ -340,17 +337,12 @@ export class FinanceiroService {
         return r.rows
       }),
       // Gastos fixos do mês também entram como despesas operacionais no DRE
-      this.withSchema(async client => {
-        const r = await client.query(
-          `SELECT gc.nome as categoria, COALESCE(SUM(gv.valor), 0) as total
-           FROM t_gasto_fixo_valor gv
-           JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
-           WHERE gv.active_flg = true AND gv.mes = $1 AND gv.ano = $2 AND gv.valor > 0
-           GROUP BY gc.nome ORDER BY gc.nome`,
-          [mes, ano]
-        )
-        return r.rows
-      }),
+      // Valor vigente no mês (herdado do último lançamento) — gastosFixosVigentes.ts
+      this.db.execute(sql`
+        SELECT f.categoria, COALESCE(SUM(f.valor), 0) as total
+        FROM (${sqlGastosFixosVigentes(mesUnico(mes, ano))}) f
+        GROUP BY f.categoria ORDER BY f.categoria
+      `).then((r: any) => r.rows),
       this.taxasDoPeriodo(inicio, fim),
     ])
 
@@ -405,8 +397,12 @@ export class FinanceiroService {
         )
         return r.rows
       }),
-      this.db.select().from(dbGastoFixoValor)
-        .where(and(eq(dbGastoFixoValor.ano, ano), eq(dbGastoFixoValor.activeFlag, true))),
+      // Valor vigente em cada mês (herdado do último lançamento) — gastosFixosVigentes.ts
+      this.db.execute(sql`
+        SELECT f.mes, COALESCE(SUM(f.valor), 0)::bigint as valor
+        FROM (${sqlGastosFixosVigentes({ anoIni: ano, mesIni: 1, anoFim: ano, mesFim: 12 })}) f
+        GROUP BY f.mes
+      `).then((r: any) => r.rows as any[]),
       this.taxasPorMes(ano),
     ])
 
@@ -415,7 +411,7 @@ export class FinanceiroService {
       const mesNum = i + 1
       const v = (vendasData as any[]).find(r => Number(r.mes) === mesNum)
       const d = (despesasData as any[]).find(r => Number(r.mes) === mesNum)
-      const fixos = gastos.filter(g => g.mes === mesNum).reduce((a, g) => a + g.valor, 0)
+      const fixos = gastos.filter((g: any) => Number(g.mes) === mesNum).reduce((a: number, g: any) => a + Number(g.valor), 0)
       const receita   = Number(v?.receita ?? 0)
       const desp      = Number(d?.total_despesas ?? 0)
       const taxas     = Number(taxasMes[mesNum] ?? 0)

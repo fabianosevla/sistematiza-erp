@@ -6,6 +6,7 @@
 // o type-check que o Next gera em .next/types, mesmo com @ts-nocheck no
 // arquivo (o arquivo gerado é outro, o nocheck local não alcança ele).
 import { sql } from 'drizzle-orm'
+import { sqlGastosFixosVigentes, mesUnico } from '@/lib/services/financeiro/gastosFixosVigentes'
 
 /**
  * Despesa real do mês = avulsas (t_despesa) + gastos fixos (t_gasto_fixo_valor).
@@ -31,11 +32,10 @@ export async function despesaDoMesDetalhada(db: any, mes: number, ano: number): 
       FROM t_despesa
      WHERE active_flg=true AND mes_competencia=${mes} AND ano_competencia=${ano}
   `)
+  // Valor vigente no mês (herdado do último lançamento) — gastosFixosVigentes.ts
   const fixoRes = await db.execute(sql`
-    SELECT COALESCE(SUM(gv.valor),0)::bigint as total
-      FROM t_gasto_fixo_valor gv
-      JOIN t_gasto_fixo_categoria gc ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
-     WHERE gv.active_flg = true AND gv.mes = ${mes} AND gv.ano = ${ano}
+    SELECT COALESCE(SUM(f.valor),0)::bigint as total
+      FROM (${sqlGastosFixosVigentes(mesUnico(mes, ano))}) f
   `).catch(() => ({ rows: [{ total: 0 }] }))
   const insumos      = Number(avulsaRes.rows[0]?.insumos ?? 0)
   const operacionais  = Number(avulsaRes.rows[0]?.operacionais ?? 0)

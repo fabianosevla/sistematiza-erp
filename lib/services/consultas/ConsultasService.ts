@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm'
 import type { AppDB } from '@/lib/db/connection'
+import { sqlGastosFixosVigentes, mesesComDia1 } from '@/lib/services/financeiro/gastosFixosVigentes'
 
 /**
  * CONSULTAS — RELATÓRIOS POR PERÍODO.
@@ -292,21 +293,18 @@ export class ConsultasService {
     // Então ele entra quando o período consultado contém o dia 1º daquele mês.
     // Consultar agosto inteiro traz o aluguel; consultar 3 a 5 de agosto não
     // traz — e é proposital, senão três dias apareceriam com o aluguel cheio.
-    const fixosRes = !incluirFixos ? { rows: [] as any[] } : await this.db.execute(sql`
-      SELECT gv.valor_id, gv.ano, gv.mes, gv.valor, gc.nome AS categoria
-      FROM t_gasto_fixo_valor gv
-      JOIN t_gasto_fixo_categoria gc
-        ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
-      WHERE gv.active_flg = true
-        AND gv.valor > 0
-        AND MAKE_DATE(gv.ano, gv.mes, 1) >= ${inicio}::date
-        AND MAKE_DATE(gv.ano, gv.mes, 1) <= ${fim}::date
-      ORDER BY gv.ano DESC, gv.mes DESC, gc.ordem, gc.nome
+    // O valor de cada mês é o vigente (herdado do último lançamento), igual à
+    // tela de Gastos Fixos — ver gastosFixosVigentes.ts.
+    const mesesFixos = incluirFixos ? mesesComDia1(inicio, fim) : null
+    const fixosRes = !mesesFixos ? { rows: [] as any[] } : await this.db.execute(sql`
+      SELECT f.categoria_id, f.ano, f.mes, f.valor, f.categoria
+      FROM (${sqlGastosFixosVigentes(mesesFixos)}) f
+      ORDER BY f.ano DESC, f.mes DESC, f.ordem, f.categoria
     `).catch(() => ({ rows: [] as any[] }))
 
     const fixos = (fixosRes.rows as any[]).map(r => ({
       // Id negativo para não colidir com despesa_id na chave da tabela.
-      despesaId:  -Number(r.valor_id),
+      despesaId:  -((Number(r.ano) * 12 + Number(r.mes)) * 10000 + Number(r.categoria_id)),
       data:       new Date(Number(r.ano), Number(r.mes) - 1, 1).toISOString(),
       nome:       r.categoria,
       categoria:  'Gasto fixo',
@@ -379,16 +377,15 @@ export class ConsultasService {
         WHERE active_flg = true AND data_despesa >= ${inicio} AND data_despesa <= ${fim}
         GROUP BY categoria ORDER BY categoria
       `),
-      this.db.execute(sql`
-        SELECT gc.nome AS categoria, COALESCE(SUM(gv.valor), 0)::bigint AS total
-        FROM t_gasto_fixo_valor gv
-        JOIN t_gasto_fixo_categoria gc
-          ON gc.categoria_id = gv.categoria_id AND gc.active_flg = true
-        WHERE gv.active_flg = true AND gv.valor > 0
-          AND MAKE_DATE(gv.ano, gv.mes, 1) >= ${inicio}::date
-          AND MAKE_DATE(gv.ano, gv.mes, 1) <= ${fim}::date
-        GROUP BY gc.nome ORDER BY gc.nome
-      `).catch(() => ({ rows: [] as any[] })),
+      (() => {
+        const meses = mesesComDia1(inicio, fim)
+        if (!meses) return Promise.resolve({ rows: [] as any[] })
+        return this.db.execute(sql`
+          SELECT f.categoria, COALESCE(SUM(f.valor), 0)::bigint AS total
+          FROM (${sqlGastosFixosVigentes(meses)}) f
+          GROUP BY f.categoria ORDER BY f.categoria
+        `).catch(() => ({ rows: [] as any[] }))
+      })(),
     ])
 
     const receita   = Number((recRes.rows[0] as any)?.receita ?? 0)
