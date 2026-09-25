@@ -40,6 +40,7 @@ export class ConsultasService {
         v.vendida_em,
         v.total,
         v.desconto,
+        v.acrescimo,
         v.origem,
         COALESCE(v.documento_fiscal, 'nenhum') AS documento_fiscal,
         v.cliente_id,
@@ -93,13 +94,18 @@ export class ConsultasService {
         formas:      r.formas ?? '—',
         produtos:    Array.isArray(r.produtos) ? r.produtos.filter(Boolean) : [],
         qtdItens:    Number(r.qtd_itens ?? 0),
-        desconto:    Number(r.desconto ?? 0),
+        // t_venda.desconto e LIQUIDO do acrescimo (o PDV grava desconto -
+        // acrescimo para o total fechar). Venda so com acrescimo ficava com
+        // desconto negativo. Aqui os dois voltam a ser mostrados separados.
+        desconto:    Number(r.desconto ?? 0) + Number(r.acrescimo ?? 0),
+        acrescimo:   Number(r.acrescimo ?? 0),
         total:       Number(r.total ?? 0),
       }
     })
 
     const totalVendido = itens.reduce((a, i) => a + i.total, 0)
     const totalDesc    = itens.reduce((a, i) => a + i.desconto, 0)
+    const totalAcresc  = itens.reduce((a, i) => a + i.acrescimo, 0)
 
     return {
       itens,
@@ -107,6 +113,7 @@ export class ConsultasService {
         quantidade:  itens.length,
         totalVendido,
         totalDesconto: totalDesc,
+        totalAcrescimo: totalAcresc,
         ticketMedio: itens.length > 0 ? Math.round(totalVendido / itens.length) : 0,
       },
     }
