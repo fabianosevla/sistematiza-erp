@@ -98,8 +98,15 @@ export class ConsultasService {
         // t_venda.desconto e LIQUIDO do acrescimo (o PDV grava desconto -
         // acrescimo para o total fechar). Venda so com acrescimo ficava com
         // desconto negativo. Aqui os dois voltam a ser mostrados separados.
-        desconto:    Number(r.desconto ?? 0) + Number(r.acrescimo ?? 0),
-        acrescimo:   Number(r.acrescimo ?? 0),
+        // Venda de Pedido grava a taxa de entrega como desconto negativo sem
+        // preencher acrescimo: o que sobrar negativo e acrescimo tambem.
+        ...(() => {
+          const bruto = Number(r.desconto ?? 0) + Number(r.acrescimo ?? 0)
+          return {
+            desconto:  Math.max(0, bruto),
+            acrescimo: Number(r.acrescimo ?? 0) + Math.max(0, -bruto),
+          }
+        })(),
         total:       Number(r.total ?? 0),
       }
     })

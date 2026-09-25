@@ -197,19 +197,27 @@ function DetalheVenda({
                 <span className="text-gray-500">Subtotal</span>
                 <span className="text-gray-900">{fmt(venda.subtotal)}</span>
               </div>
-              {/* desconto gravado e liquido do acrescimo; os dois aparecem separados */}
-              {(Number(venda.desconto ?? 0) + Number(venda.acrescimo ?? 0)) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Desconto</span>
-                  <span className="text-red-600">-{fmt(Number(venda.desconto ?? 0) + Number(venda.acrescimo ?? 0))}</span>
-                </div>
-              )}
-              {Number(venda.acrescimo ?? 0) > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Acréscimo</span>
-                  <span className="text-gray-900">+{fmt(venda.acrescimo)}</span>
-                </div>
-              )}
+              {/* desconto gravado e liquido do acrescimo; os dois aparecem separados.
+                  Resto negativo (taxa de entrega do Pedido) conta como acrescimo. */}
+              {(() => {
+                const bruto = Number(venda.desconto ?? 0) + Number(venda.acrescimo ?? 0)
+                const desc  = Math.max(0, bruto)
+                const acr   = Number(venda.acrescimo ?? 0) + Math.max(0, -bruto)
+                return (<>
+                  {desc > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Desconto</span>
+                      <span className="text-red-600">-{fmt(desc)}</span>
+                    </div>
+                  )}
+                  {acr > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Acréscimo</span>
+                      <span className="text-gray-900">+{fmt(acr)}</span>
+                    </div>
+                  )}
+                </>)
+              })()}
               <div className="flex justify-between items-baseline border-t border-gray-100 pt-2">
                 <span className="text-sm font-semibold text-gray-900">Total</span>
                 <span className="text-xl font-semibold" style={{ color: '#2ecc71' }}>{fmt(venda.total)}</span>
