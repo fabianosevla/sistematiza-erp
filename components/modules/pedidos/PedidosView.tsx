@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { MarcaEndereco, enderecoDoCadastro } from '@/components/ui/MarcaEndereco'
 import { SidePanel } from '@/components/ui/SidePanel'
+import PedidoInLoco from '@/components/modules/pedidos/PedidoInLoco'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { BotaoIcone } from '@/components/ui/BotaoIcone'
@@ -529,6 +530,26 @@ export default function PedidosView({ tenantSlug }: Props) {
     setBuscaProduto(''); setQtdProduto(1)
   }
 
+  // Pedido in loco (QA #49): a quantidade calculada pela capacidade SUBSTITUI
+  // a do item, não soma — gerar de novo depois de corrigir o estoque contado
+  // não pode dobrar o pedido.
+  function aplicarInLoco(linhas: { produto: any; quantidade: number }[]) {
+    setItens(prev => {
+      let novos = [...prev]
+      for (const { produto, quantidade } of linhas) {
+        const precos = precosDoProduto(produto)
+        const preco  = precoNaTabela(precos, tabelaPreco)
+        const idx = novos.findIndex(i => i.produtoId === produto.produtoId)
+        if (idx >= 0) novos[idx] = { ...novos[idx], quantidade }
+        else novos.push({
+          produtoId: produto.produtoId, nomeProduto: produto.nome,
+          quantidade, precoUnitario: preco, unidade: produto.unidade, precos,
+        })
+      }
+      return novos
+    })
+  }
+
   function updateQtdItem(produtoId: number, qtd: number) {
     if (qtd <= 0) { setItens(prev => prev.filter(i => i.produtoId !== produtoId)); return }
     setItens(prev => prev.map(i => i.produtoId === produtoId ? { ...i, quantidade: qtd } : i))
@@ -766,6 +787,10 @@ export default function PedidosView({ tenantSlug }: Props) {
                   </>
                 )}
               </div>
+
+              {clienteSelecionado?.clienteId && !editandoPedidoId && (
+                <PedidoInLoco tenantSlug={tenantSlug} clienteId={Number(clienteSelecionado.clienteId)} onAplicar={aplicarInLoco} />
+              )}
 
               {/* Tipo + data */}
               <div className="grid grid-cols-2 gap-3">
