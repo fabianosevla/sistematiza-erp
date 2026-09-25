@@ -1699,7 +1699,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                   {(formasNomes.length > 0 ? formasNomes : ['Dinheiro', 'PIX', 'Crédito', 'Débito']).map((f: string) => (
                     <option key={f} value={f}>{f}</option>
                   ))}
-                  <option value="A Prazo">A Prazo (parcelado)</option>
+                  <option value="A Prazo">A Prazo</option>
                 </select>
               </div>
 
@@ -1709,7 +1709,7 @@ export default function PdvBalcao({ tenantSlug, modo = 'balcao' }: Props) {
                     <Label className="text-xs">Parcelas</Label>
                     <select value={parcelas} onChange={e => setParcelas(e.target.value)}
                       className="mt-1.5 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none focus:border-green-400">
-                      {Array.from({ length: 11 }, (_, i) => i + 2).map(n => (
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
                         <option key={n} value={n}>{n}x de {fmt(Math.round(totalAPagar / n))}</option>
                       ))}
                     </select>
