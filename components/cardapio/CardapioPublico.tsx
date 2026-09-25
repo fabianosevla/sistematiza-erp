@@ -79,6 +79,9 @@ export default function CardapioPublico({ tenantSlug }: Props) {
   const proximaAbertura: string | undefined = raw?.data?.proximaAbertura
   const horario: Record<string, { aberto: boolean; abre: string; fecha: string }> | null = raw?.data?.horario ?? null
   const [showHorario, setShowHorario] = useState(false)
+  // Ficha do produto: toque na foto ou no nome abre a foto grande, como nos
+  // cardápios de delivery (Anota.ai, Takeat).
+  const [produtoAberto, setProdutoAberto] = useState<any>(null)
 
   // Se só um dos dois tipos é permitido, usa ele direto — o toggle só
   // aparece quando o cliente realmente tem escolha.
@@ -304,12 +307,12 @@ export default function CardapioPublico({ tenantSlug }: Props) {
                 {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
                   <div key={p.produtoId} className="bg-white rounded-xl border border-gray-100 overflow-hidden flex flex-col">
                     {p.fotoUrl ? (
-                      <img src={p.fotoUrl} alt="" className="w-full h-24 object-cover" />
+                      <img src={p.fotoUrl} alt="" onClick={() => setProdutoAberto(p)} className="w-full h-24 object-cover cursor-pointer" />
                     ) : (
                       <div className="w-full h-24 bg-gray-100" />
                     )}
                     <div className="p-2.5 flex-1 flex flex-col">
-                      <p className="text-sm font-medium text-gray-900 line-clamp-2">{p.nome}</p>
+                      <p onClick={() => setProdutoAberto(p)} className="text-sm font-medium text-gray-900 line-clamp-2 cursor-pointer">{p.nome}</p>
                       <p className="text-sm font-semibold mt-1" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
                       <div className="mt-2"><Quantidade p={p} /></div>
                     </div>
@@ -323,7 +326,7 @@ export default function CardapioPublico({ tenantSlug }: Props) {
                 {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
                   <div key={p.produtoId} className="px-3 py-2 flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-900 truncate">{p.nome}</p>
+                      <p onClick={() => setProdutoAberto(p)} className="text-sm text-gray-900 truncate cursor-pointer">{p.nome}</p>
                       <p className="text-xs font-semibold" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
                     </div>
                     <Quantidade p={p} />
@@ -338,13 +341,13 @@ export default function CardapioPublico({ tenantSlug }: Props) {
                 {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
                   <div key={p.produtoId} className="bg-white rounded-xl border border-gray-100 overflow-hidden">
                     {p.fotoUrl ? (
-                      <img src={p.fotoUrl} alt="" className="w-full h-36 object-cover" />
+                      <img src={p.fotoUrl} alt="" onClick={() => setProdutoAberto(p)} className="w-full h-36 object-cover cursor-pointer" />
                     ) : (
                       <div className="w-full h-36 bg-gray-100" />
                     )}
                     <div className="p-3 flex items-center gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{p.nome}</p>
+                        <p onClick={() => setProdutoAberto(p)} className="text-sm font-medium text-gray-900 cursor-pointer">{p.nome}</p>
                         {p.descricao && <p className="text-xs text-gray-400 line-clamp-2">{p.descricao}</p>}
                         <p className="text-sm font-semibold mt-1" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
                       </div>
@@ -360,12 +363,12 @@ export default function CardapioPublico({ tenantSlug }: Props) {
                 {produtos.filter(p => (p.categoria || 'Cardápio') === cat).map(p => (
                   <div key={p.produtoId} className="bg-white rounded-xl border border-gray-100 p-3 flex gap-3 items-center">
                     {p.fotoUrl ? (
-                      <img src={p.fotoUrl} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                      <img src={p.fotoUrl} alt="" onClick={() => setProdutoAberto(p)} className="w-16 h-16 rounded-lg object-cover flex-shrink-0 cursor-pointer" />
                     ) : (
                       <div className="w-16 h-16 rounded-lg bg-gray-100 flex-shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900">{p.nome}</p>
+                      <p onClick={() => setProdutoAberto(p)} className="text-sm font-medium text-gray-900 cursor-pointer">{p.nome}</p>
                       {p.descricao && <p className="text-xs text-gray-400 line-clamp-2">{p.descricao}</p>}
                       <p className="text-sm font-semibold mt-1" style={{ color: cor }}>{fmt(p.precoVarejo)}</p>
                     </div>
@@ -381,6 +384,31 @@ export default function CardapioPublico({ tenantSlug }: Props) {
       {/* Sempre existe, mesmo com carrinho vazio — desabilitado nesse caso.
           Sem isso, a base da tela ficava vazia até o primeiro item ser
           escolhido, o que parecia tela quebrada. */}
+      {produtoAberto && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setProdutoAberto(null)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="relative">
+              {produtoAberto.fotoUrl
+                ? <img src={produtoAberto.fotoUrl} alt="" className="w-full max-h-[60vh] object-contain bg-gray-50 rounded-t-2xl" />
+                : <div className="h-12" />}
+              <button onClick={() => setProdutoAberto(null)}
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 shadow flex items-center justify-center text-gray-600">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 space-y-2">
+              <p className="text-base font-semibold text-gray-900">{produtoAberto.nome}</p>
+              {produtoAberto.descricao && <p className="text-sm text-gray-500 whitespace-pre-line">{produtoAberto.descricao}</p>}
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-lg font-semibold" style={{ color: cor }}>{fmt(produtoAberto.precoVarejo)}</p>
+                <Quantidade p={produtoAberto} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!showCarrinho && (
         <button
           onClick={() => totalItens > 0 && setShowCarrinho(true)}
