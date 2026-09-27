@@ -6,12 +6,12 @@
 // Toda compra da loja passa por aqui: o presunto e a caixinha (insumos, que
 // entram no estoque) e a fita crepe do dia a dia (despesa, que não entra).
 // Antes a despesa só podia ser lançada no Financeiro, e quem comprava tinha
-// que saber em qual tela cada coisa morava. A aba Despesas é a mesma tela
-// que existia no Financeiro, trazida para cá; o Financeiro ficou com DRE,
-// gastos fixos, contas a pagar/receber e caixa.
+// que saber em qual tela cada coisa morava. A aba Despesas
+// usa o mesmo formulário e a mesma tabela da de insumos (padronização): só
+// não entra no estoque e leva categoria. O Financeiro ficou com DRE, gastos
+// fixos, contas a pagar/receber e caixa.
 import { useState } from 'react'
 import CompraRapidaView from '@/components/modules/compras/CompraRapidaView'
-import FinanceiroView from '@/components/modules/financeiro/FinanceiroView'
 
 interface Props { tenantSlug: string }
 
@@ -41,8 +41,8 @@ export default function ComprasView({ tenantSlug }: Props) {
       </div>
 
       {aba === 'insumos'
-        ? <CompraRapidaView tenantSlug={tenantSlug} />
-        : <FinanceiroView tenantSlug={tenantSlug} somenteDespesas />}
+        ? <CompraRapidaView key="insumo" tenantSlug={tenantSlug} tipo="insumo" />
+        : <CompraRapidaView key="despesa" tenantSlug={tenantSlug} tipo="despesa" />}
     </div>
   )
 }

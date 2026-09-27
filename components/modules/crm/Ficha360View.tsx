@@ -14,7 +14,13 @@ import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import VendaDetalheDrawer from '@/components/modules/vendas/VendaDetalheDrawer'
 import { fmtMoeda as fmt, fmtDataHoraLocal as fmtDataHora, fmtDataLocal as fmtData } from '@/lib/format'
 
-interface Props { tenantSlug: string; clienteId: number }
+interface Props {
+  tenantSlug: string
+  clienteId:  number
+  // De onde a ficha foi aberta. 'cadastro' = Cadastros → Clientes: o voltar
+  // leva de volta pra lá, e não pro CRM.
+  origem?:    string
+}
 
 // A ficha vem inteira numa resposta só; paginar aqui é o mesmo padrão do
 // resto do sistema quando isso acontece (ver ClientesTab).
@@ -22,7 +28,10 @@ const POR_PAGINA = 20
 
 const Anchor = 'a' as const
 
-export default function Ficha360View({ tenantSlug, clienteId }: Props) {
+export default function Ficha360View({ tenantSlug, clienteId, origem }: Props) {
+  const voltar = origem === 'cadastro'
+    ? { href: `/${tenantSlug}/cadastros/clientes`, rotulo: 'Voltar pro Cadastro de clientes' }
+    : { href: `/${tenantSlug}/crm`, rotulo: 'Voltar pro CRM' }
   const { data, isLoading, isError } = useQuery({
     queryKey: ['crm-ficha360', tenantSlug, clienteId],
     queryFn:  async () => (await fetch(`/api/${tenantSlug}/crm/clientes/${clienteId}`)).json(),
@@ -134,8 +143,8 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
   if (isError || !ficha) {
     return (
       <div>
-        <Anchor href={`/${tenantSlug}/crm`} className="text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1 mb-4">
-          <ArrowLeft size={14} /> Voltar pro CRM
+        <Anchor href={voltar.href} className="text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1 mb-4">
+          <ArrowLeft size={14} /> {voltar.rotulo}
         </Anchor>
         <p className="text-sm text-gray-400">Cliente não encontrado.</p>
       </div>
@@ -172,8 +181,8 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
 
   return (
     <div>
-      <Anchor href={`/${tenantSlug}/crm`} className="text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1 mb-3">
-        <ArrowLeft size={14} /> Voltar pro CRM
+      <Anchor href={voltar.href} className="text-sm text-gray-500 hover:text-gray-700 inline-flex items-center gap-1 mb-3">
+        <ArrowLeft size={14} /> {voltar.rotulo}
       </Anchor>
 
       <PageHeader
@@ -246,7 +255,7 @@ export default function Ficha360View({ tenantSlug, clienteId }: Props) {
             <p className="text-sm font-semibold text-gray-700 mb-2 inline-flex items-center gap-1"><Users2 size={14} /> Indicou</p>
             <div className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-50">
               {indicacoes.map((i: any) => (
-                <a key={i.clienteId} href={`/${tenantSlug}/crm/clientes/${i.clienteId}`} className="flex justify-between px-4 py-2.5 hover:bg-gray-50">
+                <a key={i.clienteId} href={`/${tenantSlug}/crm/clientes/${i.clienteId}${origem ? `?origem=${origem}` : ''}`} className="flex justify-between px-4 py-2.5 hover:bg-gray-50">
                   <span className="text-sm text-gray-900">{i.nome}</span>
                   <span className="text-xs text-gray-400">desde {fmtData(i.desde)}</span>
                 </a>

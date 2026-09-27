@@ -13,7 +13,7 @@
 // tinha que saber de cabeça o que comprar. A sugestão vem do estoque mínimo
 // somado ao consumo previsto da produção agendada, e cada linha entra no
 // carrinho com um clique.
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Trash2, ShoppingBag, AlertTriangle, X, ChevronLeft, ChevronRight,
@@ -28,6 +28,7 @@ import { PageHeader } from '@/components/ui/PageHeader'
 import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { SidePanel } from '@/components/ui/SidePanel'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
+import { CATEGORIAS_DESPESA } from '@/lib/financeiro/categorias'
 import { useToast } from '@/components/ui/Toast'
 import {
   SeletorPeriodo, PERIODICIDADES, intervaloDe, deslocar,
@@ -35,7 +36,13 @@ import {
 } from '@/components/ui/SeletorPeriodo'
 import { fmtMoeda as fmt, fmtQtd } from '@/lib/format'
 
-interface Props { tenantSlug: string }
+interface Props {
+  tenantSlug: string
+  // Compras de insumos e Compras de despesas usam esta mesma tela (QA #123):
+  // a despesa não entra no estoque, é digitada em vez de buscada no cadastro
+  // de insumos e leva uma categoria.
+  tipo?: 'insumo' | 'despesa'
+}
 
 interface ItemCarrinho {
   insumoId:      number | null
@@ -55,7 +62,8 @@ const fmtData = (d: any) =>
 const semAcento = (v: any) =>
   String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
-export default function CompraRapidaView({ tenantSlug }: Props) {
+export default function CompraRapidaView({ tenantSlug, tipo = 'insumo' }: Props) {
+  const ehDespesa = tipo === 'despesa'
   const qc        = useQueryClient()
   const { toast } = useToast()
   const api       = `/api/${tenantSlug}/compras`
@@ -94,20 +102,33 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
   const [observacao, setObservacao]         = useState('')
   const [carrinho, setCarrinho]             = useState<ItemCarrinho[]>([])
   const [buscaInsumo, setBuscaInsumo]       = useState('')
+  const [descricao, setDescricao]           = useState('')
+  const [categoria, setCategoria]           = useState('')
+
+  // Despesa: o item é o que foi digitado em Descrição; quantidade e valor
+  // unitário seguem na mesma tabela do insumo.
+  useEffect(() => {
+    if (!ehDespesa) return
+    const nome = descricao.trim()
+    setCarrinho(prev => nome
+      ? [{ ...(prev[0] ?? { quantidade: 1, valorUnitario: 0, unidade: '' }), insumoId: null, nomeInsumo: nome }]
+      : [])
+  }, [descricao, ehDespesa])
 
   // ── Dados ────────────────────────────────────────────────────────────────
   const { data: sugRaw, isLoading: loadingSug } = useQuery({
     queryKey: ['compras-sugestoes', tenantSlug],
     queryFn:  async () => (await fetch(`${api}?tipo=sugestoes`)).json(),
     staleTime: 30000,
+    enabled:  !ehDespesa,
   })
   const sugestoes: any[] = Array.isArray(sugRaw?.data?.itens) ? sugRaw.data.itens : []
   const kpisSug          = sugRaw?.data?.kpis ?? {}
 
   const { data: histRaw, isLoading } = useQuery({
-    queryKey: ['compras', tenantSlug, periodo.inicio, periodo.fim],
+    queryKey: ['compras', tenantSlug, tipo, periodo.inicio, periodo.fim],
     queryFn:  async () => {
-      const p = new URLSearchParams({ dataInicio: periodo.inicio, dataFim: periodo.fim })
+      const p = new URLSearchParams({ dataInicio: periodo.inicio, dataFim: periodo.fim, tipo })
       return (await fetch(`${api}?${p}`)).json()
     },
   })
@@ -163,7 +184,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
-    for (const k of ['fornecedor', 'formaPagamento', 'condicao']) {
+    for (const k of ['fornecedor', 'formaPagamento', 'condicao', 'categoria']) {
       const set = new Set<string>()
       for (const i of todos) if (i[k]) set.add(String(i[k]))
       if (set.size > 0) mapa[k] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
@@ -181,20 +202,15 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
   // ── Carrinho ─────────────────────────────────────────────────────────────
   const totalCompra = carrinho.reduce((a, i) => a + Math.round(i.quantidade * i.valorUnitario), 0)
 
+  // Um insumo por compra (QA #126): escolher outro substitui o atual.
   function addInsumo(ins: any, qtd?: number, preco?: number) {
-    setCarrinho(prev => {
-      if (prev.some(i => i.insumoId === ins.insumoId)) {
-        toast('Esse insumo já está na compra.', 'error')
-        return prev
-      }
-      return [...prev, {
-        insumoId:      ins.insumoId,
-        nomeInsumo:    ins.nome,
-        unidade:       ins.unidade ?? '',
-        quantidade:    qtd ?? 1,
-        valorUnitario: preco ?? Number(ins.precoCusto ?? 0),
-      }]
-    })
+    setCarrinho([{
+      insumoId:      ins.insumoId,
+      nomeInsumo:    ins.nome,
+      unidade:       ins.unidade ?? '',
+      quantidade:    qtd ?? 1,
+      valorUnitario: preco ?? Number(ins.precoCusto ?? 0),
+    }])
     setBuscaInsumo('')
     setPainel(true)
   }
@@ -205,6 +221,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
   function limparFormulario() {
     setCarrinho([]); setFornecedorId(null); setNomeFornecedor(''); setBuscaForn('')
+    setDescricao(''); setCategoria('')
     setDataCompra(hojeISO()); setDocumento(''); setCondicao('a_vista')
     setFormaPagamento(''); setDataVencimento(''); setObservacao('')
   }
@@ -214,6 +231,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       const res = await fetch(api, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          tipo, categoria: ehDespesa ? categoria : undefined,
           fornecedorId, nomeFornecedor: nomeFornecedor.trim() || undefined,
           dataCompra, documento: documento.trim() || undefined,
           condicao, formaPagamento: formaPagamento || undefined,
@@ -237,14 +255,19 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       limparFormulario()
       setPainel(false)
       const gerou = d?.data?.contaPagarId ? 'conta a pagar' : 'despesa'
-      toast(`Compra registrada — estoque atualizado e ${gerou} lançada.`)
+      toast(ehDespesa
+        ? `Compra registrada — ${gerou} lançada.`
+        : `Compra registrada — estoque atualizado e ${gerou} lançada.`)
     },
     onError: (e: any) => toast(e.message || 'Erro ao registrar.', 'error'),
   })
 
   const cancelarMut = useMutation({
-    mutationFn: async (id: number) => {
-      const res = await fetch(`${api}/${id}`, { method: 'DELETE' })
+    mutationFn: async (linha: any) => {
+      // Despesa antiga (lançada antes da padronização) não é uma compra: o id
+      // é o da despesa.
+      const url = linha.legado ? `${api}/${linha.despesaId}?legado=1` : `${api}/${linha.compraId}`
+      const res = await fetch(url, { method: 'DELETE' })
       const d = await res.json()
       if (!res.ok) throw new Error(d?.message ?? 'Erro ao cancelar')
       return d
@@ -252,7 +275,9 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['compras', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['consultas', tenantSlug] })
-      toast('Compra cancelada — o lançamento financeiro foi desfeito. O estoque não foi alterado.')
+      toast(ehDespesa
+        ? 'Compra cancelada — o lançamento financeiro foi desfeito.'
+        : 'Compra cancelada — o lançamento financeiro foi desfeito. O estoque não foi alterado.')
     },
     onError: (e: any) => toast(e.message || 'Erro ao cancelar.', 'error'),
   })
@@ -261,49 +286,36 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
     carrinho.length > 0 &&
     carrinho.every(i => i.quantidade > 0) &&
     (condicao === 'a_vista' || !!dataVencimento) &&
+    (!ehDespesa || !!categoria) &&
     !salvarMut.isPending
 
   // ── Colunas do histórico ─────────────────────────────────────────────────
   const colunas: Coluna[] = [
-    { chave: 'data', titulo: 'Data', ordenavel: true, render: (i: any) => fmtData(i.data) },
+    // Nomes e ordem de colunas iguais em insumos e despesas (QA #123).
+    { chave: 'data', titulo: 'Data da compra', ordenavel: true, render: (i: any) => fmtData(i.data) },
     {
       chave: 'fornecedor', titulo: 'Fornecedor', filtravel: true, ordenavel: true,
       classeCelula: 'px-4 py-3 text-sm font-medium text-gray-900',
-      render: (i: any) => i.fornecedor,
+      render: (i: any) => i.fornecedor || <span className="text-gray-300">—</span>,
     },
     { chave: 'documento', titulo: 'Documento', esconderAte: 'md', render: (i: any) => i.documento || <span className="text-gray-300">—</span> },
-    {
-      // O NOME DO INSUMO À VISTA, não a contagem.
-      //
-      // "1 item" não responde nada: para saber o que foi comprado era preciso
-      // abrir a compra ou parar o mouse em cima. Quem olha o histórico está
-      // procurando o que entrou, e a contagem só ajuda quando são muitos.
-      // Não ordenavel: é texto livre concatenado (lista de nomes), não um
-      // valor único comparável linha a linha.
-      chave: 'itensTexto', titulo: 'Itens', filtravel: true, esconderAte: 'lg',
-      render: (i: any) => {
-        const detalhe: any[] = Array.isArray(i.itensDetalhe) ? i.itensDetalhe : []
-        const nomes = detalhe.length > 0
-          ? detalhe.map(d => `${d.nome} (${fmtQtd(d.quantidade)}${d.unidade ? ` ${d.unidade}` : ''})`).join(', ')
-          : String(i.itensTexto ?? '').trim()
-        if (!nomes) return <span className="text-gray-300">—</span>
-        return (
-          <span className="text-sm text-gray-600" title={nomes}>
-            {nomes}
-            {i.qtdItens > 1 && (
-              <span className="text-gray-400 ml-1.5">({i.qtdItens} itens)</span>
-            )}
-          </span>
-        )
-      },
-    },
+    // Uma linha por item (QA #126): o insumo, quanto e a que preço, em
+    // colunas próprias — são os dois campos preenchidos na compra.
+    { chave: 'item', titulo: 'Item', filtravel: true, ordenavel: true,
+      render: (i: any) => i.item || <span className="text-gray-300">—</span> },
+    ...(ehDespesa ? [{ chave: 'categoria', titulo: 'Categoria', filtravel: true, ordenavel: true,
+      render: (i: any) => i.categoria || <span className="text-gray-300">—</span> }] : []),
+    { chave: 'quantidade', titulo: 'Quantidade', ordenavel: true, alinhamento: 'right',
+      render: (i: any) => `${fmtQtd(i.quantidade)}${i.unidade ? ` ${i.unidade}` : ''}` },
+    { chave: 'valorUnitario', titulo: 'Valor unitário', ordenavel: true, alinhamento: 'right',
+      render: (i: any) => fmt(i.valorUnitario) },
     {
       chave: 'condicao', titulo: 'Condição', filtravel: true, ordenavel: true,
-      render: (i: any) => i.condicao === 'a_prazo'
-        ? <Badge variant="secondary">a prazo · vence {fmtData(i.vencimento)}</Badge>
-        : <Badge variant="secondary">à vista</Badge>,
+      render: (i: any) => <Badge variant="secondary">{i.condicao === 'a_prazo' ? 'a prazo' : 'à vista'}</Badge>,
     },
-    { chave: 'formaPagamento', titulo: 'Pagamento', filtravel: true, ordenavel: true, esconderAte: 'xl', render: (i: any) => i.formaPagamento || <span className="text-gray-300">—</span> },
+    { chave: 'dataPagamento', titulo: 'Data do pagamento', ordenavel: true,
+      render: (i: any) => i.dataPagamento ? fmtData(i.dataPagamento) : <span className="text-gray-300">—</span> },
+    { chave: 'formaPagamento', titulo: 'Forma de pagamento', filtravel: true, ordenavel: true, esconderAte: 'xl', render: (i: any) => i.formaPagamento || <span className="text-gray-300">—</span> },
     { chave: 'valorTotal', titulo: 'Total', ordenavel: true, alinhamento: 'right', render: (i: any) => <span className="font-semibold text-gray-900">{fmt(i.valorTotal)}</span> },
   ]
 
@@ -319,6 +331,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       />
 
       {/* ── 1. PRECISA COMPRAR ───────────────────────────────────────────── */}
+      {!ehDespesa && (
       <div className="bg-white rounded-xl border border-gray-100 mb-4 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide inline-flex items-center gap-1.5">
@@ -388,6 +401,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
           </div>
         )}
       </div>
+      )}
 
       {/* ── Período do histórico ─────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-100 px-4 py-3 mb-4 flex flex-wrap items-center gap-3">
@@ -449,7 +463,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       <DataTable
         colunas={colunas}
         itens={itensPagina}
-        chave={(i: any) => i.compraId}
+        chave={(i: any) => i.itemId}
         carregando={isLoading}
         vazio={temFiltro ? 'Nenhuma compra com esse filtro.' : 'Nenhuma compra neste período.'}
         filtros={filtros}
@@ -474,7 +488,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-500">
             Total do período
-            <span className="text-gray-300 ml-1.5">({todos.length} compra{todos.length !== 1 ? 's' : ''})</span>
+            <span className="text-gray-300 ml-1.5">({kpis.quantidade ?? 0} compra{(kpis.quantidade ?? 0) !== 1 ? 's' : ''})</span>
           </span>
           <span className="text-base font-semibold text-gray-900">{fmt(somaTotal)}</span>
         </div>
@@ -558,9 +572,26 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
               </div>
             </div>
 
-            {/* Itens */}
+            {/* Item: despesa é digitada e leva categoria; insumo vem do cadastro */}
+            {ehDespesa ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Descrição *</Label>
+                <Input value={descricao} onChange={e => setDescricao(e.target.value)}
+                  placeholder="Ex.: fita crepe" className="mt-1 h-9 text-sm" />
+              </div>
+              <div>
+                <Label className="text-xs">Categoria *</Label>
+                <select value={categoria} onChange={e => setCategoria(e.target.value)}
+                  className="mt-1 w-full h-9 rounded-lg border border-gray-200 px-3 text-sm focus:outline-none">
+                  <option value="">Selecionar...</option>
+                  {CATEGORIAS_DESPESA.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            ) : (
             <div>
-              <Label className="text-xs">Adicionar insumo</Label>
+              <Label className="text-xs">Insumo</Label>
               <div className="relative mt-1">
                 <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)}
                   placeholder="Buscar insumo..." className="h-9 text-sm" />
@@ -577,11 +608,12 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
                 )}
               </div>
             </div>
+            )}
 
             {carrinho.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center">
                 <ShoppingBag size={22} className="text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">Nenhum item na compra</p>
+                <p className="text-sm text-gray-400">{ehDespesa ? 'Informe a descrição' : 'Nenhum insumo escolhido'}</p>
               </div>
             ) : (
               <div className="rounded-xl border border-gray-100 overflow-hidden">
@@ -677,14 +709,17 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
               </div>
               {condicao === 'a_prazo' && (
                 <div>
-                  <Label className="text-xs">Vencimento *</Label>
+                  <Label className="text-xs inline-flex items-center gap-1">
+                    Data do pagamento *
+                    <InfoTip titulo="Data do pagamento">Na compra a prazo, é quando a conta vence; a baixa é feita em Financeiro → A pagar.</InfoTip>
+                  </Label>
                   <Input type="date" value={dataVencimento} onChange={e => setDataVencimento(e.target.value)} className="mt-1 h-9 text-sm" />
                 </div>
               )}
             </div>
 
             {condicao === 'a_prazo' && !dataVencimento && (
-              <p className="text-[11px] font-medium text-red-600">Informe o vencimento para registrar a compra a prazo.</p>
+              <p className="text-[11px] font-medium text-red-600">Informe a data do pagamento para registrar a compra a prazo.</p>
             )}
 
             <div>
@@ -698,10 +733,12 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       {confirmCancelar && (
         <ConfirmModal
           title="Cancelar compra"
-          message={`Cancelar a compra de ${confirmCancelar.fornecedor} no valor de ${fmt(confirmCancelar.valorTotal)}? O lançamento no financeiro será desfeito. O estoque NÃO será alterado — se precisar corrigir o saldo, use Estoque → Ajustar.`}
+          message={ehDespesa
+            ? `Cancelar a compra "${confirmCancelar.item}" no valor de ${fmt(confirmCancelar.compraTotal ?? confirmCancelar.valorTotal)}? O lançamento no financeiro será desfeito.`
+            : `Cancelar a compra de ${confirmCancelar.fornecedor} no valor de ${fmt(confirmCancelar.compraTotal ?? confirmCancelar.valorTotal)}? O lançamento no financeiro será desfeito. O estoque NÃO será alterado — se precisar corrigir o saldo, use Estoque → Ajustar.`}
           confirmLabel="Cancelar compra"
           danger
-          onConfirm={() => { cancelarMut.mutate(confirmCancelar.compraId); setConfirmCancelar(null) }}
+          onConfirm={() => { cancelarMut.mutate(confirmCancelar); setConfirmCancelar(null) }}
           onCancel={() => setConfirmCancelar(null)}
         />
       )}

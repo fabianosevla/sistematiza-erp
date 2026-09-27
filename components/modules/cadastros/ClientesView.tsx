@@ -306,7 +306,7 @@ export default function ClientesView({ tenantSlug }: Props) {
         classeLinha={(c: any) => c.activeFlag === false ? 'opacity-60' : ''}
         acoes={(c: any) => (
           <>
-            <BotaoIcone titulo="Ver Ficha 360°" variante="info" onClick={() => { window.location.href = `/${tenantSlug}/crm/clientes/${c.clienteId}` }}>
+            <BotaoIcone titulo="Ver Ficha 360°" variante="info" onClick={() => { window.location.href = `/${tenantSlug}/crm/clientes/${c.clienteId}?origem=cadastro` }}>
               <Contact size={14} />
             </BotaoIcone>
             <BotaoIcone titulo="Histórico" variante="destaque" onClick={() => setShowHistorico(c)}>

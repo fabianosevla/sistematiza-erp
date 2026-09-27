@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { CATEGORIAS_DESPESA } from '@/lib/financeiro/categorias'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Download, Printer, Plus, X, Trash2, Pencil } from 'lucide-react'
 import {
@@ -54,10 +55,6 @@ const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov'
 const CORES  = ['#2ecc71','#3498db','#e74c3c','#f39c12','#9b59b6','#1abc9c']
 const fmtPct = (n: number) => `${n.toFixed(1)}%`
 
-const CATEGORIAS_DESPESA = [
-  'Aluguel', 'Água e Luz', 'Internet', 'Telefone', 'Funcionários',
-  'Matéria-prima', 'Embalagens', 'Marketing', 'Transporte', 'Manutenção', 'Outros',
-]
 
 // 'conciliacao' saiu: era o importador de extrato bancário OFX, ferramenta de
 // escritório contábil que ninguém usava aqui.
