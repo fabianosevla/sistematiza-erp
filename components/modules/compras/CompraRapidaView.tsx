@@ -181,20 +181,15 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
   // ── Carrinho ─────────────────────────────────────────────────────────────
   const totalCompra = carrinho.reduce((a, i) => a + Math.round(i.quantidade * i.valorUnitario), 0)
 
+  // Um insumo por compra (QA #126): escolher outro substitui o atual.
   function addInsumo(ins: any, qtd?: number, preco?: number) {
-    setCarrinho(prev => {
-      if (prev.some(i => i.insumoId === ins.insumoId)) {
-        toast('Esse insumo já está na compra.', 'error')
-        return prev
-      }
-      return [...prev, {
-        insumoId:      ins.insumoId,
-        nomeInsumo:    ins.nome,
-        unidade:       ins.unidade ?? '',
-        quantidade:    qtd ?? 1,
-        valorUnitario: preco ?? Number(ins.precoCusto ?? 0),
-      }]
-    })
+    setCarrinho([{
+      insumoId:      ins.insumoId,
+      nomeInsumo:    ins.nome,
+      unidade:       ins.unidade ?? '',
+      quantidade:    qtd ?? 1,
+      valorUnitario: preco ?? Number(ins.precoCusto ?? 0),
+    }])
     setBuscaInsumo('')
     setPainel(true)
   }
@@ -272,31 +267,14 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       render: (i: any) => i.fornecedor,
     },
     { chave: 'documento', titulo: 'Documento', esconderAte: 'md', render: (i: any) => i.documento || <span className="text-gray-300">—</span> },
-    {
-      // O NOME DO INSUMO À VISTA, não a contagem.
-      //
-      // "1 item" não responde nada: para saber o que foi comprado era preciso
-      // abrir a compra ou parar o mouse em cima. Quem olha o histórico está
-      // procurando o que entrou, e a contagem só ajuda quando são muitos.
-      // Não ordenavel: é texto livre concatenado (lista de nomes), não um
-      // valor único comparável linha a linha.
-      chave: 'itensTexto', titulo: 'Itens', filtravel: true, esconderAte: 'lg',
-      render: (i: any) => {
-        const detalhe: any[] = Array.isArray(i.itensDetalhe) ? i.itensDetalhe : []
-        const nomes = detalhe.length > 0
-          ? detalhe.map(d => `${d.nome} (${fmtQtd(d.quantidade)}${d.unidade ? ` ${d.unidade}` : ''})`).join(', ')
-          : String(i.itensTexto ?? '').trim()
-        if (!nomes) return <span className="text-gray-300">—</span>
-        return (
-          <span className="text-sm text-gray-600" title={nomes}>
-            {nomes}
-            {i.qtdItens > 1 && (
-              <span className="text-gray-400 ml-1.5">({i.qtdItens} itens)</span>
-            )}
-          </span>
-        )
-      },
-    },
+    // Uma linha por item (QA #126): o insumo, quanto e a que preço, em
+    // colunas próprias — são os dois campos preenchidos na compra.
+    { chave: 'item', titulo: 'Item', filtravel: true, ordenavel: true,
+      render: (i: any) => i.item || <span className="text-gray-300">—</span> },
+    { chave: 'quantidade', titulo: 'Quantidade', ordenavel: true, alinhamento: 'right',
+      render: (i: any) => `${fmtQtd(i.quantidade)}${i.unidade ? ` ${i.unidade}` : ''}` },
+    { chave: 'valorUnitario', titulo: 'Valor unitário', ordenavel: true, alinhamento: 'right',
+      render: (i: any) => fmt(i.valorUnitario) },
     {
       chave: 'condicao', titulo: 'Condição', filtravel: true, ordenavel: true,
       render: (i: any) => i.condicao === 'a_prazo'
@@ -449,7 +427,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       <DataTable
         colunas={colunas}
         itens={itensPagina}
-        chave={(i: any) => i.compraId}
+        chave={(i: any) => i.itemId}
         carregando={isLoading}
         vazio={temFiltro ? 'Nenhuma compra com esse filtro.' : 'Nenhuma compra neste período.'}
         filtros={filtros}
@@ -474,7 +452,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
         <div className="flex items-center justify-between">
           <span className="text-sm text-gray-500">
             Total do período
-            <span className="text-gray-300 ml-1.5">({todos.length} compra{todos.length !== 1 ? 's' : ''})</span>
+            <span className="text-gray-300 ml-1.5">({kpis.quantidade ?? 0} compra{(kpis.quantidade ?? 0) !== 1 ? 's' : ''})</span>
           </span>
           <span className="text-base font-semibold text-gray-900">{fmt(somaTotal)}</span>
         </div>
@@ -560,7 +538,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
 
             {/* Itens */}
             <div>
-              <Label className="text-xs">Adicionar insumo</Label>
+              <Label className="text-xs">Insumo</Label>
               <div className="relative mt-1">
                 <Input value={buscaInsumo} onChange={e => setBuscaInsumo(e.target.value)}
                   placeholder="Buscar insumo..." className="h-9 text-sm" />
@@ -581,7 +559,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
             {carrinho.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-200 py-8 text-center">
                 <ShoppingBag size={22} className="text-gray-200 mx-auto mb-2" />
-                <p className="text-sm text-gray-400">Nenhum item na compra</p>
+                <p className="text-sm text-gray-400">Nenhum insumo escolhido</p>
               </div>
             ) : (
               <div className="rounded-xl border border-gray-100 overflow-hidden">
@@ -698,7 +676,7 @@ export default function CompraRapidaView({ tenantSlug }: Props) {
       {confirmCancelar && (
         <ConfirmModal
           title="Cancelar compra"
-          message={`Cancelar a compra de ${confirmCancelar.fornecedor} no valor de ${fmt(confirmCancelar.valorTotal)}? O lançamento no financeiro será desfeito. O estoque NÃO será alterado — se precisar corrigir o saldo, use Estoque → Ajustar.`}
+          message={`Cancelar a compra de ${confirmCancelar.fornecedor} no valor de ${fmt(confirmCancelar.compraTotal ?? confirmCancelar.valorTotal)}? O lançamento no financeiro será desfeito. O estoque NÃO será alterado — se precisar corrigir o saldo, use Estoque → Ajustar.`}
           confirmLabel="Cancelar compra"
           danger
           onConfirm={() => { cancelarMut.mutate(confirmCancelar.compraId); setConfirmCancelar(null) }}

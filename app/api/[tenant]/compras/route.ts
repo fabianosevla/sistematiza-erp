@@ -35,7 +35,8 @@ const compraSchema = z.object({
   formaPagamento: z.string().max(60).optional(),
   dataVencimento: z.string().nullable().optional(),
   observacao:     z.string().max(500).optional(),
-  itens:          z.array(itemSchema).min(1),
+  // Um insumo por compra (QA #126): o histórico mostra uma linha por compra.
+  itens:          z.array(itemSchema).min(1).max(1, 'Lance um insumo por compra.'),
 })
 
 export async function GET(req: NextRequest, { params }: Params) {

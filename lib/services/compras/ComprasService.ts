@@ -119,63 +119,58 @@ export class ComprasService {
     const ini = dataInicio ?? '1970-01-01'
     const fim = dataFim    ?? '2999-12-31'
 
+    // UMA LINHA POR ITEM (QA #126, reteste). Quem olha o histórico procura um
+    // insumo: quanto comprou e a que preço, cada vez. Compra antiga com vários
+    // itens aparece desmembrada; compra nova só tem um item.
     const res = await this.db.execute(sql`
       SELECT c.compra_id, c.data_compra, c.documento, c.condicao,
              c.forma_pagamento, c.data_vencimento, c.valor_total, c.status,
              c.observacao, c.despesa_id, c.conta_pagar_id,
              COALESCE(NULLIF(TRIM(c.nome_fornecedor), ''), f.nome_fantasia, f.nome_completo, 'Não informado') AS fornecedor,
-             COALESCE((
-               SELECT STRING_AGG(ci.nome_insumo, ', ' ORDER BY ci.item_id)
-               FROM t_compra_item ci
-               WHERE ci.compra_id = c.compra_id AND ci.active_flg = true
-             ), '') AS itens_texto,
-             COALESCE((
-               SELECT JSON_AGG(JSON_BUILD_OBJECT(
-                        'nome', ci.nome_insumo, 'quantidade', ci.quantidade, 'unidade', ci.unidade
-                      ) ORDER BY ci.item_id)
-               FROM t_compra_item ci
-               WHERE ci.compra_id = c.compra_id AND ci.active_flg = true
-             ), '[]'::json) AS itens_detalhe,
-             COALESCE((
-               SELECT COUNT(*) FROM t_compra_item ci
-               WHERE ci.compra_id = c.compra_id AND ci.active_flg = true
-             ), 0)::int AS qtd_itens
+             ci.item_id, ci.nome_insumo, ci.unidade, ci.quantidade, ci.valor_unitario, ci.subtotal
       FROM t_compra c
+      JOIN t_compra_item ci ON ci.compra_id = c.compra_id AND ci.active_flg = true
       LEFT JOIN t_fornecedor f ON f.fornecedor_id = c.fornecedor_id
       WHERE c.active_flg = true
         AND c.data_compra >= ${ini}::date
         AND c.data_compra <= ${fim}::date
-      ORDER BY c.data_compra DESC, c.compra_id DESC
+      ORDER BY c.data_compra DESC, c.compra_id DESC, ci.item_id
     `)
 
     const itens = (res.rows as any[]).map(r => ({
+      itemId:         Number(r.item_id),
       compraId:       Number(r.compra_id),
       data:           r.data_compra,
       fornecedor:     r.fornecedor,
       documento:      r.documento ?? '',
+      item:           r.nome_insumo ?? '',
+      unidade:        r.unidade ?? '',
+      quantidade:     Number(r.quantidade ?? 0),
+      valorUnitario:  Number(r.valor_unitario ?? 0),
+      valorTotal:     Number(r.subtotal ?? 0),
+      compraTotal:    Number(r.valor_total ?? 0),
       condicao:       r.condicao,
       formaPagamento: r.forma_pagamento ?? '',
       vencimento:     r.data_vencimento ?? null,
-      valorTotal:     Number(r.valor_total ?? 0),
       status:         r.status,
-      qtdItens:       Number(r.qtd_itens ?? 0),
-      itensTexto:     r.itens_texto ?? '',
-      itensDetalhe:   (Array.isArray(r.itens_detalhe) ? r.itens_detalhe : []).map((d: any) => ({
-        nome:       String(d.nome ?? ''),
-        quantidade: Number(d.quantidade ?? 0),
-        unidade:    d.unidade ?? '',
-      })),
       observacao:     r.observacao ?? '',
     }))
 
+    // KPIs contam COMPRAS, não linhas: compra antiga com 3 itens é 1 compra.
+    const compras = new Map<number, { total: number; aPrazo: boolean }>()
+    for (const i of itens) {
+      const c = compras.get(i.compraId) ?? { total: 0, aPrazo: i.condicao === 'a_prazo' }
+      c.total += i.valorTotal
+      compras.set(i.compraId, c)
+    }
     const total = itens.reduce((a, i) => a + i.valorTotal, 0)
     return {
       itens,
       kpis: {
-        quantidade:  itens.length,
+        quantidade:  compras.size,
         valorTotal:  total,
-        aPrazo:      itens.filter(i => i.condicao === 'a_prazo').length,
-        ticketMedio: itens.length > 0 ? Math.round(total / itens.length) : 0,
+        aPrazo:      Array.from(compras.values()).filter(c => c.aPrazo).length,
+        ticketMedio: compras.size > 0 ? Math.round(total / compras.size) : 0,
       },
     }
   }
