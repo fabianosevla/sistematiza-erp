@@ -287,6 +287,14 @@ export default function PedidosView({ tenantSlug }: Props) {
     enabled:  buscaProduto.length > 0,
   })
 
+  // A grade de Produção lê os pedidos (coluna Pedido, pela previsão de
+  // produção). Criar, editar ou mudar status de pedido tem que marcar a grade
+  // como velha, senão ela abre com o cache anterior (QA #129).
+  function invalidarProducao() {
+    qc.invalidateQueries({ queryKey: ['producao-grade', tenantSlug] })
+    qc.invalidateQueries({ queryKey: ['producao-previsao', tenantSlug] })
+  }
+
   const criarMut = useMutation({
     mutationFn: async () => {
       const res = await fetch(apiBase, {
@@ -311,6 +319,7 @@ export default function PedidosView({ tenantSlug }: Props) {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pedidos', tenantSlug] })
+      invalidarProducao()
       setShowNovo(false)
       resetForm()
       toast('Pedido criado!')
@@ -344,6 +353,7 @@ export default function PedidosView({ tenantSlug }: Props) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pedidos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['pedido', tenantSlug] })
+      invalidarProducao()
       setShowNovo(false)
       resetForm()
       toast('Pedido atualizado!')
@@ -372,6 +382,7 @@ export default function PedidosView({ tenantSlug }: Props) {
       if (_?._aguardando) return
       setConfirmarEstoque(null)
       qc.invalidateQueries({ queryKey: ['pedidos', tenantSlug] })
+      invalidarProducao()
       qc.invalidateQueries({ queryKey: ['pedido', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['produtos', tenantSlug] })
       qc.invalidateQueries({ queryKey: ['dashboard', tenantSlug] })
