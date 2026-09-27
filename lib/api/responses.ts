@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
 
+// Dado de ERP muda a toda hora e é por usuário: nenhuma resposta da API
+// pode ser reaproveitada de cache (navegador, CDN da Vercel). Sem isso, sair
+// de Pedidos e abrir Produção podia mostrar a grade antiga até um F5 (QA #129).
+const SEM_CACHE = { 'Cache-Control': 'no-store, max-age=0' }
+
 export const ok = (data: unknown) =>
-  NextResponse.json({ status: 'success', data }, { status: 200 })
+  NextResponse.json({ status: 'success', data }, { status: 200, headers: SEM_CACHE })
 export const created = (data: unknown) =>
-  NextResponse.json({ status: 'success', data }, { status: 201 })
+  NextResponse.json({ status: 'success', data }, { status: 201, headers: SEM_CACHE })
 export const notFound = (message = 'Não encontrado') =>
   NextResponse.json({ status: 'error', message }, { status: 404 })
 export const unauthorized = () =>
