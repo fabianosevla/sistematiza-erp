@@ -20,6 +20,10 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const { db, release } = await getDbForTenant(tenant.schemaName)
     try {
       const userId = await usuarioAtualIdDb(db)
+      // ?legado=1: despesa lançada antes da padronização (id é o despesa_id).
+      if (new URL(req.url).searchParams.get('legado') === '1') {
+        return ok(await new ComprasService(db).excluirDespesaAntiga(Number(params.id), userId))
+      }
       return ok(await new ComprasService(db).cancelar(Number(params.id), userId))
     } finally { release() }
   } catch (err) { return serverError(err) }

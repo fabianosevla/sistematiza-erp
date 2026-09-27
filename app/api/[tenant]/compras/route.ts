@@ -2,7 +2,7 @@
 // ESTE ARQUIVO VAI EM: app/api/[tenant]/compras/route.ts
 //
 //   GET  ?tipo=sugestoes                              → o que precisa comprar
-//   GET  ?dataInicio=...&dataFim=...                  → historico de compras
+//   GET  ?dataInicio=...&dataFim=...[&tipo=despesa]   → historico de compras
 //   POST                                              → registra a compra
 //
 // As sub-rotas antigas (cotacoes, listas, mrp, pedidos, requisicoes,
@@ -27,6 +27,8 @@ const itemSchema = z.object({
 })
 
 const compraSchema = z.object({
+  tipo:           z.enum(['insumo', 'despesa']).default('insumo'),
+  categoria:      z.string().max(60).optional(),
   fornecedorId:   z.number().int().nullable().optional(),
   nomeFornecedor: z.string().max(200).optional(),
   dataCompra:     z.string(),
@@ -56,6 +58,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       return ok(await service.list({
         dataInicio: searchParams.get('dataInicio') ?? undefined,
         dataFim:    searchParams.get('dataFim')    ?? undefined,
+        tipo:       searchParams.get('tipo') === 'despesa' ? 'despesa' : 'insumo',
       }))
     } finally { release() }
   } catch (err) { return serverError(err) }

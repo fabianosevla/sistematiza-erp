@@ -115,35 +115,45 @@ export class ComprasService {
   }
 
   // ── HISTÓRICO ─────────────────────────────────────────────────────────────
-  async list({ dataInicio, dataFim }: { dataInicio?: string; dataFim?: string } = {}) {
+  async list({ dataInicio, dataFim, tipo = 'insumo' }: { dataInicio?: string; dataFim?: string; tipo?: 'insumo' | 'despesa' } = {}) {
     const ini = dataInicio ?? '1970-01-01'
     const fim = dataFim    ?? '2999-12-31'
 
     // UMA LINHA POR ITEM (QA #126, reteste). Quem olha o histórico procura um
     // insumo: quanto comprou e a que preço, cada vez. Compra antiga com vários
     // itens aparece desmembrada; compra nova só tem um item.
+    //
+    // Data do pagamento: à vista, é a da compra; a prazo, a baixa da conta a
+    // pagar quando já foi paga, senão o vencimento.
     const res = await this.db.execute(sql`
-      SELECT c.compra_id, c.data_compra, c.documento, c.condicao,
+      SELECT c.compra_id, c.data_compra, c.documento, c.condicao, c.categoria,
              c.forma_pagamento, c.data_vencimento, c.valor_total, c.status,
              c.observacao, c.despesa_id, c.conta_pagar_id,
              COALESCE(NULLIF(TRIM(c.nome_fornecedor), ''), f.nome_fantasia, f.nome_completo, 'Não informado') AS fornecedor,
+             CASE WHEN c.condicao = 'a_prazo'
+                  THEN COALESCE(cp.data_pagamento, c.data_vencimento)
+                  ELSE c.data_compra END AS data_pagamento,
              ci.item_id, ci.nome_insumo, ci.unidade, ci.quantidade, ci.valor_unitario, ci.subtotal
       FROM t_compra c
       JOIN t_compra_item ci ON ci.compra_id = c.compra_id AND ci.active_flg = true
       LEFT JOIN t_fornecedor f ON f.fornecedor_id = c.fornecedor_id
+      LEFT JOIN t_conta_pagar cp ON cp.conta_pagar_id = c.conta_pagar_id
       WHERE c.active_flg = true
+        AND COALESCE(c.tipo, 'insumo') = ${tipo}
         AND c.data_compra >= ${ini}::date
         AND c.data_compra <= ${fim}::date
       ORDER BY c.data_compra DESC, c.compra_id DESC, ci.item_id
     `)
 
-    const itens = (res.rows as any[]).map(r => ({
+    const itens: any[] = (res.rows as any[]).map(r => ({
       itemId:         Number(r.item_id),
       compraId:       Number(r.compra_id),
+      legado:         false,
       data:           r.data_compra,
       fornecedor:     r.fornecedor,
       documento:      r.documento ?? '',
       item:           r.nome_insumo ?? '',
+      categoria:      r.categoria ?? '',
       unidade:        r.unidade ?? '',
       quantidade:     Number(r.quantidade ?? 0),
       valorUnitario:  Number(r.valor_unitario ?? 0),
@@ -151,17 +161,61 @@ export class ComprasService {
       compraTotal:    Number(r.valor_total ?? 0),
       condicao:       r.condicao,
       formaPagamento: r.forma_pagamento ?? '',
-      vencimento:     r.data_vencimento ?? null,
+      dataPagamento:  r.data_pagamento ?? null,
       status:         r.status,
       observacao:     r.observacao ?? '',
     }))
 
+    // Despesas lançadas antes da padronização (tela de Despesas do Financeiro,
+    // recorrentes, contas a pagar lançadas à mão) não são t_compra. Entram
+    // aqui para não sumirem de vista — menos as que nasceram de uma compra,
+    // que já estão na lista acima ou na de insumos.
+    if (tipo === 'despesa') {
+      const leg = await this.db.execute(sql`
+        SELECT d.despesa_id, d.nome, d.categoria, d.valor, d.data_despesa,
+               d.data_pagamento, d.conta_pagar_id, d.observacao
+          FROM t_despesa d
+         WHERE d.active_flg = true
+           AND d.data_despesa::date >= ${ini}::date
+           AND d.data_despesa::date <= ${fim}::date
+           AND NOT EXISTS (
+             SELECT 1 FROM t_compra c
+              WHERE c.despesa_id = d.despesa_id
+                 OR (d.conta_pagar_id IS NOT NULL AND c.conta_pagar_id = d.conta_pagar_id)
+           )
+      `)
+      for (const r of leg.rows as any[]) {
+        const valor = Number(r.valor ?? 0)
+        itens.push({
+          itemId:         -Number(r.despesa_id),
+          compraId:       null,
+          despesaId:      Number(r.despesa_id),
+          legado:         true,
+          data:           r.data_despesa,
+          fornecedor:     '',
+          documento:      '',
+          item:           r.nome ?? '',
+          categoria:      r.categoria ?? '',
+          unidade:        '',
+          quantidade:     1,
+          valorUnitario:  valor,
+          valorTotal:     valor,
+          compraTotal:    valor,
+          condicao:       r.conta_pagar_id ? 'a_prazo' : 'a_vista',
+          formaPagamento: '',
+          dataPagamento:  r.data_pagamento ?? (r.conta_pagar_id ? null : r.data_despesa),
+          status:         'registrada',
+          observacao:     r.observacao ?? '',
+        })
+      }
+      itens.sort((x, y) => new Date(y.data).getTime() - new Date(x.data).getTime())
+    }
+
     // KPIs contam COMPRAS, não linhas: compra antiga com 3 itens é 1 compra.
-    const compras = new Map<number, { total: number; aPrazo: boolean }>()
+    const compras = new Map<string, { aPrazo: boolean }>()
     for (const i of itens) {
-      const c = compras.get(i.compraId) ?? { total: 0, aPrazo: i.condicao === 'a_prazo' }
-      c.total += i.valorTotal
-      compras.set(i.compraId, c)
+      const k = i.legado ? `d${i.despesaId}` : `c${i.compraId}`
+      if (!compras.has(k)) compras.set(k, { aPrazo: i.condicao === 'a_prazo' })
     }
     const total = itens.reduce((a, i) => a + i.valorTotal, 0)
     return {
@@ -175,8 +229,23 @@ export class ComprasService {
     }
   }
 
+  // Despesa lançada antes da padronização: sai do DRE. Não é t_compra, então
+  // não passa pelo cancelar() abaixo.
+  async excluirDespesaAntiga(despesaId: number, userId: number) {
+    await this.db.execute(sql`
+      UPDATE t_despesa SET active_flg = false, updated_dt = NOW(), updated_by = ${userId}
+       WHERE despesa_id = ${despesaId}
+         AND NOT EXISTS (SELECT 1 FROM t_compra c WHERE c.despesa_id = ${despesaId})
+    `)
+    return { despesaId }
+  }
+
   // ── REGISTRAR COMPRA ──────────────────────────────────────────────────────
   async criar(payload: {
+    // Compra de despesa (QA #123): mesmo formulário, não entra no estoque e
+    // leva a categoria da despesa em vez de 'Insumos'.
+    tipo?: 'insumo' | 'despesa'
+    categoria?: string
     fornecedorId?: number | null
     nomeFornecedor?: string
     dataCompra: string
@@ -202,16 +271,20 @@ export class ComprasService {
 
     const valorTotal = itens.reduce((a, i) => a + Math.round(i.quantidade * i.valorUnitario), 0)
     const uid = payload.userId
+    const ehDespesa  = payload.tipo === 'despesa'
+    if (ehDespesa && !payload.categoria?.trim()) throw new Error('Informe a categoria da despesa.')
+    const categoriaFin = ehDespesa ? payload.categoria!.trim() : 'Insumos'
 
     await this.db.execute(sql`BEGIN`)
     try {
       const cab = await this.db.execute(sql`
         INSERT INTO t_compra
-          (fornecedor_id, nome_fornecedor, data_compra, documento, condicao,
+          (tipo, categoria, fornecedor_id, nome_fornecedor, data_compra, documento, condicao,
            forma_pagamento, data_vencimento, valor_total, status, observacao,
            created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
         VALUES
-          (${payload.fornecedorId ?? null}, ${payload.nomeFornecedor ?? null},
+          (${ehDespesa ? 'despesa' : 'insumo'}, ${ehDespesa ? categoriaFin : null},
+           ${payload.fornecedorId ?? null}, ${payload.nomeFornecedor ?? null},
            ${payload.dataCompra}::date, ${payload.documento ?? null}, ${payload.condicao},
            ${payload.formaPagamento ?? null},
            ${payload.condicao === 'a_prazo' ? payload.dataVencimento : null}::date,
@@ -229,12 +302,12 @@ export class ComprasService {
             (compra_id, insumo_id, nome_insumo, unidade, quantidade, valor_unitario, subtotal,
              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
           VALUES
-            (${compraId}, ${it.insumoId ?? null}, ${it.nomeInsumo.trim()}, ${it.unidade ?? null},
+            (${compraId}, ${ehDespesa ? null : (it.insumoId ?? null)}, ${it.nomeInsumo.trim()}, ${it.unidade ?? null},
              ${it.quantidade}, ${it.valorUnitario}, ${subtotal},
              ${uid}, ${uid}, NOW(), NOW(), true, 0)
         `)
 
-        if (it.insumoId) {
+        if (it.insumoId && !ehDespesa) {
           await this.db.execute(sql`
             UPDATE t_insumo
                SET estoque_atual = estoque_atual + ${it.quantidade},
@@ -262,9 +335,12 @@ export class ComprasService {
         }
       }
 
-      const descricao =
-        `Compra${payload.documento ? ` ${payload.documento}` : ` #${compraId}`}` +
-        (payload.nomeFornecedor ? ` — ${payload.nomeFornecedor}` : '')
+      // Despesa aparece no Financeiro pelo que foi comprado (a fita crepe),
+      // não pelo número da compra.
+      const descricao = ehDespesa
+        ? `${itens[0].nomeInsumo.trim()}${payload.nomeFornecedor ? ` — ${payload.nomeFornecedor}` : ''}`
+        : `Compra${payload.documento ? ` ${payload.documento}` : ` #${compraId}`}` +
+          (payload.nomeFornecedor ? ` — ${payload.nomeFornecedor}` : '')
 
       let despesaId: number | null    = null
       let contaPagarId: number | null = null
@@ -278,7 +354,7 @@ export class ComprasService {
              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
           VALUES
             (${descricao}, ${payload.fornecedorId ?? null}, ${payload.nomeFornecedor ?? null},
-             'Insumos', ${payload.documento ?? null},
+             ${categoriaFin}, ${payload.documento ?? null},
              ${valorTotal}, 0, ${payload.dataCompra}::date, ${payload.dataVencimento}::date,
              'aberta', ${payload.formaPagamento ?? null}, 'compra', ${payload.observacao ?? null},
              ${uid}, ${uid}, NOW(), NOW(), true, 0)
@@ -298,7 +374,7 @@ export class ComprasService {
              mes_competencia, ano_competencia, observacao, conta_pagar_id,
              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
           VALUES
-            (${descricao}, 'Insumos', ${valorTotal}, ${payload.dataCompra}::date, NULL, false,
+            (${descricao}, ${categoriaFin}, ${valorTotal}, ${payload.dataCompra}::date, NULL, false,
              ${dtC.getMonth() + 1}, ${dtC.getFullYear()}, ${payload.observacao ?? null}, ${contaPagarId},
              ${uid}, ${uid}, NOW(), NOW(), true, 0)
           RETURNING despesa_id
@@ -313,7 +389,7 @@ export class ComprasService {
              created_by, updated_by, created_dt, updated_dt, active_flg, modification_num)
           VALUES
             -- A vista: compra e pagamento no mesmo dia.
-            (${descricao}, 'Insumos', ${valorTotal}, ${payload.dataCompra}::date, ${payload.dataCompra}::date, false,
+            (${descricao}, ${categoriaFin}, ${valorTotal}, ${payload.dataCompra}::date, ${payload.dataCompra}::date, false,
              ${dt.getMonth() + 1}, ${dt.getFullYear()}, ${payload.observacao ?? null},
              ${uid}, ${uid}, NOW(), NOW(), true, 0)
           RETURNING despesa_id
