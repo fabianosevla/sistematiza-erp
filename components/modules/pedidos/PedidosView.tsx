@@ -952,8 +952,10 @@ export default function PedidosView({ tenantSlug }: Props) {
       {/* Painel de detalhe — leitura. Abre ao clicar em Ver na listagem. */}
       {showDetalhe && detalhe && (
         <SidePanel
-          titulo={`Pedido #${detalhe.pedidoId}`}
-          subtitulo={fmtDate(detalhe.dataPedido)}
+          // Quem olha o pedido procura pelo cliente: o nome vai no título e o
+          // número desce para o subtítulo, junto da data.
+          titulo={detalhe.clienteNome || 'Consumidor Final'}
+          subtitulo={`Pedido #${detalhe.pedidoId} · ${fmtDate(detalhe.dataPedido)}`}
           onClose={() => setShowDetalhe(null)}
           largura="w-[28vw] min-w-[460px]"
         >
@@ -972,7 +974,6 @@ export default function PedidosView({ tenantSlug }: Props) {
 
               <div className="flex gap-2 flex-wrap">
                 <Badge variant="outline">{detalhe.tipoVenda === 'entrega' ? 'Entrega' : 'Balcão'}</Badge>
-                {detalhe.clienteNome && <Badge variant="secondary">{detalhe.clienteNome}</Badge>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
