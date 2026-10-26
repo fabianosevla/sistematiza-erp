@@ -11,6 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import QRCode from 'qrcode'
 import { Palette, Settings, QrCode as QrCodeIcon, Copy, Printer, Upload, Check, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CampoNumero } from '@/components/ui/CampoNumero'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/Toast'
@@ -366,10 +367,9 @@ export default function CardapioDigitalView({ tenantSlug }: Props) {
                   Taxa de entrega (R$)
                   <InfoTip titulo="Taxa de entrega">Somada automaticamente ao pedido quando o cliente escolhe entrega. Deixe 0,00 para não cobrar taxa.</InfoTip>
                 </Label>
-                <Input type="number" min="0" step="0.01" inputMode="decimal"
-                  value={((local.taxaEntrega ?? 0) / 100).toFixed(2)}
-                  onChange={e => set('taxaEntrega', Math.round(parseFloat(e.target.value.replace(',', '.') || '0') * 100))}
-                  className="sem-spinner mt-1 max-w-[160px]" />
+                <CampoNumero valor={(local.taxaEntrega ?? 0) / 100} decimais={2} fixo placeholder="0,00"
+                  onChange={v => set('taxaEntrega', Math.round(v * 100))}
+                  className="flex h-8 w-full rounded-lg border border-gray-200 bg-white px-3 py-1 text-[13px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-50 disabled:cursor-not-allowed disabled:opacity-50 mt-1 max-w-[160px]" />
               </div>
             )}
 

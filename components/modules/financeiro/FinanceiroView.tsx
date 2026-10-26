@@ -1,6 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { CATEGORIAS_DESPESA } from '@/lib/financeiro/categorias'
+import { CampoNumero } from '@/components/ui/CampoNumero'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, Download, Printer, Plus, X, Trash2, Pencil } from 'lucide-react'
 import {
@@ -796,15 +797,16 @@ export default function FinanceiroView({ tenantSlug, somenteDespesas = false }: 
                           const val = valorEfetivo(cat.categoriaId, m)
                           return (
                             <td key={m} className="px-1 py-1">
-                              <input
-                                type="number" min="0" step="0.01"
+                              {/* CampoNumero: digitar centavos sem o campo se reescrever
+                                  a cada tecla, e sem a rodinha do mouse alterar o valor. */}
+                              <CampoNumero
+                                valor={val / 100} decimais={2} fixo placeholder="0,00"
                                 disabled={!editandoGastos}
-                                value={(val / 100).toFixed(2)}
-                                onChange={e => {
-                                  const novoVal = Math.round(parseFloat(e.target.value || '0') * 100)
+                                onChange={v => {
+                                  const novoVal = Math.round(v * 100)
                                   setGastosPendentes(prev => ({ ...prev, [chave(cat.categoriaId, m)]: novoVal }))
                                 }}
-                                className="sem-spinner w-full h-8 text-center text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-100 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
+                                className="w-full h-8 text-center text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-100 disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
                               />
                             </td>
                           )
