@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Search, Trash2, CheckCircle, Clock, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CampoNumero } from '@/components/ui/CampoNumero'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
@@ -487,17 +488,14 @@ export default function ComandasView({ tenantSlug }: Props) {
                     >
                       {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
                     </select>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={(pag.valor / 100).toFixed(2)}
-                      onChange={e => {
+                    <CampoNumero
+                      valor={pag.valor / 100} decimais={2} fixo placeholder="0,00"
+                      onChange={v => {
                         const novo = [...pagamentos]
-                        novo[i].valor = Math.round(parseFloat(e.target.value || '0') * 100)
+                        novo[i].valor = Math.round(v * 100)
                         setPagamentos(novo)
                       }}
-                      className="w-32 sem-spinner"
+                      className="flex h-8 w-full rounded-lg border border-gray-200 bg-white px-3 py-1 text-[13px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-50 disabled:cursor-not-allowed disabled:opacity-50 w-32"
                     />
                     {pagamentos.length > 1 && (
                       <button onClick={() => setPagamentos(p => p.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500">

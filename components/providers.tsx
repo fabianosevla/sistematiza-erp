@@ -1,10 +1,35 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ToastProvider } from '@/components/ui/Toast'
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  // CAMPO NUMÉRICO NÃO MUDA SOZINHO.
+  //
+  // <input type="number"> soma/subtrai o "step" quando a rodinha do mouse gira
+  // com o cursor em cima dele, e quando se aperta seta para cima/baixo. Era o
+  // que fazia os centavos dos Gastos Fixos "subirem" ao passar o mouse.
+  // Regra global para os 70+ campos do sistema, sem depender de cada tela:
+  // - rodinha: o campo perde o foco e a página rola normalmente;
+  // - setas do teclado: ignoradas.
+  useEffect(() => {
+    const ehNumero = (el: EventTarget | null): el is HTMLInputElement =>
+      el instanceof HTMLInputElement && el.type === 'number'
+    const naRoda = (e: WheelEvent) => {
+      if (ehNumero(e.target) && document.activeElement === e.target) e.target.blur()
+    }
+    const naTecla = (e: KeyboardEvent) => {
+      if (ehNumero(e.target) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) e.preventDefault()
+    }
+    document.addEventListener('wheel', naRoda, { passive: true })
+    document.addEventListener('keydown', naTecla)
+    return () => {
+      document.removeEventListener('wheel', naRoda)
+      document.removeEventListener('keydown', naTecla)
+    }
+  }, [])
+
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
