@@ -10,6 +10,7 @@
 // O que é uma ação: um compromisso com data, responsável e estado. Por isso a
 // tela é organizada em torno de PENDENTE × CONCLUÍDA, e não de uma lista
 // cronológica — o que interessa é o que ainda falta fazer.
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -107,7 +108,7 @@ export default function PlanoAcaoView({ tenantSlug }: Props) {
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? daAba : daAba.filter(a => chaves.every(k =>
-      String(a[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())
+      casaFiltro(a[k], filtros[k])
     ))
     return [...base].sort((a: any, b: any) => {
       const av = a?.[sortKey], bv = b?.[sortKey]

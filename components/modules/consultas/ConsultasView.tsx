@@ -1,4 +1,5 @@
 'use client'
+import { casaFiltro } from '@/lib/filtroColuna'
 // ESTE ARQUIVO VAI EM: components/modules/consultas/ConsultasView.tsx
 //
 // CONSULTAS — RELATÓRIOS POR PERÍODO.
@@ -342,10 +343,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
     const filtrados = chaves.length === 0 ? todos : todos.filter(item =>
-      chaves.every(k => {
-        const alvo = filtros[k].toLowerCase()
-        return valorFiltravel(item, k).some(v => v.toLowerCase().includes(alvo))
-      })
+      chaves.every(k => casaFiltro(valorFiltravel(item, k), filtros[k]))
     )
     if (!sortKey) return filtrados
     return [...filtrados].sort((a: any, b: any) => {
@@ -364,7 +362,7 @@ export default function ConsultasView({ tenantSlug }: Props) {
   // filtrada, escolher "PIX" apagaria as outras formas e não daria mais para
   // trocar de escolha sem limpar antes.
   const opcoesFiltro = useMemo(() => {
-    const chaves = ['clienteNome', 'formas', 'produtos', 'nome', 'categoria', 'unidade', 'origem']
+    const chaves = ['clienteNome', 'formas', 'produtos', 'nota', 'nome', 'categoria', 'unidade', 'origem', 'usuario']
     const mapa: Record<string, string[]> = {}
     for (const k of chaves) {
       const set = new Set<string>()

@@ -1,4 +1,5 @@
 ﻿'use client'
+import { casaFiltro, LIMITE_LISTA_COMPLETA, paginarLocal } from '@/lib/filtroColuna'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Play, Square, AlertTriangle } from 'lucide-react'
@@ -6,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { DataTable, type Coluna, type MetaPaginacao } from '@/components/ui/DataTable'
+import { DataTable, type Coluna } from '@/components/ui/DataTable'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { InfoTip } from '@/components/ui/InfoTip'
 import { Aviso } from '@/components/ui/Aviso'
@@ -64,8 +65,8 @@ export default function FiscalView({ tenantSlug }: Props) {
   const tipoListagem = aba === 'nfe-saida' ? 'NF-e' : 'NFC-e'
 
   const { data: notasData, isLoading } = useQuery({
-    queryKey: ['notas', tenantSlug, tipoListagem, paginaNotas],
-    queryFn:  async () => (await fetch(`${api}?tipo=${tipoListagem}&page=${paginaNotas}&limit=20`)).json(),
+    queryKey: ['notas', tenantSlug, tipoListagem],
+    queryFn:  async () => (await fetch(`${api}?tipo=${tipoListagem}&page=1&limit=${LIMITE_LISTA_COMPLETA}`)).json(),
     enabled:  aba === 'pdv' || aba === 'nfe-saida',
   })
 
@@ -120,7 +121,6 @@ export default function FiscalView({ tenantSlug }: Props) {
 
   const turno     = turnoData?.data
   const notas     = notasData?.data?.data ?? []
-  const notasMeta = notasData?.data?.meta ?? null
 
   function trocarAba(a: typeof aba) { setAba(a); setPaginaNotas(1) }
 
@@ -165,7 +165,7 @@ export default function FiscalView({ tenantSlug }: Props) {
             </div>
           </div>
 
-          <NotasList notas={notas} isLoading={isLoading} meta={notasMeta} onPageChange={setPaginaNotas}
+          <NotasList notas={notas} isLoading={isLoading} pagina={paginaNotas} onPageChange={setPaginaNotas}
             onEmitir={id => emitirMut.mutate(id)}
             onEditarFiscal={id => setShowEditarFiscal(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
@@ -180,7 +180,7 @@ export default function FiscalView({ tenantSlug }: Props) {
               <Plus size={14} className="mr-1.5" /> Nova NF-e
             </Button>
           </div>
-          <NotasList notas={notas} isLoading={isLoading} meta={notasMeta} onPageChange={setPaginaNotas}
+          <NotasList notas={notas} isLoading={isLoading} pagina={paginaNotas} onPageChange={setPaginaNotas}
             onEmitir={id => emitirMut.mutate(id)}
             onEditarFiscal={id => setShowEditarFiscal(id)}
             onCancelar={id => { setShowCancelar(id); setMotivo('') }} />
@@ -297,17 +297,14 @@ export default function FiscalView({ tenantSlug }: Props) {
   )
 }
 
-function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFiscal, onCancelar }: {
+function NotasList({ notas, isLoading, pagina, onPageChange, onEmitir, onEditarFiscal, onCancelar }: {
   notas: any[]; isLoading: boolean
-  meta?: MetaPaginacao | null; onPageChange?: (page: number) => void
+  pagina: number; onPageChange: (page: number) => void
   onEmitir: (id: number) => void; onEditarFiscal: (id: number) => void; onCancelar: (id: number) => void
 }) {
   // Mesmo padrão de filtro por coluna do resto do sistema — funil no
-  // cabeçalho, opções sempre do conjunto sem filtro. Diferença aqui: esta
-  // lista é paginada no SERVIDOR (page/limit reais, ver FiscalView acima),
-  // não carregada inteira como em ConsultasView — então o filtro por coluna
-  // enxerga só a página já carregada, não a lista inteira. Não mexe na
-  // paginação/busca existente, só filtra por cima do que já veio.
+  // cabeçalho, opções sempre do conjunto sem filtro. A lista vem inteira do
+  // servidor; filtro, ordenação e paginação são aplicados aqui (QA #136).
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
@@ -316,6 +313,7 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
       else delete novo[chave]
       return novo
     })
+    onPageChange(1)
   }
   // razaoSocial e status têm um valor de exibição diferente do campo cru
   // (destinatário vazio vira "Consumidor Final", status vira o label do
@@ -328,7 +326,7 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
   }
   const chaves = Object.keys(filtros)
   const notasBase = chaves.length === 0 ? notas
-    : notas.filter(n => chaves.every(k => String(valorFiltravel(n, k) ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    : notas.filter(n => chaves.every(k => casaFiltro(valorFiltravel(n, k), filtros[k])))
   const opcoesFiltro: Record<string, string[]> = {}
   for (const chave of ['razaoSocial', 'status']) {
     const set = new Set<string>()
@@ -336,8 +334,7 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
     if (set.size > 0) opcoesFiltro[chave] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
   }
 
-  // Ordenação por coluna — mesma limitação do filtro logo acima: atua só
-  // sobre a página carregada (esta lista é paginada no servidor).
+  // Ordenação por coluna, sobre a lista inteira.
   const [sortKey, setSortKey] = useState('dataEmissao')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   function toggleSort(chave: string) {
@@ -352,6 +349,7 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
       : String(av ?? '').localeCompare(String(bv ?? ''), 'pt-BR')
     return sortDir === 'asc' ? cmp : -cmp
   })
+  const paginaLocal = paginarLocal(notasFiltradas, pagina, 20)
 
   const colunas: Coluna[] = [
     { chave: 'tipo', titulo: 'Tipo', largura: 'w-24', ordenavel: true, render: (n: any) => <Badge variant="outline">{n.tipo}</Badge> },
@@ -374,7 +372,7 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
   return (
     <DataTable
       colunas={colunas}
-      itens={notasFiltradas}
+      itens={paginaLocal.pagina}
       chave={(n: any) => n.notaId}
       carregando={isLoading}
       vazio="Nenhuma nota encontrada."
@@ -383,7 +381,7 @@ function NotasList({ notas, isLoading, meta, onPageChange, onEmitir, onEditarFis
       opcoesFiltro={opcoesFiltro}
       ordem={{ chave: sortKey, dir: sortDir }}
       onOrdenar={toggleSort}
-      meta={meta}
+      meta={paginaLocal.meta}
       onPageChange={onPageChange}
       acoes={(n: any) => (
         <>

@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: Params) {
       // período não surtia efeito nenhum na listagem.
       const periodo = searchParams.get('periodo') ?? undefined
       const page    = Math.max(1, Number(searchParams.get('page')) || 1)
-      const limit   = Math.min(100, Math.max(1, Number(searchParams.get('limit')) || 20))
+      const limit   = Math.min(10000, Math.max(1, Number(searchParams.get('limit')) || 20))
       const sort    = searchParams.get('sort') ?? undefined
       const dir     = searchParams.get('dir') === 'asc' ? 'asc' : searchParams.get('dir') === 'desc' ? 'desc' : undefined
       const service = new PedidoService(db)

@@ -1,4 +1,5 @@
 'use client'
+import { casaFiltro, LIMITE_LISTA_COMPLETA, opcoesDasColunas, paginarLocal } from '@/lib/filtroColuna'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Trash2, Clock, CheckCircle, XCircle, Package, ArrowRight, Pencil, Tag, Eye } from 'lucide-react'
@@ -189,10 +190,9 @@ export default function PedidosView({ tenantSlug }: Props) {
   const SORT_KEY_BACKEND: Record<string, string> = {
     statusLabel: 'status', tipoLabel: 'tipoVenda', origemLabel: 'origem',
   }
-  // Filtro por coluna (funil no cabeçalho) sobre a página já carregada —
-  // mesmo padrão do resto do sistema (ConsultasView, VendasView): os pills de
-  // status e o período acima já filtram no servidor, isto aqui é uma camada
-  // extra, por coluna.
+  // Filtro por coluna (funil no cabeçalho): os pills de status e o período
+  // acima filtram no servidor; a lista vem inteira e o funil é aplicado aqui,
+  // antes da paginação, para enxergar todos os pedidos (QA #136).
   const [filtrosCol, setFiltrosCol]       = useState<Record<string, string>>({})
   function aplicarFiltroCol(chave: string, valor: string) {
     setFiltrosCol(f => {
@@ -201,6 +201,7 @@ export default function PedidosView({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPageNum(1)
   }
   const [showNovo, setShowNovo]           = useState(false)
   const [showDetalhe, setShowDetalhe]     = useState<number | null>(null)
@@ -252,12 +253,13 @@ export default function PedidosView({ tenantSlug }: Props) {
   const ehAtacado    = tabelaPreco !== 'varejo'
 
   const { data: listData, isLoading } = useQuery({
-    queryKey: ['pedidos', tenantSlug, filtroStatus, periodo, pageNum, sortKey, sortDir],
+    queryKey: ['pedidos', tenantSlug, filtroStatus, periodo, sortKey, sortDir],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (filtroStatus) params.set('status', filtroStatus)
       if (periodo) params.set('periodo', periodo)
-      params.set('page', String(pageNum))
+      params.set('page', '1')
+      params.set('limit', String(LIMITE_LISTA_COMPLETA))
       params.set('sort', SORT_KEY_BACKEND[sortKey] ?? sortKey)
       params.set('dir', sortDir)
       return (await fetch(`${apiBase}?${params}`)).json()
@@ -566,8 +568,7 @@ export default function PedidosView({ tenantSlug }: Props) {
     setItens(prev => prev.map(i => i.produtoId === produtoId ? { ...i, quantidade: qtd } : i))
   }
 
-  const pedidos  = Array.isArray(listData?.data?.data) ? listData.data.data : Array.isArray(listData?.data) ? listData.data : []
-  const meta     = listData?.data?.meta ?? null
+  const pedidos: any[] = Array.isArray(listData?.data?.data) ? listData.data.data : Array.isArray(listData?.data) ? listData.data : []
   const detalhe  = detalheData?.data
   const clientes = clientesData?.data?.data ?? clientesData?.data ?? []
   const produtos = produtosData?.data?.data ?? produtosData?.data ?? []
@@ -576,34 +577,23 @@ export default function PedidosView({ tenantSlug }: Props) {
 
   // Opções do funil vêm do conjunto SEM filtro — escolher um valor não pode
   // apagar os outros da própria lista de opções.
+  const valorColunaPedido = (p: any, k: string) =>
+    k === 'clienteNome'  ? (p.clienteNome ?? 'Consumidor Final')
+      : k === 'statusLabel' ? statusLabel(p.status)
+      : k === 'tipoLabel'   ? tipoLabel(p.tipoVenda)
+      : k === 'origemLabel' ? origemLabel(p.origem)
+      : p?.[k]
   const pedidosFiltrados = useMemo(() => {
     const chaves = Object.keys(filtrosCol)
     if (chaves.length === 0) return pedidos
-    return pedidos.filter((p: any) => chaves.every(k => {
-      const val = k === 'clienteNome'  ? (p.clienteNome ?? 'Consumidor Final')
-        : k === 'statusLabel' ? statusLabel(p.status)
-        : k === 'tipoLabel'   ? tipoLabel(p.tipoVenda)
-        : k === 'origemLabel' ? origemLabel(p.origem)
-        : p?.[k]
-      return String(val ?? '').toLowerCase().includes(filtrosCol[k].toLowerCase())
-    }))
+    return pedidos.filter((p: any) => chaves.every(k => casaFiltro(valorColunaPedido(p, k), filtrosCol[k])))
   }, [pedidos, filtrosCol])
 
-  const opcoesFiltroCol = useMemo(() => {
-    const mapa: Record<string, string[]> = {}
-    const setCliente = new Set<string>(), setStatus = new Set<string>(), setTipo = new Set<string>(), setOrigem = new Set<string>()
-    for (const p of pedidos) {
-      setCliente.add(String(p.clienteNome ?? 'Consumidor Final'))
-      setStatus.add(statusLabel(p.status))
-      setTipo.add(tipoLabel(p.tipoVenda))
-      setOrigem.add(origemLabel(p.origem))
-    }
-    if (setCliente.size > 0) mapa.clienteNome  = Array.from(setCliente).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    if (setStatus.size  > 0) mapa.statusLabel  = Array.from(setStatus).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    if (setTipo.size    > 0) mapa.tipoLabel    = Array.from(setTipo).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    if (setOrigem.size  > 0) mapa.origemLabel  = Array.from(setOrigem).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    return mapa
-  }, [pedidos])
+  const opcoesFiltroCol = useMemo(
+    () => opcoesDasColunas(pedidos, ['clienteNome', 'statusLabel', 'tipoLabel', 'origemLabel'], valorColunaPedido),
+    [pedidos],
+  )
+  const { pagina: pedidosPagina, meta } = paginarLocal(pedidosFiltrados, pageNum, 20)
 
   const colunas: Coluna[] = [
     { chave: 'pedidoId', titulo: '#', largura: 'w-14',
@@ -639,7 +629,7 @@ export default function PedidosView({ tenantSlug }: Props) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Pedidos</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{meta?.total ?? pedidos.length} pedido{(meta?.total ?? pedidos.length) !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-400 mt-0.5">{pedidos.length} pedido{pedidos.length !== 1 ? 's' : ''}</p>
         </div>
         <Button onClick={() => { resetForm(); setShowNovo(true) }}>
           <Plus size={15} className="mr-1.5" /> Novo pedido
@@ -679,7 +669,7 @@ export default function PedidosView({ tenantSlug }: Props) {
           etapa, editar (só nos status ainda editáveis) e ver detalhe. */}
       <DataTable
         colunas={colunas}
-        itens={pedidosFiltrados}
+        itens={pedidosPagina}
         chave={(p: any) => p.pedidoId}
         carregando={isLoading}
         usarSkeleton

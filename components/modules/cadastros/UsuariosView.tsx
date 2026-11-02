@@ -1,4 +1,5 @@
 ﻿'use client'
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Shield, User, Mail, Pencil, UserX, KeyRound } from 'lucide-react'
@@ -217,7 +218,7 @@ export default function UsuariosView({ tenantSlug }: Props) {
   }
   const itemsFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
-    const base = chaves.length === 0 ? items : items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
+    const base = chaves.length === 0 ? items : items.filter((item: any) => chaves.every(k => casaFiltro(valorFiltravel(item, k), filtros[k])))
     return [...base].sort((a: any, b: any) => {
       const cmp = valorFiltravel(a, sortKey).localeCompare(valorFiltravel(b, sortKey), 'pt-BR')
       return sortDir === 'asc' ? cmp : -cmp

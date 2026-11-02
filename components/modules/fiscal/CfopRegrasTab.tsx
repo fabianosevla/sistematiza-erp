@@ -6,6 +6,7 @@
 // e de ativo. Venda tem tela própria (Perfis tributários), porque o CFOP de
 // venda depende do produto; aqui não depende, só do tipo de operação e de
 // mesmo-estado ou não.
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
@@ -80,7 +81,7 @@ export default function CfopRegrasTab({ tenantSlug }: Props) {
   const regrasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? regrasComLabel
-      : regrasComLabel.filter(r => chaves.every(k => String(r?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+      : regrasComLabel.filter(r => chaves.every(k => casaFiltro(r?.[k], filtros[k])))
     return [...base].sort((a: any, b: any) => {
       const cmp = String(a?.[sortKey] ?? '').localeCompare(String(b?.[sortKey] ?? ''), 'pt-BR')
       return sortDir === 'asc' ? cmp : -cmp

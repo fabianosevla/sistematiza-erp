@@ -1,4 +1,5 @@
 'use client'
+import { casaFiltro, LIMITE_LISTA_COMPLETA, paginarLocal } from '@/lib/filtroColuna'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Upload, Clock, Trash2, Eye, EyeOff, Contact } from 'lucide-react'
@@ -55,9 +56,9 @@ export default function ClientesView({ tenantSlug }: Props) {
   const fidelidadeAtivo = cfgRaw?.data?.fidelidadeAtivo === true
 
   const { data, isLoading } = useQuery({
-    queryKey: ['clientes', tenantSlug, page, limit, search, incluirInativos],
+    queryKey: ['clientes', tenantSlug, search, incluirInativos],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      const params = new URLSearchParams({ page: '1', limit: String(LIMITE_LISTA_COMPLETA) })
       if (search) params.set('search', search)
       if (incluirInativos) params.set('incluirInativos', 'true')
       const res = await fetch(`${apiBase}?${params}`)
@@ -156,16 +157,11 @@ export default function ClientesView({ tenantSlug }: Props) {
   }
 
   const clientes  = data?.data?.data ?? []
-  const meta      = data?.data?.meta
   const isPending = createMutation.isPending || updateMutation.isPending
 
-  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
-  // A busca acima já filtra no SERVIDOR (nome/fantasia/documento, e pagina);
-  // este filtro é sobre a PÁGINA já carregada, por cima disso — as opções do
-  // funil só listam valores da página atual, não do cadastro inteiro. É a
-  // mesma limitação aceita em ConsultasView (que carrega o período inteiro
-  // em vez de paginar do servidor); aqui não vale trocar a paginação do
-  // servidor só por causa do funil.
+  // Filtro por coluna (funil no cabeçalho), regra comum em lib/filtroColuna.
+  // A busca acima filtra no SERVIDOR; a lista vem inteira e o funil, a
+  // ordenação e a paginação são aplicados aqui, sobre o cadastro todo (QA #136).
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
@@ -174,11 +170,9 @@ export default function ClientesView({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPage(1)
   }
-  // Ordenação por coluna — mesma limitação já aceita no filtro logo acima:
-  // atua só sobre a PÁGINA carregada (a busca pagina no servidor), não sobre
-  // o cadastro inteiro. Trocar a paginação do servidor só por causa disto
-  // não vale a pena aqui.
+  // Ordenação por coluna, sobre a lista inteira.
   const [sortKey, setSortKey] = useState('nomeCompleto')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   function toggleSort(chave: string) {
@@ -189,7 +183,7 @@ export default function ClientesView({ tenantSlug }: Props) {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? clientes : clientes.filter((c: any) => chaves.every(k => {
       const v = k === 'nomeCompleto' ? ((c.nomeFantasia ?? '').trim() || c.nomeCompleto) : c?.[k]
-      return String(v ?? '').toLowerCase().includes(filtros[k].toLowerCase())
+      return casaFiltro(v, filtros[k])
     }))
     return [...base].sort((a: any, b: any) => {
       const av = sortKey === 'nomeCompleto' ? ((a.nomeFantasia ?? '').trim() || a.nomeCompleto) : a?.[sortKey]
@@ -200,6 +194,8 @@ export default function ClientesView({ tenantSlug }: Props) {
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [clientes, filtros, sortKey, sortDir])
+  // Lista inteira do servidor; paginação aqui, depois do filtro de coluna (QA #136).
+  const paginaLocal = paginarLocal(clientesFiltrados, page, limit)
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nomeCompleto', 'tipoPessoa', 'tabelaPreco', 'cidade']) {
@@ -291,7 +287,7 @@ export default function ClientesView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={clientesFiltrados}
+        itens={paginaLocal.pagina}
         chave={(c: any) => c.clienteId}
         carregando={isLoading}
         vazio="Nenhum cliente encontrado."
@@ -300,7 +296,7 @@ export default function ClientesView({ tenantSlug }: Props) {
         opcoesFiltro={opcoesFiltro}
         ordem={{ chave: sortKey, dir: sortDir }}
         onOrdenar={toggleSort}
-        meta={meta}
+        meta={paginaLocal.meta}
         onPageChange={setPage}
         onLimitChange={setLimit}
         classeLinha={(c: any) => c.activeFlag === false ? 'opacity-60' : ''}

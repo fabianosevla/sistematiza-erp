@@ -4,6 +4,7 @@
 // Ficha 360° — rota própria (/crm/clientes/[id]), não painel lateral: é
 // conteúdo demais (histórico de compra + cashback + pedidos + indicações)
 // pra caber num SidePanel, e merece URL própria (voltar, compartilhar).
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Loader2, Gift, ShoppingBag, Users2, Eye } from 'lucide-react'
@@ -102,7 +103,7 @@ export default function Ficha360View({ tenantSlug, clienteId, origem }: Props) {
   const operacoesFiltradas = useMemo(() => {
     const chaves = Object.keys(filtrosOp)
     const base = chaves.length === 0 ? operacoes
-      : operacoes.filter(o => chaves.every(k => String((o as any)?.[k] ?? '').toLowerCase().includes(filtrosOp[k].toLowerCase())))
+      : operacoes.filter(o => chaves.every(k => casaFiltro((o as any)?.[k], filtrosOp[k])))
     return [...base].sort((a: any, b: any) => {
       if (sortKeyOp === 'data') {
         const cmp = new Date(a.data).getTime() - new Date(b.data).getTime()

@@ -2,6 +2,7 @@
 // ESTE ARQUIVO VAI EM: components/modules/fiscal/PerfisTributariosTab.tsx
 //
 // PARAMETRIZAÇÃO FISCAL — a tela onde o contador digita os perfis tributários.
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
@@ -78,7 +79,7 @@ export default function PerfisTributariosTab({ tenantSlug }: Props) {
   const perfisFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? perfis
-      : perfis.filter(p => chaves.every(k => String(p?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+      : perfis.filter(p => chaves.every(k => casaFiltro(p?.[k], filtros[k])))
     return [...base].sort((a: any, b: any) => {
       const av = sortKey === 'produtos' ? (uso[a.perfilTribId] ?? 0) : a?.[sortKey]
       const bv = sortKey === 'produtos' ? (uso[b.perfilTribId] ?? 0) : b?.[sortKey]

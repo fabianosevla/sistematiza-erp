@@ -1,4 +1,5 @@
 'use client'
+import { casaFiltro, LIMITE_LISTA_COMPLETA, paginarLocal } from '@/lib/filtroColuna'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Upload, Clock, Trash2 } from 'lucide-react'
@@ -36,9 +37,9 @@ export default function FornecedoresView({ tenantSlug }: Props) {
   const apiBase = `/api/${tenantSlug}/cadastros/fornecedores`
 
   const { data, isLoading } = useQuery({
-    queryKey: ['fornecedores', tenantSlug, page, limit, search],
+    queryKey: ['fornecedores', tenantSlug, search],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      const params = new URLSearchParams({ page: '1', limit: String(LIMITE_LISTA_COMPLETA) })
       if (search) params.set('search', search)
       const res = await fetch(`${apiBase}?${params}`)
       return res.json()
@@ -129,15 +130,11 @@ export default function FornecedoresView({ tenantSlug }: Props) {
   }
 
   const items     = data?.data?.data ?? []
-  const meta      = data?.data?.meta
   const isPending = createMutation.isPending || updateMutation.isPending
 
-  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
-  // A busca acima já filtra no SERVIDOR (nome/documento) e pagina; este
-  // filtro atua sobre a PÁGINA já carregada, por cima disso — as opções do
-  // funil só listam valores da página atual, não do cadastro inteiro. Mesma
-  // limitação aceita em ClientesView; não vale trocar a paginação do
-  // servidor só por causa do funil.
+  // Filtro por coluna (funil no cabeçalho), regra comum em lib/filtroColuna.
+  // A busca acima filtra no SERVIDOR; a lista vem inteira e o funil, a
+  // ordenação e a paginação são aplicados aqui, sobre o cadastro todo (QA #136).
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
@@ -146,13 +143,13 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPage(1)
   }
   function valorFiltravel(item: any, chave: string): string {
     if (chave === 'nomeCompleto') return (item.nomeFantasia ?? '').trim() || item.nomeCompleto
     return String(item?.[chave] ?? '')
   }
-  // Ordenação por coluna — mesma limitação do filtro logo acima: atua só
-  // sobre a página carregada.
+  // Ordenação por coluna, sobre a lista inteira.
   const [sortKey, setSortKey] = useState('nomeCompleto')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   function toggleSort(chave: string) {
@@ -161,7 +158,7 @@ export default function FornecedoresView({ tenantSlug }: Props) {
   }
   const itemsFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
-    const base = chaves.length === 0 ? items : items.filter((item: any) => chaves.every(k => valorFiltravel(item, k).toLowerCase().includes(filtros[k].toLowerCase())))
+    const base = chaves.length === 0 ? items : items.filter((item: any) => chaves.every(k => casaFiltro(valorFiltravel(item, k), filtros[k])))
     return [...base].sort((a: any, b: any) => {
       const av = valorFiltravel(a, sortKey)
       const bv = valorFiltravel(b, sortKey)
@@ -169,6 +166,8 @@ export default function FornecedoresView({ tenantSlug }: Props) {
       return sortDir === 'asc' ? cmp : -cmp
     })
   }, [items, filtros, sortKey, sortDir])
+  // Lista inteira do servidor; paginação aqui, depois do filtro de coluna (QA #136).
+  const paginaLocal = paginarLocal(itemsFiltrados, page, limit)
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nomeCompleto', 'tipoPessoa', 'cidade']) {
@@ -233,11 +232,11 @@ export default function FornecedoresView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={itemsFiltrados}
+        itens={paginaLocal.pagina}
         chave={(item: any) => item.fornecedorId}
         carregando={isLoading}
         vazio="Nenhum fornecedor encontrado."
-        meta={meta}
+        meta={paginaLocal.meta}
         onPageChange={setPage}
         onLimitChange={setLimit}
         filtros={filtros}

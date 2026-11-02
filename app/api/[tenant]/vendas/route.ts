@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     try {
       const { searchParams } = new URL(req.url)
       const page       = Math.max(1, Number(searchParams.get('page') ?? 1))
-      const limit      = Math.min(100, Math.max(1, Number(searchParams.get('limit') ?? 20)))
+      const limit      = Math.min(10000, Math.max(1, Number(searchParams.get('limit') ?? 20)))
       const dataInicio = searchParams.get('dataInicio') ?? undefined
       const dataFim    = searchParams.get('dataFim') ?? undefined
       const origem     = searchParams.get('origem') ?? undefined

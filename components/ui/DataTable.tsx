@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { casaFiltro, normalizarTexto } from '@/lib/filtroColuna'
 import { createPortal } from 'react-dom'
 import { Filter, X as XIcon, ArrowUpDown } from 'lucide-react'
 import Paginacao from '@/components/ui/Paginacao'
@@ -176,9 +177,14 @@ function FiltroColuna({
   }, [aberto])
 
   const ativo = !!valor
+  // Busca sem acento (QA #136): "mucarela" acha "Muçarela".
   const lista = opcoes
-    .filter(o => o.toLowerCase().includes(busca.trim().toLowerCase()))
+    .filter(o => casaFiltro(o, busca))
     .slice(0, 100)
+  // Texto digitado que não é exatamente uma das opções: oferece filtrar por
+  // ele mesmo. Antes só o Enter fazia isso, e nada na tela indicava.
+  const termo = busca.trim()
+  const podeFiltrarTexto = !!termo && !opcoes.some(o => normalizarTexto(o) === normalizarTexto(termo))
 
   return (
     <>
@@ -226,8 +232,18 @@ function FiltroColuna({
           </div>
 
           <div className="max-h-60 overflow-y-auto p-1">
+            {podeFiltrarTexto && (
+              <button
+                onClick={() => { onEscolher(termo); setAberto(false) }}
+                className="w-full text-left px-2 py-1.5 rounded-lg text-[13px] font-medium text-green-700 hover:bg-green-50 truncate transition-colors"
+              >
+                Filtrar por &quot;{termo}&quot;
+              </button>
+            )}
             {lista.length === 0 ? (
-              <p className="px-2 py-3 text-[12px] font-normal text-gray-400 text-center">Nenhum valor</p>
+              !podeFiltrarTexto && (
+                <p className="px-2 py-3 text-[12px] font-normal text-gray-400 text-center">Digite para filtrar</p>
+              )
             ) : lista.map(o => (
               <button
                 key={o}

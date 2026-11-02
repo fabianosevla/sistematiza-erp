@@ -1,4 +1,5 @@
 'use client'
+import { filtrarPorColunas, opcoesDasColunas } from '@/lib/filtroColuna'
 // ESTE ARQUIVO VAI EM: components/modules/compras/CompraRapidaView.tsx
 //
 // COMPRAS — TELA ÚNICA.
@@ -58,9 +59,6 @@ const hojeISO = () => new Date().toISOString().slice(0, 10)
 const fmtData = (d: any) =>
   d ? new Date(`${String(d).slice(0, 10)}T12:00:00`).toLocaleDateString('pt-BR') : '—'
 
-// Filtro ignora acento e cedilha: "mucarela de bufala" acha "Muçarela de búfala".
-const semAcento = (v: any) =>
-  String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
 export default function CompraRapidaView({ tenantSlug, tipo = 'insumo' }: Props) {
   const ehDespesa = tipo === 'despesa'
@@ -169,10 +167,7 @@ export default function CompraRapidaView({ tenantSlug, tipo = 'insumo' }: Props)
   }
 
   const itens = useMemo(() => {
-    const chaves = Object.keys(filtros)
-    const base = chaves.length === 0 ? todos : todos.filter(i => chaves.every(k =>
-      semAcento(i[k]).includes(semAcento(filtros[k]))
-    ))
+    const base = filtrarPorColunas(todos, filtros)
     return [...base].sort((a: any, b: any) => {
       const av = a?.[sortKey], bv = b?.[sortKey]
       const cmp = typeof av === 'number' && typeof bv === 'number'
@@ -182,15 +177,10 @@ export default function CompraRapidaView({ tenantSlug, tipo = 'insumo' }: Props)
     })
   }, [todos, filtros, sortKey, sortDir])
 
-  const opcoesFiltro = useMemo(() => {
-    const mapa: Record<string, string[]> = {}
-    for (const k of ['fornecedor', 'formaPagamento', 'condicao', 'categoria']) {
-      const set = new Set<string>()
-      for (const i of todos) if (i[k]) set.add(String(i[k]))
-      if (set.size > 0) mapa[k] = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    }
-    return mapa
-  }, [todos])
+  const opcoesFiltro = useMemo(
+    () => opcoesDasColunas(todos, ['fornecedor', 'item', 'formaPagamento', 'condicao', 'categoria']),
+    [todos],
+  )
 
   const temFiltro    = Object.keys(filtros).length > 0
   const totalPaginas = Math.max(1, Math.ceil(itens.length / POR_PAGINA))

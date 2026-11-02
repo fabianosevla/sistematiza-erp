@@ -2,6 +2,7 @@
 // components/modules/financeiro/ContasReceberView.tsx
 // Espelho de ContasPagarView mas para recebimentos
 
+import { casaFiltro, LIMITE_LISTA_COMPLETA, paginarLocal } from '@/lib/filtroColuna'
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, CheckCircle, Pencil } from 'lucide-react'
@@ -91,10 +92,10 @@ export default function ContasReceberView({ tenantSlug }: Props) {
   })
 
   const { data: listRaw, isLoading } = useQuery({
-    queryKey: ['contas-receber', tenantSlug, filtroStatus, busca, page, limit, sortKey, sortDir],
+    queryKey: ['contas-receber', tenantSlug, filtroStatus, busca, sortKey, sortDir],
     queryFn:  async () => {
       const p = new URLSearchParams({
-        status: filtroStatus, page: String(page), limit: String(limit),
+        status: filtroStatus, page: '1', limit: String(LIMITE_LISTA_COMPLETA),
         sort: sortKey, dir: sortDir,
       })
       if (busca) p.set('busca', busca)
@@ -225,13 +226,11 @@ export default function ContasReceberView({ tenantSlug }: Props) {
   })
 
   const kpis = kpisRaw?.data
-  const rowsPagina = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
-  const meta = listRaw?.data?.meta ?? null
+  const rowsTodas: any[] = Array.isArray(listRaw?.data?.data) ? listRaw.data.data : Array.isArray(listRaw?.data) ? listRaw.data : []
 
-  // Filtro por coluna (funil no cabeçalho) sobre a página já carregada — os
-  // pills de status acima e a busca já filtram no SERVIDOR (inclusive
-  // "vencidas", que nem é uma coluna); isto aqui é uma camada extra, por
-  // cliente, igual ao resto do sistema.
+  // Filtro por coluna (funil no cabeçalho). Os pills de status e a busca
+  // filtram no SERVIDOR; a lista vem inteira e o funil e a paginação são
+  // aplicados aqui, sobre todas as contas (QA #136).
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
@@ -240,20 +239,22 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPage(1)
   }
   const rows = useMemo(() => {
     const chaves = Object.keys(filtros)
-    if (chaves.length === 0) return rowsPagina
-    return rowsPagina.filter((r: any) => chaves.every(k =>
-      String(r?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
-  }, [rowsPagina, filtros])
+    if (chaves.length === 0) return rowsTodas
+    return rowsTodas.filter((r: any) => chaves.every(k =>
+      casaFiltro(r?.[k], filtros[k])))
+  }, [rowsTodas, filtros])
+  const paginaLocal = paginarLocal(rows, page, limit)
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     const set = new Set<string>()
-    for (const r of rowsPagina) { if (r.nomeCliente) set.add(String(r.nomeCliente)) }
+    for (const r of rowsTodas) { if (r.nomeCliente) set.add(String(r.nomeCliente)) }
     if (set.size > 0) mapa.nomeCliente = Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     return mapa
-  }, [rowsPagina])
+  }, [rowsTodas])
 
   const salvando = criarMut.isPending || editarMut.isPending
 
@@ -359,14 +360,14 @@ export default function ContasReceberView({ tenantSlug }: Props) {
       {/* Tabela */}
       <DataTable
         colunas={colunas}
-        itens={rows}
+        itens={paginaLocal.pagina}
         chave={(r: any) => r.contaReceberId}
         carregando={isLoading}
         usarSkeleton
         vazio="Nenhum título encontrado."
         ordem={{ chave: sortKey, dir: sortDir }}
         onOrdenar={toggleSort}
-        meta={meta}
+        meta={paginaLocal.meta}
         onPageChange={setPage}
         onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
         filtros={filtros}
