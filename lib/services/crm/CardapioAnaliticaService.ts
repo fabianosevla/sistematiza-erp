@@ -74,7 +74,9 @@ export class CardapioAnaliticaService {
            AND v.vendida_em >= NOW() - (${dias} * INTERVAL '1 day')
          GROUP BY DATE(v.vendida_em AT TIME ZONE 'America/Sao_Paulo')
       )
-      SELECT b.dia,
+      -- Dia como TEXTO 'AAAA-MM-DD' (QA #132): devolvido como date, o driver
+      -- vira meia-noite UTC e o navegador, em Brasília, mostrava o dia anterior.
+      SELECT TO_CHAR(b.dia, 'YYYY-MM-DD') AS dia,
              COALESCE(e.visualizacoes, 0)::int    AS visualizacoes,
              COALESCE(e.pedidos_montados, 0)::int AS pedidos_montados,
              COALESCE(v.vendas_confirmadas, 0)::int AS vendas_confirmadas

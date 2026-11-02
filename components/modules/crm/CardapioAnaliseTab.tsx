@@ -22,7 +22,8 @@ export default function CardapioAnaliseTab({ tenantSlug }: Props) {
   }), { visualizacoes: 0, pedidosMontados: 0, vendasConfirmadas: 0 })
 
   const colunas: Coluna[] = [
-    { chave: 'dia', titulo: 'Dia', render: (l: any) => fmtDia(l.dia) },
+    // Dia de calendário (AAAA-MM-DD), sem passar por fuso — QA #132.
+    { chave: 'dia', titulo: 'Dia', render: (l: any) => { const [, m, d] = String(l.dia).split('-'); return d && m ? `${d}/${m}` : fmtDia(l.dia) } },
     { chave: 'visualizacoes', titulo: 'Visualizações', alinhamento: 'right' },
     { chave: 'pedidosMontados', titulo: 'Pedidos montados (WhatsApp)', alinhamento: 'right' },
     { chave: 'vendasConfirmadas', titulo: 'Vendas confirmadas', alinhamento: 'right',

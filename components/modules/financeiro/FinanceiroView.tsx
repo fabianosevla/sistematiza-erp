@@ -1,4 +1,5 @@
 'use client'
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useState } from 'react'
 import { CATEGORIAS_DESPESA } from '@/lib/financeiro/categorias'
 import { CampoNumero } from '@/components/ui/CampoNumero'
@@ -477,14 +478,14 @@ export default function FinanceiroView({ tenantSlug, somenteDespesas = false }: 
           valor:          d => d.valor ?? 0,
         }
         const despesasFiltradas = despFiltroCategoria
-          ? despesas.filter((d: any) => (d.categoria ?? '') === despFiltroCategoria)
+          ? despesas.filter((d: any) => casaFiltro(d.categoria, despFiltroCategoria))
           : despesas
         const despesasOrdenadas = ordenarLocal(despesasFiltradas, despOrdem, DESP_ACESSORES)
         const despTotalPages   = Math.max(1, Math.ceil(despesasOrdenadas.length / despLimit))
         const despPageClamped  = Math.min(despPage, despTotalPages)
         const despesasPagina   = despesasOrdenadas.slice((despPageClamped - 1) * despLimit, despPageClamped * despLimit)
         const despTotalFiltrado = despesasOrdenadas.reduce((a: number, d: any) => a + (d.valor ?? 0), 0)
-        const despOpcoesCategoria = Array.from(new Set(despesas.map((d: any) => d.categoria).filter(Boolean))) as string[]
+        const despOpcoesCategoria = (Array.from(new Set(despesas.map((d: any) => d.categoria).filter(Boolean))) as string[]).sort((a, b) => a.localeCompare(b, 'pt-BR'))
 
         const despColunas: Coluna[] = [
           { chave: 'nome', titulo: 'Nome', principal: true, ordenavel: true, render: d => d.nome ?? d.descricao },
@@ -875,7 +876,7 @@ export default function FinanceiroView({ tenantSlug, somenteDespesas = false }: 
                 margem: m => m.margem,
               }
               const demoFiltradoPorMes = demoFiltroMes
-                ? demoComAcum.filter((m: any) => m.mes === demoFiltroMes)
+                ? demoComAcum.filter((m: any) => casaFiltro(m.mes, demoFiltroMes))
                 : demoComAcum
               const demoOrdenado    = ordenarLocal(demoFiltradoPorMes, demoOrdem, DEMO_ACESSORES)
               const demoTotalPages  = Math.max(1, Math.ceil(demoOrdenado.length / demoLimit))

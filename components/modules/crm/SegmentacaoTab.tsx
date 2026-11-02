@@ -1,5 +1,6 @@
 'use client'
 // components/modules/crm/SegmentacaoTab.tsx
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Settings } from 'lucide-react'
@@ -112,7 +113,7 @@ export default function SegmentacaoTab({ tenantSlug }: Props) {
   const linhas = useMemo(() => {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? todos
-      : todos.filter(l => chaves.every(k => String(valorDe(l, k) ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+      : todos.filter(l => chaves.every(k => casaFiltro(valorDe(l, k), filtros[k])))
     return [...base].sort((a, b) => {
       const av = valorDe(a, sortKey), bv = valorDe(b, sortKey)
       const cmp = typeof av === 'number' && typeof bv === 'number'

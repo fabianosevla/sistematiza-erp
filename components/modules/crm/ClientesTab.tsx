@@ -15,6 +15,7 @@
 // histórico de um cliente, clica na linha (ou no ícone de olho) — a ficha
 // 360° completa, em app/(dashboard)/[tenant]/crm/clientes/[id] →
 // Ficha360View.tsx, tem tudo: cashback, vendas, pedidos, indicações.
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
@@ -84,7 +85,7 @@ export default function ClientesTab({ tenantSlug }: Props) {
   const itens = useMemo(() => {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? todos
-      : todos.filter(c => chaves.every(k => String(c?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+      : todos.filter(c => chaves.every(k => casaFiltro(c?.[k], filtros[k])))
     return [...base].sort((a: any, b: any) => {
       // 'nome' ordena pelo que a coluna EXIBE (fantasia, quando existe), não
       // pelo campo cru — senão a ordenação alfabética não bateria com o que

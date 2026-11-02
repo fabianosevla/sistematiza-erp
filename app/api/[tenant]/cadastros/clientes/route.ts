@@ -18,7 +18,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { searchParams } = new URL(req.url)
     const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
-    const limit  = Math.min(1000, Math.max(1, Number(searchParams.get('limit') ?? 500)))
+    const limit  = Math.min(10000, Math.max(1, Number(searchParams.get('limit') ?? 500)))
     const search = searchParams.get('search') ?? ''
     const incluirInativos = searchParams.get('incluirInativos') === 'true'
     const offset = (page - 1) * limit

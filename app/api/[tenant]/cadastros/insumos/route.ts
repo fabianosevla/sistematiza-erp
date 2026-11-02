@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     const tenant = await resolveTenant(params.tenant)
     const { searchParams } = new URL(req.url)
     const page   = Math.max(1, Number(searchParams.get('page') ?? 1))
-    const limit  = Math.min(500, Math.max(1, Number(searchParams.get('limit') ?? 20)))
+    const limit  = Math.min(10000, Math.max(1, Number(searchParams.get('limit') ?? 20)))
     const search = searchParams.get('search') ?? ''
     const incluirProdutos = searchParams.get('incluirProdutos') === 'true'
     const offset = (page - 1) * limit

@@ -5,6 +5,7 @@
 // é estadual, muda por portaria). O perfil tributário tem um valor único —
 // aqui cadastra a exceção por estado; sem linha aqui, a emissão usa o valor
 // padrão do perfil, que é o comportamento de sempre.
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
@@ -76,7 +77,7 @@ export default function IcmsStUfTab({ tenantSlug }: Props) {
   const linhasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
     const base = chaves.length === 0 ? linhasComNome
-      : linhasComNome.filter(l => chaves.every(k => String(l?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+      : linhasComNome.filter(l => chaves.every(k => casaFiltro(l?.[k], filtros[k])))
     return [...base].sort((a: any, b: any) => {
       const av = sortKey === 'mva' || sortKey === 'aliqIcmsSt' ? Number(a?.[sortKey] ?? 0) : String(a?.[sortKey] ?? '')
       const bv = sortKey === 'mva' || sortKey === 'aliqIcmsSt' ? Number(b?.[sortKey] ?? 0) : String(b?.[sortKey] ?? '')

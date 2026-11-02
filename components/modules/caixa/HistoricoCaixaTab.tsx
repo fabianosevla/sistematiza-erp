@@ -9,6 +9,7 @@
 //
 // A diferença é o número que interessa. Por isso ela é a coluna destacada, e
 // não o total vendido — faturamento já existe em Consultas.
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Download, Printer } from 'lucide-react'
@@ -124,8 +125,8 @@ export default function HistoricoCaixaTab({ tenantSlug }: Props) {
     diferenca:        t => Number(t.diferenca ?? 0),
   }
   const turnosFiltrados = turnos.filter(t =>
-    (!filtros.operador || String(t.operador ?? '').toLowerCase().includes(filtros.operador.toLowerCase())) &&
-    (!filtros.numero_caixa || String(t.numero_caixa ?? '').toLowerCase().includes(filtros.numero_caixa.toLowerCase()))
+    (!filtros.operador || casaFiltro(t.operador, filtros.operador)) &&
+    (!filtros.numero_caixa || casaFiltro(t.numero_caixa, filtros.numero_caixa))
   )
   const turnosOrdenados = !ordem ? turnosFiltrados : [...turnosFiltrados].sort((a, b) => {
     const ler = CAIXA_ACESSORES[ordem.chave]

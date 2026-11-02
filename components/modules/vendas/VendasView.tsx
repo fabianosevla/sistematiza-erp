@@ -1,4 +1,5 @@
 'use client'
+import { casaFiltro, LIMITE_LISTA_COMPLETA, opcoesDasColunas, paginarLocal } from '@/lib/filtroColuna'
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, X, Trash2, Download, Eye, Gift, Pencil } from 'lucide-react'
@@ -135,11 +136,9 @@ export default function VendasView({ tenantSlug }: Props) {
     setPageNum(1)
   }
   // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
-  // A caixa "Buscar por cliente ou vendedor" continua existindo à parte: ela
-  // busca no SERVIDOR, no histórico inteiro de vendas; este filtro aqui é
-  // client-side, só sobre a página de 20 já carregada — mesma limitação que
-  // faz sentido pra uma lista que cresce sem limite (diferente de Clientes/
-  // CRM, onde o total cabe inteiro na memória).
+  // A lista vem inteira do servidor (já ordenada e com a busca aplicada) e a
+  // paginação de 20 é feita aqui, depois do filtro: assim o funil enxerga
+  // todas as vendas, não só a página aberta (QA #136).
   const [filtrosCol, setFiltrosCol] = useState<Record<string, string>>({})
   function aplicarFiltroCol(chave: string, valor: string) {
     setFiltrosCol(f => {
@@ -148,6 +147,7 @@ export default function VendasView({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPageNum(1)
   }
 
   // ── Form state ────────────────────────────────────────────────────────────
@@ -178,9 +178,9 @@ export default function VendasView({ tenantSlug }: Props) {
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: vendasData, isLoading } = useQuery({
-    queryKey: ['vendas', tenantSlug, pageNum, busca, sortKey, sortDir],
+    queryKey: ['vendas', tenantSlug, busca, sortKey, sortDir],
     queryFn:  async () => {
-      const p = new URLSearchParams({ page: String(pageNum), limit: '20', sort: sortKey, dir: sortDir })
+      const p = new URLSearchParams({ page: '1', limit: String(LIMITE_LISTA_COMPLETA), sort: sortKey, dir: sortDir })
       if (busca) p.set('busca', busca)
       return (await fetch(`${api}?${p}`)).json()
     },
@@ -407,36 +407,26 @@ export default function VendasView({ tenantSlug }: Props) {
   const usuarios = Array.isArray(usuariosRaw?.data?.data) ? usuariosRaw.data.data
     : Array.isArray(usuariosRaw?.data) ? usuariosRaw.data : []
 
-  const vendasPagina = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
+  const vendasTodas: any[] = Array.isArray(vendasData?.data?.data) ? vendasData.data.data
     : Array.isArray(vendasData?.data) ? vendasData.data : []
-  const meta = vendasData?.data?.meta
   const kpis = kpisData?.data
 
-  // Filtro de coluna aplicado sobre a página já carregada (20 vendas) — as
-  // opções vêm do conjunto SEM filtro, senão escolher um valor esconderia os
-  // outros do próprio seletor.
+  // Filtro de coluna sobre a lista inteira; as opções vêm do conjunto SEM
+  // filtro, senão escolher um valor esconderia os outros do próprio seletor.
+  const valorColunaVenda = (v: any, k: string) =>
+    k === 'clienteNome' ? (v.clienteNome ?? 'Consumidor Final')
+      : k === 'tipoEntrega' ? canalLabel(v.tipoEntrega ?? 'retirada')
+      : v?.[k]
   const vendas = useMemo(() => {
     const chaves = Object.keys(filtrosCol)
-    if (chaves.length === 0) return vendasPagina
-    return vendasPagina.filter((v: any) => chaves.every(k => {
-      const val = k === 'clienteNome' ? (v.clienteNome ?? 'Consumidor Final')
-        : k === 'tipoEntrega' ? canalLabel(v.tipoEntrega ?? 'retirada')
-        : v?.[k]
-      return String(val ?? '').toLowerCase().includes(filtrosCol[k].toLowerCase())
-    }))
-  }, [vendasPagina, filtrosCol])
-  const opcoesFiltroCol = useMemo(() => {
-    const mapa: Record<string, string[]> = {}
-    const setCliente = new Set<string>()
-    const setCanal = new Set<string>()
-    for (const v of vendasPagina) {
-      setCliente.add(String(v.clienteNome ?? 'Consumidor Final'))
-      setCanal.add(canalLabel(v.tipoEntrega ?? 'retirada'))
-    }
-    if (setCliente.size > 0) mapa.clienteNome = Array.from(setCliente).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    if (setCanal.size > 0) mapa.tipoEntrega = Array.from(setCanal).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    return mapa
-  }, [vendasPagina])
+    if (chaves.length === 0) return vendasTodas
+    return vendasTodas.filter((v: any) => chaves.every(k => casaFiltro(valorColunaVenda(v, k), filtrosCol[k])))
+  }, [vendasTodas, filtrosCol])
+  const opcoesFiltroCol = useMemo(
+    () => opcoesDasColunas(vendasTodas, ['clienteNome', 'tipoEntrega'], valorColunaVenda),
+    [vendasTodas],
+  )
+  const { pagina: vendasPagina, meta } = paginarLocal(vendas, pageNum, 20)
 
   const subtotalTotal = itens.reduce((a, i) => a + i.subtotal, 0)
   const descontoVal   = Math.round(parseFloat(desconto.replace(',', '.') || '0') * 100)
@@ -553,7 +543,7 @@ export default function VendasView({ tenantSlug }: Props) {
       {/* ── Listagem ────────────────────────────────────────────────────── */}
       <DataTable
         colunas={colunas}
-        itens={vendas}
+        itens={vendasPagina}
         chave={(v: any) => v.vendaId}
         carregando={isLoading}
         usarSkeleton

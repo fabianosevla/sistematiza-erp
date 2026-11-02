@@ -1,4 +1,5 @@
 ﻿'use client'
+import { casaFiltro, LIMITE_LISTA_COMPLETA, paginarLocal } from '@/lib/filtroColuna'
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Download, Upload, Package2, Clock, Pencil } from 'lucide-react'
@@ -70,9 +71,9 @@ export default function InsumosView({ tenantSlug }: Props) {
 
   // Paginação e busca no SERVIDOR (?page, ?limit, ?search).
   const { data: raw, isLoading } = useQuery({
-    queryKey: ['insumos', tenantSlug, page, limit, busca],
+    queryKey: ['insumos', tenantSlug, busca],
     queryFn:  async () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      const params = new URLSearchParams({ page: '1', limit: String(LIMITE_LISTA_COMPLETA) })
       if (busca) params.set('search', busca)
       return (await fetch(`${api}?${params}`)).json()
     },
@@ -169,21 +170,17 @@ export default function InsumosView({ tenantSlug }: Props) {
   }
 
   const pagina = Array.isArray(raw?.data?.data) ? raw.data.data : Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : []
-  const meta   = raw?.data?.meta
 
-  // Ordena apenas a página atual (a busca é feita no servidor)
+  // Ordena a lista inteira (a busca é feita no servidor)
   const insumos = [...pagina].sort((a: any, b: any) => {
     const av = a[sortKey] ?? ''; const bv = b[sortKey] ?? ''
     const cmp = typeof av === 'number' ? av - bv : String(av).localeCompare(String(bv), 'pt-BR')
     return sortDir === 'asc' ? cmp : -cmp
   })
 
-  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
-  // A busca acima já filtra no SERVIDOR (nome) e pagina; este filtro atua
-  // sobre a PÁGINA já carregada, por cima disso — as opções do funil só
-  // listam valores da página atual, não do cadastro inteiro. Mesma
-  // limitação aceita em ClientesView/ProdutosView; não vale trocar a
-  // paginação do servidor só por causa do funil.
+  // Filtro por coluna (funil no cabeçalho), regra comum em lib/filtroColuna.
+  // A busca acima filtra no SERVIDOR; a lista vem inteira e o funil, a
+  // ordenação e a paginação são aplicados aqui, sobre o cadastro todo (QA #136).
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
@@ -192,12 +189,15 @@ export default function InsumosView({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPage(1)
   }
   const insumosFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
     if (chaves.length === 0) return insumos
-    return insumos.filter((ins: any) => chaves.every(k => String(ins?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    return insumos.filter((ins: any) => chaves.every(k => casaFiltro(ins?.[k], filtros[k])))
   }, [insumos, filtros])
+  // Lista inteira do servidor; paginação aqui, depois do filtro de coluna (QA #136).
+  const paginaLocal = paginarLocal(insumosFiltrados, page, limit)
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nome', 'tipo', 'unidade']) {
@@ -267,7 +267,7 @@ export default function InsumosView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={insumosFiltrados}
+        itens={paginaLocal.pagina}
         chave={(ins: any) => ins.insumoId}
         carregando={isLoading}
         usarSkeleton
@@ -278,7 +278,7 @@ export default function InsumosView({ tenantSlug }: Props) {
         }
         ordem={{ chave: sortKey, dir: sortDir }}
         onOrdenar={toggleSort}
-        meta={meta}
+        meta={paginaLocal.meta}
         onPageChange={setPage}
         onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
         filtros={filtros}

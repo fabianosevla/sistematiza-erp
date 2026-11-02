@@ -1,4 +1,5 @@
 'use client'
+import { casaFiltro } from '@/lib/filtroColuna'
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Pencil } from 'lucide-react'
@@ -106,7 +107,7 @@ export default function FormasPagamentoView({ tenantSlug }: Props) {
   }
   const formasFiltradas = useMemo(() => {
     const chaves = Object.keys(filtros)
-    const base = chaves.length === 0 ? formas : formas.filter((f: any) => chaves.every(k => String(f?.[k] ?? '').toLowerCase().includes(filtros[k].toLowerCase())))
+    const base = chaves.length === 0 ? formas : formas.filter((f: any) => chaves.every(k => casaFiltro(f?.[k], filtros[k])))
     return [...base].sort((a: any, b: any) => {
       const av: any = sortKey === 'taxa' ? parseFloat(a.taxa) || 0 : String(a?.[sortKey] ?? '')
       const bv: any = sortKey === 'taxa' ? parseFloat(b.taxa) || 0 : String(b?.[sortKey] ?? '')

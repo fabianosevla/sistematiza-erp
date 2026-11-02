@@ -1,4 +1,5 @@
 ﻿'use client'
+import { casaFiltro, LIMITE_LISTA_COMPLETA, paginarLocal } from '@/lib/filtroColuna'
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Trash2, Download, Upload, BookOpen, Package, EyeOff, Pencil, Lock, RotateCcw, X } from 'lucide-react'
@@ -104,9 +105,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const perfisTrib: any[] = perfisRaw?.data?.perfis ?? []
 
   const { data: raw, isLoading } = useQuery({
-    queryKey: ['produtos', tenantSlug, page, limit, busca, showInativos],
+    queryKey: ['produtos', tenantSlug, busca, showInativos],
     queryFn:  async () => {
-      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      const params = new URLSearchParams({ page: '1', limit: String(LIMITE_LISTA_COMPLETA) })
       if (busca) params.set('search', busca)
       if (showInativos) params.set('incluirInativos', 'true')
       return (await fetch(`${api}?${params}`)).json()
@@ -363,12 +364,9 @@ export default function ProdutosView({ tenantSlug }: Props) {
       return sortDir === 'asc' ? cmp : -cmp
     })
 
-  // Filtro por coluna (funil no cabeçalho) — mesmo padrão de ConsultasView.
-  // A busca acima já filtra no SERVIDOR (nome) e pagina; este filtro atua
-  // sobre a PÁGINA já carregada, por cima disso — as opções do funil só
-  // listam valores da página atual, não do cadastro inteiro. Mesma
-  // limitação aceita em ClientesView; não vale trocar a paginação do
-  // servidor só por causa do funil.
+  // Filtro por coluna (funil no cabeçalho), regra comum em lib/filtroColuna.
+  // A busca acima filtra no SERVIDOR; a lista vem inteira e o funil, a
+  // ordenação e a paginação são aplicados aqui, sobre o cadastro todo (QA #136).
   const [filtros, setFiltros] = useState<Record<string, string>>({})
   function aplicarFiltro(chave: string, valor: string) {
     setFiltros(f => {
@@ -377,6 +375,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
       else delete novo[chave]
       return novo
     })
+    setPage(1)
   }
   function valorFiltravel(p: any, chave: string): string {
     if (chave === 'activeFlag') return p.activeFlag === false ? 'Inativo' : 'Ativo'
@@ -385,8 +384,10 @@ export default function ProdutosView({ tenantSlug }: Props) {
   const produtosFiltrados = useMemo(() => {
     const chaves = Object.keys(filtros)
     if (chaves.length === 0) return produtos
-    return produtos.filter((p: any) => chaves.every(k => valorFiltravel(p, k).toLowerCase().includes(filtros[k].toLowerCase())))
+    return produtos.filter((p: any) => chaves.every(k => casaFiltro(valorFiltravel(p, k), filtros[k])))
   }, [produtos, filtros])
+  // Lista inteira do servidor; paginação aqui, depois do filtro de coluna (QA #136).
+  const paginaLocal = paginarLocal(produtosFiltrados, page, limit)
   const opcoesFiltro = useMemo(() => {
     const mapa: Record<string, string[]> = {}
     for (const chave of ['nome', 'tipo', 'unidade', 'activeFlag']) {
@@ -488,7 +489,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
 
       <DataTable
         colunas={colunas}
-        itens={produtosFiltrados}
+        itens={paginaLocal.pagina}
         chave={(p: any) => p.produtoId}
         carregando={isLoading}
         usarSkeleton
@@ -500,7 +501,7 @@ export default function ProdutosView({ tenantSlug }: Props) {
         ordem={{ chave: sortKey, dir: sortDir }}
         onOrdenar={toggleSort}
         classeLinha={(p: any) => p.activeFlag === false ? 'opacity-50 bg-gray-50/50' : ''}
-        meta={raw?.data?.meta}
+        meta={paginaLocal.meta}
         onPageChange={setPage}
         onLimitChange={(l: number) => { setLimit(l); setPage(1) }}
         filtros={filtros}
